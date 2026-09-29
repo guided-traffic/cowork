@@ -1,0 +1,17 @@
+# Build and test output
+dist/
+coverage/
+.angular/
+
+# Dependencies are installed inside the image from the lockfile
+node_modules/
+
+# Container and repository files that are not part of the bundle
+Containerfile
+.dockerignore
+README.md
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store

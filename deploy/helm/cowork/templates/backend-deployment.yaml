@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cowork.backend.fullname" . }}
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cowork.componentSelectorLabels" (dict "root" . "component" "backend") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- if and .Values.database.url (not .Values.database.existingSecret) }}
+        checksum/database-secret: {{ .Values.database.url | sha256sum }}
+        {{- end }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "cowork.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cowork.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          args: ["serve"]
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          env:
+            - name: COWORK_LISTEN_ADDR
+              value: ":{{ .Values.backend.containerPort }}"
+            - name: COWORK_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.databaseSecretName" . }}
+                  key: {{ include "cowork.databaseSecretKey" . }}
+            - name: COWORK_MIGRATE_ON_START
+              value: {{ .Values.backend.config.migrateOnStart | quote }}
+            - name: COWORK_LOG_LEVEL
+              value: {{ .Values.backend.config.logLevel | quote }}
+            - name: COWORK_LOG_FORMAT
+              value: {{ .Values.backend.config.logFormat | quote }}
+            - name: COWORK_SHUTDOWN_TIMEOUT
+              value: {{ .Values.backend.config.shutdownTimeout | quote }}
+            {{- if .Values.backend.config.baseURL }}
+            - name: COWORK_BASE_URL
+              value: {{ .Values.backend.config.baseURL | quote }}
+            {{- end }}
+            {{- with .Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.containerPort }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.backend.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.backend.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.backend.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

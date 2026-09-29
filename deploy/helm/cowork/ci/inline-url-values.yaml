@@ -1,0 +1,14 @@
+# Throw-away shape: the chart renders the database Secret itself.
+database:
+  url: postgres://cowork:cowork@postgres:5432/cowork?sslmode=disable
+backend:
+  config:
+    logFormat: text
+    logLevel: debug
+  extraEnv:
+    - name: COWORK_EXAMPLE
+      value: "1"
+frontend:
+  extraEnv:
+    - name: NGINX_ENTRYPOINT_QUIET_LOGS
+      value: "1"

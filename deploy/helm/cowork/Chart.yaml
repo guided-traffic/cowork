@@ -1,0 +1,18 @@
+apiVersion: v2
+name: cowork
+description: Multi-tenant backlog and kanban board for people and LLM agents working across many projects
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Guided Traffic
+    url: https://github.com/guided-traffic
+keywords:
+  - backlog
+  - kanban
+  - tickets
+  - llm
+  - multi-tenant
+home: https://github.com/guided-traffic/cowork
+sources:
+  - https://github.com/guided-traffic/cowork

@@ -1,0 +1,56 @@
+# Rendered into /etc/nginx/conf.d/default.conf by the image entrypoint. Two
+# variables are substituted (NGINX_ENVSUBST_FILTER in the Containerfile):
+# ${BACKEND_URL}, the backend Service, and ${NGINX_LOCAL_RESOLVERS}, which the
+# entrypoint reads from /etc/resolv.conf. Everything else that looks like a
+# variable is nginx's own and stays as written.
+
+server {
+    listen       8080;
+    server_name  _;
+    server_tokens off;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # The frontend's own health: answered by nginx, says nothing about the backend.
+    location = /healthz {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    # The API, proxied to the backend Service. The upstream is held in a
+    # variable so nginx resolves it per request through the cluster DNS
+    # instead of once at start: the frontend then starts before the backend
+    # Service exists and follows it when its address changes. The request
+    # path is passed through unchanged, so /api/v1/version reaches the
+    # backend as /api/v1/version.
+    location /api/ {
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+        set $backend ${BACKEND_URL};
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # Hashed bundles never change under their name.
+    location ~* \.(?:js|css|woff2?|ttf|svg|png|ico)$ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # The application shell: every path the router owns resolves to it, and it
+    # is never cached, because it names the current bundle hashes.
+    location / {
+        try_files $uri /index.html;
+        add_header Cache-Control "no-store";
+    }
+}

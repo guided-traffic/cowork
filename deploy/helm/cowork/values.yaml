@@ -1,0 +1,162 @@
+# Default values for cowork. The reference with every key explained is the
+# "Helm chart values" section of README.md.
+#
+# The release runs two Deployments: the backend (Go, the API and the schema
+# migration) and the frontend (nginx serving the Angular build and proxying
+# /api/ to the backend Service). The Ingress points at the frontend.
+
+nameOverride: ""
+fullnameOverride: ""
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  # Neither pod talks to the Kubernetes API.
+  automountServiceAccountToken: false
+
+# Where the backend finds PostgreSQL.
+database:
+  # Name of an existing Secret that holds the PostgreSQL connection URL
+  # (postgres://user:password@host:5432/db?sslmode=require). Preferred: the
+  # credential never enters the Helm values or the release history.
+  existingSecret: ""
+  # Key inside that Secret.
+  existingSecretKey: databaseUrl
+  # Inline URL, rendered into a Secret owned by this release. Only for local
+  # and throw-away installations: the value is stored in plain text in the
+  # release Secret and in every `helm get values` output.
+  url: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cowork.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: cowork-tls
+  #    hosts:
+  #      - cowork.example.com
+
+backend:
+  replicaCount: 1
+  image:
+    repository: guidedtraffic/cowork-backend
+    pullPolicy: IfNotPresent
+    # Overrides the image tag; the default is the chart appVersion.
+    tag: ""
+  # The port the container listens on (COWORK_LISTEN_ADDR).
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  # Server configuration; each key maps to one COWORK_* environment variable.
+  config:
+    # COWORK_MIGRATE_ON_START: apply pending schema migrations before listening.
+    # Several replicas may start at once; golang-migrate serialises them with a
+    # PostgreSQL advisory lock.
+    migrateOnStart: true
+    # COWORK_LOG_LEVEL: debug | info | warn | error
+    logLevel: info
+    # COWORK_LOG_FORMAT: json | text
+    logFormat: json
+    # COWORK_SHUTDOWN_TIMEOUT: graceful shutdown bound after SIGTERM; keep it
+    # below terminationGracePeriodSeconds.
+    shutdownTimeout: 15s
+    # COWORK_BASE_URL: the public URL of the UI, e.g. https://cowork.example.com.
+    # Empty until a feature needs it.
+    baseURL: ""
+  # Extra environment variables appended to the container, verbatim.
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  # The image is distroless and runs as its nonroot user (65532).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  # The binary writes nothing to disk.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    limits:
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  # Probes. The startup probe covers the migration run before the server listens.
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 36
+    liveness:
+      periodSeconds: 10
+    readiness:
+      periodSeconds: 10
+  terminationGracePeriodSeconds: 30
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: guidedtraffic/cowork-frontend
+    pullPolicy: IfNotPresent
+    # Overrides the image tag; the default is the chart appVersion.
+    tag: ""
+  # nginx-unprivileged listens here; the nginx configuration in the image says 8080.
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 80
+  # Extra environment variables appended to the container, verbatim.
+  # BACKEND_URL is set by the chart to the backend Service.
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  # nginx-unprivileged runs as its nginx user (101). fsGroup makes the two
+  # emptyDir volumes below writable for it; without it the entrypoint cannot
+  # render the configuration and nginx serves nothing.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  # nginx writes its pid, its temp files and the rendered configuration; the
+  # Deployment mounts emptyDirs at /tmp and /etc/nginx/conf.d for that.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    limits:
+      memory: 64Mi
+    requests:
+      cpu: 10m
+      memory: 32Mi
+  probes:
+    liveness:
+      periodSeconds: 10
+    readiness:
+      periodSeconds: 10
+  terminationGracePeriodSeconds: 30
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

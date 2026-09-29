@@ -1,0 +1,29 @@
+cowork {{ .Chart.AppVersion }} is being rolled out as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Backend:  Deployment {{ include "cowork.backend.fullname" . }}, Service {{ include "cowork.backend.fullname" . }}:{{ .Values.backend.service.port }}
+Frontend: Deployment {{ include "cowork.frontend.fullname" . }}, Service {{ include "cowork.frontend.fullname" . }}:{{ .Values.frontend.service.port }}
+          proxies /api/ to {{ include "cowork.backendURL" . }}
+Database: Secret {{ include "cowork.databaseSecretName" . }}, key {{ include "cowork.databaseSecretKey" . }}
+{{- if and .Values.database.url (not .Values.database.existingSecret) }}
+  WARNING: database.url is set inline. The credential is stored in plain text in the
+  release Secret and in `helm get values`; use database.existingSecret for anything
+  beyond a throw-away installation.
+{{- end }}
+Migrations on start: {{ .Values.backend.config.migrateOnStart }}
+
+Reach the UI:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "cowork.frontend.fullname" . }} 8080:{{ .Values.frontend.service.port }}
+  open http://localhost:8080          # the UI; /api/ is proxied to the backend
+{{- end }}
+
+Reach the API directly (for tokens and scripts):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "cowork.backend.fullname" . }} 8081:{{ .Values.backend.service.port }}
+  curl http://localhost:8081/api/v1/version
+
+Check the health:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}

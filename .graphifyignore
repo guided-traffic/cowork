@@ -1,0 +1,21 @@
+# Generated artifacts - not part of the knowledge corpus.
+# graphify reads this file only, not .gitignore.
+coverage
+bin
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/.angular
+node_modules
+
+# graphify's own output (graphify-out/memory/ stays indexed on purpose)
+graphify-out/GRAPH_REPORT.md
+graphify-out/graph.html
+graphify-out/graph.json
+graphify-out/wiki/*
+graphify-out/obsidian/*
+graphify-out/cache/*
+graphify-out/converted/*
+
+# Archived tickets - finished work lists, kept readable but never a current rule (docs/adr/0002)
+docs/tickets/archive

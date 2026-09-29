@@ -1,0 +1,43 @@
+# Build stage: the Angular production bundle.
+FROM node:26-alpine AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN npx ng build --configuration production
+
+# Final stage: nginx, unprivileged, serving the bundle and proxying /api/ to
+# the backend. The image entrypoint renders nginx/default.conf.template with
+# BACKEND_URL and NGINX_LOCAL_RESOLVERS substituted (and nothing else:
+# NGINX_ENVSUBST_FILTER keeps nginx's own $variables intact).
+FROM nginxinc/nginx-unprivileged:1.30-alpine
+
+ARG BUILD_NUMBER
+ARG GIT_COMMIT
+ARG BUILD_TIME
+
+LABEL org.opencontainers.image.title="cowork-frontend" \
+      org.opencontainers.image.description="cowork frontend - the Angular UI of the multi-tenant backlog for people and LLM agents, served by nginx" \
+      org.opencontainers.image.vendor="Guided Traffic" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.documentation="https://github.com/guided-traffic/cowork" \
+      org.opencontainers.image.source="https://github.com/guided-traffic/cowork" \
+      org.opencontainers.image.version="${BUILD_NUMBER:-dev}" \
+      org.opencontainers.image.revision="${GIT_COMMIT:-unknown}" \
+      org.opencontainers.image.created="${BUILD_TIME:-0}"
+
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS makes the entrypoint export the nameservers
+# of /etc/resolv.conf as NGINX_LOCAL_RESOLVERS; the template's resolver
+# directive needs them.
+ENV BACKEND_URL=http://localhost:8080 \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true \
+    NGINX_ENVSUBST_FILTER='^(BACKEND_URL|NGINX_LOCAL_RESOLVERS)$'
+
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist/frontend/browser/ /usr/share/nginx/html/
+
+# nginx-unprivileged runs as user 101 and listens on 8080.
+EXPOSE 8080

@@ -1,0 +1,36 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage/
+*.coverprofile
+profile.cov
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# Node.js dependencies (root: semantic-release; frontend/ has its own .gitignore)
+node_modules/
+
+# Local state
+tmp/
+.claude/settings.local.json
+graphify-out/
+
+# Embargoed tickets: a live|boundary security finding stays untracked while
+# local_-prefixed, independent of anyone's global excludes file (docs/adr/0002).
+# The ** covers archive/ as well.
+docs/tickets/**/local_*

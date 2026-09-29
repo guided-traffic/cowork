@@ -1,0 +1,15 @@
+<header class="app-header">
+  <h1>{{ title }}</h1>
+</header>
+
+<main class="app-main">
+  <router-outlet />
+</main>
+
+<footer class="app-footer">
+  @if (version(); as v) {
+    <span data-testid="version">{{ v.version }} ({{ v.commit }})</span>
+  } @else {
+    <span data-testid="version">backend unreachable</span>
+  }
+</footer>
