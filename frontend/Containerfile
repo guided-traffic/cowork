@@ -13,7 +13,7 @@ RUN npx ng build --configuration production
 # the backend. The image entrypoint renders nginx/default.conf.template with
 # BACKEND_URL and NGINX_LOCAL_RESOLVERS substituted (and nothing else:
 # NGINX_ENVSUBST_FILTER keeps nginx's own $variables intact).
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 ARG BUILD_NUMBER
 ARG GIT_COMMIT
