@@ -42,25 +42,33 @@ personal access token; the owner reaches it through the UI; git keeps what git i
    model, and `/me/decisions`: every open question waiting for an answer. Answer the questions
    that can be answered from the couch; each answer is attributed and timestamped. Pick a
    ticket; its project names the repository; open it in VS Code.
-2. **Session start.** Claude Code runs the `SessionStart` hook. The hook reads `.cowork.yaml`,
-   asks cowork for the ticket assigned to the owner in that project with state `in-progress`
-   (or the top candidate when there is none) and prints its key, title, state and open
-   questions into the context. Claude knows what it is doing before the first prompt.
+2. **Session start.** Claude Code runs the `SessionStart` hook, which calls the MCP server's
+   `session_start`: it reads the git remotes, finds the project across the owner's tenants
+   (ADR 0066) — or proposes tenant, key and name and creates the project once the owner says
+   yes in chat — then asks cowork for the ticket assigned to the owner in that project with
+   state `in-progress` (or the top candidate when there is none) and prints its key, title,
+   state and open questions into the context. `.cowork.yaml` is only written for a
+   remote-less repository or a fork. Claude knows what it is doing before the first prompt.
 3. **Work.** Claude reads the full ticket once (`get_ticket` returns the Markdown document);
    records findings by rewriting the ticket's current state (`record_state`), not by appending
    history; opens a decision as an open question with options and a recommendation
-   (`open_question`), one at a time, as the working rules demand; the owner answers in chat or
-   in the UI — in chat, Claude records the answer with `answer_question` **only when the
-   token's agent flag allows it, which by default it does not** (Q-D5): the owner answers in
-   the UI, or confirms explicitly and the answer is recorded as the owner's.
-4. **Commit.** The ticket key travels in the conventional-commit scope or a `Cowork-Ticket:`
-   trailer. No apostrophes. The PR body names the key; a later GitHub integration (Q-I6)
-   turns that into a link and a state change on merge.
+   (`open_question`), one at a time, as the working rules demand; the owner answers in chat
+   or in the UI — in chat, Claude writes the answer down with `record_answer`, and the record
+   says "answered by Hans, recorded via Claude Code" (ADR 0066 D8); the decision is always
+   the person's. What else the agent may do (`decided`, `done`, rank, …) is the capability
+   set of its token (ADR 0043); the owner's own token runs "full".
+4. **Commit.** `fix(controller): guard the failover gate (VKO-12)` with a
+   `Cowork-Ticket: guided-traffic/VKO-12` trailer, on a branch `fix/VKO-12-failover-gate`
+   unless the owner names another (ADR 0068); the tools hand Claude the strings. No
+   apostrophes. The PR body names the full key; the optional inbound webhook of ADR 0071
+   (phase 7, on trial) shows the pull request on the ticket and notifies on merge — the state
+   is still moved by a person or a capable agent.
 5. **Session end.** `finish_ticket` refuses without a verification note (what was run, against
    what, result); the state moves to `done` or to review; the ADR extraction that the ticket
    rules require still happens in the repository, by Claude, in the same session.
-6. **Evening.** The timeline of the day across all tenants, with every agent write marked
-   "via Claude Code", is the status report. Nothing to write up.
+6. **Evening.** The activity of the day across all tenants, with every agent write marked
+   "via Claude Code", is the status report. Nothing to write up. The next session starts by
+   reading the inbox: nothing pushes (ADR 0020), the session pulls.
 
 ## Building blocks and where each lives
 
@@ -68,11 +76,11 @@ personal access token; the owner reaches it through the UI; git keeps what git i
 |---|---|---|
 | The API, the token model, the audit log | this repository | 2 |
 | The UI views `/me/next`, `/me/decisions`, backlog, board, ticket timeline | this repository, `frontend/` | 3 |
-| `cowork-mcp`: stdio MCP server with the workflow tools, configured once in Claude Code with the installation URL and a PAT | this repository, `backend/cmd/cowork-mcp/` | 5 |
-| `.cowork.yaml`: `tenant`, `project`, optional defaults | every bound repository, one file | 5 |
-| `SessionStart` hook: prints the active ticket context; a `Stop` hook that reminds of an unfinished ticket | `~/.claude/settings.json` or a Claude Code plugin in this repository | 5 |
+| `cowork-mcp`: stdio MCP server with the thirteen tools of ADR 0042, configured once in Claude Code with `COWORK_URL` and `COWORK_TOKEN` (ADR 0040, 0041) | this repository, `backend/cmd/cowork-mcp/` | 5 |
+| The remote lookup and proposal (`/me/repositories/lookup`, `create_project`); `.cowork.yaml` only as the override for remote-less repositories and forks (ADR 0066) | this repository (API and MCP server); the optional file per repository | 5 |
+| `SessionStart` hook running `cowork-mcp session-context` and `Stop` hook running `cowork-mcp session-end` (ADR 0067); one user-level block, silent in unbound repositories | `~/.claude/settings.json`; the block is in the operations page | 5 |
 | Skills `/next`, `/ticket <key>`, `/question`, `/done`: thin wrappers around the MCP tools that also enforce the writing rules (one question at a time, verification note) | a Claude Code plugin in this repository, installed globally | 5 |
-| A `CLAUDE.md` snippet for bound repositories: "tickets live in cowork; ADRs live here; use the skills" | this repository, `docs/operations/` as a template | 5 |
+| A `CLAUDE.md` block for bound repositories — three lines: work in cowork under `<tenant>/<KEY>`, rules here under the five homes, commits per ADR 0068 (ADR 0069 D4) | this repository, `docs/operations/` as a template | 5 |
 | VS Code tasks: `make run`, `make frontend-serve`, `make test` | this repository, `.vscode/tasks.json` (optional) | 3 |
 | The importer and the Markdown round-trip | this repository | 6 |
 
@@ -96,8 +104,9 @@ rewritten once to point at cowork.
 - Replace git for decisions and documentation. An ADR is a file next to the code it governs.
 - Replace GitHub for pull requests and CI. It links to them.
 - Run the LLM. It is what the LLM talks to, with a token that says who is accountable.
-- Sync in both directions with Markdown files. After the import, cowork is the truth; the
-  export exists for backups and for reading offline.
+- Sync in any direction with Markdown files (ADR 0064). After the import, cowork is the
+  source; the export exists for backups and for reading offline; what a repository does with
+  its files afterwards is that repository's decision.
 
 ## Success criteria
 

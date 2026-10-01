@@ -22,8 +22,10 @@ var migrationFiles embed.FS
 // MigrationsTable is the table golang-migrate keeps the schema version in.
 const MigrationsTable = "schema_migrations"
 
-// migrationFilePattern is the file name every migration must match.
-var migrationFilePattern = regexp.MustCompile(`^(\d{6})_([a-z0-9_]+)\.(up|down)\.sql$`)
+// migrationFilePattern is the file name every migration must match. There are
+// no down migrations: the schema only moves forward, and a migration never
+// removes what the previous release still reads (docs/adr/0028).
+var migrationFilePattern = regexp.MustCompile(`^(\d{6})_([a-z0-9_]+)\.up\.sql$`)
 
 // MigrationsFS returns the embedded migration files, rooted at the directory
 // that holds them.
@@ -122,7 +124,7 @@ func countVersionsBetween(from, to uint) (uint, error) {
 	var n uint
 	for _, e := range entries {
 		match := migrationFilePattern.FindStringSubmatch(e.Name())
-		if match == nil || match[3] != "up" {
+		if match == nil {
 			continue
 		}
 		v, err := strconv.ParseUint(match[1], 10, 64)

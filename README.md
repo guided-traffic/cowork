@@ -59,7 +59,7 @@ The frontend container takes one variable, `BACKEND_URL`.
 
 | Thing | Pattern | Example |
 |---|---|---|
-| Migration | `backend/internal/store/migrations/NNNNNN_<snake_name>.{up,down}.sql`, versions `1..n` without a gap | `000001_tenants.up.sql` |
+| Migration | `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n` without a gap, no down files | `000001_tenants.up.sql` |
 | Container images | `guidedtraffic/cowork-backend:<semver>`, `guidedtraffic/cowork-frontend:<semver>` | both carry the release version |
 | Helm chart | `cowork`, `deploy/helm/cowork/` | `helm install cowork deploy/helm/cowork` |
 | Go module | `github.com/guided-traffic/cowork/backend` | — |
@@ -73,7 +73,7 @@ The frontend container takes one variable, `BACKEND_URL`.
 |---|---|---|
 | `/healthz` | liveness | nginx's own health, `{"status":"ok"}` |
 | `/readyz` | readiness: a database ping | not served (backend Service only) |
-| `/api/v1/…` | the JSON API; an unknown route answers `404` with `{"error":{"code":"not_found","message":"…"}}` | proxied to the backend, path unchanged |
+| `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` JSON | `index.html` with `Cache-Control: no-store` |
 
@@ -81,8 +81,7 @@ The frontend container takes one variable, `BACKEND_URL`.
 
 | Document | What it is for |
 |---|---|
-| [DEVELOPER.md](DEVELOPER.md) | Contributor entry point: layout, build/test/lint matrix, CI and release, checklists, conventions |
-| [docs/developer/](docs/developer/README.md) | How the code works: package map, architecture, testing |
+| [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/operations/](docs/operations/README.md) | Installing and running: installation, runtime behaviour |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
@@ -190,13 +189,16 @@ Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command
 | Method and path | Status | Body |
 |---|---|---|
 | `GET /healthz` | `200` | `{"status":"ok"}` — the process serves |
-| `GET /readyz` | `200` / `503` | `{"status":"ready"}` / `{"error":{"code":"not_ready","message":"<ping error>"}}` |
+| `GET /readyz` | `200` / `503` | `{"status":"ready"}` / problem details with `code: not_ready` and the ping error as `detail` |
 | `GET /api/v1/version` | `200` | `{"version":"…","commit":"…","buildTime":"…"}` |
-| other methods on those paths | `405` | `Allow: GET, HEAD`, `{"error":{"code":"method_not_allowed",…}}` |
-| any other path | `404` | `{"error":{"code":"not_found","message":"no route <METHOD> <path>"}}` |
+| other methods on those paths | `405` | `Allow: GET, HEAD`, problem details with `code: method_not_allowed` |
+| any other path | `404` | problem details with `code: not_found` and `detail: no route <METHOD> <path>` |
 
 Every response carries `Content-Type: application/json; charset=utf-8` and
-`Cache-Control: no-store`. The error shape is provisional (question Q-E2).
+`Cache-Control: no-store`. An error body is `application/problem+json`
+([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): `type`, `title`, `status`, `detail`,
+`instance`, plus the stable `code` (snake_case) — for example
+`{"type":"https://cowork.dev/problems/not-found","title":"Not found","status":404,"detail":"no route GET /x","instance":"/x","code":"not_found"}`.
 
 ### Helm chart values
 
@@ -332,9 +334,9 @@ make build                # bin/cowork and frontend/dist/frontend/browser
 make docker-build         # both images, from backend/Containerfile and frontend/Containerfile
 ```
 
-[DEVELOPER.md](DEVELOPER.md) has the layout, the checklists, the toolchain versions and the
-CI and release process; [docs/developer/](docs/developer/README.md) has the package map, the
-architecture and the test tiers.
+[docs/developer/](docs/developer/README.md) has the layout, the package map, the architecture,
+the build and test matrix, the checklists, the toolchain versions and the CI and release
+process.
 
 ## 📄 License
 

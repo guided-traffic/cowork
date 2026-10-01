@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,12 +30,18 @@ func decode(t *testing.T, res *http.Response) map[string]any {
 	return body
 }
 
-func apiErrorOf(t *testing.T, res *http.Response) map[string]any {
+// problemOf decodes an RFC 9457 problem details body and checks its envelope:
+// the media type, the standard members and that status matches the response.
+func problemOf(t *testing.T, res *http.Response) map[string]any {
 	t.Helper()
+	assert.Equal(t, "application/problem+json; charset=utf-8", res.Header.Get("Content-Type"))
 	body := decode(t, res)
-	apiErr, ok := body["error"].(map[string]any)
-	require.True(t, ok, "body carries an error object: %v", body)
-	return apiErr
+	assert.EqualValues(t, res.StatusCode, body["status"])
+	assert.NotEmpty(t, body["title"])
+	typ, _ := body["type"].(string)
+	code, _ := body["code"].(string)
+	assert.Equal(t, "https://cowork.dev/problems/"+strings.ReplaceAll(code, "_", "-"), typ)
+	return body
 }
 
 func TestHealthz(t *testing.T) {
@@ -60,9 +67,10 @@ func TestReadyzReportsFailingCheck(t *testing.T) {
 	h := New(Options{Ready: func(context.Context) error { return errors.New("database unreachable") }})
 	res := do(t, h, http.MethodGet, "/readyz")
 	assert.Equal(t, http.StatusServiceUnavailable, res.StatusCode)
-	apiErr := apiErrorOf(t, res)
-	assert.Equal(t, "not_ready", apiErr["code"])
-	assert.Equal(t, "database unreachable", apiErr["message"])
+	p := problemOf(t, res)
+	assert.Equal(t, "not_ready", p["code"])
+	assert.Equal(t, "database unreachable", p["detail"])
+	assert.Equal(t, "/readyz", p["instance"])
 }
 
 func TestVersion(t *testing.T) {
@@ -72,17 +80,19 @@ func TestVersion(t *testing.T) {
 	assert.Equal(t, map[string]any{"version": "1.2.3", "commit": "abc", "buildTime": "42"}, decode(t, res))
 }
 
-// The backend serves no UI: every path it does not know is a JSON 404, the
-// API ones and the ones the frontend container would have resolved alike.
-func TestUnknownRouteIsJSON404(t *testing.T) {
+// The backend serves no UI: every path it does not know is a problem+json
+// 404, the API ones and the ones the frontend container would have resolved
+// alike.
+func TestUnknownRouteIsProblem404(t *testing.T) {
 	h := New(Options{})
 	for _, target := range []string{"/", "/index.html", "/api/v1/nothing", "/t/acme/board", "/api"} {
 		t.Run(target, func(t *testing.T) {
 			res := do(t, h, http.MethodGet, target)
 			assert.Equal(t, http.StatusNotFound, res.StatusCode)
-			apiErr := apiErrorOf(t, res)
-			assert.Equal(t, "not_found", apiErr["code"])
-			assert.Contains(t, apiErr["message"], "GET "+target)
+			p := problemOf(t, res)
+			assert.Equal(t, "not_found", p["code"])
+			assert.Contains(t, p["detail"], "GET "+target)
+			assert.Equal(t, target, p["instance"])
 		})
 	}
 }
@@ -97,7 +107,7 @@ func TestKnownPathsRejectOtherMethods(t *testing.T) {
 				res := do(t, h, method, target)
 				assert.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
 				assert.Equal(t, "GET, HEAD", res.Header.Get("Allow"))
-				assert.Equal(t, "method_not_allowed", apiErrorOf(t, res)["code"])
+				assert.Equal(t, "method_not_allowed", problemOf(t, res)["code"])
 			})
 		}
 	}

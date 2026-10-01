@@ -20,9 +20,9 @@ in [README.md, Configuration](../../README.md#configuration).
 
 ## The migration run
 
-The schema lives in the binary as numbered SQL files; the pod applies every file newer than
-the version recorded in the `schema_migrations` table, in one transaction per file, before it
-listens. Several pods starting at once take a PostgreSQL advisory lock in turn; the first one
+The schema lives in the binary as numbered SQL files, forward only; the pod applies every
+file newer than the version recorded in the `schema_migrations` table, in one transaction per
+file, before it listens. Several pods starting at once take a PostgreSQL advisory lock in turn; the first one
 applies, the rest log `database schema is current` with `applied=0`.
 
 Two outcomes stop the pod:

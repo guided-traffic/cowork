@@ -1,9 +1,10 @@
 // Package store owns the PostgreSQL connection pool and the schema migrations.
 //
-// The schema lives in migrations/ as pairs of NNNNNN_<name>.up.sql and
-// .down.sql files, embedded into the binary and applied by Migrate. The
-// server applies them on start (config.EnvMigrateOnStart) and `cowork migrate`
-// applies them on demand.
+// The schema lives in migrations/ as NNNNNN_<name>.up.sql files, embedded into
+// the binary and applied by Migrate. There are no down files: the schema only
+// moves forward, and a migration never removes what the previous release
+// still reads (docs/adr/0028). The server applies the migrations on start
+// (config.EnvMigrateOnStart) and `cowork migrate` applies them on demand.
 package store
 
 import (

@@ -2,8 +2,8 @@
 
 The Angular 22 workspace of cowork: the UI the frontend container serves with nginx, which
 also proxies `/api/` to the backend. Everything about building, testing and the conventions is
-in the repository root — [DEVELOPER.md](../DEVELOPER.md) and
-[docs/developer/](../docs/developer/README.md) — and the commands are Makefile targets:
+in the repository root — [docs/developer/](../docs/developer/README.md) — and the commands are
+Makefile targets:
 
 ```bash
 make frontend-install        # npm ci, when frontend/package-lock.json changed

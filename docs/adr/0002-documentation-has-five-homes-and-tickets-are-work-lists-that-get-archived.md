@@ -33,7 +33,7 @@ workflow plan. They exist to be consumed.
 | Kind | Home |
 |---|---|
 | A decision — what cowork does and why, what was rejected | an [ADR](README.md) |
-| How the code works — a subsystem, an invariant, the contributor workflow | [docs/developer/](../developer/README.md) and [DEVELOPER.md](../../DEVELOPER.md) |
+| How the code works — a subsystem, an invariant, the contributor workflow | [docs/developer/](../developer/README.md) *(amended 2026-10-01: no `DEVELOPER.md` at the root, [ADR 0075](0075-developer-documentation-lives-in-docs-developer-and-the-general-standard-says-so.md))* |
 | What somebody running cowork needs — installation, configuration, upgrading, backups, monitoring | [docs/operations/](../operations/README.md) |
 | The threat model, and the gap each mechanism leaves | [docs/security/](../security/README.md) — one page per perspective, each closing with `## What this does not cover`. Reporting a vulnerability is [SECURITY.md](../../SECURITY.md) |
 | Work still outstanding | a [ticket](../tickets/README.md), archived when the work lands |

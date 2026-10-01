@@ -15,8 +15,7 @@ then the rules below hold, and they are the same rules the importer will have to
 Before archiving a ticket, move anything durable out of it — the decision into an
 [ADR](../adr/), the operator-visible consequence into [README.md](../../README.md) or
 [docs/operations/](../operations/), the security-relevant one into [docs/security/](../security/),
-the contributor-facing one into [docs/developer/](../developer/) or
-[DEVELOPER.md](../../DEVELOPER.md) — then `git grep` its number and its T-label and clear
+the contributor-facing one into [docs/developer/](../developer/) — then `git grep` its number and its T-label and clear
 whatever is left. **The extraction is the close** — archiving is only what happens to the file
 afterwards, and an archived file is history, never a source of a current rule.
 

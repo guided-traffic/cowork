@@ -1,0 +1,85 @@
+# ADR 0008: Five Ticket Types and an Optional Parent in the Same Project — a Parent Is a View, Not a Type
+
+## Status
+
+Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog question "ticket
+types and hierarchy?": a small fixed set of types and an optional parent, over labels only,
+over configurable types, and over a parent expressed as a link.
+
+**Not built.** No `tickets` table exists.
+
+## Context
+
+The Markdown tickets cowork will import come in three shapes: a defect analysed to its root
+(a status field that goes stale, a delete without a precondition), an undertaking with a
+list of changes (install tooling beside a chart), and a family ticket that collects the
+findings of one subject and is closed by the children. A board that cannot tell these apart
+cannot be filtered, and a backlog that cannot group a family shows seven loose tickets or one
+ticket with a checklist in its body. Configurable types would give every project its own
+vocabulary — and a management screen before a single ticket exists.
+
+## Decision
+
+**D1 — Every ticket has exactly one type from a fixed set: `task`, `bug`, `feature`,
+`decision`, `question`.** `decision` is a ticket whose outcome is a rule (in this
+repository: an ADR); `question` is a ticket whose outcome is an answer from a named person.
+The open-question entity inside a ticket (its own record) is not this: a `question` ticket is
+the case where the question *is* the work.
+
+**D2 — A ticket may have one parent, which is a ticket of the same project.** The relation
+is a nullable column, not a link. Cycles are refused at write time; depth is not bounded.
+A parent in another project or another tenant is not a parent: a dependency across projects
+is a `blocks` link (the links record), never a hierarchy.
+
+**D3 — A parent is a view, not a type.** Any ticket of any type may have children. There is
+no `epic`; a ticket with children is shown with its children, its progress is derived from
+them, and it is closed by a person, not automatically when the last child closes.
+
+**D4 — Backlog and board show one level by default.** The ranked backlog ranks tickets
+without a parent and shows children indented under them; the board shows the tickets that
+carry work (the leaves) and lets a parent be expanded. A filter can flatten either.
+
+**D5 — The importer maps by content, and says what it did.** A Markdown ticket that describes
+a defect (`severity` set and a defect in the title) becomes a `bug`; one that describes an
+undertaking becomes a `feature` or a `task`; a family ticket becomes a parent with its
+findings as children; an `## Open questions` section stays with its ticket as question
+entities. The mapping is reported per ticket and can be corrected before the import is
+committed.
+
+## Consequences
+
+- The board can colour and filter by type without anyone remembering a label; the backlog
+  can group a family under its parent and rank the family as one item.
+- A sixth type is a migration and a UI change, not a setting. That is intended: a type is a
+  meaning cowork attaches behaviour to, not a tag.
+- `parent` as a column keeps rank, board and progress queries simple; the same relation as a
+  link would have made every list interpret links.
+- The state set (the next record) applies to every type alike unless that record says
+  otherwise; a `question` ticket in state `in-progress` is a question being worked, which is
+  a legitimate state.
+
+## Alternatives Considered
+
+- **One type, labels for everything.** Least model; loses the structure the owner's
+  tickets already have by convention, and a forgotten label is a ticket the board mis-shows.
+  Lost.
+- **Configurable types and hierarchy per project.** A management subsystem — type editor,
+  per-type workflow, icons — before a ticket exists, for no known user. Lost.
+- **A fixed set, hierarchy only through a `parent-of` link.** Same expressiveness as D2 with
+  the parent as one link kind among several; every list would interpret links to show one
+  level. Lost to the column.
+- **An `epic` type.** Makes "has children" a property of the type rather than of the ticket;
+  a bug that grows children would have to change type. Lost to D3.
+
+## Residual risks
+
+- Five types may prove one too many or one too few; the first hundred imported tickets will
+  say. Changing the set is a migration, which is the intended cost.
+- D5's content mapping is a heuristic and is presented for correction; an import that is
+  committed without reading the report will mis-type some tickets.
+
+## References
+
+- [ADR 0006](0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md) — the project a parent and its children share
+- [ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) — the key every ticket, parent or child, carries
+- [docs/tickets/README.md](../tickets/README.md) — the family-ticket rule the importer reads

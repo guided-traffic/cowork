@@ -1,6 +1,7 @@
 // Package httpserver assembles the HTTP handler — the health endpoints and
 // the JSON API under /api/v1/ — and runs the server. The web UI is not served
 // here; it is the frontend container's job, which proxies /api/ to this one.
+// Errors are RFC 9457 problem details (docs/adr/0047).
 package httpserver
 
 import (
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -45,7 +47,7 @@ func handleGet(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
 	mux.HandleFunc("GET "+pattern, h)
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, HEAD")
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", r.Method+" is not allowed on "+r.URL.Path)
+		writeProblem(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed", r.Method+" is not allowed on "+r.URL.Path)
 	})
 }
 
@@ -87,10 +89,21 @@ func Serve(ctx context.Context, ln net.Listener, handler http.Handler, shutdownT
 	return nil
 }
 
-type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+// problem is an RFC 9457 problem details body (docs/adr/0047). type, title,
+// status, detail and instance are the standard members; code is the stable
+// machine identifier clients switch on.
+type problem struct {
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	Status   int    `json:"status"`
+	Detail   string `json:"detail,omitempty"`
+	Instance string `json:"instance,omitempty"`
+	Code     string `json:"code"`
 }
+
+// problemTypeBase is the prefix of every problem type URI. The URI is an
+// identifier, not a link that must resolve.
+const problemTypeBase = "https://cowork.dev/problems/"
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -99,8 +112,24 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]apiError{"error": {Code: code, Message: message}})
+// writeProblem answers with a problem details body. code is snake_case and
+// stable; title is the code in words; detail is for a person and never carries
+// a secret, a stack trace or SQL.
+func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, title, detail string) {
+	w.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	p := problem{
+		Type:   problemTypeBase + strings.ReplaceAll(code, "_", "-"),
+		Title:  title,
+		Status: status,
+		Detail: detail,
+		Code:   code,
+	}
+	if r != nil {
+		p.Instance = r.URL.Path
+	}
+	_ = json.NewEncoder(w).Encode(p)
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -111,7 +140,7 @@ func handleReadyz(ready func(ctx context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ready != nil {
 			if err := ready(r.Context()); err != nil {
-				writeError(w, http.StatusServiceUnavailable, "not_ready", err.Error())
+				writeProblem(w, r, http.StatusServiceUnavailable, "not_ready", "Not ready", err.Error())
 				return
 			}
 		}
@@ -131,7 +160,7 @@ func handleVersion(opts Options) http.HandlerFunc {
 }
 
 func handleNotFound(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotFound, "not_found", "no route "+r.Method+" "+r.URL.Path)
+	writeProblem(w, r, http.StatusNotFound, "not_found", "Not found", "no route "+r.Method+" "+r.URL.Path)
 }
 
 // statusRecorder captures the status code for the request log.

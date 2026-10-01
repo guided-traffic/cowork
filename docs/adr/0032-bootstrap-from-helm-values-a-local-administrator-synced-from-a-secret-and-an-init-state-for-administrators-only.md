@@ -1,0 +1,123 @@
+# ADR 0032: Bootstrap From Helm Values Alone — a Local Administrator Synced From a Secret at Start, an Init State Only Administrators May Enter, and an Optional Bootstrap Tenant
+
+## Status
+
+Accepted, amended 2026-10-01 (D3: the minimum length is the configurable one of
+[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D3).
+Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
+the first administrator and the first tenant come to exist?", reshaped by the owner's
+requirements: no command-line step — pure Helm values must yield a usable installation — and
+a local administrator account that exists without OIDC and is kept in step with a Kubernetes
+Secret. The precisions of D2–D4 were put to the owner with the decision and confirmed. The
+scope of local accounts beyond this one administrator is the next record's.
+
+**Not built.** No `users` table, no login, no bootstrap routine.
+
+## Context
+
+[ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D6 asks that a
+single-tenant installation be `helm install` and done. [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D8 admits nobody by default, and D1 makes the administrator group part of the gate. What was
+missing: an installation without an identity provider at all (a person alone on a home lab,
+an operator before the provider is wired), an operator locked out by a provider outage, and
+the first tenant on a fresh database. A command-line step inside a distroless container is a
+Job with the same image, which the owner rejected: the chart's values are the whole
+interface.
+
+## Decision
+
+**D1 — One local administrator account, from configuration, optional.**
+`COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` — in the chart from an
+existing Secret (`localAdmin.existingSecret`, keys configurable) or rendered from values
+(`localAdmin.username`, `localAdmin.password`; plain text in the release, the same warning
+as `database.url`). The account is a global administrator ([ADR 0004](0004-cowork-is-a-team-product.md)
+D4) and a **full account**: it may be a member of tenants and work with tickets like any
+person; its identity is `local:<username>`, distinct from any OIDC identity.
+
+**D2 — The account is synchronised at every start, after the migrations, under an advisory
+lock.** Both variables set: the account is created or updated; a password that differs from
+the stored hash is re-hashed and **every session of the account is ended** ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md)
+D4). Both unset or empty: the account is deactivated ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D5) and its sessions ended; it is never deleted. One set, one empty: the start is refused as
+a configuration error. A changed Secret takes effect at the next pod start — the environment
+is read once — which is the owner's intended "update the login at start".
+
+**D3 — Password handling for the local administrator.** Argon2id with parameters recorded
+in the security page; ~~minimum sixteen characters~~ *(amended 2026-10-01: the configured
+minimum of ADR 0033 D3 — `COWORK_PASSWORD_MIN_LENGTH`, default 12, floor 8 — length only,
+no character classes)*, enforced at start — a shorter password refuses the start with a
+message naming the variable, never the value; the password appears in no log, no audit row
+and no error text. Login attempts are rate-limited per account and
+per source address; the limits are the next record's to set for all local accounts.
+
+**D4 — Exactly one local account comes from configuration.** Further local accounts, if
+any, are the next record's.
+
+**D5 — The init state is "no tenant exists", and only global administrators may log in
+while it lasts.** A person who passes the OIDC gate but is not in `COWORK_ADMIN_GROUP`
+receives "this installation is not initialised; contact an administrator" and no session.
+The local administrator and the members of the administrator group log in and are taken to
+"create the first tenant".
+
+**D6 — An optional bootstrap tenant from values.** `COWORK_BOOTSTRAP_TENANT_SLUG` and
+`COWORK_BOOTSTRAP_TENANT_NAME` (chart: `bootstrap.tenant.slug`, `.name`). When set and no
+tenant exists, the start creates the tenant (slug validated by ADR 0005 D4), seeds one group
+mapping `COWORK_ADMIN_GROUP → (tenant, admin)` (ADR 0030 D2) when an administrator group is
+configured, and gives the local administrator a marked manual grant as `admin` of it
+(ADR 0030 D3) when one is configured. When a tenant already exists the variables do nothing,
+whatever they say; the operations page says so. Both the tenant and the grants are audit rows
+with the actor `system:bootstrap` ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
+
+**D7 — Whoever creates a tenant becomes its first administrator,** by a marked grant,
+recorded. This holds for the bootstrap routine and for the UI and the API alike; a tenant
+without an administrator cannot come to exist.
+
+**D8 — Nothing here needs a shell, a Job or a command.** `helm install` with the database,
+the local administrator (or the OIDC gate with an administrator group) and optionally a
+bootstrap tenant yields an installation a person can log in to and use.
+
+## Consequences
+
+- An installation without an identity provider is possible and usable; an installation with
+  one can switch the local administrator off by emptying the Secret.
+- Three to five Helm values stand between a fresh cluster and a usable cowork; the README's
+  fast start shows exactly that path.
+- The bootstrap routine is the second start-up step with side effects after the migration
+  run; it runs under the same advisory-lock discipline, is idempotent, and logs what it did.
+- The security page gains the local account: how the password is stored, why there is no
+  MFA for it in the first release (an open gap with an `H-<n>` identifier), and how to switch
+  it off.
+- D5 means a half-configured installation fails closed: nobody but administrators can enter
+  until a tenant exists.
+
+## Alternatives Considered
+
+- **Command-line subcommands for tenant and mapping creation** — the recommendation's
+  addition. Explicit and scriptable; in the chart a Job, and in the owner's words not
+  DevOps-capable. Lost.
+- **A local administrator restricted to administration** (no tenant membership). Keeps the
+  account small; leaves an installation without a provider unusable for work. Lost.
+- **No local administrator; init through the OIDC administrator group only.** Lost for the
+  same reason, and a provider outage would lock the operator out.
+- **The first person to log in becomes administrator.** A race on every fresh installation.
+  Lost.
+
+## Residual risks
+
+- The local administrator's password lives in a Kubernetes Secret and reaches the process as
+  an environment variable; anyone who can read the pod spec or the Secret can read it. That
+  is the standing property of Secret-backed environment in Kubernetes, shared with the
+  database URL, and the operations page names it.
+- No MFA for the local administrator in the first release. The gap is named in the security
+  page; the mitigations are the length rule, the rate limit and the ability to switch the
+  account off.
+- D2's "ended at the next start" means a leaked password stays valid until the operator
+  rotates the Secret **and** restarts the pod; the operations page says both steps.
+
+## References
+
+- [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D4, D6 — the slug rule and the single-tenant installation
+- [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md) D1–D3 — the gate, the mapping, the grant the bootstrap seeds
+- [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D4 — ending sessions on a password change
+- [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D5 — deactivation, never deletion
+- [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D5, D7 — the start-up sequence and the `COWORK_*` surface

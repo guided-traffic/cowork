@@ -91,8 +91,11 @@ Both images carry the same version per release; move them together. The new back
 applies the pending schema migrations before it listens
 ([runtime.md](runtime.md#the-migration-run)). With `backend.replicaCount` above one, the pods
 that start together serialise on a database advisory lock; the first applies, the rest find
-the schema current. Rolling back an image to a version whose schema is older is **not** supported:
-the migrations have `down` files, but nothing runs them automatically.
+the schema current. **Rolling back is rolling the image back:** deploy the previous tags and
+leave the schema where it is. A migration never removes what the previous release still
+reads, which is what makes that safe
+([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md));
+there is no schema rollback and no `migrate down`.
 
 ## Uninstall
 

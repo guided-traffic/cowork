@@ -19,7 +19,7 @@ A statement has exactly one home
 | Kind | Home |
 |---|---|
 | A decision — what cowork does and why, what was rejected | an [ADR](docs/adr/README.md) |
-| How the code works | [docs/developer/](docs/developer/README.md); the contributor workflow is [DEVELOPER.md](DEVELOPER.md) |
+| How the code works and how to contribute | [docs/developer/](docs/developer/README.md) — there is no `DEVELOPER.md` (ADR 0075) |
 | What somebody running cowork needs | [docs/operations/](docs/operations/README.md) |
 | The threat model and the gap each mechanism leaves | [docs/security/](docs/security/README.md), one page per perspective, each ending with `## What this does not cover`; reporting is [SECURITY.md](SECURITY.md) |
 | Work still outstanding | a [ticket](docs/tickets/README.md), archived when the work lands |
@@ -67,9 +67,10 @@ question that needs code to answer becomes a ticket. Do not build on an unanswer
   Angular's peer range. Do not pin back.
 - Backend configuration is `COWORK_*` environment variables only
   ([`backend/internal/config`](backend/internal/config/config.go)).
-- Migrations: `backend/internal/store/migrations/NNNNNN_<snake_name>.{up,down}.sql`, versions
-  `1..n` without a gap; a unit test enforces it. Applied on start unless
-  `COWORK_MIGRATE_ON_START=false`.
+- Migrations: `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n`
+  without a gap, **no down files**; a unit test enforces it. A migration never drops, renames
+  or narrows what the previous release reads (expand before contract, ADR 0028). Applied on
+  start unless `COWORK_MIGRATE_ON_START=false`.
 - The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*`, `ingress.*`
   (targets the frontend Service). The database URL comes from `database.existingSecret`
   (preferred) or `database.url` (throw-away only, plain text in the release).
@@ -86,8 +87,8 @@ question that needs code to answer becomes a ticket. Do not build on an unanswer
 | Frontend unit | `make frontend-test` | Node.js 26 |
 | Static analysis | `make lint cyclo gosec vuln`, `make frontend-lint` | — |
 | Chart | `make helm-lint helm-template` | Helm |
-| Images | `make docker-build` (both) and a read-only run of both containers together, see DEVELOPER.md | Docker |
-| Everything a PR gets | see [DEVELOPER.md](DEVELOPER.md#continuous-integration-and-the-release) | |
+| Images | `make docker-build` (both) and a read-only run of both containers together, see [docs/developer/build-test-lint.md](docs/developer/build-test-lint.md) | Docker |
+| Everything a PR gets | see [docs/developer/ci-and-release.md](docs/developer/ci-and-release.md) | |
 
 No `-short`, no `testing.Short()`, no skip on a missing dependency: the integration tier fails
 without `COWORK_TEST_DATABASE_URL` and says how to set it. A fix comes with the test that
@@ -100,7 +101,9 @@ added there in the same change.
   exists. semantic-release reads them.
 - Errors wrap with `%w` and a verb; the configuration error names the variable, never its value.
 - The request log carries method, path, status, duration — no bodies, no headers, no query.
-- The API error shape today is `{"error":{"code","message"}}` and is provisional (question Q-E2).
+- Every API error is an RFC 9457 problem details body (`application/problem+json`: `type`,
+  `title`, `status`, `detail`, `instance`, `code`; later `request_id` and `errors[]`), written
+  through `writeProblem` — never an ad-hoc JSON error (ADR 0047).
 - Every Go tool runs inside `backend/`; the frontend tree is never in its path. nginx has no
   unit test: a change to the template is verified by running the image.
 

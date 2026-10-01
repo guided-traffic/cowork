@@ -58,10 +58,10 @@ D2–D4). **No authentication exists yet** — see
 ```
 request ─► requestLog ─► http.ServeMux
                            ├─ "GET /healthz"          → {"status":"ok"}
-                           ├─ "GET /readyz"           → Options.Ready(ctx) == nil ? 200 : 503 {"error":{...}}
+                           ├─ "GET /readyz"           → Options.Ready(ctx) == nil ? 200 : 503 problem+json not_ready
                            ├─ "GET /api/v1/version"   → {"version","commit","buildTime"}
                            ├─ "/healthz", "/readyz", "/api/v1/version"  (no method) → 405, Allow: GET, HEAD
-                           └─ "/"                     → 404 {"error":{"code":"not_found",...}}
+                           └─ "/"                     → 404 problem+json not_found
 ```
 
 The mux uses Go 1.22 method patterns. `handleGet` registers each path twice — once with `GET`
@@ -69,9 +69,13 @@ The mux uses Go 1.22 method patterns. `handleGet` registers each path twice — 
 method would otherwise fall through to the catch-all and answer `404` instead of `405`. The
 test `TestKnownPathsRejectOtherMethods` pins that.
 
-**Errors on the API** are `{"error":{"code":"…","message":"…"}}`. Whether this stays or
-becomes RFC 9457 `problem+json` is an open question in the planning catalog; nothing depends
-on the shape yet.
+**Errors on the API** are RFC 9457 problem details
+([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md)):
+`application/problem+json` with `type` (`https://cowork.dev/problems/<code>`), `title`,
+`status`, `detail`, `instance` and the stable `code`; `writeProblem` in
+[`server.go`](../../backend/internal/httpserver/server.go) is the one place that writes
+them. `request_id` and the field-level `errors[]` arrive with the request-id and validation
+middlewares.
 
 ## Frontend container
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. Date: 2026-09-29. The stack was set by the owner in the founding brief; the cut into
+Accepted, amended 2026-10-01 (D5: no down files, see
+[ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)). Date:
+2026-09-29. The stack was set by the owner in the founding brief; the cut into
 two containers and the "latest release" policy (D2, D9) are the owner's explicit instructions
 of the same day, given after a first skeleton had embedded the UI into the Go binary — that
 shape is recorded under *Alternatives Considered*. The remaining shape rules were chosen while
@@ -77,8 +79,9 @@ the wrong method is a `405` with `Allow`. The browser talks to one origin, so th
 and a session cookie is first-party.
 
 **D5 — The backend migrates the schema on start, and can be told not to.** Migrations are
-pairs of `NNNNNN_<name>.up.sql` / `.down.sql` files embedded into the binary and applied by
-golang-migrate before the listener opens. Several replicas may start at once; golang-migrate
+~~pairs of `NNNNNN_<name>.up.sql` / `.down.sql` files~~ *(amended 2026-10-01: `.up.sql`
+files only, ADR 0028)* embedded into the binary and applied by golang-migrate before the
+listener opens. Several replicas may start at once; golang-migrate
 serialises them with a PostgreSQL advisory lock. `COWORK_MIGRATE_ON_START=false` skips the
 run and `cowork migrate` applies it on demand, so an installation can move the migration into
 a Job later without a code change. A dirty schema version is an error the backend refuses to

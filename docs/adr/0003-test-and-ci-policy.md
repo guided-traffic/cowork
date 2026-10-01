@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted. Date: 2026-09-29. The owner asked for tests for the backend and the frontend and for
-a CI pipeline built closely after the sibling project's; this record fixes what those tests
-have to be and what the pipeline gates.
+Accepted, amended 2026-10-01 (D2: the end-to-end row now points at
+[ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)).
+Date: 2026-09-29. The owner asked for tests for the backend and the frontend and for a CI
+pipeline built closely after the sibling project's; this record fixes what those tests have
+to be and what the pipeline gates.
 
 **Implemented** for the tiers that exist, verified on 2026-09-29 by running every target
 locally (`make lint`, `make cyclo`, `make gosec`, `make vuln`, `make test-unit`,
@@ -41,7 +43,7 @@ a bump is a missing file and installs itself.
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | The chart lints strictly and renders with each `ci/*-values.yaml` |
 | Container | the `container-malware-scan` job, one leg per image | — | Docker | Each `Containerfile` builds from its own directory on a clean checkout; each image passes Trivy at CRITICAL/HIGH |
 | Release tooling | `make test-release-tooling` | — (node) | Node.js | The semantic-release dependency set still renders release notes |
-| End-to-end | not built | — | the binary, PostgreSQL, a browser | A person and a token can do a workflow through the real API and UI. Decided: Playwright, added when the first workflow exists |
+| End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | A person and a token can do a workflow through the real API and UI. Decided in [ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright against the built containers, two identities, both colour schemes, a required gate from the first workflow *(amended 2026-10-01)* |
 
 **D3 — No `-short`, no `testing.Short()`, no skip on a missing dependency.** The integration
 tier fails when `COWORK_TEST_DATABASE_URL` is unset and says how to set it. A test CI never

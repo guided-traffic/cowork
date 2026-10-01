@@ -26,6 +26,50 @@
   ],
   "packageRules": [
     {
+      "description": "TypeScript: stay inside Angular's peer range; update this string with every Angular major (ADR 0062 D5)",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "frontend/package.json"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": ">=6.0 <6.1"
+    },
+    {
+      "description": "npm (packageManager field): automerge minor and patch, a major waits (ADR 0062 D6)",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "packageManager"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "npm (packageManager field): require manual review for major updates (ADR 0062 D6)",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "packageManager"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "major-update"
+      ]
+    },
+    {
       "description": "Go version: group all Go version updates together to keep them in sync (backend/Containerfile, backend/go.mod, workflows, release-template.hbs)",
       "matchDatasources": [
         "golang-version"
@@ -45,14 +89,24 @@
       "groupSlug": "go-version"
     },
     {
-      "description": "Go version: automerge minor and patch updates after CI passes",
+      "description": "Go version: automerge patch updates at once (ADR 0062 D1)",
       "matchDatasources": [
         "golang-version"
       ],
       "matchUpdateTypes": [
-        "minor",
         "patch"
       ],
+      "automerge": true
+    },
+    {
+      "description": "Go version: automerge minor updates after a release age of seven days (ADR 0062 D2)",
+      "matchDatasources": [
+        "golang-version"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "minimumReleaseAge": "7 days",
       "automerge": true
     },
     {
@@ -136,7 +190,10 @@
       "matchPackageNames": [
         "/^@angular\\//",
         "/^@angular-eslint\\//",
-        "angular-eslint"
+        "angular-eslint",
+        "primeng",
+        "/^@primeuix\\//",
+        "primeicons"
       ],
       "groupName": "Angular",
       "groupSlug": "angular"
@@ -245,7 +302,7 @@
       "automerge": true
     },
     {
-      "description": "Makefile-pinned Go tools (custom regex manager): automerge minor and patch updates",
+      "description": "Makefile-pinned Go tools (custom regex manager): automerge minor and patch updates at once, ahead of the Go version they must understand (ADR 0062 D3)",
       "matchManagers": [
         "custom.regex"
       ],

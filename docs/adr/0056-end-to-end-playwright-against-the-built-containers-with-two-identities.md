@@ -1,0 +1,110 @@
+# ADR 0056: End-to-End Is Playwright Against the Built Containers, With Two Identities and Both Colour Schemes, a Required Gate From the First Workflow — Beside Fast Unit Tiers With Measured Line Coverage
+
+## Status
+
+Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+"end-to-end tests?": Playwright against the real images from the first workflow, over
+Cypress, over end-to-end only in the hardening phase, and over end-to-end against the dev
+server. The owner's two conditions — functionality must be verifiable continuously, and
+there must be faster tests as well with line coverage for the frontend — are D5 and D6; the
+unit tiers and the frontend coverage they name exist already. The rules of D7–D8 were put to
+the owner with the question and not objected to.
+
+**Partly built.** The unit tiers and the frontend coverage report exist
+([ADR 0003](0003-test-and-ci-policy.md), `make test`, `make frontend-test-coverage`, the
+`frontend` CI job's artefact and the PR comment's frontend line). The end-to-end tier is not
+built; ADR 0003 D2's row is amended to point here.
+
+## Context
+
+The parts of cowork that unit and integration tests cannot reach are exactly the ones that
+have already bitten once: the nginx proxy (resolver, buffering, writable configuration), the
+cookie and the CSRF rule across two containers, the event stream through the proxy, the
+roles across two identities, drag on two boards, two colour schemes. [ADR 0003](0003-test-and-ci-policy.md)
+D2 promised an end-to-end tier at the first workflow; [ADR 0004](0004-cowork-is-a-team-product.md)
+asks every team feature to be tested with two identities; [ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+gives the fixture identities and the services to run against. A test that proves the shipped
+images work together must run the shipped images, not the dev server.
+
+## Decision
+
+**D1 — Playwright Test, in `frontend/e2e/`, against the built containers.** The target is
+the frontend and backend images of the same commit, with PostgreSQL, MinIO and the minimal
+Dex from the development `compose.yaml` ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+D2) as services. Never `ng serve`, never a mocked API, in CI. Locally, `make e2e` runs the
+same against `make dev-up` plus locally built images; a developer may point the suite at
+`ng serve` for iteration, which is not a gate.
+
+**D2 — Two identities in one test where a feature is about people.** Playwright's browser
+contexts hold two sessions at once: the first identity acts, the second sees — assignment,
+inbox, a restricted project's silence, a `412` on a concurrent body write.
+
+**D3 — The first release's suite:** login through Dex and as the local administrator; the
+init state and the first tenant; file a ticket, assign it, the assignee sees it in "assigned
+to me" and in the inbox within the event stream's latency; a transition by drag on the
+project board and on the tenant board; `done` with its verification note; a third identity
+outside a restricted project sees nothing of it; the import of a small archive with its
+report; the MCP server's `session_start` against the same environment (a Go test driving the
+built binary, no browser). Every smoke path runs in both colour schemes; a dark-mode
+screenshot comparison catches regressions at a coarse threshold, not pixel-perfect.
+
+**D4 — A required gate** ([ADR 0003](0003-test-and-ci-policy.md) D4): the `e2e` CI job runs
+after `container-malware-scan`, reuses its images as artefacts, has a ten-minute budget, and
+uploads trace and video on failure. `semantic-release` lists it in `needs:`.
+
+**D5 — Three tiers, three budgets, all continuous.** Unit (Go and vitest on jsdom, seconds,
+on every save and every push), integration (PostgreSQL, Dex, MinIO as services, under a
+minute, every push), end-to-end (minutes, every push, a gate). Nothing runs only nightly;
+nothing is skipped ([ADR 0003](0003-test-and-ci-policy.md) D3).
+
+**D6 — Frontend line coverage is measured in the unit tier and reported on every pull
+request.** `make frontend-test-coverage` (`@vitest/coverage-v8`: `text-summary`, `lcov`,
+`coverage-summary.json`); the `frontend` job uploads it and the coverage comment carries
+"Frontend (lines)". End-to-end coverage is not merged into that number: the suite proves
+paths, the unit tier measures lines, and the two are not the same claim.
+
+**D7 — Test hygiene.** `data-testid` on everything a test touches; tests seed their data
+through the API with an administrator token and assert through the UI; each test owns a
+project inside a fixture tenant, so tests run in parallel without a database reset; Playwright
+auto-waits, no sleeps; a flaky test is a defect ticket, not a retry setting.
+
+**D8 — Browsers.** Chromium in every run; WebKit in the same job for the smoke paths, because
+the owner's machines are Macs and Safari's cookie and `EventSource` behaviour differs.
+Firefox is not run.
+
+## Consequences
+
+- The proxy, the cookie, CSRF, the event stream, the roles and the boards are proven together
+  on every push, against what is shipped.
+- The pipeline grows by one job that needs the images; the scan job already builds them,
+  and passing them as artefacts avoids a second build.
+- Two colour schemes double the smoke paths' runtime; the ten-minute budget is the bound,
+  and D3's list is cut, not the budget raised, if it is exceeded.
+- D6 states what already exists so that nobody looks for a coverage number in the
+  end-to-end tier.
+
+## Alternatives Considered
+
+- **Cypress.** Comparable; weaker at two simultaneous sessions (two contexts are native in
+  Playwright, awkward in Cypress), no WebKit. Lost.
+- **End-to-end only in the hardening phase.** Phase 3 done sooner; boards, drag, the stream,
+  CSRF and login checked by hand until then — the parts unit tests cannot reach. Lost.
+- **End-to-end against `ng serve` with the proxy to the backend.** Faster locally; nginx —
+  proxy, stream buffering, cache headers, `error_page` — untested, and that is where it
+  broke before. Allowed locally, not a gate.
+
+## Residual risks
+
+- End-to-end suites rot into flakiness; D7's rules and the "flaky is a defect" stance are
+  the discipline, and the trace artefact is what makes a flake diagnosable.
+- Service containers for Dex and MinIO on the runners are a new requirement beyond
+  PostgreSQL; the integration tier adopts them first ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+  D5), so the end-to-end job inherits a working setup.
+
+## References
+
+- [ADR 0003](0003-test-and-ci-policy.md) D2–D4 — the tiers, "nothing is skipped", required gates
+- [ADR 0004](0004-cowork-is-a-team-product.md), [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) — the two-identity and restricted-project cases
+- [ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md) — the fixtures and services
+- [ADR 0052](0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md) D3, [ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) — the schemes and the stream the suite exercises
+- [`Makefile`](../../Makefile) (`frontend-test-coverage`), [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — the coverage path that exists

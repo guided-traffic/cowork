@@ -1,0 +1,120 @@
+# ADR 0016: Attachments Live in S3-Compatible Storage and Are Served Only Through the Backend, With a Sniffed Type, an Allow-List and No Inline Rendering Except Raster Images
+
+## Status
+
+Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog question
+"attachments?": attachments on tickets and comments in the first release, in S3-compatible
+storage, over links only, over bytes in PostgreSQL, and over deferring the feature. The
+recommendation put to the owner was to defer; the owner chose to build it now.
+
+The protection rules of D3–D7 are this record's proposal for implementing that choice
+safely; they were not part of the question and stay open to the owner's objection until the
+first implementation makes them concrete. They are the minimum under which foreign bytes may
+be stored by one person and shown to another.
+
+**Not built.** No storage client, no `attachments` table, no configuration.
+
+## Context
+
+A bug ticket wants a screenshot, an agent wants to leave a diagram, a client's member wants to
+hand over a PDF. The Markdown tickets cowork imports have none of these; the owner's workflow
+keeps artefacts in repositories. The owner nevertheless wants attachments in the first
+release. An upload is the one place where a team product accepts arbitrary bytes from one
+person and delivers them into another person's browser — inside the same origin as the
+session cookie ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3, D4). A file that is called an image and is HTML, an SVG with a script, a PDF with an
+embedded form action: each is a stored cross-site-scripting or phishing vector unless the
+server decides what a file is and how it is delivered.
+
+## Decision
+
+**D1 — Attachments belong to a ticket or a comment, inside a tenant, and their bytes live in
+S3-compatible object storage.** The object key is `<tenant-id>/<attachment-id>`; the bucket
+is private; metadata — id, tenant, ticket or comment, original file name (sanitised), size,
+SHA-256, detected content type, uploader, agent mark, timestamp — lives in PostgreSQL. Bytes
+never enter PostgreSQL. Storage is configured through `COWORK_S3_*` variables; an
+installation without them refuses uploads with a clear error and the UI hides the control.
+
+**D2 — Access follows the ticket.** Whoever may read the ticket may download its
+attachments; whoever may comment may upload. A soft-deleted ticket keeps its attachments
+until the purge; a tenant's deletion deletes its prefix.
+
+**D3 — The server decides the content type.** The client's declared type is ignored. The
+type is detected from the bytes (magic-number sniffing) and must be on an allow-list: raster
+images (PNG, JPEG, GIF, WebP), PDF, plain text and Markdown, patches, and archives only if a
+later amendment says so. SVG is stored as a file and never treated as an image. Anything
+else is refused at upload with the detected type in the error.
+
+**D4 — Bytes are served only through the backend**, at an attachment endpoint under the
+ticket's path, after the same authorization check as the ticket, streamed from storage. No
+presigned URL reaches a browser in the first release: a presigned URL is a bearer credential
+that outlives the session check that issued it.
+
+**D5 — Delivery headers make the browser treat the bytes as data.** Every attachment response
+carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, and the
+detected type. Raster images are delivered inline; **everything else is delivered with
+`Content-Disposition: attachment`** and never rendered by the browser inside cowork's origin.
+PDF is a download, not an embedded viewer.
+
+**D6 — Limits.** A per-file maximum (`COWORK_ATTACHMENT_MAX_BYTES`, default 10 MiB), a
+per-ticket count, and a per-tenant quota reported in the tenant's administration; uploads
+beyond a limit are refused before bytes are stored.
+
+**D7 — Markdown may embed a raster-image attachment of the same ticket, and nothing else.**
+The sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)
+D6 allows `<img>` sources only on the attachment endpoint; ADR 0011 D6 is amended
+accordingly. A link to any other attachment renders as a download link.
+
+**D8 — No virus scanning in the first release, and this is said aloud.** The defences of
+D3–D5 mean that nothing uploaded executes on the server and nothing but a raster image is
+rendered in a browser under cowork's origin; a malicious PDF or archive is a download the
+recipient opens on their own machine, as it would be from an e-mail. A scanning hook is the
+amendment when an installation needs it.
+
+## Consequences
+
+- A second persistence system: an S3-compatible endpoint (MinIO, a cloud bucket, a
+  Kubernetes-hosted store) with its credential in a Secret, its own backup path, and chart
+  values. How it is provisioned is a new catalog question.
+- New configuration: `COWORK_S3_ENDPOINT`, `COWORK_S3_BUCKET`, `COWORK_S3_REGION`,
+  `COWORK_S3_ACCESS_KEY_ID`, `COWORK_S3_SECRET_ACCESS_KEY`, `COWORK_S3_USE_PATH_STYLE`,
+  `COWORK_ATTACHMENT_MAX_BYTES` — the README's table grows in the change that builds it.
+- A security page of its own under `docs/security/` ("what an upload can and cannot do"),
+  written in the change that builds the feature, with D8 as its first open gap.
+- The backend streams every download; large files and many readers cost backend bandwidth.
+  Presigned URLs are the amendment if that ever matters, and the amendment has to answer how
+  a presigned URL is revoked with the session.
+- The export of ADR 0011 D4 gains an attachment manifest; the importer of the Markdown
+  tickets uploads nothing, because they have nothing.
+- SVG diagrams from an agent are downloads, not pictures, until an SVG sanitiser is decided.
+
+## Alternatives Considered
+
+- **No attachments in the first release; a link is the attachment** — the recommendation.
+  No subsystem, no upload surface; a client without a repository would have had no place for
+  an image. Lost by the owner's decision.
+- **Bytes in PostgreSQL** (`bytea`, small files, images only). No second system, backups with
+  the database; the database grows with pictures, dumps get heavy, and D3–D5 are needed all
+  the same. Lost.
+- **Presigned S3 URLs handed to the browser.** No backend bandwidth; a URL that keeps
+  working after the session ends, and a second origin in the CSP. Lost to D4 for the first
+  release.
+- **Trusting the client's content type.** The classic stored-XSS mistake. Lost to D3.
+
+## Residual risks
+
+- D8: a malicious file reaches a person's machine as a download. Mitigated by delivery as
+  attachment, not by scanning.
+- Metadata leaks through file names; D1 sanitises the name but a name can still say
+  something. Accepted.
+- D3's sniffing library is a dependency in the request path; its allow-list is a test
+  fixture in the same way as the Markdown sanitiser's.
+- The tenant quota of D6 is reported, not enforced against a hard storage limit; a runaway
+  upload loop is bounded by the per-file and per-ticket limits only.
+
+## References
+
+- [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6 — the sanitiser this record amends
+- [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1 — the tenant in the object key
+- [ADR 0004](0004-cowork-is-a-team-product.md) — the other person whose browser receives the bytes
+- [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3 — one origin, which is why delivery headers matter

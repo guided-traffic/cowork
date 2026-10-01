@@ -1,0 +1,96 @@
+# ADR 0015: Comments Are a Flat Thread and Activity Is a Separate, Collapsible List — Both Rendered From the Record, an Act May Point at the Comment That Explains It
+
+## Status
+
+Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog question
+"comments and activity?": two views — a comment thread and a separate activity list — over
+one merged timeline and over a threaded discussion tree. The rules of D3–D6 were put to the
+owner with the question and were not objected to; D2's cross-reference is the adaptation
+this record adds to keep an agent's act and its explanation findable across the two views.
+
+**Not built.** No `comments` or `audit_events` table exists.
+
+## Context
+
+Every earlier record writes into a ticket's history: transitions with reasons
+([ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)), body diffs
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)), links
+([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)), interest
+([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md)), rank moves
+and score adoptions ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)), question
+asked and answered (ADR 0011), urgency overrides
+([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)).
+[ADR 0004](0004-cowork-is-a-team-product.md) D3 requires all of it attributable and shown.
+Beside it, people and agents discuss: an agent's reasoning goes into a comment (ADR 0011),
+a person asks back, a client's member explains a need. The owner chose to read the two
+apart: the discussion as a thread, the acts as a list one can fold away.
+
+## Decision
+
+**D1 — Two views on a ticket, both chronological.** The **comment thread**: flat, oldest
+first, comments only. The **activity list**: every recorded act — transition with reason or
+note, body change with diff, field change, assignment, link created or removed, interest
+set or changed, rank move, score adoption, question asked, answered or withdrawn, urgency
+override, comment withdrawn — one line each, collapsible as a whole and collapsed by default
+on a ticket with more than a screen of it.
+
+**D2 — An act may point at the comment that explains it, and the list shows the pointer.**
+When an actor performs an act and writes a comment in the same request (an agent finishing
+its work, a person changing a decision), the act carries the comment's id; the activity line
+reads "… — explained in a comment" and links into the thread, and the comment shows the act
+it explains. This is how the two views stay one story.
+
+**D3 — A comment is Markdown, sanitised like the body** (ADR 0011 D6), written by a person or
+by an agent in a person's name with the agent mark. Its author may edit it; every edit keeps
+the previous text in an edit history readable from the comment. A comment is never deleted:
+its author or a tenant administrator may **withdraw** it, which hides the text, keeps the
+entry, and writes an act into the activity list.
+
+**D4 — An agent may edit or withdraw only the comments written by an agent of the same
+person.** A person may edit or withdraw their own comments and those their agents wrote.
+
+**D5 — A mention `@person` in a comment notifies the person and makes them a watcher**
+(ADR 0013 D6). Mentions resolve inside the tenant only.
+
+**D6 — Both views are rendered from the record, not stored as views.** The activity list is
+a projection of the append-only audit record (the data record decides its table); the thread
+is the comments table. Neither is a document that could drift from the acts it shows.
+
+## Consequences
+
+- The thread reads as a conversation without field noise; the list reads as a ledger. A
+  reader who wants the interleaving has D2's pointers, not a merged stream.
+- An agent's explanation and its act live in different views; D2 costs one nullable column
+  on the act and one back-reference in the comment, and without it the split would lose the
+  "why" beside the "what".
+- Comment edit history and withdrawal add two small tables' worth of rows, and the promise
+  that nothing said in a ticket disappears.
+- The UI has two components per ticket instead of one, and the fold state of the activity
+  list is a per-person convenience.
+
+## Alternatives Considered
+
+- **One merged timeline** — the recommendation. Acts and comments in the order they
+  happened, filters to show one kind. Not taken by the owner; D2 keeps the one property of it
+  that the split would otherwise lose.
+- **A threaded discussion tree.** Replies under replies; in a tool whose rule is "the body is
+  the current state, comments are discussion", a tree becomes a second truth beside the
+  body. Lost.
+- **Deletable comments.** Would let a record disappear from a team product's history. Lost
+  to withdrawal.
+
+## Residual risks
+
+- D2 covers acts and comments made in the same request; an explanation written a minute
+  later is an ordinary comment with no pointer. Acceptable; a later "link this comment to
+  that act" action is an amendment if it is missed.
+- The default fold of the activity list (D1) hides acts a reader may want first — a
+  transition to `blocked`, say. The ticket header shows the current state and its reason
+  regardless of the list.
+
+## References
+
+- [ADR 0004](0004-cowork-is-a-team-product.md) D3 — attribution
+- [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D1, D6 — body diffs, sanitising, the agent's comment
+- [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D6 — the watcher set a mention joins
+- [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D6 — transitions as recorded acts

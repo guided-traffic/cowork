@@ -3,7 +3,7 @@
 The test tiers, what each needs, the fixtures a test builds on, and the environment variables
 that steer the suites. **The rules — what belongs in which tier, what may be skipped (nothing),
 what a fix has to prove — are [ADR 0003](../adr/0003-test-and-ci-policy.md) and are not restated
-here.** The Make targets themselves are listed in [DEVELOPER.md](../../DEVELOPER.md#build-test-and-lint).
+here.** The Make targets themselves are listed in [build-test-lint.md](build-test-lint.md).
 
 Read against the tree on 2026-09-29.
 
@@ -16,7 +16,7 @@ Read against the tree on 2026-09-29.
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
-| End-to-end | — | — | — | **Not built.** Decided in ADR 0003 D2 |
+| End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | **Not built.** Decided in [ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright in `frontend/e2e/`, two identities, both colour schemes |
 
 Per-tier timeouts: the integration target passes `-timeout=10m`; the others use the Go default.
 
@@ -46,7 +46,9 @@ is no skip.
 
 What runs today: `Migrate` on a fresh database reaches the highest version; a second run
 applies nothing; `server_version_num >= 180000`; `tenants` exists; the `schema_migrations` row
-matches; an inserted tenant carries a UUIDv7 (`uuid_extract_version(id) = 7`).
+matches; an inserted tenant carries a UUIDv7 (`uuid_extract_version(id) = 7`). There is no
+down migration to test: the schema only moves forward
+([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)).
 
 The tests do not reset the database. CI gets a fresh service container per job; locally,
 `make postgres-down && make postgres-up` gives you the same.

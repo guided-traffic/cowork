@@ -40,20 +40,17 @@ the UI shell, a deep link and a hashed asset; `SIGTERM` stops the backend cleanl
 
 **Not verified:** the workflows on GitHub (runner pool, secrets — Q-G5 to Q-G7).
 
-## Phase 1 — Decide
+## Phase 1 — Decide (done 2026-10-01)
 
-**Goal:** every question that phase 2 needs is an ADR.
+**Delivered:** the whole catalog, not only the phase-2 part — ADR 0004 to ADR 0073, one
+question per turn over three days, with the amendments the later answers forced on the
+earlier records; the catalog itself is a tombstone
+([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)).
 
-**Needs:** A1–A12, B1–B8, C6–C7, D4–D5, E1–E6, G1, K2–K5.
-
-**Delivers:** ADRs 0004 onward (the domain model, the tenancy model, the API contract shape,
-the token design, the audit model, the data access layer); the first tickets of phase 2; the
-OpenAPI document's skeleton if Q-E1 lands on spec-first.
-
-**Verified when:** the catalog holds no question tagged phase 2, and each ADR's Status says
-"Not built" with the ticket that will build it named nowhere but in `docs/tickets/`.
-
-**Effort:** several sessions of decisions, little code.
+**Not done, by the owner's decision:** the conversion of phase 2 into tickets. It is the
+first thing of the next session, after the pipeline ticket
+([ADR 0061](../adr/0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
+D5, [ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)).
 
 ## Phase 2 — Core domain and API
 
@@ -63,42 +60,60 @@ personal access token, through the documented API.
 **Delivers:**
 
 - Migrations: tenants (exists), users, memberships, projects, tickets, links, open questions,
-  comments, activity/audit, tokens; RLS policies if Q-B1 says so.
+  comments, activity/audit, tokens, interest, attachments (metadata), time entries; a forced
+  row-level-security policy on every tenant-bound table and the per-transaction tenant
+  context (ADR 0021).
 - The data access layer (Q-B7), repositories per aggregate, integration tests per repository
   against PostgreSQL.
 - Token authentication middleware; the token issue/revoke endpoints; the audit log with agent
   attribution (Q-D4).
 - The API under `/api/v1/tenants/{tenant}/…` for projects, tickets, links, questions,
-  comments, transitions; `GET …/tickets/{key}/markdown`; the error shape (Q-E2); ETags (Q-E5);
+  comments, transitions, interest, attachments (upload with sniffing and allow-list, download
+  streamed through the backend, ADR 0016), progress and time entries with sums and CSV
+  (ADR 0017); the event stream with `NOTIFY` publication and the polling fallback
+  (ADR 0054); the S3 client and `make minio-up` for the
+  integration tier; `GET …/tickets/{key}/markdown`; the error shape (Q-E2); ETags (Q-E5);
   idempotency keys (Q-D7).
 - API tests with `httptest` against a real PostgreSQL (the integration tier grows an API
   suite).
-- `docs/developer/` pages for the domain and the API; `docs/security/` pages for tokens and
-  tenancy, each with its "What this does not cover".
+- `docs/developer/` pages for the domain and the API; `docs/security/` pages for tokens,
+  tenancy and attachments, each with its "What this does not cover".
 
 **Verified when:** a scripted `curl` session with a token creates a project, files a ticket,
 opens a question, links two tickets, moves a state, and the audit log shows every step with
 the agent header; a token of tenant A cannot see tenant B (a test proves the refusal, not the
-absence of a bug).
+absence of a bug); a deliberately unfiltered query under tenant A returns nothing of tenant B
+(ADR 0021's second line, proven in the integration tier); the application role cannot bypass
+row-level security.
 
 **Effort:** L.
 
 ## Phase 3 — UI v1
 
-**Goal:** the owner runs the daily work in the browser.
+**Goal:** the owner and a second person run the daily work in the browser.
 
-**Needs:** A15, F1–F7; the API of phase 2.
+**Needs:** the API of phase 2. Everything is decided (ADR 0004–0073); assignments,
+per-person views, the inbox, the boards, the dashboard, PrimeNG with dark mode, signals and
+services, the event stream's client side and the Playwright tier are in this phase.
 
-**Delivers:** the generated API client; a temporary login with a token (until phase 4); tenant
-and project navigation; ranked backlog with drag order; kanban with drag between states;
-ticket detail with Markdown body, fields, links, timeline, open questions with an answer form;
-"next for me" and "open decisions" across tenants; search; light and dark theme; Playwright
-smoke tests in CI (the first end-to-end tier).
+**Delivers** ([ADR 0018](../adr/0018-the-views-of-the-first-release.md)): the generated API
+client; a temporary login with a token (until phase 4); tenant and project navigation; the
+member list of a tenant; ranked backlog with drag order and the score marker; the project
+board with drag between states; the tenant board with swimlanes per project; saved filters;
+the fixed dashboard; ticket detail with Markdown body, fields, assignee, the progress slider,
+links, comment thread and activity list, attachments with upload and download, time entries,
+open questions with an answer form; the time report; "next for me", "assigned to me" and
+"open decisions" across the person's tenants; the in-app inbox; search; light and dark
+theme; Playwright smoke tests in CI with two identities (the first end-to-end tier).
 
-**Verified when:** the owner files, prioritises and closes a real ticket of this repository
-through the UI without touching the API, and the Playwright suite covers that path.
+This is the largest phase of the plan by the owner's decision; it is cut into tickets per
+view, and the two boards and the dashboard come last within it.
 
-**Effort:** L.
+**Verified when:** the owner files a ticket, assigns it to a second identity, that identity
+sees it in "assigned to me" and in its inbox, moves it and closes it — through the UI without
+touching the API — and the Playwright suite covers that path with both identities.
+
+**Effort:** XL.
 
 ## Phase 4 — OIDC and authorization
 
@@ -106,14 +121,16 @@ through the UI without touching the API, and the Playwright suite covers that pa
 
 **Needs:** C1–C5, C8–C10.
 
-**Delivers:** the OIDC code flow with PKCE; server-side sessions; the group gate and the
-group → tenant/role mapping; the admin group; CSRF protection; the role checks on every
-endpoint; a `docker compose` for local Dex; security pages for identity, sessions and
-authorization.
+**Delivers:** the OIDC code flow with PKCE (ADR 0029); server-side sessions (ADR 0031); the
+group gate, the group → tenant/role mapping and the manual grant (ADR 0030); the local
+administrator synced from a Secret, the init state and the bootstrap tenant (ADR 0032); CSRF
+protection; the role checks on every endpoint, project-level restrictions included if Q-C5
+decides them; `make dev-up` with PostgreSQL and a minimal Dex; security pages for identity,
+sessions, the local account and authorization.
 
 **Verified when:** a user outside the allowed groups is refused with a test that proves it; a
-viewer cannot write; a member of one tenant cannot list another; the session survives a pod
-restart and dies on logout.
+viewer cannot write; a member of one tenant cannot list another; a member outside a restricted
+project cannot read it; the session survives a pod restart and dies on logout.
 
 **Effort:** M–L.
 
@@ -157,8 +174,8 @@ UI equals the `grep -rH '^state:'` count in the source repository at import time
 
 **Needs:** G3–G8, A17, F4.
 
-**Delivers:** metrics; webhooks; SSE for the board; per-token rate limits if the audit log
-asks for them; the tenant Markdown export; the published chart and image through the release
+**Delivers:** metrics (ADR 0060); the inbound GitHub webhook on trial (ADR 0071); per-token rate limits if the audit log asks for them; the
+tenant Markdown export; the published chart and image through the release
 workflow; the operations pages for upgrading and backups completed; the security pages
 reviewed against the code once more.
 
