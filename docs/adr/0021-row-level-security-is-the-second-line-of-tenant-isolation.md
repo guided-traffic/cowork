@@ -4,7 +4,8 @@
 
 Accepted, amended 2026-10-02 (D2: a separate owner role is mandatory; D1, D3, D6 made
 concrete by the first implementation: the guarded setting functions, the settings besides the
-tenant, the policy of every named table). Date: 2026-09-30.
+tenant, the policy of every named table) and 2026-10-03 (D3, D6: the settings and the policies
+of the sessions and of the local login). Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -31,7 +32,10 @@ sketched.
 forced with a `tenant_isolation` policy, a unit test holds the migration set to it
 (`backend/internal/store/policy_test.go`), and the integration tier proves for every such
 table that an unfiltered query under one tenant sees nothing of another. D5's unions arrive
-with the person-level lists; D7 has not been used.
+with the person-level lists; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
+add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_locks`, widen those
+of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
+them.
 
 ## Context
 
@@ -94,6 +98,15 @@ like `app_tenant_id()`. A transaction that names no tenant — the token lookup,
 boundary, the person's own routes — sets the person only. The store opens both kinds
 (`InTenant`, `Installation`) and nothing else opens a transaction
 ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md) D2).
+*(Amended 2026-10-03:)* two settings more. `app.session_hash` carries the SHA-256 of the session
+cookie a request presented, and the policy of `sessions` admits exactly that row for it, as
+`app.token_hash` finds a token; it is read through `app_session_hash()`. `app.job` names four
+actors more — `login` (the login's own transaction, where no person is known yet),
+`login-expiry`, `session-expiry` and `bootstrap` (the start-up synchronisation of
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md))
+— and the policies of the tables they write admit them by that name. A policy that asks whether
+the person is a global administrator reads the flag through `app_is_global_admin()`, of the
+person in `app.user_id`.
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the
@@ -118,6 +131,24 @@ person; `idempotency_keys` (which carries an optional `tenant_id`) by the person
 response, and by the expiry job named in `app.job`; `audit_events` — a tenant's rows in that
 tenant, an installation-level row (no tenant) by the person it names, and every row inserted
 only into the context it belongs to. A unit test holds each named table to having a policy.
+*(Made concrete 2026-10-03:)* `sessions` — a person's own rows, the one row of the cookie
+presented, the administrators of a managed account, a global administrator for reading, and the
+jobs `session-expiry` and `bootstrap` for deleting; `local_accounts` — the person's own row, the
+administrators of the managing tenant, the login and the start-up synchronisation by their job
+names; `login_attempts` and `login_locks` carry neither a tenant nor a person, so only the login's
+transaction writes them, the expiry job removes them, and the administrators of a managed
+account's tenant read and clear those of its username. Of the earlier tables, `users` gains an
+insert policy (a tenant's administrator inserts a person who is no global administrator; the
+bootstrap job anything) and an update policy (what a tenant manages, never a global
+administrator), `tenants` an insert policy (a global administrator, or the bootstrap job) and a
+read by the login's transaction for the init state, `memberships` a marked-grant insert (an
+administrator into their tenant, the creator of a tenant into it, the bootstrap job), and `tokens`
+an insert by the person and a read and update extended to the administrators of a managed account
+and the bootstrap job, which revoke tokens when they deactivate an account. What a tenant's
+administrators manage is decided in one place, `local_accounts.managing_tenant_id` — the tenant
+that created the account — through `app_manages_account()` and `app_manages_username()`. A
+global administrator still reads only the tenants they are a member of; the reading of all
+tenants is not built.
 
 **D7 — Widening the boundary is a migration, and this record says how.** When the product
 needs a cross-tenant view, the policy of the tables concerned is amended

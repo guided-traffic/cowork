@@ -13,7 +13,18 @@ Verified on 2026-10-01 against the npm registry: `primeng` 22.1.2 declares
 `primeicons` 8.0.2; `@angular/cdk` 22.2.1. PrimeNG's major has tracked Angular's since
 version 19, which answers the lag concern raised against it.
 
-**Not built.** The frontend is a shell without a component library.
+Amended 2026-10-03 (D2: the primary colour and the dark surfaces come from the logo, and the
+preset carries the badge accents and the page's layers; D8: the logo; D9: the license). The
+check of 2026-10-01 read the peers and missed the license: verified on 2026-10-03 against the
+packages, `primeng` 22.0.0 and later, `primeicons` 8 and `@primeuix/themes` 3 are under the
+*PrimeUI License* (since 2026-07-15), while `primeng` 21.1.10 is still MIT and requires Angular
+21. The owner decided D9 — the free Community License, over Angular Material and over PrimeNG 21
+on Angular 21 — and D2's colours and D8's logo, which follow the owner's reference image.
+
+**Partly built** (phase 3, 2026-10-03): D1 (PrimeNG; the CDK is installed, its drag and drop
+arrives with the boards), D2, D3, D4, D5, D6 (the budget raised), D7 (the Renovate group), D8
+and D9 (the key's paths; the key itself is the owner's to register) — [`frontend/src/app/theme/`](../../frontend/src/app/theme/),
+[`frontend/src/app/brand/`](../../frontend/src/app/brand/).
 
 ## Context
 
@@ -39,7 +50,13 @@ on long streams, and the `A11y` utilities. Angular Material is not installed.
 when the first screens exist), configured through `providePrimeNG({ theme: { preset,
 options } })`; cowork's palette is a `definePreset` over it with a primary colour and the
 semantic colours for severity and security class, so the badges of ADR 0018 D1 are tokens,
-not hard-coded colours.
+not hard-coded colours. *(Amended 2026-10-03: the primary scale is the logo's violet
+`#6e51eb` as 500 with the logo's ink `#160941` as 950; the dark surfaces are a near-black tinted
+toward the ink, the light ones Aura's slate. The preset carries the accents of every badge value
+— severity, security class and state — as `light-dark()` pairs that pass WCAG AA as text in both
+schemes, the brand's gradient, ink and glow, and the page's layers (ground, panel, border).
+`@primeuix/themes` 3 resolves its own tokens with `light-dark()` and `color-scheme`, which D3's
+class sets.)*
 
 **D3 — Dark mode from the first screen.** `options.darkModeSelector` is a class on `<html>`
 (`.app-dark`); the application sets it from a three-way preference — *system*, *light*,
@@ -64,6 +81,30 @@ build in CI.
 **D7 — Renovate moves PrimeNG, `@primeuix/themes` and PrimeIcons in the "Angular" group**
 ([`renovate.json`](../../renovate.json)), so the library's major rises with Angular's in one
 change and the peer range is checked by the install.
+
+**D8 — The logo** *(added 2026-10-03)*. The style of the owner's reference: a border in the
+gradient from teal over violet, purple, magenta and coral to amber and gold (`#70e6ce`,
+`#6e51eb`, `#a63cd8`, `#d233b8`, `#db6a68`, `#e7a666`, `#f2d672`) around the deep ink
+`#160941`, a white glyph, a soft violet glow. The mark is a rounded square in that style, the
+wordmark the reference's pill with the sparkle and the name. In the UI both are CSS — the
+`padding-box`/`border-box` gradient of the reference — not SVG gradients, whose `url(#…)` a
+`<base href>` breaks; the favicon set (`favicon.svg`, `favicon.ico`, `apple-touch-icon.png`) is
+generated from the mark ([`hack/icons.py`](../../hack/icons.py)) and served revalidated, never
+immutable, because its names do not change. The glyph is the **board spark** — three board
+columns and the spark that works them — picked by the owner on the design preview on
+2026-10-03, over the twin sparkles of the reference and a c with the spark in its opening; the
+top bar carries the pill large (42 px in a 68 px bar), at the owner's word.
+
+**D9 — PrimeNG, PrimeIcons and `@primeuix/themes` are used under the PrimeUI Community
+License** *(added 2026-10-03)*. The owner registers the key and confirms the eligibility the
+license asks for each year. The key never enters the repository — the license forbids
+publishing it for others' use: `ng build` and `ng serve` receive it through `--define
+PRIMEUI_LICENSE` from the environment variable `PRIMEUI_LICENSE` or the untracked file
+`.dev/primeui-license` ([`primeui-define.mjs`](../../frontend/scripts/primeui-define.mjs)); the
+image build takes it as the BuildKit secret `primeui_license`, in no layer and no build argument,
+and the release workflow passes the repository secret `PRIMEUI_LICENSE`. The key may appear in
+the bundle (the vendor's terms). A build without a key works and shows PrimeNG's license notice;
+a fork needs a key of its own.
 
 ## Consequences
 
@@ -96,6 +137,13 @@ change and the peer range is checked by the install.
   group would surface.
 - A preset chosen before the first screens is a guess; D2 names Aura as the default and
   leaves the pick to the owner at the first review.
+- *(Added 2026-10-03.)* The vendor moved the library from MIT to a commercial license with a
+  community tier once, in July 2026. If the tier's terms change again, the library question is
+  open again; the token discipline of D5 keeps the colours, but every PrimeNG component would
+  have to be replaced. The Community License is self-certified: whether the owner qualifies is
+  the owner's statement, not something this record verified.
+- *(Added 2026-10-03.)* Builds without the key — every fork, the CI frontend job, the scan job's
+  image — show the license notice. That is the vendor's mechanism, not a defect.
 
 ## References
 

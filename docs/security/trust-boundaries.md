@@ -1,32 +1,37 @@
 # Trust boundaries of the two containers
 
 What the backend, its migration init container and the frontend trust, whom they answer, and
-where the credentials they hold live, as built on 2026-10-02. Once a request is inside a
+where the credentials they hold live, as built on 2026-10-03. Once a request is inside a
 tenant, how it is kept from other tenants and from what it may not see is
-[tenancy.md](tenancy.md); what a token or an agent may do is [tokens.md](tokens.md); what an
-upload may do is [attachments.md](attachments.md).
+[tenancy.md](tenancy.md); what a token or an agent may do is [tokens.md](tokens.md); how a
+person logs in, what a session is and what keeps another site from writing with one is
+[local-accounts.md](local-accounts.md), [sessions.md](sessions.md) and [csrf.md](csrf.md);
+what an upload may do is [attachments.md](attachments.md).
 
 ## Components and what they trust
 
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's database URL, the server key, the object storage's access key | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pod and anything else in the cluster that reaches the backend Service — for the routes that need no token: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`. Every other route under `/api/v1` requires a bearer token | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `requiresBearer`, [`authn.go`](../../backend/internal/api/authn.go) `authenticate` |
-| The backend process | The row of the presented token: its person, scope, restriction, agent flag and capabilities. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options` and `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
-| The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` for anyone and passes the `Authorization` header through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
-| The backend | The `X-Forwarded-*` headers nginx sets — and any a caller sets when it reaches the backend Service directly; nothing in the backend reads them | the template sets them; no backend code reads them |
+| The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` and `/auth/` for anyone and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
+| The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
 | The database | Two roles: the owner role, which owns every object and runs the migrations, and the runtime role the server connects as, which owns nothing and is subject to forced row-level security | [`store/migrate.go`](../../backend/internal/store/migrate.go), [`store/roles.go`](../../backend/internal/store/roles.go), [tenancy.md](tenancy.md) "Two database roles" |
 | The object storage | The access key pair the backend presents | [`backend/internal/storage/storage.go`](../../backend/internal/storage/storage.go) |
 | The kubelet | `/healthz` and `/readyz` on the backend, `/healthz` on the frontend, unauthenticated | the chart's probes |
 
 ## What a network peer can do
 
-Without a token: the UI shell, nginx's `/healthz`, the version (`/api/v1/version`) and the API
-document (`/api/v1/openapi.json`). Through the backend Service, from inside the cluster,
-additionally the backend's `/healthz` and `/readyz`; `/readyz` says whether the database
-answers and nothing more — the ping's error, which can name the host and the user, goes to
-the log only ([`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go)
+Without a credential: the UI shell, nginx's `/healthz`, the version (`/api/v1/version`), the
+API document (`/api/v1/openapi.json`), what the login page offers (`GET /auth/options`: whether
+an active local account exists) and the login itself (`POST /auth/local`), which answers every
+failure alike and counts and locks by the username it was given ([local-accounts.md](local-accounts.md)).
+Through the backend Service, from inside the cluster, additionally the backend's `/healthz` and
+`/readyz`; `/readyz` says whether the database answers and nothing more — the ping's error,
+which can name the host and the user, goes to the log only
+([`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go)
 `handleReadyz`). Every other route answers `401 unauthenticated` with
 `WWW-Authenticate: Bearer realm="cowork"` before any tenant is looked up, so an anonymous
 caller learns nothing about which tenants exist. An unknown path answers `404` and a known
@@ -37,7 +42,10 @@ With a token: what the token's person may do in the tenants the token reaches, n
 the token's scope and restriction and, for an agent, by the agent rules
 ([tokens.md](tokens.md)); nothing of a tenant the person is not a member of, and nothing
 inside one that the person may not see ([tenancy.md](tenancy.md)). A token is a bearer
-credential: the backend cannot tell its person from someone who copied it.
+credential: the backend cannot tell its person from someone who copied it. With a session
+cookie: what the person's role allows, with no agent rule and no scope, for writes only from
+the installation's own origin ([sessions.md](sessions.md), [csrf.md](csrf.md)); a session is
+a bearer credential too ([sessions.md](sessions.md) H-15).
 
 What a token buys before the handler checks the role, the scope and the agent rules: the
 tenant boundary, and the request's validation against the API document, which reads a JSON
@@ -50,10 +58,18 @@ body nor runs its own security check, which would read every body first
 bounded ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D1).
 
-Reachability is the cluster's, not cowork's: the chart ships no NetworkPolicy, both Services
-are `ClusterIP` by default, and an Ingress, when enabled, routes to the frontend Service.
-Unless the cluster's own policies say otherwise, both Services answer every pod that reaches
-them.
+Reachability is the cluster's, with one policy of the chart's: both Services are `ClusterIP`
+by default, an Ingress, when enabled, routes to the frontend Service, and the chart's
+NetworkPolicy ([`networkpolicy.yaml`](../../deploy/helm/cowork/templates/networkpolicy.yaml),
+`networkPolicy.enabled`, on by default) admits only the frontend's pods to the backend's pods,
+on the backend's port. It exists for the one rule that trusts the network: the backend reads
+`X-Forwarded-For` from the proxies in `COWORK_TRUSTED_PROXIES`, and a pod that is no proxy of
+ours must not be able to reach the backend and write it. The frontend Service still answers
+every pod that reaches it. A network plugin that does not implement NetworkPolicy ignores the
+object; Kubernetes says so itself, and says that traffic from the node a pod runs on — the
+kubelet's probes — is always allowed. Not verified against a cluster: the policy has been
+rendered and linted, not enforced; and `kubectl port-forward`, which reaches the pod through
+its own network namespace, is not expected to be blocked either.
 
 ## Where the credentials live
 
@@ -63,18 +79,25 @@ them.
 | The owner role's URL, `COWORK_DATABASE_OWNER_URL` | `database.owner.existingSecret` (preferred), or `database.owner.url` rendered into a release Secret | the migration init container only, and only while `backend.config.migrateOnStart` is true |
 | The server key, `COWORK_SESSION_KEY` | `session.existingSecret` only; the chart fails without it | the serving container |
 | The storage access key, `COWORK_S3_ACCESS_KEY_ID` and `COWORK_S3_SECRET_ACCESS_KEY` | `storage.existingSecret` only, required with `storage.endpoint` | the serving container |
+| The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
+| Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
+| Local passwords | not in the chart (but the local administrator's); the database holds Argon2id hashes ([local-accounts.md](local-accounts.md)) | the person, and the administrator who set a temporary one |
 
 Each Secret value reaches its container through `secretKeyRef`
 ([`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml)); the
 frontend container holds none of them. With an `existingSecret` the chart never sees the
-value. The inline `database.url` and `database.owner.url` put the credential in plain text
+value. The inline `database.url`, `database.owner.url` and `localAdmin.username` with
+`localAdmin.password` put the credential in plain text
 into a release Secret and into `helm get values`; the chart notes warn at install time
 ([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The server key signs the list
 cursors with a key derived from it ([`backend/internal/api/cursor.go`](../../backend/internal/api/cursor.go)):
 whoever holds it can forge a cursor, which moves a page's position inside a list its caller
 reads anyway, under the same predicates. Rotating the key invalidates the cursors clients
-hold.
+hold. A second key derived from it, under a label of its own, hashes the client address of a
+login for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`):
+whoever holds the server key can test a guessed address against the hashes in the database,
+which hold nothing else of it. It signs no session: a session is a random value and a row.
 
 The backend does not log a credential. An error about a secret variable names the variable,
 never its value ([`config.go`](../../backend/internal/config/config.go) `Load`); the request
@@ -137,25 +160,6 @@ resolves to on every request. That is the chart, the kubelet and the cluster adm
 
 ## What this does not cover
 
-<a id="h-1"></a>
-### H-1 — There is no login and no session
-
-Live today. No route creates a person, a tenant, a membership or a token, and the runtime
-role has no grant to insert one; the test fixture and `make dev-seed` write them over an
-administrative database connection, past row-level security
-([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D6, D7). On an installation a token therefore exists only because someone holding an
-administrative database credential wrote one — and that credential writes one for any
-person, with any scope. The browser UI cannot authenticate: it calls `/api/v1/version` and
-nothing else. Every caller of the API is a script or an agent holding a bearer token, and
-whoever holds a token acts as its person within its scope, restriction and lifetime
-([tokens.md](tokens.md)). Both Services answer every pod in the cluster, and the routes that
-need no token answer anyone who reaches them. The gap closes with the login and the sessions
-of [ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
-and [ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md); until then keep an
-installation reachable only from what you trust — behind an Ingress you control, or through a
-port-forward — and treat the administrative database credential as the key to every account.
-
 <a id="h-14"></a>
 ### H-14 — nginx's error log carries the query of a request nginx failed
 
@@ -170,14 +174,18 @@ who may read the tickets.
 
 ### The forwarded headers
 
-nginx sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Real-IP`; a caller that reaches the
-backend Service directly can set the same headers to any value, and the backend has no way to
-tell. Nothing reads them: the request log carries no address, and the audit record carries no
-address hash, which [ADR 0035](../adr/0035-personal-access-tokens.md) D2 ties to a trust rule
-for forwarded addresses that does not exist yet. When something reads them, it must trust
-them only from the frontend — a NetworkPolicy that admits only the frontend pods to the
-backend, or a header the frontend strips and re-sets — and the page of that mechanism has to
-say which.
+nginx sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Real-IP` in each of its three proxied
+locations; a caller that reaches the backend directly can set the same headers to any value.
+The trust rule of [ADR 0035](../adr/0035-personal-access-tokens.md) D2 decides what the backend
+does with that: `X-Forwarded-For` is read only when the TCP peer is inside
+`COWORK_TRUSTED_PROXIES`, from the right, up to the first address that is not a proxy of ours,
+and nothing to the left of it is ever read ([local-accounts.md](local-accounts.md) "The client
+address"). The login's throttle is the one reader. The request log carries no address, and the
+audit record carries no address hash: the rule exists now, and the hash in the audit row stays
+with the phase that builds the identity provider. Where the rule is wrong — an empty list, a
+list too narrow or too wide, a policy that is not enforced — what it costs is
+[local-accounts.md](local-accounts.md) H-17; `X-Forwarded-Proto` and `X-Real-IP` are read by
+nothing.
 
 ### The database's own controls
 

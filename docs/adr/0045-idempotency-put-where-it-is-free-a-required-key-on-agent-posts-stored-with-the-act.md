@@ -13,7 +13,9 @@ flags; the `from` precondition on transitions; keys on the other `POST`s, requir
 agents; the stored response and the replay in [`store.Mutate`](../../backend/internal/store/tx.go)
 with a `422` on a different request under the same key, expired by an hourly job; an upload's
 fingerprint over the file's hash, name and comment instead of the raw multipart body; an
-unsolicited key on a transition recorded on the act. D5 arrives with the MCP server.
+unsolicited key on a transition recorded on the act. D5 arrives with the MCP server. D3 holds
+for a browser session since phase 3 (2026-10-03), and for the creation of a token, a tenant and
+a local account.
 
 ## Context
 
@@ -44,7 +46,11 @@ decide. The same transition repeated after it succeeded therefore does nothing t
 one.** Tickets, comments, questions, attachments, time entries, tokens. The key is scoped to
 the caller — the token or the session — and is a UUID the client generates; a request from
 an agent-marked caller ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md))
-without the header answers `400 idempotency_key_required`.
+without the header answers `400 idempotency_key_required`. *(Amended 2026-10-03: no row carries a
+session's id ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D7), so a key sent
+with the session cookie is scoped to the person, and a key sent with a token to the token, as
+before; the unique index is on the person, the token and the key, with an absent token one
+value of its own.)*
 
 **D4 — The key is stored with the act, in the act's transaction.** The row holds the
 caller, the key, a hash of the request body, and the response (status and body) for
@@ -58,7 +64,10 @@ same one on every retry of that call. The model never sees or supplies a key.
 
 **D6 — A stored response contains no attachment bytes** and is bounded by the JSON body
 limit of [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
-D2; an upload's stored response is its metadata.
+D2; an upload's stored response is its metadata. *(Amended 2026-10-03: nor a secret. The response
+stored for a token's creation omits the plaintext, which is shown once
+([ADR 0035](0035-personal-access-tokens.md) D1), and a replay for the key answers the token's
+metadata without it.)*
 
 **D7 — The audit row of the act carries the key** (ADR 0026 D1), so an attempt and its act
 are one line of inquiry.

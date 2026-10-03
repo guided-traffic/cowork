@@ -2,15 +2,15 @@
 
 Where things are, as a tree. The per-package responsibilities are
 [package-map.md](package-map.md); the shape of the system is [architecture.md](architecture.md).
-Read against the tree on 2026-10-02.
+Read against the tree on 2026-10-03.
 
 ```
 cowork/
 ├── backend/                    # Go module github.com/guided-traffic/cowork/backend
 │   ├── api/                    # the API document, the contract (package apispec)
 │   │   ├── openapi.yaml        # the root: info, security, paths → one file per path family
-│   │   ├── meta.yaml, me.yaml, tenants.yaml, tickets.yaml, questions.yaml,
-│   │   │   comments.yaml, time.yaml, attachments.yaml, events.yaml
+│   │   ├── meta.yaml, auth.yaml, me.yaml, tenants.yaml, accounts.yaml, tickets.yaml,
+│   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml
 │   │   ├── components/         # schemas, parameters, responses, headers; problem-codes.yaml (generated)
 │   │   ├── oapi-codegen.yaml   # the generator's configuration
 │   │   ├── openapi.gen.json    # the bundle (generated), embedded and served
@@ -19,7 +19,8 @@ cowork/
 │   ├── internal/
 │   │   ├── api/                # the pipeline and one handler per operation
 │   │   │   └── apigen/         # oapi-codegen output: server interface, models, client (generated)
-│   │   ├── auth/               # tokens, the principal and agent mark, authorization
+│   │   ├── auth/               # tokens, sessions, passwords, the principal and agent mark, authorization
+│   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
 │   │   ├── config/             # COWORK_* environment variables → Config
 │   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
@@ -45,13 +46,16 @@ cowork/
 │   ├── Containerfile           # golang:1.27.1-alpine → distroless nonroot
 │   └── .golangci.yml
 ├── frontend/                   # Angular 22 workspace, project "frontend"
-│   ├── src/app/                # the shell and core/ services
+│   ├── src/app/                # api/ (generated), brand/, theme/, core/, layout/, features/, shared/, dev/ (frontend.md)
+│   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
+│   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
+│   ├── ng-openapi-gen.json     # the client generator's configuration
 │   ├── nginx/default.conf.template  # the container's nginx configuration, four substituted variables
-│   ├── proxy.conf.json         # ng serve → backend :8080 for /api, /healthz, /readyz
+│   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz; holds no credential
 │   ├── Containerfile           # node:26-alpine build → nginxinc/nginx-unprivileged
 │   └── eslint.config.js
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
-├── hack/                       # verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
+├── hack/                       # dev.sh + dev_demo.py (make dev); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions

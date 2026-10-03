@@ -1,7 +1,7 @@
 # Tenant isolation and visibility inside a tenant
 
 How one tenant's data stays out of another tenant's reach, and who inside a tenant sees which
-project, ticket, act, event and time entry, as built on 2026-10-02. What a token or an agent
+project, ticket, act, event and time entry, as built on 2026-10-03. What a token or an agent
 may do with what it can see is [tokens.md](tokens.md); how a request reaches the backend at
 all, and where the database credentials live, is [trust-boundaries.md](trust-boundaries.md);
 what becomes of an upload's bytes is [attachments.md](attachments.md).
@@ -63,13 +63,20 @@ restricted token sees only its tenant's membership and itself there ([tokens.md]
 | runtime | nothing | only what the migrations grant it; the migration run names it in the session setting `cowork.runtime_role` | `cowork serve` |
 
 The runtime role's grants are narrow: `UPDATE` only where the API changes something — column
-by column on the tenants, projects, tokens, tickets, questions, comments, stakes and time
-entries, table-wide on `ticket_counters` and `idempotency_keys` — `DELETE` only on `ticket_links`, `ticket_interest` and `idempotency_keys`, and only
+by column on the tenants, projects, tokens, tickets, questions, comments, stakes, time
+entries, persons, local accounts and sessions, table-wide on `ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
+`ticket_interest`, `idempotency_keys`, `sessions`, `login_attempts` and `login_locks`, and only
 `INSERT` and `SELECT` on `audit_events`, which makes the audit record append-only by grant
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3).
 `TestTheAuditRecordIsAppendOnly` shows that `UPDATE`, `DELETE`, `TRUNCATE` and switching
 row-level security off are refused, and that a grant to itself grants nothing. The role
-cannot insert a tenant, a person, a membership or a token at all.
+inserts a tenant, a person, a membership, a token, a session or a local account only where a
+policy of migrations
+[15](../../backend/internal/store/migrations/000015_local_accounts.up.sql) and
+[16](../../backend/internal/store/migrations/000016_sessions.up.sql) admits it — an
+administrator of the current tenant, a global administrator creating a tenant, the person for
+their own token and session, or a named system actor — and updates only the columns those
+grants list (`TestPoliciesOfThePersonsAndTheirAccounts`, `TestPoliciesOfTheSessions`).
 
 `cowork migrate` refuses a runtime role that is the owner role by name, and checks the
 runtime role from the owner's connection before and after the run
@@ -104,15 +111,20 @@ which have no tenant at all:
 
 | Table | Its policy admits |
 |---|---|
-| `tenants` | the row inside its own tenant's transaction, and to its members; updates only inside its own transaction |
-| `users` | the person, and everyone who shares the current tenant with them |
-| `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere |
-| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; updates by its person |
+| `tenants` | the row inside its own tenant's transaction, and to its members; updates only inside its own transaction; read by the login and the start-up synchronisation named in `app.job`, so the login can ask whether any tenant exists; inserted by a global administrator or the synchronisation |
+| `users` | the person, everyone who shares the current tenant with them, and the login and the synchronisation; inserted by an administrator of the current tenant (never a global administrator) or the synchronisation, updated by the administrators of the accounts their tenant manages and by the synchronisation |
+| `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a marked grant inserted by an administrator into their own tenant, by a global administrator for themselves as `admin`, or by the synchronisation |
+| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; inserted for the person's own account only |
 | `idempotency_keys` | the person's own rows, and every row to the expiry job named in `app.job` |
 | `audit_events` | a tenant's rows inside that tenant, an installation-level row to the person it names; a row is inserted only into the context it belongs to |
+| `local_accounts` | the person's own row, the managing tenant's administrators, the login and the synchronisation; inserted for `tenant` by an administrator of that tenant and for `config` by the synchronisation, updated by the person only while a `tenant` account |
+| `sessions` | the person's own rows, the one row whose hash the transaction names in `app.session_hash`, the administrators of a managed account, a global administrator for reading, and the two jobs that end sessions; inserted for the person's own only |
+| `login_attempts`, `login_locks` | the login, its expiry job and the synchronisation; the administrators of a managed account read and clear the rows of its username |
 
 At the start of every transaction the store sets `app.tenant_id`, `app.user_id`,
-`app.restricted_project_id` and `app.job` with `set_config(…, true)`, which dies with the
+`app.restricted_project_id`, `app.job` and `app.session_hash` — the hash of the session cookie
+a request presented, which is how a request finds its own session row — with
+`set_config(…, true)`, which dies with the
 transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). The person
 is the authenticated caller, carried in the context and never a call site's argument
 ([`store/caller.go`](../../backend/internal/store/caller.go)); the tenant is the one the
@@ -127,7 +139,9 @@ connection that just served a tenant sees nothing once its transaction ended.
 Every query on cowork's data runs inside one of the store's wrappers — `InTenant` and
 `Installation`, which are read-only transactions; `Mutate`, which commits a write only
 together with an audit row per act; `RunJob`, a background job under a system actor — or in
-the token lookup and the last-used write, which set their own context. The connection pool is
+the token and session lookups, the last-used write and the session's idle clock, the login's
+reads and the transaction that counts and decides a login attempt, which set their own
+context. The connection pool is
 unexported; outside the wrappers the store reads only the schema version and the role catalog
 for its start-up checks, and holds the listener connection of the event stream
 ([`store/store.go`](../../backend/internal/store/store.go)).

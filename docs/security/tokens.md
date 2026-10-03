@@ -3,9 +3,9 @@
 What a personal access token is, how a request presenting one is checked, what it may then do
 — through its scope, its person's role, its restriction and, for an agent, the capabilities
 and the hard-off list — how a dead token is answered and what is recorded, as built on
-2026-10-02. Which tenants, projects and tickets a person can see at all is
-[tenancy.md](tenancy.md); how a token comes to exist while there is no login is
-[trust-boundaries.md](trust-boundaries.md) H-1.
+2026-10-03. Which tenants, projects and tickets a person can see at all is
+[tenancy.md](tenancy.md); how a token comes to exist — its person, in a browser session — is
+below and in [sessions.md](sessions.md).
 
 ## A token is a bearer secret, stored as a hash
 
@@ -20,6 +20,14 @@ and the hard-off list — how a dead token is answered and what is recorded, as 
   likely tokens to precompute. Nothing limits the rate of failed attempts
   ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
   D1); at 256 bits, guessing is not a practical attack.
+- **In the browser.** Every API answer is `Cache-Control: no-store`, the creation's too
+  ([`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`). The tokens page holds the
+  plaintext in one signal and shows it in
+  [`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts) in a read-only field; every
+  way of closing the dialog sets the signal to `null`, and nothing writes the plaintext to
+  storage, a URL, a log or a toast — `secret-dialog.spec.ts` and `tokens.spec.ts` hold it,
+  down to no copy left in the page once it is closed. The copy button writes it to the
+  clipboard; what the person does with it from there is outside cowork.
 - **Transport.** Only `Authorization: Bearer cwk_…`; a value of another shape is refused
   before the database is asked. A token is never read from a query parameter or a cookie, and
   an unknown query parameter is refused anyway (ADR 0035 D7).
@@ -27,16 +35,44 @@ and the hard-off list — how a dead token is answered and what is recorded, as 
   the tokens policy admits that one row and no other; the person is read once the row names
   it ([`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`;
   `TestTokenLookupSeesThePresentedRowOnly`).
-- **Origin.** No route creates a token, and the runtime role cannot insert one; the test
-  fixture writes tokens over an administrative connection, and `make dev-seed` prints the
-  plaintext of the one it writes once ([trust-boundaries.md](trust-boundaries.md) H-1).
-  Whatever writes a token,
-  the schema holds it to its rules: an expiry later than its creation, no `admin` scope on an
-  agent token, capabilities only on an agent token and only the nine names, a project
-  restriction only together with the tenant restriction and only for a project of that
-  tenant ([migration 4](../../backend/internal/store/migrations/000004_tokens.up.sql)). The
-  lifetime default and maximum of ADR 0035 D4 belong to the creation route, which does not
-  exist: nothing caps the expiry a writer chooses.
+- **Origin.** Only the person creates their tokens, in a browser session
+  (`POST /api/v1/me/tokens`, [ADR 0035](../adr/0035-personal-access-tokens.md) D5): a token
+  calling it is `403 session_required`, no administrator creates a token for another person,
+  and the password change that a temporary password demands comes first
+  ([sessions.md](sessions.md)). The answer carries the plaintext once; the database keeps the
+  SHA-256, and no audit row, stored answer or list holds the plaintext
+  (`TestOnlyASessionCreatesATokenAndShowsItOnce`). A retried creation with an
+  `Idempotency-Key` creates nothing twice and answers without the plaintext, which the stored
+  answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
+  request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
+  longer request is shortened and the answer says what the token got
+  (`TestATokensLifetimeIsClampedToTheMaximum`). An agent token has at most `write` scope and
+  every capability when the request leaves `capabilities` out; a list is the capabilities, and
+  an empty one is none, the baseline only (ADR 0043 D4's nine switches all off); a restriction names a tenant the person belongs to
+  and a project of it they see, and a tenant or project they cannot reach is "no such" in the
+  same words as one that does not exist (`TestTokenCreationRules`). The test fixture and
+  `make dev-seed` write tokens over an administrative connection, which is how `make dev` gets
+  the token for its demo data (below). Whatever writes a token, the schema holds it to its rules:
+  an expiry later than its creation, no `admin` scope on an agent token, capabilities only on an
+  agent token and only the nine names, a project restriction only together with the tenant
+  restriction and only for a project of that tenant
+  ([migration 4](../../backend/internal/store/migrations/000004_tokens.up.sql)). The runtime
+  role may insert a token for its own person alone (the policy of
+  [migration 15](../../backend/internal/store/migrations/000015_local_accounts.up.sql)).
+- **What a leaked token cannot leave behind.** Creating a token, a tenant or a local account and
+  resetting a password take a browser session ([sessions.md](sessions.md)): each would hand
+  whoever held a leaked token something that outlives the token's revocation — a token nobody
+  thought to revoke, a tenant, an account, a password only its setter knows. An `admin`-scope
+  token of a tenant administrator still lists the tenant's local accounts and unlocks,
+  deactivates and ends the sessions of them: acts that remove or restrict access
+  ([local-accounts.md](local-accounts.md)).
+- **Development.** `make dev` mints a plain `admin`-scope token with the fixture and keeps it in
+  the untracked `.dev/token` (mode 600 in a directory of mode 700) for the demo data, which it
+  writes straight to the backend; nothing in the browser path holds a token — the browser logs in
+  as the local administrator `dev` with a development-only password
+  ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+  D2, D4). Whoever can read `.dev/` on the developer's machine holds that token, against the
+  development database only.
 - **Listing.** `GET /api/v1/me/tokens` shows the person's tokens with their metadata — name,
   scope, agent flag, capabilities, restriction, dates, state — never the hash or the
   plaintext; revoked and expired tokens stay listed (ADR 0035 D6).
@@ -58,7 +94,7 @@ reaches further than its person does at that moment.
 |---|---|
 | `read` | every read of what the person may see; for a tenant administrator also the tenant's audit view |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts that exist: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`) |
+| `admin` | additionally the administration acts that exist: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), and for the local accounts the tenant manages listing them, unlocking, deactivating and ending their sessions — not creating one or resetting a password, which are a session's alone ([local-accounts.md](local-accounts.md)) |
 
 ## Restrictions
 
@@ -100,22 +136,29 @@ reaches further than its person does at that moment.
   and `revoked` acts are installation-level rows, readable in the database only: no route
   shows them, and the per-token view of
   [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D6 is not
-  built. Not built either: an administrator's view and revocation of their members' tokens
-  (ADR 0035 D5), the deactivation of a person, and the allow-list check of ADR 0035 D8.
+  built. A person's deactivation revokes every token they hold — an administrator's
+  `PUT …/accounts/{username}/deactivation` on an account their tenant manages, and the
+  start-up synchronisation for the local administrator — a `NULL` `revoked_by` meaning a
+  system act ([local-accounts.md](local-accounts.md)); a password reset does not. Not built
+  either: an administrator's view and revocation of their members' tokens (ADR 0035 D5) and the
+  allow-list check of ADR 0035 D8.
 - **Last use.** The last-used day is written at most once per token and UTC day — a note per
   replica and a conditional update — as bookkeeping, not as an act (ADR 0035 D2).
 - **Open streams.** An event stream is not a next request: at every heartbeat it checks the
-  token again — not revoked, not expired, its person not deactivated — and the tenant
-  boundary, and ends when either fails ([`api/events.go`](../../backend/internal/api/events.go)
+  token again — not revoked, not expired, its person not deactivated — or, for a stream opened
+  with a session cookie, the session ([sessions.md](sessions.md)), and the tenant boundary,
+  and ends when either fails ([`api/events.go`](../../backend/internal/api/events.go)
   `stillAdmitted`; [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
   D5) — H-7.
 
 ## What is recorded
 
-- Every act is an audit row written in the act's transaction; it names the person, the token,
-  the request id, the agent mark and, for an agent, the capability set that applied
-  ([`store/tx.go`](../../backend/internal/store/tx.go)). Using a token is recorded through its
-  acts, not per request (ADR 0035 D9).
+- Every act is an audit row written in the act's transaction; it names the person, the token
+  — none for a browser session — the request id, the agent mark and, for an agent, the
+  capability set that applied ([`store/tx.go`](../../backend/internal/store/tx.go)). Using a
+  token is recorded through its acts, not per request (ADR 0035 D9); creating one is an
+  installation-level `created` act of its person, naming its scope, agent flag, capabilities,
+  restriction and expiry, never the token.
 - Reads are not recorded, with two exceptions that mean data left the system (ADR 0026 D5):
   every download of an attachment's bytes — a `304` is not one — and every Markdown export of
   a ticket, which is never answered with `304`
@@ -189,7 +232,9 @@ D2, D7). The key belongs to the token and is bound to a fingerprint of the opera
 and its body — for an upload the file's SHA-256, its name and its comment. The response is
 stored with the act in the same transaction for twenty-four hours; a repetition replays it,
 and the same key with a different request answers `422 idempotency_mismatch` (ADR 0045 D3,
-D4). A person's `POST` may carry a key and need not.
+D4). A person's `POST` may carry a key and need not. A key sent in a browser session has no
+token to belong to and belongs to the person; a stored answer never holds a secret, so the
+token-creating route stores its answer without the plaintext.
 
 ## What this does not cover
 
@@ -229,9 +274,9 @@ agent a `read` token, and an administrator finds them in the tenant's audit view
 <a id="h-7"></a>
 ### H-7 — An open event stream outlives a revocation by up to one heartbeat
 
-Live today. A stream checks its token and its person's membership at every heartbeat, every
-twenty seconds; the interval is not configurable. Between two heartbeats a stream whose token
-was revoked or expired, whose person left the tenant, or whose person lost a project still
-receives the events its filter admitted at the last heartbeat — the keys, versions and kinds of
-the acts, no content. Every request the client makes
-with the dead token is refused at once; the window is the stream's alone.
+Live today. A stream checks its token — or its session — and its person's membership at every
+heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
+stream whose token was revoked or expired, whose session ended, whose person left the tenant,
+or whose person lost a project still receives the events its filter admitted at the last
+heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
+makes with the dead token or session is refused at once; the window is the stream's alone.

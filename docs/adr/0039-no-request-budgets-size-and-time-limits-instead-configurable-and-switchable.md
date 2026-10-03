@@ -17,7 +17,10 @@ D1, D6, D9); a request timeout would cut it every thirty seconds.
 
 **Partly built** (phase 2, 2026-10-02): D1–D4 — the five limits of D2 in
 [`config.go`](../../backend/internal/config/config.go) and the request pipeline, nginx sized by
-the chart. D5 arrives with the inbox, D6 with the local login.
+the chart. D5 arrives with the inbox.
+
+**Built** (phase 3, 2026-10-03): D6 with the local login — `COWORK_LOGIN_MAX_FAILURES` and
+`COWORK_LOGIN_ADDRESS_LIMIT`, in the chart `auth.local.maxFailures` and `auth.local.addressLimit`.
 
 ## Context
 
@@ -82,7 +85,9 @@ Hans (via Claude Code)" — so a loop does not drown the watchers before anyone 
 
 **D6 — The login limits of ADR 0033 D6 become configurable the same way:** attempts per
 account and window, attempts per source address and minute, each disabled by `0`; the
-defaults stay as that record set them.
+defaults stay as that record set them. *(Built 2026-10-03: `COWORK_LOGIN_MAX_FAILURES`, default
+5, and `COWORK_LOGIN_ADDRESS_LIMIT`, default 20, each disabled by `0`; the window of fifteen
+minutes and the address minute are fixed, not configured.)*
 
 ## Consequences
 

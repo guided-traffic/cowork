@@ -8,9 +8,17 @@ German and English at runtime, and over English now with runtime i18n as the nam
 amendment path. The rules of D3–D4 were put to the owner with the question and not objected
 to.
 
-**Partly built.** The shell's few strings are English literals; no locale configuration. *(Phase
-2, 2026-10-02:)* D3 and D4 hold for the API — timestamps in RFC 3339 UTC, the vocabularies spelt
-as the API spells them, the Markdown export's dates as UTC dates.
+Amended 2026-10-03 (D2: the browser's `Intl` formatters instead of Angular's locale data). The
+first screens needed dates; `Intl` gives the browser's locale and time zone with nothing to
+load, where Angular's locale data would have to be registered per language at start. The change
+is the mechanism, not the rule, and it is the implementer's: the owner can reverse it.
+
+**Partly built.** *(Phase 2, 2026-10-02:)* D3 and D4 hold for the API — timestamps in RFC 3339
+UTC, the vocabularies spelt as the API spells them, the Markdown export's dates as UTC dates.
+*(Phase 3, 2026-10-03:)* D1 — English literals; D2 — relative and absolute times through `Intl`
+([`time.ts`](../../frontend/src/app/shared/time.ts)); D4 — every badge shows the value as the API
+spells it and explains it in a tooltip
+([`vocabulary.ts`](../../frontend/src/app/shared/vocabulary.ts)).
 
 ## Context
 
@@ -30,10 +38,14 @@ nobody needs is discipline without a user.
 **D1 — The UI is English, and only English.** Strings are literals in templates; no
 `i18n` attributes, no `$localize`, no `ng extract-i18n` in the build.
 
-**D2 — Dates, times and numbers follow the browser.** `LOCALE_ID` is taken from
+**D2 — Dates, times and numbers follow the browser.** ~~`LOCALE_ID` is taken from
 `navigator.language` at start and registered with Angular's locale data on demand; `DatePipe`
-and `DecimalPipe` render with it; the browser's time zone is used for display. No date
-format is hard-coded.
+and `DecimalPipe` render with it;~~ the browser's time zone is used for display. No date
+format is hard-coded. *(Amended 2026-10-03: the UI formats with the browser's own `Intl`
+formatters, which take the browser's locale and time zone without Angular's locale data, so
+no locale file is loaded or bundled; `LOCALE_ID` stays Angular's default and `DatePipe` and
+`DecimalPipe` are not used for display. Relative times — "3 minutes ago" — are English words,
+D1.)*
 
 **D3 — The API speaks UTC.** Every timestamp is RFC 3339 with `Z`; the frontend converts
 for display and sends UTC back. The export's frontmatter dates are dates (`2026-10-01`), not

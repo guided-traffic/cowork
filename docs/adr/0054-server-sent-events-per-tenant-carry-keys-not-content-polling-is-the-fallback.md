@@ -18,7 +18,13 @@ with the inbox), D2 without `inbox.changed` and `membership.changed` (no route c
 membership yet), D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
 [`notify.go`](../../backend/internal/store/notify.go) and [`events.go`](../../backend/internal/api/events.go);
 the nginx template has the events location. D3's recomputation on `membership.changed`
-arrives with that event; D7's client side with the frontend.
+arrives with that event. D7's client side and D8's hidden tab since phase 3 (2026-10-03):
+[`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) opens one
+`EventSource` per tenant page, falls back after three failures or `unavailable`, ticks every
+fifteen seconds, retries every minute and holds events while the tab is hidden; a poll still
+reloads the lists in full — the `If-None-Match` of D7 is outstanding. Measured on 2026-10-03
+through the Angular dev server's proxy: a comment's event reached an open stream 29 ms after the
+write began.
 
 ## Context
 

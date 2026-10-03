@@ -2,12 +2,19 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
+Accepted, amended 2026-10-03 (D1, D5, D6 made concrete by the first implementation). Date:
+2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
 with the question and not objected to.
 
-**Not built.** No session, no middleware.
+**Partly built** (phase 3, 2026-10-03): D4 — the frontend's interceptor
+([`http.ts`](../../frontend/src/app/core/http.ts)) sends `X-Requested-With: cowork` on every
+request — and the backend's check is built with the sessions: D1–D3, D5 for the local login and
+the logout, and D6
+([`api/session.go`](../../backend/internal/api/session.go) `csrf`,
+[docs/security/csrf.md](../security/csrf.md)). Not built: the OIDC callback of D5, which waits
+for the identity provider.
 
 ## Context
 
@@ -27,6 +34,14 @@ backend requires two things:** the `Origin` header — or, when `Origin` is abse
 `Referer` — equals `COWORK_BASE_URL` (scheme, host and port, exactly), and the header
 `X-Requested-With: cowork` is present. Either missing or wrong answers `403` with the error
 code `csrf`. A request with neither `Origin` nor `Referer` is refused, not waved through.
+*(Amended 2026-10-03: the comparison is with the origin `COWORK_BASE_URL` names — lower-case
+scheme and host, the scheme's default port dropped, as a browser writes `Origin`. An `Origin` of
+`null`, a second `Origin` or `Referer` header, a `Referer` that is no URL, and an `Origin` that
+differs while the `Referer` matches are refused: the `Origin` wins. The check is the pipeline's,
+answered before the tenant boundary and before any handler, for a request authenticated by the
+cookie; a request with an `Authorization` header is a token's and outside it
+([ADR 0035](0035-personal-access-tokens.md) D7, [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md)
+D6).)*
 
 **D2 — `GET`, `HEAD` and `OPTIONS` never mutate**, so the check does not apply to them; an
 endpoint that would mutate on `GET` is a defect, and the API record forbids it.
@@ -44,12 +59,20 @@ interceptor; nothing else in the frontend needs to know the rule.
 D1. The local login form (`POST /auth/local`) carries no session yet; it is rate-limited by
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D6 and
 still subject to the origin check of D1 (a cross-site login attempt is refused). Logout is a
-`POST` and is subject to D1, so a page cannot log a person out.
+`POST` and is subject to D1, so a page cannot log a person out. *(Amended 2026-10-03: the login
+carries no session, so what it is held to is the origin half of D1 — the `Origin`, or without
+one the `Referer`, must be `COWORK_BASE_URL` — and not the custom header. The API document marks
+such a route `x-cowork-origin-check`, and the unit test over the document requires the mark on
+every public write. Logout is held to both halves.)*
 
 **D6 — `COWORK_BASE_URL` is required whenever a cookie login exists** (an issuer or a local
 account configured), and it must be the origin the browser sees — behind the Ingress, the
 public URL. A mismatch is the first thing the operations page tells an operator to check
-when every write answers `403 csrf`.
+when every write answers `403 csrf`. *(Built 2026-10-03: the backend refuses to start without
+`COWORK_BASE_URL` while the local administrator is configured, and a value with a path, a query,
+a fragment or a user is refused at start. The check fails closed: without an origin to compare
+with, no write of a cookie and no login passes — `403 csrf` naming the variable — and reads
+still work.)*
 
 ## Consequences
 
@@ -80,7 +103,12 @@ when every write answers `403 csrf`.
   cross-site requests, not against code running inside the page — that is the sanitiser's
   job ([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6)
   and the attachment delivery's ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-  D5).
+  D5) ([docs/security/csrf.md](../security/csrf.md), H-21).
+- *(Added 2026-10-03.)* D2 leaves reads unchecked, and two reads write an audit row, as data
+  leaving the system must be recorded: an attachment's download and a ticket's Markdown export.
+  A link to one of them, followed from another site, carries the `Lax` cookie and records the
+  act under the person; it changes no ticket and the answer is unreadable to the other site
+  (H-22 of the same page).
 - Privacy-hardened browsers that strip both `Origin` and `Referer` on same-origin requests
   are refused by D1; the UI tells the person why. Not verified against any particular
   browser; the integration tier tests the rule, not browsers.

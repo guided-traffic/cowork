@@ -13,9 +13,14 @@ the mechanics are [api.md](api.md)).
    `operationId`, tags, its parameters from `components/parameters.yaml`, its schemas in
    `components/schemas.yaml` (`additionalProperties: false` on a request body), the `ETag` and
    `Location` headers from `components/headers.yaml`, and `default:
-   $ref: './components/responses.yaml#/Problem'`. The default security is the bearer token;
-   `security: []` only for what a client reads before it authenticates. A creating `POST` takes
-   the `IdempotencyKey` parameter, an overwriting write `IfMatch`, a list `Cursor` and `Limit`.
+   $ref: './components/responses.yaml#/Problem'`. The default security takes either credential,
+   the bearer token or the session cookie; an operation has one of three shapes and no other
+   (`TestEveryOperationIsDeclaredCompletely`): the default, `[{sessionCookie: []}]` alone for the
+   rare route a token must not call — it is added to the test's `sessionOnly` set and to
+   [ADR 0035](../adr/0035-personal-access-tokens.md) D5 — or `security: []` for what a client
+   reads or does before it authenticates, which as a write also carries `x-cowork-origin-check:
+   true`. A creating `POST` takes the `IdempotencyKey` parameter, an overwriting write `IfMatch`,
+   a list `Cursor` and `Limit`.
 2. **`make generate`.** The build now fails until `Server` implements the new method of
    `apigen.StrictServerInterface`.
 3. **The handler**, a method of `Server` in the family's file under
@@ -23,7 +28,10 @@ the mechanics are [api.md](api.md)).
    with a `Need`; reads in `s.db.InTenant` through `visibleProject` / `visibleTicket`; writes in
    `s.db.Mutate`, every act recorded with `w.Record`; `keyed` and `w.Respond(stored(…))` for a
    creating `POST`; `ifMatch` and `stale` for an overwriting write; `store.ErrNoChange` for a
-   write that changes nothing; errors as `problem.*`, never ad-hoc JSON.
+   write that changes nothing; errors as `problem.*`, never ad-hoc JSON. A route that names no
+   tenant — the person's own, the login — reads `principal(ctx)` instead of `tenantFrom(ctx)`, and
+   a handler never reads the cookie or the `Authorization` header itself: `authenticate` has
+   resolved them ([api.md](api.md)).
 4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
    the visibility predicate or naming its exemption ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
@@ -35,6 +43,10 @@ the mechanics are [api.md](api.md)).
    generated client: both tenants, a restricted project and a confidential ticket (the same
    `404` as a missing one), each role and scope, an agent with and without the capability or on
    the hard-off list, `428`/`412` for an overwriting write, replay and mismatch for a keyed one.
+   A route under `{tenant}` is in the cross-tenant walk without a line of yours; a route a person
+   calls with a cookie is tried with a `browser` too (`withLogin`, `withAccounts`), with a token
+   beside it, with the CSRF headers taken away, and — if it takes a secret — searched for in the
+   log, the answers and the audit rows ([testing.md](testing.md)).
 7. The row in [README.md, API](../../README.md#api-backend); `make generate-check` clean, the
    generated files committed.
 
@@ -100,19 +112,31 @@ the mechanics are [api.md](api.md)).
    expose it: the value under `backend.config` in [`values.yaml`](../../deploy/helm/cowork/values.yaml),
    the `env` entry in [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml),
    and the line in the README's values block. A secret comes from an existing Secret with a
-   configurable key (`existingSecret` and `keys.…`, as `session` and `storage` do), never from an
-   inline value ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3).
+   configurable key (`existingSecret` and `keys.…`, as `session`, `storage` and `localAdmin` do)
+   ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3);
+   an inline value is for a throw-away installation only — the database URLs and the local
+   administrator have one — and the chart says so when it is used.
 4. A limit nginx must stay above also moves the computation in
    [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl).
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).
 
 ## A frontend feature
 
-1. Standalone component under `frontend/src/app/<feature>/`, services under `core/`; signals,
-   no NgRx.
-2. A `.spec.ts` beside it: `provideHttpClient()` + `provideHttpClientTesting()`,
-   `await fixture.whenStable()` before reading the DOM, `data-testid` for assertions.
-3. `make frontend-lint frontend-test`; `make frontend-build` if the bundle budget in
+1. A page is a standalone component under `frontend/src/app/features/<family>/`, lazy in
+   [`app.routes.ts`](../../frontend/src/app/app.routes.ts) under the shell (a tenant's page under
+   `t/:tenant`, which sets the session's tenant); state and loads are services in `core/`, or a
+   service the page provides when it lives exactly as long as the page; signals, no NgRx
+   ([frontend.md](frontend.md#where-state-lives)).
+2. Data comes through the generated client (`inject(Api).invoke(fn, params)`); a new route is
+   `make generate` then `make frontend-generate`. A ticket a page shows is read through
+   `TicketsService.cache`; a page that shows something the event stream names reloads on its
+   events.
+3. Styles use the preset's tokens (`var(--p-…)`), never literal colours, and work in both
+   schemes — look at both on the design preview (`/dev/design`).
+4. A `.spec.ts` beside it: services against the generated client with `provideHttpClient()` +
+   `provideHttpClientTesting()` and `provideApiConfiguration('')`, components against mocked
+   services, `await fixture.whenStable()` before reading the DOM, `data-testid` for assertions.
+5. `make frontend-lint frontend-test`; `make frontend-build` if the bundle budget in
    `angular.json` might move.
 
 ## A path nginx must treat differently
@@ -133,8 +157,9 @@ the mechanics are [api.md](api.md)).
 
 ## A chart value
 
-1. `values.yaml` under `backend.` or `frontend.` with a comment, the template, and — when it
-   maps to an environment variable — the `env` entry.
+1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `session.`,
+   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `networkPolicy.`, `ingress.` — with a comment, the template, and
+   — when it maps to an environment variable — the `env` entry.
 2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI.
 3. The README's values block and, when operators need to understand it,
    [docs/operations/installation.md](../operations/installation.md).

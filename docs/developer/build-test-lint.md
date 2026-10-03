@@ -43,8 +43,10 @@ same toolchain builds them.
 | | `make frontend-lint` | | `ng lint` |
 | | `make frontend-test` | | vitest on jsdom, once |
 | | `make frontend-test-coverage` | | `frontend/coverage/frontend/` (`text-summary`, `lcovonly`, `json-summary`), through `@vitest/coverage-v8` |
-| | `make frontend-build` | | `frontend/dist/frontend/browser/` |
-| | `make frontend-serve` | | dev server on `:4200` with the proxy |
+| | `make frontend-build` | | `frontend/dist/frontend/browser/` (with the PrimeUI key, when there is one) |
+| | `make frontend-serve` | | dev server on `:4200` with the proxy (and the PrimeUI key, when there is one) |
+| | `make frontend-generate` | npm | the Angular client in `frontend/src/app/api/` from `backend/api/openapi.gen.json` |
+| | `make frontend-generate-check` | | fails when the committed client differs from a fresh generation |
 | | `make frontend-clean` | | removes the build output |
 | Both | `make test` | | `test-unit` + `frontend-test` |
 | Build | `make build-backend` | — | `bin/cowork`, after `fmt` (which rewrites sources) and `vet` |
@@ -74,18 +76,42 @@ Code Linting job — fails on the difference. The pipeline is [api.md](api.md#th
 
 ## Run locally
 
+**The whole stack, to watch the UI while it is built:**
+
+```bash
+make dev                      # PostgreSQL, MinIO, the backend, demo data, the UI on https://localhost:4200 — Ctrl-C stops it
+make dev-reset                # empties the development database; the next make dev seeds it again
+```
+
+`make dev` ([`hack/dev.sh`](../../hack/dev.sh)) refuses to start when `:8080` or `:4200` is in
+use, logs the backend to `.dev/backend.log`, and keeps the demo data's token in `.dev/token` and
+a stable server key in `.dev/session-key` (all untracked). Sign in as `dev` with the
+development-only password `dev-only-cowork`; the browser asks once about the dev server's
+self-signed certificate (HTTPS, because Safari stores no `Secure` cookie from
+`http://localhost`). A saved frontend file reloads the page; a backend change needs a restart. The PrimeUI license key goes into `.dev/primeui-license`
+([frontend.md](frontend.md#the-primeui-license-key)). How it works:
+[frontend.md](frontend.md#the-development-loop).
+
+**The parts by hand:**
+
 ```bash
 make postgres-up              # PostgreSQL 18 on :5432: database cowork, roles cowork_owner and cowork_app
 make dev-seed                 # migrates, prints a person, a tenant and a token — once
 make run                      # backend on :8080: migrates as cowork_owner, serves as cowork_app, text logs
-make frontend-serve           # frontend on :4200 in a second terminal, /api proxied to :8080
+make frontend-serve           # frontend on :4200 in a second terminal, /api and /auth proxied to :8080 (unsigned: the API answers 401)
 curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/me   # TOKEN: the one dev-seed printed
 ```
 
 `make run` takes `COWORK_DATABASE_URL`, `COWORK_DATABASE_OWNER_URL` and `COWORK_SESSION_KEY`
 from the environment when they are set, else the development values; a throw-away key
 invalidates the list cursors at every restart. It sets no `COWORK_S3_*`, so uploads answer
-`501 uploads_disabled` ([storage.md](storage.md#the-test-server)).
+`501 uploads_disabled` ([storage.md](storage.md#the-test-server)). Every other `COWORK_*`
+variable of the shell reaches the backend as it is, which is how the real login is tried: with
+`COWORK_LOCAL_ADMIN_USERNAME`, `COWORK_LOCAL_ADMIN_PASSWORD` and
+`COWORK_BASE_URL=http://localhost:4200` set, the backend creates the administrator at start and
+`/auth/local` logs in ([README, run it locally](../../README.md#run-it-locally)). Neither `make run`
+nor `make dev` sets them for you, and `make dev` keeps the proxy's token until the UI has its
+login page.
 
 `make dev-seed` reuses the person `dev` and the tenant `dev` and mints a fresh token on every
 run. The token is an agent's — write scope, every capability — so its `POST`s need an

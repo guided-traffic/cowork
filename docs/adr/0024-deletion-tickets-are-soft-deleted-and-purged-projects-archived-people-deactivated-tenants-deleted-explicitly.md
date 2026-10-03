@@ -12,6 +12,15 @@ the owner with the question and confirmed.
 (a `deactivated_at` column a token's person is refused by). Ticket deletion, the purge, its
 filter on every list and the tenant deletion are not built; no route deletes anything.
 
+**Partly built** (phase 3, 2026-10-03): D5 for local accounts — a tenant's administrator
+deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the
+start-up synchronisation deactivates the local administrator when its variables are emptied: the
+person cannot log in, their sessions end, their tokens are revoked, and the person and every
+act stay. Not built: marking the memberships inactive — they stay as they were, and a deactivated
+person is refused at the resolver everywhere —, a route that reactivates (only the start-up
+synchronisation does, for the configured account) and the deactivation of a person who has no
+local account.
+
 ## Context
 
 Earlier records already refuse to lose things: a project is archived

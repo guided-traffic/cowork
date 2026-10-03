@@ -19,7 +19,17 @@ project, the visibility predicate in every ticket query, the time visibility of 
 tenant settings `timeVisibleToMembers` and `membersCreateProjects`, and agents bounded by their
 person's role minus [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)'s
 restrictions. Writing a restricted project's list and changing roles (D7's acts) arrive with
-the administration; D2's global administrator with the login.
+the administration.
+
+**Partly built** (phase 3, 2026-10-03): D2's global administrator — `users.global_admin`, which
+the start-up synchronisation sets for the local administrator, and `POST /api/v1/tenants`; a
+global administrator who creates a tenant is its first administrator by a marked grant
+([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D7), and in any other tenant has no role and meets the tenant boundary like a stranger. Not built:
+the view of a tenant's administration without a role, the reading of installation-level audit
+rows, the deletion of a tenant and the route by which a global administrator grants themselves a
+role in an existing tenant; the `memberships` policy admits a global administrator's own grant as
+`admin`, which the creation of a tenant uses.
 
 ## Context
 
