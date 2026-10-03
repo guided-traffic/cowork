@@ -13,7 +13,8 @@ and not objected to.
 back. The required checks are bound to the GitHub Actions app, so a status of the same name
 from anything else does not satisfy them. Amended 2026-10-03 (D2): the GitHub App
 semantic-release runs as is on the bypass list of `main` as well — the owner's answer when
-the first release showed that semantic-release pushes its release commit to `main`.
+the first release showed that semantic-release pushes its release commit to `main`; and
+documentation-only changes are pushed directly by an administrator.
 
 ## Context
 
@@ -46,7 +47,11 @@ requests, which merge through the platform after the checks (`automergeType: pr`
 whoever obtains the App's token pushes to `main` without a pull request or a check; the
 token is minted only in the release job on `main` and in the scheduled Renovate run. Over
 removing the release commit, which would have moved the coverage badge off `main`, and over
-no bypass, which would have stopped every release.)*
+no bypass, which would have stopped every release.)* *(Amended 2026-10-03, by the owner: a
+change that touches documentation only — the docs tree, the README, SECURITY.md, CLAUDE.md —
+is pushed by an administrator directly to `main`, with `[skip ci]` in the commit message: it
+gains nothing from the pipeline and would run it twice, once on the pull request and once on
+`main`. Code, configuration, workflows and generated files still arrive by pull request.)*
 
 **D3 — Repository settings:** squash merge only (merge commits and rebase disabled), the
 squash commit's title taken from the pull request title so semantic-release reads a
