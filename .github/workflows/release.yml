@@ -296,6 +296,9 @@ jobs:
       - name: Install dependencies
         run: make frontend-install
 
+      - name: Check the generated API client
+        run: make frontend-generate-check
+
       - name: Lint
         run: make frontend-lint
 
