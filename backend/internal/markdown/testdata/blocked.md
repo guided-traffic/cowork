@@ -1,0 +1,17 @@
+---
+key: acme/VKO-13
+title: Wait for the release
+type: task
+state: blocked
+severity: low
+security: none
+urgency: release
+effort: S
+progress: 0
+opened: 2026-10-01
+blocked-by: release
+blocked-reason: needs 2.0 out
+blocked-from: decided
+---
+
+## Open questions

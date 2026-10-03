@@ -18,7 +18,7 @@ describe('VersionService', () => {
   afterEach(() => http.verify());
 
   it('reads the backend version', async () => {
-    const expected: VersionInfo = { version: '1.2.3', commit: 'abc', buildTime: '42' };
+    const expected: VersionInfo = { version: '1.2.3', commit: 'abc', build_time: '42' };
     const result = new Promise<VersionInfo>((resolve) => service.get().subscribe(resolve));
 
     const req = http.expectOne('/api/v1/version');

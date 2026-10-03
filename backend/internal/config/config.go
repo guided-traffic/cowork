@@ -6,6 +6,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,29 +17,67 @@ import (
 
 // The environment variables the server reads.
 const (
-	EnvListenAddr      = "COWORK_LISTEN_ADDR"
-	EnvDatabaseURL     = "COWORK_DATABASE_URL"
-	EnvMigrateOnStart  = "COWORK_MIGRATE_ON_START"
-	EnvLogLevel        = "COWORK_LOG_LEVEL"
-	EnvLogFormat       = "COWORK_LOG_FORMAT"
-	EnvShutdownTimeout = "COWORK_SHUTDOWN_TIMEOUT"
-	EnvBaseURL         = "COWORK_BASE_URL"
+	EnvListenAddr       = "COWORK_LISTEN_ADDR"
+	EnvDatabaseURL      = "COWORK_DATABASE_URL"
+	EnvDatabaseOwnerURL = "COWORK_DATABASE_OWNER_URL"
+	EnvMigrateOnStart   = "COWORK_MIGRATE_ON_START"
+	EnvLogLevel         = "COWORK_LOG_LEVEL"
+	EnvLogFormat        = "COWORK_LOG_FORMAT"
+	EnvShutdownTimeout  = "COWORK_SHUTDOWN_TIMEOUT"
+	EnvBaseURL          = "COWORK_BASE_URL"
+	EnvSessionKey       = "COWORK_SESSION_KEY"
+	EnvMaxJSONBody      = "COWORK_MAX_JSON_BODY"
+	EnvRequestTimeout   = "COWORK_REQUEST_TIMEOUT"
+	EnvMaxPageSize      = "COWORK_MAX_PAGE_SIZE"
+	EnvMaxQueryLength   = "COWORK_MAX_QUERY_LENGTH"
+
+	EnvS3Endpoint             = "COWORK_S3_ENDPOINT"
+	EnvS3Bucket               = "COWORK_S3_BUCKET"
+	EnvS3Region               = "COWORK_S3_REGION"
+	EnvS3AccessKeyID          = "COWORK_S3_ACCESS_KEY_ID"
+	EnvS3SecretAccessKey      = "COWORK_S3_SECRET_ACCESS_KEY" // #nosec G101 -- the variable's name, not a credential
+	EnvS3UsePathStyle         = "COWORK_S3_USE_PATH_STYLE"
+	EnvS3CA                   = "COWORK_S3_CA"
+	EnvAttachmentMaxBytes     = "COWORK_ATTACHMENT_MAX_BYTES"
+	EnvAttachmentMaxPerTicket = "COWORK_ATTACHMENT_MAX_PER_TICKET"
+
+	EnvSSEReplayWindow        = "COWORK_SSE_REPLAY_WINDOW"
+	EnvSSEMaxStreamsPerPerson = "COWORK_SSE_MAX_STREAMS_PER_PERSON"
 )
 
 // Defaults and the accepted log formats.
 const (
 	DefaultListenAddr      = ":8080"
 	DefaultShutdownTimeout = 15 * time.Second
-	LogFormatJSON          = "json"
-	LogFormatText          = "text"
+	DefaultMaxJSONBody     = 1 << 20 // 1MiB
+	DefaultRequestTimeout  = 30 * time.Second
+	DefaultMaxPageSize     = 200
+	DefaultMaxQueryLength  = 256
+	// DefaultAttachmentMaxBytes is the per-file maximum (docs/adr/0016 D6).
+	DefaultAttachmentMaxBytes = 10 << 20 // 10MiB
+	// DefaultAttachmentMaxPerTicket is the per-ticket count (docs/adr/0016 D6).
+	DefaultAttachmentMaxPerTicket = 100
+	// DefaultSSEReplayWindow and DefaultSSEMaxStreamsPerPerson are the event
+	// stream's limits (docs/adr/0054 D5, D8).
+	DefaultSSEReplayWindow        = 5 * time.Minute
+	DefaultSSEMaxStreamsPerPerson = 10
+	// MinSessionKeyBytes is the shortest server key accepted.
+	MinSessionKeyBytes = 32
+	LogFormatJSON      = "json"
+	LogFormatText      = "text"
 )
 
 // Config is the complete server configuration.
 type Config struct {
 	// ListenAddr is the address the HTTP server binds, host:port.
 	ListenAddr string
-	// DatabaseURL is the PostgreSQL connection URL (postgres://...). Required.
+	// DatabaseURL is the PostgreSQL connection URL (postgres://...) of the
+	// runtime role, which owns nothing (docs/adr/0021 D2). Required.
 	DatabaseURL string
+	// DatabaseOwnerURL is the connection URL of the owner role the
+	// migrations run under. Required where migrations run: `cowork migrate`,
+	// and `cowork serve` while MigrateOnStart is true.
+	DatabaseOwnerURL string
 	// MigrateOnStart makes `cowork serve` apply pending migrations before it listens.
 	MigrateOnStart bool
 	// LogLevel is the minimum level written to the log.
@@ -51,6 +90,51 @@ type Config struct {
 	// slash. Optional until a feature (OIDC redirects, links in notifications)
 	// needs it.
 	BaseURL string
+	// SessionKey is the server key (docs/adr/0031 D1): it signs the list
+	// cursors (docs/adr/0048 D1). Required by `cowork serve`; standard base64
+	// of at least MinSessionKeyBytes bytes.
+	SessionKey []byte
+	// MaxJSONBody bounds a JSON request body, in bytes; 0 disables the limit
+	// (docs/adr/0039 D2).
+	MaxJSONBody int64
+	// RequestTimeout bounds a request's handling; 0 disables it.
+	RequestTimeout time.Duration
+	// MaxPageSize is the largest page a list returns; 0 disables the clamp.
+	MaxPageSize int
+	// MaxQueryLength bounds a search query; 0 disables the limit.
+	MaxQueryLength int
+	// Storage is the S3-compatible object storage of the attachments
+	// (docs/adr/0016 D1); nil when none is configured, and uploads are
+	// refused.
+	Storage *Storage
+	// AttachmentMaxBytes is the per-file maximum of an upload; 0 disables
+	// it, and an upload is then buffered whole (docs/adr/0039 D2).
+	AttachmentMaxBytes int64
+	// AttachmentMaxPerTicket is the number of attachments a ticket takes; 0
+	// disables the limit.
+	AttachmentMaxPerTicket int
+	// SSEReplayWindow is how long a replica keeps events for a reconnect's
+	// replay; SSEMaxStreamsPerPerson how many streams a person holds per
+	// replica, 0 for no limit (docs/adr/0054 D5, D8).
+	SSEReplayWindow        time.Duration
+	SSEMaxStreamsPerPerson int
+}
+
+// Storage is the object storage the attachments' bytes live in. Endpoint,
+// bucket and both keys come together or not at all.
+type Storage struct {
+	// Endpoint is http:// or https:// with a host and an optional port.
+	Endpoint string
+	Bucket   string
+	// Region is empty to let the client ask the server.
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	// PathStyle addresses the bucket in the path, as MinIO expects.
+	PathStyle bool
+	// CAFile is a PEM file of the authority a private endpoint's
+	// certificate chains to; empty for the system pool.
+	CAFile string
 }
 
 // Load reads the configuration through lookup, which has the contract of
@@ -63,63 +147,237 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       LogFormatJSON,
 		ShutdownTimeout: DefaultShutdownTimeout,
-	}
-	var errs []error
+		MaxJSONBody:     DefaultMaxJSONBody,
+		RequestTimeout:  DefaultRequestTimeout,
+		MaxPageSize:     DefaultMaxPageSize,
+		MaxQueryLength:  DefaultMaxQueryLength,
 
-	if v, ok := nonEmpty(lookup, EnvListenAddr); ok {
+		AttachmentMaxBytes:     DefaultAttachmentMaxBytes,
+		AttachmentMaxPerTicket: DefaultAttachmentMaxPerTicket,
+		SSEReplayWindow:        DefaultSSEReplayWindow,
+		SSEMaxStreamsPerPerson: DefaultSSEMaxStreamsPerPerson,
+	}
+	l := &loader{lookup: lookup}
+	l.server(&cfg)
+	l.database(&cfg)
+	l.logging(&cfg)
+	l.sessionKey(&cfg)
+	l.limits(&cfg)
+	l.storage(&cfg)
+	return cfg, errors.Join(l.errs...)
+}
+
+// loader reads variables and collects every problem it finds.
+type loader struct {
+	lookup func(string) (string, bool)
+	errs   []error
+}
+
+func (l *loader) fail(format string, args ...any) {
+	l.errs = append(l.errs, fmt.Errorf(format, args...))
+}
+
+func (l *loader) get(key string) (string, bool) {
+	return nonEmpty(l.lookup, key)
+}
+
+func (l *loader) server(cfg *Config) {
+	if v, ok := l.get(EnvListenAddr); ok {
 		cfg.ListenAddr = v
 	}
-
-	if v, ok := nonEmpty(lookup, EnvDatabaseURL); ok {
-		cfg.DatabaseURL = v
-	} else {
-		errs = append(errs, fmt.Errorf("%s is required", EnvDatabaseURL))
-	}
-
-	if v, ok := nonEmpty(lookup, EnvMigrateOnStart); ok {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %q is not a boolean", EnvMigrateOnStart, v))
-		} else {
-			cfg.MigrateOnStart = b
-		}
-	}
-
-	if v, ok := nonEmpty(lookup, EnvLogLevel); ok {
-		var level slog.Level
-		if err := level.UnmarshalText([]byte(v)); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %q is not one of debug, info, warn, error", EnvLogLevel, v))
-		} else {
-			cfg.LogLevel = level
-		}
-	}
-
-	if v, ok := nonEmpty(lookup, EnvLogFormat); ok {
-		switch strings.ToLower(v) {
-		case LogFormatJSON, LogFormatText:
-			cfg.LogFormat = strings.ToLower(v)
-		default:
-			errs = append(errs, fmt.Errorf("%s: %q is not one of %s, %s", EnvLogFormat, v, LogFormatJSON, LogFormatText))
-		}
-	}
-
-	if v, ok := nonEmpty(lookup, EnvShutdownTimeout); ok {
+	if v, ok := l.get(EnvShutdownTimeout); ok {
 		d, err := time.ParseDuration(v)
 		switch {
 		case err != nil:
-			errs = append(errs, fmt.Errorf("%s: %q is not a duration such as 15s", EnvShutdownTimeout, v))
+			l.fail("%s: %q is not a duration such as 15s", EnvShutdownTimeout, v)
 		case d <= 0:
-			errs = append(errs, fmt.Errorf("%s: must be positive, got %s", EnvShutdownTimeout, d))
+			l.fail("%s: must be positive, got %s", EnvShutdownTimeout, d)
 		default:
 			cfg.ShutdownTimeout = d
 		}
 	}
-
-	if v, ok := nonEmpty(lookup, EnvBaseURL); ok {
+	if v, ok := l.get(EnvBaseURL); ok {
 		cfg.BaseURL = strings.TrimRight(v, "/")
 	}
+}
 
-	return cfg, errors.Join(errs...)
+func (l *loader) database(cfg *Config) {
+	if v, ok := l.get(EnvDatabaseURL); ok {
+		cfg.DatabaseURL = v
+	} else {
+		l.fail("%s is required", EnvDatabaseURL)
+	}
+	if v, ok := l.get(EnvDatabaseOwnerURL); ok {
+		cfg.DatabaseOwnerURL = v
+	}
+	if v, ok := l.get(EnvMigrateOnStart); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			l.fail("%s: %q is not a boolean", EnvMigrateOnStart, v)
+		} else {
+			cfg.MigrateOnStart = b
+		}
+	}
+}
+
+func (l *loader) logging(cfg *Config) {
+	if v, ok := l.get(EnvLogLevel); ok {
+		var level slog.Level
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			l.fail("%s: %q is not one of debug, info, warn, error", EnvLogLevel, v)
+		} else {
+			cfg.LogLevel = level
+		}
+	}
+	if v, ok := l.get(EnvLogFormat); ok {
+		switch strings.ToLower(v) {
+		case LogFormatJSON, LogFormatText:
+			cfg.LogFormat = strings.ToLower(v)
+		default:
+			l.fail("%s: %q is not one of %s, %s", EnvLogFormat, v, LogFormatJSON, LogFormatText)
+		}
+	}
+}
+
+// sessionKey reads the server key. The value is a secret: an error names the
+// variable, never the value.
+func (l *loader) sessionKey(cfg *Config) {
+	v, ok := l.get(EnvSessionKey)
+	if !ok {
+		return
+	}
+	key, err := base64.StdEncoding.DecodeString(v)
+	switch {
+	case err != nil:
+		l.fail("%s is not standard base64", EnvSessionKey)
+	case len(key) < MinSessionKeyBytes:
+		l.fail("%s must decode to at least %d bytes, got %d", EnvSessionKey, MinSessionKeyBytes, len(key))
+	default:
+		cfg.SessionKey = key
+	}
+}
+
+func (l *loader) limits(cfg *Config) {
+	if v, ok := l.get(EnvMaxJSONBody); ok {
+		n, err := parseSize(v)
+		if err != nil {
+			l.fail("%s: %q is not a size such as 1MiB or 0", EnvMaxJSONBody, v)
+		} else {
+			cfg.MaxJSONBody = n
+		}
+	}
+	if v, ok := l.get(EnvRequestTimeout); ok {
+		d, err := time.ParseDuration(v)
+		switch {
+		case err != nil:
+			l.fail("%s: %q is not a duration such as 30s or 0", EnvRequestTimeout, v)
+		case d < 0:
+			l.fail("%s: must not be negative, got %s", EnvRequestTimeout, d)
+		default:
+			cfg.RequestTimeout = d
+		}
+	}
+	if v, ok := l.get(EnvSSEReplayWindow); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			l.fail("%s: %q is not a duration such as 5m", EnvSSEReplayWindow, v)
+		} else {
+			cfg.SSEReplayWindow = d
+		}
+	}
+	for _, c := range []struct {
+		env string
+		dst *int
+	}{{EnvMaxPageSize, &cfg.MaxPageSize}, {EnvMaxQueryLength, &cfg.MaxQueryLength}, {EnvSSEMaxStreamsPerPerson, &cfg.SSEMaxStreamsPerPerson}} {
+		if v, ok := l.get(c.env); ok {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				l.fail("%s: %q is not a count such as 200 or 0", c.env, v)
+			} else {
+				*c.dst = n
+			}
+		}
+	}
+}
+
+// storage reads the object storage: all of endpoint, bucket and both keys,
+// or none of them. The secret key is never echoed.
+func (l *loader) storage(cfg *Config) {
+	if v, ok := l.get(EnvAttachmentMaxBytes); ok {
+		n, err := parseSize(v)
+		if err != nil {
+			l.fail("%s: %q is not a size such as 10MiB or 0", EnvAttachmentMaxBytes, v)
+		} else {
+			cfg.AttachmentMaxBytes = n
+		}
+	}
+	if v, ok := l.get(EnvAttachmentMaxPerTicket); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			l.fail("%s: %q is not a count such as 100 or 0", EnvAttachmentMaxPerTicket, v)
+		} else {
+			cfg.AttachmentMaxPerTicket = n
+		}
+	}
+	st := Storage{PathStyle: true}
+	required := []struct {
+		env string
+		dst *string
+	}{{EnvS3Endpoint, &st.Endpoint}, {EnvS3Bucket, &st.Bucket}, {EnvS3AccessKeyID, &st.AccessKeyID}, {EnvS3SecretAccessKey, &st.SecretAccessKey}}
+	var set, missing []string
+	for _, r := range required {
+		if v, ok := l.get(r.env); ok {
+			*r.dst = v
+			set = append(set, r.env)
+		} else {
+			missing = append(missing, r.env)
+		}
+	}
+	if len(set) == 0 {
+		return
+	}
+	if len(missing) > 0 {
+		l.fail("object storage needs %s together; %s missing", strings.Join([]string{EnvS3Endpoint, EnvS3Bucket, EnvS3AccessKeyID, EnvS3SecretAccessKey}, ", "),
+			strings.Join(missing, ", "))
+		return
+	}
+	if !strings.HasPrefix(st.Endpoint, "http://") && !strings.HasPrefix(st.Endpoint, "https://") {
+		l.fail("%s is not an http:// or https:// URL", EnvS3Endpoint)
+	}
+	st.Region, _ = l.get(EnvS3Region)
+	st.CAFile, _ = l.get(EnvS3CA)
+	if v, ok := l.get(EnvS3UsePathStyle); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			l.fail("%s: %q is not a boolean", EnvS3UsePathStyle, v)
+		}
+		st.PathStyle = b
+	}
+	cfg.Storage = &st
+}
+
+// parseSize reads a byte count: a plain number of bytes, or a number with one
+// of the IEC units KiB, MiB, GiB.
+func parseSize(v string) (int64, error) {
+	units := []struct {
+		suffix string
+		factor int64
+	}{{"GiB", 1 << 30}, {"MiB", 1 << 20}, {"KiB", 1 << 10}, {"B", 1}}
+	factor := int64(1)
+	for _, u := range units {
+		if n, ok := strings.CutSuffix(v, u.suffix); ok {
+			v, factor = strings.TrimSpace(n), u.factor
+			break
+		}
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 || n > (1<<62)/factor {
+		return 0, errors.New("out of range")
+	}
+	return n * factor, nil
 }
 
 // nonEmpty reports a variable that is set to something other than whitespace.

@@ -7,7 +7,11 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 project, over a per-ticket person list, and over encryption of the body. The rules of D6–D9
 were put to the owner with the question and not objected to.
 
-**Not built.** No ticket exists.
+**Partly built** (phase 2, 2026-10-02): D1–D6, D8 and D9 — the `confidential` column, the
+predicate `app_ticket_visible` in every ticket query (a unit test holds the queries to it),
+the flag set on creation and on a change to `live` or `boundary`, the administrator's act to
+set or lift it (lifting with a reason, never an agent's), and the security page on tenancy.
+D7 arrives with the importer.
 
 ## Context
 
@@ -32,7 +36,10 @@ flag's visibility.
 
 **D2 — The flag is set automatically when `security` becomes `live` or `boundary`,** at
 creation or by a later change, and may be set by a tenant administrator by hand for any
-ticket (the HR case).
+ticket (the HR case). *(Made concrete 2026-10-02: "becomes" is a change of the class into one
+of the two — a later edit of a ticket whose class stays `live` does not set again a flag an
+administrator lifted; the setting is an act of its own, `confidential_set`, with the class as
+its reason.)*
 
 **D3 — The flag is never lifted automatically.** Changing `security` back to `hardening` or
 `none`, reaching `done`, reaching `dropped` — none of these lifts it. Only a tenant
@@ -75,6 +82,10 @@ built.
 **D9 — Assigning a confidential ticket to a person is what admits them to it.** The assignee
 sees it from the moment of assignment, which is the way to bring in a reviewer; a per-ticket
 person list beyond assignee and reporter is an amendment when a case needs more than one.
+*(Made concrete 2026-10-02: an assignee must be a member who can see the ticket's project; a
+reassignment drops the former assignee from the circle at once — the answer to that write
+still shows its writer the ticket as written. An agent may reassign a confidential ticket
+until the agent gates are reviewed after experience.)*
 
 ## Consequences
 

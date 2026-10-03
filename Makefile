@@ -22,12 +22,33 @@ COVERAGE_DIR = $(CURDIR)/coverage
 BIN_DIR = $(CURDIR)/bin
 HELM_CHART = deploy/helm/cowork
 
-# Local PostgreSQL for the integration tests (make postgres-up / postgres-down).
+# Local PostgreSQL (make postgres-up / postgres-down). The container's
+# superuser is the administrative role: the integration tests create their own
+# roles and database through it, and `make dev-seed` writes its fixture rows
+# with it. `make postgres-up` also creates the development database `cowork`
+# with its two roles (docs/adr/0021 D2): cowork_owner owns it and runs the
+# migrations, cowork_app is the runtime role `make run` serves as. Every
+# password here is a development value.
 # renovate: datasource=docker depName=postgres
 POSTGRES_IMAGE ?= postgres:18
 POSTGRES_CONTAINER ?= cowork-postgres
 POSTGRES_PORT ?= 5432
-TEST_DATABASE_URL ?= postgres://cowork:cowork@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
+TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_PORT)/postgres?sslmode=disable
+DEV_DATABASE_URL ?= postgres://cowork_app:cowork_app@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
+DEV_DATABASE_OWNER_URL ?= postgres://cowork_owner:cowork_owner@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
+DEV_ADMIN_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
+
+# Local S3-compatible storage (make minio-up / minio-down) for the attachment
+# tests: the MinIO build Chainguard publishes, pinned by digest. Its
+# entrypoint is the minio binary without arguments, so `server /data` is its
+# command. The keys are development values.
+# renovate: datasource=docker depName=cgr.dev/chainguard/minio
+MINIO_IMAGE ?= cgr.dev/chainguard/minio:latest@sha256:0f95aa412a12351a95bb43c3b54b66440eb0aa022bb3f3458942678a489e915b
+MINIO_CONTAINER ?= cowork-minio
+MINIO_PORT ?= 9000
+MINIO_ACCESS_KEY ?= cowork
+MINIO_SECRET_KEY ?= cowork-secret
+TEST_S3_ENDPOINT ?= http://localhost:$(MINIO_PORT)
 
 # Setting SHELL to bash allows bash commands like 'source' to be used
 SHELL = /usr/bin/env bash -o pipefail
@@ -41,6 +62,8 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 GOCYCLO ?= $(LOCALBIN)/gocyclo-$(GOCYCLO_VERSION)
 GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck-$(GOVULNCHECK_VERSION)
+SQLC ?= $(LOCALBIN)/sqlc-$(SQLC_VERSION)
+OAPI_CODEGEN ?= $(LOCALBIN)/oapi-codegen-$(OAPI_CODEGEN_VERSION)
 
 ## Tool Versions
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -51,6 +74,10 @@ GOCYCLO_VERSION ?= v0.6.0
 GOSEC_VERSION ?= v2.29.0
 # renovate: datasource=go depName=golang.org/x/vuln/cmd/govulncheck
 GOVULNCHECK_VERSION ?= v1.8.0
+# renovate: datasource=go depName=github.com/sqlc-dev/sqlc/cmd/sqlc
+SQLC_VERSION ?= v1.31.1
+# renovate: datasource=go depName=github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+OAPI_CODEGEN_VERSION ?= v2.8.0
 
 # gosec bounds: the self-hosted runners share one machine across jobs.
 GOSEC_CONCURRENCY ?= 4
@@ -70,21 +97,38 @@ help: ## Display this help.
 
 ##@ Backend
 
+# Generated Go code is excluded from the complexity and security scans by
+# name; it is checked by the drift check instead.
+GENERATED_GO = _test.go|\.gen\.go|/readq/|/writeq/
+
+.PHONY: generate
+generate: $(SQLC) $(OAPI_CODEGEN) ## Regenerate the data layer (sqlc), the API code (oapi-codegen) and the files generated from the problem catalogue.
+	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/problemdoc
+	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/specbundle
+	cd $(BACKEND_DIR) && $(OAPI_CODEGEN) -config api/oapi-codegen.yaml api/openapi.gen.json
+	cd $(BACKEND_DIR) && $(SQLC) generate
+
+.PHONY: generate-check
+generate-check: generate ## Fail when a generated file differs from what make generate writes (docs/adr/0027 D1, docs/adr/0046 D2).
+	@git diff --exit-code -- $(BACKEND_DIR) README.md || { echo "generated files are out of date: run make generate and commit the result"; exit 1; }
+	@untracked=$$(git ls-files --others --exclude-standard -- $(BACKEND_DIR)); if [ -n "$$untracked" ]; then echo "make generate wrote untracked files:"; echo "$$untracked"; exit 1; fi
+
 .PHONY: fmt
 fmt: ## Run gofmt against the backend.
-	cd $(BACKEND_DIR) && $(GOFMT) -s -w cmd internal test
+	cd $(BACKEND_DIR) && $(GOFMT) -s -w api cmd internal test tools
 
 .PHONY: vet
 vet: ## Run go vet against the backend, integration tests included.
 	cd $(BACKEND_DIR) && $(GOCMD) vet ./... && $(GOCMD) vet -tags=integration ./test/...
 
 .PHONY: lint
-lint: golangci-lint ## Run the backend static analysis (vet, gofmt -l, golangci-lint).
+lint: golangci-lint $(SQLC) ## Run the backend static analysis (vet, gofmt -l, golangci-lint, sqlc compile).
 	@echo "Running static analysis..."
 	cd $(BACKEND_DIR) && $(GOCMD) vet ./...
-	@cd $(BACKEND_DIR) && unformatted=$$($(GOFMT) -l cmd internal test); if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
+	@cd $(BACKEND_DIR) && unformatted=$$($(GOFMT) -l api cmd internal test tools); if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 	cd $(BACKEND_DIR) && $(GOLANGCI_LINT) run --timeout=5m
 	cd $(BACKEND_DIR) && $(GOLANGCI_LINT) run --timeout=5m --build-tags=integration ./test/...
+	cd $(BACKEND_DIR) && $(SQLC) compile
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint and apply the fixes it offers.
@@ -93,11 +137,11 @@ lint-fix: golangci-lint ## Run golangci-lint and apply the fixes it offers.
 .PHONY: cyclo
 cyclo: $(GOCYCLO) ## Fail on any backend function above the cyclomatic complexity threshold.
 	@echo "Running cyclomatic complexity analysis (threshold: $(CYCLO_THRESHOLD))..."
-	@cd $(BACKEND_DIR) && $(GOCYCLO) -over $(CYCLO_THRESHOLD) -ignore "_test.go" cmd internal test && echo "All functions are below complexity threshold $(CYCLO_THRESHOLD)" || (echo "Functions above complexity threshold $(CYCLO_THRESHOLD) found!" && exit 1)
+	@cd $(BACKEND_DIR) && $(GOCYCLO) -over $(CYCLO_THRESHOLD) -ignore "$(GENERATED_GO)" api cmd internal test tools && echo "All functions are below complexity threshold $(CYCLO_THRESHOLD)" || (echo "Functions above complexity threshold $(CYCLO_THRESHOLD) found!" && exit 1)
 
 .PHONY: cyclo-report
 cyclo-report: $(GOCYCLO) ## Show the 20 most complex backend functions, tests included.
-	@cd $(BACKEND_DIR) && $(GOCYCLO) -top 20 cmd internal test
+	@cd $(BACKEND_DIR) && $(GOCYCLO) -top 20 -ignore "$(GENERATED_GO)" api cmd internal test tools
 
 # No -short and no testing.Short() gates: a test that CI never runs is not a test.
 .PHONY: test-unit
@@ -111,22 +155,28 @@ test-unit-coverage: ## Run the backend unit tests with a coverage profile in cov
 	@mkdir -p $(COVERAGE_DIR)
 	cd $(BACKEND_DIR) && $(GOTEST) -v -count=1 -coverprofile=$(COVERAGE_DIR)/unit.out -covermode=atomic ./...
 
-# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL; the
-# variable defaults to the container that `make postgres-up` starts.
+# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL and an
+# S3-compatible server at COWORK_TEST_S3_*; the variables default to the
+# containers `make postgres-up` and `make minio-up` start.
+TEST_ENV = COWORK_TEST_DATABASE_URL="$${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}" \
+	COWORK_TEST_S3_ENDPOINT="$${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)}" \
+	COWORK_TEST_S3_ACCESS_KEY_ID="$${COWORK_TEST_S3_ACCESS_KEY_ID:-$(MINIO_ACCESS_KEY)}" \
+	COWORK_TEST_S3_SECRET_ACCESS_KEY="$${COWORK_TEST_S3_SECRET_ACCESS_KEY:-$(MINIO_SECRET_KEY)}"
+
 .PHONY: test-integration
-test-integration: ## Run the backend integration tests against PostgreSQL (make postgres-up first).
-	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}..."
-	cd $(BACKEND_DIR) && COWORK_TEST_DATABASE_URL="$${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}" $(GOTEST) -v -tags=integration -count=1 -timeout=10m ./test/integration/...
+test-integration: ## Run the backend integration tests against PostgreSQL and S3 (make postgres-up minio-up first).
+	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)} and $${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)}..."
+	cd $(BACKEND_DIR) && $(TEST_ENV) $(GOTEST) -v -tags=integration -count=1 -timeout=10m ./test/integration/...
 
 .PHONY: test-integration-coverage
 test-integration-coverage: ## Run the backend integration tests with a coverage profile in coverage/integration.out.
 	@echo "Running integration tests with coverage..."
 	@mkdir -p $(COVERAGE_DIR)
-	cd $(BACKEND_DIR) && COWORK_TEST_DATABASE_URL="$${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}" $(GOTEST) -v -tags=integration -count=1 -timeout=10m -coverprofile=$(COVERAGE_DIR)/integration.out -covermode=atomic -coverpkg=./... ./test/integration/...
+	cd $(BACKEND_DIR) && $(TEST_ENV) $(GOTEST) -v -tags=integration -count=1 -timeout=10m -coverprofile=$(COVERAGE_DIR)/integration.out -covermode=atomic -coverpkg=./... ./test/integration/...
 
 .PHONY: gosec
 gosec: $(GOSEC) ## Run the gosec security scan on the backend.
-	cd $(BACKEND_DIR) && GOFLAGS="-buildvcs=false -p=$(GOSEC_CONCURRENCY)" GOMEMLIMIT=$(GOSEC_MEMLIMIT) $(GOSEC) -concurrency=$(GOSEC_CONCURRENCY) ./...
+	cd $(BACKEND_DIR) && GOFLAGS="-buildvcs=false -p=$(GOSEC_CONCURRENCY)" GOMEMLIMIT=$(GOSEC_MEMLIMIT) $(GOSEC) -concurrency=$(GOSEC_CONCURRENCY) -exclude-generated ./...
 
 .PHONY: vuln
 vuln: $(GOVULNCHECK) ## Check the backend dependencies for known vulnerabilities.
@@ -137,12 +187,16 @@ build-backend: fmt vet ## Build bin/cowork.
 	cd $(BACKEND_DIR) && CGO_ENABLED=0 $(GOCMD) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/cowork ./cmd/cowork
 
 .PHONY: run
-run: ## Run the backend from source against the local PostgreSQL (COWORK_DATABASE_URL overrides).
-	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(TEST_DATABASE_URL)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run -ldflags="$(LDFLAGS)" ./cmd/cowork serve
+run: ## Run the backend from source against the development database of make postgres-up; migrates on start as cowork_owner; a throw-away server key unless COWORK_SESSION_KEY is set.
+	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(DEV_DATABASE_URL)}" COWORK_DATABASE_OWNER_URL="$${COWORK_DATABASE_OWNER_URL:-$(DEV_DATABASE_OWNER_URL)}" COWORK_SESSION_KEY="$${COWORK_SESSION_KEY:-$$(openssl rand -base64 32)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run -ldflags="$(LDFLAGS)" ./cmd/cowork serve
 
 .PHONY: migrate
-migrate: ## Apply the pending migrations to the local PostgreSQL (COWORK_DATABASE_URL overrides).
-	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(TEST_DATABASE_URL)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run ./cmd/cowork migrate
+migrate: ## Apply the pending migrations to the development database as cowork_owner.
+	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(DEV_DATABASE_URL)}" COWORK_DATABASE_OWNER_URL="$${COWORK_DATABASE_OWNER_URL:-$(DEV_DATABASE_OWNER_URL)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run ./cmd/cowork migrate
+
+.PHONY: dev-seed
+dev-seed: migrate ## Create a development person, tenant, admin membership and token, and print the token once (docs/adr/0038 D7).
+	cd $(BACKEND_DIR) && COWORK_DEV_SEED_DATABASE_URL="$${COWORK_DEV_SEED_DATABASE_URL:-$(DEV_ADMIN_URL)}" $(GOCMD) run ./test/devseed
 
 ##@ Frontend
 
@@ -162,7 +216,7 @@ frontend-test: frontend-install ## Run the frontend unit tests once (vitest, jsd
 	cd $(FRONTEND_DIR) && CI=true npx ng test --watch=false
 
 .PHONY: frontend-test-coverage
-frontend-test-coverage: frontend-install ## Run the frontend unit tests with coverage in frontend/coverage/.
+frontend-test-coverage: frontend-install ## Run the frontend unit tests with coverage in frontend/coverage/frontend/.
 	cd $(FRONTEND_DIR) && CI=true npx ng test --watch=false --coverage --coverage-reporters=text-summary --coverage-reporters=lcovonly --coverage-reporters=json-summary
 
 .PHONY: frontend-build
@@ -189,13 +243,34 @@ test-release-tooling: ## Verify the semantic-release dependency set renders rele
 .PHONY: postgres-up
 postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
 	@docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1 && echo "$(POSTGRES_CONTAINER) already exists" || \
-	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_USER=cowork -e POSTGRES_PASSWORD=cowork -e POSTGRES_DB=cowork -p $(POSTGRES_PORT):5432 $(POSTGRES_IMAGE)
+	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(POSTGRES_PORT):5432 $(POSTGRES_IMAGE)
 	@echo "Waiting for PostgreSQL..."
-	@for i in $$(seq 1 30); do docker exec $(POSTGRES_CONTAINER) pg_isready -U cowork -d cowork >/dev/null 2>&1 && echo "PostgreSQL is ready on port $(POSTGRES_PORT)" && exit 0; sleep 1; done; echo "PostgreSQL did not become ready"; exit 1
+	@for i in $$(seq 1 30); do docker exec $(POSTGRES_CONTAINER) pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; [ $$i -lt 30 ] || { echo "PostgreSQL did not become ready"; exit 1; }; done
+	@docker exec $(POSTGRES_CONTAINER) psql -U postgres -q -v ON_ERROR_STOP=1 -c "DO \$$\$$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_owner') THEN CREATE ROLE cowork_owner LOGIN PASSWORD 'cowork_owner'; END IF; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_app') THEN CREATE ROLE cowork_app LOGIN PASSWORD 'cowork_app'; END IF; END \$$\$$;"
+	@docker exec $(POSTGRES_CONTAINER) psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'cowork'" | grep -q 1 || docker exec $(POSTGRES_CONTAINER) psql -U postgres -q -c "CREATE DATABASE cowork OWNER cowork_owner"
+	@echo "PostgreSQL is ready on port $(POSTGRES_PORT): database cowork, owner role cowork_owner, runtime role cowork_app"
 
 .PHONY: postgres-down
 postgres-down: ## Remove the local PostgreSQL container and its data.
 	docker rm -f $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
+
+.PHONY: verify-phase-2
+verify-phase-2: ## Verify phase 2 by hand: both built images against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
+	POSTGRES_CONTAINER=$(POSTGRES_CONTAINER) POSTGRES_PORT=$(POSTGRES_PORT) MINIO_PORT=$(MINIO_PORT) \
+	MINIO_ACCESS_KEY=$(MINIO_ACCESS_KEY) MINIO_SECRET_KEY=$(MINIO_SECRET_KEY) \
+	BACKEND_IMG=$(BACKEND_IMG) FRONTEND_IMG=$(FRONTEND_IMG) hack/verify-phase-2.sh
+
+.PHONY: minio-up
+minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests.
+	@docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1 && echo "$(MINIO_CONTAINER) already exists" || \
+	    docker run -d --name $(MINIO_CONTAINER) -p $(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data
+	@echo "Waiting for MinIO..."
+	@for i in $$(seq 1 30); do curl -sf http://localhost:$(MINIO_PORT)/minio/health/live >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { echo "MinIO did not become ready"; exit 1; }; done
+	@echo "MinIO is ready on port $(MINIO_PORT): access key $(MINIO_ACCESS_KEY); the tests create their own bucket"
+
+.PHONY: minio-down
+minio-down: ## Remove the local MinIO container and its data.
+	docker rm -f $(MINIO_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: coverage-merge
 coverage-merge: ## Merge coverage/unit.out and coverage/integration.out into coverage/combined.out.
@@ -265,6 +340,12 @@ $(GOSEC): $(LOCALBIN)
 
 $(GOVULNCHECK): $(LOCALBIN)
 	$(call go-install-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+
+$(SQLC): $(LOCALBIN)
+	$(call go-install-tool,$(SQLC),github.com/sqlc-dev/sqlc/cmd/sqlc,$(SQLC_VERSION))
+
+$(OAPI_CODEGEN): $(LOCALBIN)
+	$(call go-install-tool,$(OAPI_CODEGEN),github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen,$(OAPI_CODEGEN_VERSION))
 
 # go-install-tool 'go install's a package into $(LOCALBIN) under the versioned
 # path its variable names. $1 - target path, ending in -$3; $2 - package;

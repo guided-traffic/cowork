@@ -8,7 +8,9 @@ after restore, over cowork-made backups, over automatic exports into the same ob
 and over documentation alone. The rules of D4–D6 were put to the owner with the question and
 not objected to.
 
-**Not built.** No export, no consistency check.
+**Partly built** (phase 2, 2026-10-02): D3 for the one export that exists (a ticket's
+`/markdown`) and D4's honest `404` for an attachment whose bytes are missing; the project and
+tenant export, the consistency check, the restore steps and D6 arrive with the export.
 
 ## Context
 

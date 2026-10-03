@@ -11,49 +11,96 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: skeleton.** The backend, the frontend, the schema migration, the chart and the
-> pipeline exist and are tested. Tenants, projects, tickets, users, OIDC and tokens are
-> decided in [docs/planning/](docs/planning/) before they are built; the order is
+> **Status: phase 2 — the core domain and its API.** Tenants, projects and tickets — with
+> links, state transitions, open questions, comments, interest, progress, time entries and
+> attachments — the audit record and the event stream exist behind a token-authenticated JSON
+> API, tested against PostgreSQL 18 and MinIO. There is no login and no UI beyond the shell
+> yet: persons, tenants and tokens come from `make dev-seed` in development, and an
+> installation has no way to create them until the login arrives. What comes next is
 > [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
 flowchart LR
   B[Browser] --> F
-  C[Claude Code<br/>MCP + PAT] --> F
+  C[Claude Code<br/>personal access token] --> F
   F[cowork-frontend<br/>nginx + Angular bundle] -->|/api/ proxied| S
   K[kubelet] -->|/healthz /readyz| S
-  S[cowork-backend<br/>Go API] --> P[(PostgreSQL 18)]
-  S -. migrates on start .-> P
+  M[migrate<br/>init container] -->|owner role| P
+  S[cowork-backend<br/>Go API] -->|runtime role| P[(PostgreSQL 18)]
+  S -->|attachments| O[(S3-compatible<br/>object storage)]
 ```
 
 ## ✨ Key features
 
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
-- 🗄️ **Schema migrations on start** — embedded SQL, applied by the backend before it listens, serialised across replicas with a database advisory lock; switchable off for a migration Job.
-- 🐘 **PostgreSQL 18** — `uuidv7()` keys and nothing older than 18.
-- ⎈ **One Helm chart** — two hardened Deployments, the database credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API.
-- 🧪 **Tested in every layer** — Go unit and integration tiers, Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
+- 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
+- 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, the only way in until the login exists; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 🛡️ **Tenants isolated twice** — every query names its tenant, and forced row-level security under a runtime role that owns nothing backs it; the backend refuses a role that could bypass it.
+- 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
+- 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; `ETag` and `If-Match` keep two writers from overwriting each other.
+- 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
+- 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
+- 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
+- ⎈ **One Helm chart** — two hardened Deployments, every credential from an existing Secret, nginx sized from the backend's limits, no RBAC because neither container talks to the Kubernetes API.
+- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18 and MinIO with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
 - 🆕 **Newest toolchains** — Go 1.27 and Angular 22, moved by Renovate as grouped updates.
 - 🗂️ **Documentation with five homes** — decisions in ADRs, work lists in tickets that get archived, one security page per perspective.
-- 🧭 **Planned, not guessed** — a question catalog with options and recommendations, worked one decision at a time.
+- 🧭 **Decided, then built** — every founding question was put to the owner one at a time and became an ADR before the code that depends on it.
 
 ## 📛 Naming conventions
 
 ### Environment variables
 
 Every backend setting is `COWORK_<NAME>`; the full table is under [Configuration](#configuration).
-The frontend container takes one variable, `BACKEND_URL`.
+The frontend container substitutes four variables into its nginx configuration, `BACKEND_URL`,
+`NGINX_LOCAL_RESOLVERS`, `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT`
+([frontend container](#frontend-container)). The integration tier reads
+`COWORK_TEST_DATABASE_URL` and `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`,
+`_SECRET_ACCESS_KEY`; `make dev-seed` reads `COWORK_DEV_SEED_DATABASE_URL`.
 
 ### Kubernetes objects (Helm chart)
 
 | Object | Name | Notes |
 |---|---|---|
-| Backend Deployment and Service | `<fullname>-backend` | `<fullname>` is `<release>-cowork`, or `cowork` when the release name contains it; `fullnameOverride` replaces it |
+| Backend Deployment and Service | `<fullname>-backend` | `<fullname>` is `<release>-cowork`, or the release name itself when it contains `cowork`; `fullnameOverride` replaces it |
 | Frontend Deployment and Service | `<fullname>-frontend` | the Ingress targets this Service |
+| Ingress | `<fullname>` | only with `ingress.enabled` |
 | ServiceAccount | `<fullname>` | shared by both pods, no token mounted |
+| Init container of the backend pod | `migrate` | runs `cowork migrate` as the owner role; only with `backend.config.migrateOnStart` |
 | Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url` |
+| Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while `backend.config.migrateOnStart` is true |
+| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret` | only with the inline URLs (the owner's while `migrateOnStart` is true); a changed URL rolls the pods |
+| CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with `storage.endpoint` and `storage.tls.caConfigMap` |
 | Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
 | Container ports | `http`, `8080` on both containers | `backend.containerPort`; the frontend's is fixed by the nginx configuration |
+
+### Keys and identifiers
+
+| Thing | Pattern | Example |
+|---|---|---|
+| Tenant slug | 2–63 characters of `a-z`, `0-9` and `-`, not starting with `-` | `acme` |
+| Project key | 2–10 characters: an upper-case letter, then `A-Z` and `0-9`; no hyphen; never reused in its tenant | `COW` |
+| Ticket key | `<tenant-slug>/<PROJECT>-<number>`; the number counts per project from 1, is never reused and ends at 2147483647 | `acme/COW-42` |
+| Short ticket key | `<PROJECT>-<number>`, where the path fixes the tenant | `COW-42` |
+| Question | its number within the ticket, from 1 | `…/tickets/42/questions/1` |
+| Every other id | a UUIDv7 | `0199a3c2-1d2e-7f00-8000-000000000001` |
+| Personal access token | `cwk_` and 43 base62 characters; cowork stores its SHA-256 only | — |
+| Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
+| Request id | `X-Request-Id`, a UUIDv7 the backend makes (an inbound one is ignored); the same value is `request_id` in a problem body and in the request log | — |
+| Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
+| Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
+| Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`; the control events `resync` and `unavailable` | — |
+
+### Development environment
+
+| Thing | Name | Notes |
+|---|---|---|
+| PostgreSQL container | `cowork-postgres`, `postgres:18` on `localhost:5432` | `make postgres-up`; `POSTGRES_CONTAINER=` and `POSTGRES_PORT=` move it |
+| Development database | `cowork`, owned by `cowork_owner`, served as `cowork_app` | created by `make postgres-up`; each password is the role's name |
+| MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
+| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; the database is dropped at the end, the bucket stays until `make minio-down` |
+| Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
 
 ### Files and images
 
@@ -65,53 +112,93 @@ The frontend container takes one variable, `BACKEND_URL`.
 | Go module | `github.com/guided-traffic/cowork/backend` | — |
 | Angular project | `frontend`, output `frontend/dist/frontend/browser/` | — |
 | Ticket (interim, in this repository) | `docs/tickets/NNN-<kebab-slug>.md`, `id: T<n>` | rules in [docs/tickets/README.md](docs/tickets/README.md) |
-| Ticket key in cowork | undecided | question Q-A4 in [the catalog](docs/planning/questions.md) |
+| API document | `backend/api/openapi.yaml` and one file per path family, bundled by `make generate` into `backend/api/openapi.gen.json` | served at `/api/v1/openapi.json` |
 
 ### HTTP
 
 | Path | Backend | Frontend (nginx) |
 |---|---|---|
 | `/healthz` | liveness | nginx's own health, `{"status":"ok"}` |
-| `/readyz` | readiness: a database ping | not served (backend Service only) |
-| `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged |
+| `/readyz` | readiness: a database ping | not proxied: nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend — the backend's `/readyz` is reached through the backend Service |
+| `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged; the `413`, `502`, `503` and `504` nginx answers itself are problem bodies without a `request_id` |
+| `/api/v1/tenants/<slug>/events` | the event stream | proxied unbuffered and uncached, with a read timeout of one hour |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
-| everything else | `404` JSON | `index.html` with `Cache-Control: no-store` |
+| everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
+
+| Media type | Where |
+|---|---|
+| `application/json` | request bodies and responses |
+| `application/problem+json; charset=utf-8` | every error |
+| `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id` |
+| `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
+| `text/markdown; charset=utf-8` | a ticket's canonical Markdown |
+| `text/event-stream` | the event stream |
 
 ## 📚 Documentation
 
 | Document | What it is for |
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
-| [docs/operations/](docs/operations/README.md) | Installing and running: installation, runtime behaviour |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules |
-| [docs/planning/](docs/planning/) | The question catalog, the project plan, the VS Code workflow plan — consumed into ADRs and tickets as work proceeds |
+| [docs/planning/](docs/planning/) | The project plan and the VS Code workflow plan — consumed into ADRs and tickets as work proceeds; the question catalog is consumed already |
 | [CLAUDE.md](CLAUDE.md) | The working rules for an LLM session in this repository |
 
 ## 🚀 Fast start
 
 ### Prerequisites
 
-Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and the images), Helm 3 or 4.
-`make help` lists every target.
+Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and MinIO and the images),
+Helm 3 or 4, `openssl`. `make help` lists every target.
 
 ### Run it locally
 
 ```bash
-make postgres-up        # postgres:18 on localhost:5432, user/password/db = cowork
-make run                # backend: migrates, then serves on :8080 (text logs)
-make frontend-serve     # frontend: Angular dev server on :4200, /api proxied to :8080
-curl -s localhost:8080/readyz          # {"status":"ready"}
-curl -s localhost:4200/api/v1/version  # through the dev-server proxy
-open http://localhost:4200
+make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves)
+make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
+make run                # the backend on :8080: migrates as cowork_owner, serves as cowork_app (text logs)
+make frontend-serve     # the Angular dev server on :4200, /api proxied to :8080
+```
+
+`make run` needs no server key: it makes a throw-away one per start, so list cursors from an
+earlier run answer `invalid_cursor`. Until the login exists a token is the only way in, and
+`make dev-seed` makes one: an agent's token with scope `write` and every capability, so its
+creating `POST`s carry an `Idempotency-Key`.
+
+```bash
+TOKEN=cwk_…             # the token make dev-seed printed
+AUTH="Authorization: Bearer $TOKEN"
+curl -s localhost:8080/readyz                          # {"status":"ready"}
+curl -s -H "$AUTH" localhost:8080/api/v1/me            # the person and the tenant dev
+curl -s -H "$AUTH" -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: application/json' \
+  -d '{"key":"COW","name":"cowork"}' localhost:8080/api/v1/tenants/dev/projects
+curl -s -H "$AUTH" -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: application/json' \
+  -d '{"type":"task","title":"Try cowork","severity":"low","security":"none","effort":"XS"}' \
+  localhost:8080/api/v1/tenants/dev/projects/COW/tickets   # the ticket dev/COW-1
+curl -s -H "$AUTH" localhost:8080/api/v1/tickets/dev/COW-1                       # by its key
+curl -s -H "$AUTH" localhost:8080/api/v1/tenants/dev/projects/COW/tickets/1/markdown
+open http://localhost:4200                             # the UI shell
+```
+
+Without object storage the backend refuses uploads (`501 uploads_disabled`). To try
+attachments, start MinIO, create a bucket with any S3 client — no target creates one — and
+hand the backend its keys:
+
+```bash
+make minio-up           # MinIO on :9000, root keys cowork / cowork-secret
+mc alias set local http://localhost:9000 cowork cowork-secret && mc mb local/cowork
+COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
+  COWORK_S3_ACCESS_KEY_ID=cowork COWORK_S3_SECRET_ACCESS_KEY=cowork-secret make run
 ```
 
 ### Run the tests
 
 ```bash
-make test               # backend unit + frontend unit
-make test-integration   # against the container from make postgres-up
+make test                       # backend unit + frontend unit
+make postgres-up minio-up       # the integration tier needs both
+make test-integration           # a database and a bucket of its own per run
 make lint frontend-lint helm-lint
 ```
 
@@ -123,18 +210,32 @@ make docker-build       # guidedtraffic/cowork-backend:latest and guidedtraffic/
 
 ### Install on Kubernetes
 
+The database comes first: one PostgreSQL 18 database, an owner role that owns it and a
+runtime role that owns nothing — both created by you, as
+[installation.md](docs/operations/installation.md#the-database-and-its-two-roles) shows.
+
 ```bash
+kubectl create namespace cowork
 kubectl -n cowork create secret generic cowork-database \
-  --from-literal=databaseUrl='postgres://cowork:CHANGE-ME@postgres:5432/cowork?sslmode=require'
-helm upgrade --install cowork deploy/helm/cowork -n cowork --create-namespace \
+  --from-literal=databaseUrl='postgres://cowork_app:CHANGE-ME@postgres:5432/cowork?sslmode=require'
+kubectl -n cowork create secret generic cowork-database-owner \
+  --from-literal=databaseUrl='postgres://cowork_owner:CHANGE-ME@postgres:5432/cowork?sslmode=require'
+kubectl -n cowork create secret generic cowork-session \
+  --from-literal=sessionKey="$(openssl rand -base64 32)"
+helm upgrade --install cowork deploy/helm/cowork -n cowork \
   --set backend.image.repository=<registry>/cowork-backend --set backend.image.tag=<tag> \
   --set frontend.image.repository=<registry>/cowork-frontend --set frontend.image.tag=<tag> \
-  --set database.existingSecret=cowork-database
+  --set database.existingSecret=cowork-database \
+  --set database.owner.existingSecret=cowork-database-owner \
+  --set session.existingSecret=cowork-session
 kubectl -n cowork port-forward svc/cowork-frontend 8080:80     # the UI, /api/ proxied
 ```
 
-There is no published image or chart repository yet. Details, Ingress and the CloudNativePG
-note: [docs/operations/installation.md](docs/operations/installation.md).
+Attachments need an S3-compatible bucket and three more values; without them uploads are
+refused. Nobody can sign in to an installation yet: persons, tenants and tokens arrive with the
+login. There is no published image or chart repository yet. Details — the roles, the Secrets,
+the object storage, the Ingress annotations, the CloudNativePG note:
+[docs/operations/installation.md](docs/operations/installation.md).
 
 <details>
 <summary>Upgrade and uninstall</summary>
@@ -142,11 +243,11 @@ note: [docs/operations/installation.md](docs/operations/installation.md).
 ```bash
 helm upgrade cowork deploy/helm/cowork -n cowork --reuse-values \
   --set backend.image.tag=<new> --set frontend.image.tag=<new>
-helm uninstall cowork -n cowork      # the database is left untouched
+helm uninstall cowork -n cowork      # the database and the bucket are left untouched
 ```
 
-The new backend pod migrates the schema before it listens; see
-[docs/operations/runtime.md](docs/operations/runtime.md).
+The new backend pods migrate the schema in their init container before the server starts; see
+[docs/operations/runtime.md](docs/operations/runtime.md#the-migration-run).
 
 </details>
 
@@ -154,51 +255,264 @@ The new backend pod migrates the schema before it listens; see
 
 ### Configuration
 
-Every variable is read once at backend start; an invalid value or a missing required one ends
-the process with every problem listed. Source: [`backend/internal/config/config.go`](backend/internal/config/config.go).
+Every variable is read once at backend start. Invalid values and missing required ones end the
+process with exit code 1: every problem the configuration has is listed together, and what only
+`serve` or `migrate` needs is checked once the rest passes. An error names the variable and
+quotes a rejected setting such as a size or a duration, never the value of a URL, a key or a
+secret. Source: [`backend/internal/config/config.go`](backend/internal/config/config.go). A
+size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is a Go duration
+(`30s`, `5m`). Where a limit takes `0`, `0` switches it off —
+[runtime.md, limits](docs/operations/runtime.md#limits) says what that costs.
+
+**Server and database**
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_DATABASE_URL` | — (required) | `postgres://user:pass@host:5432/db?sslmode=require` | The PostgreSQL 18 connection URL. The role owns the schema: migrations run under it. Never log it, never put it in Helm values outside a throw-away install |
+| `COWORK_DATABASE_URL` | — (required) | `postgres://cowork_app:…@postgres:5432/cowork?sslmode=require` `# example` | The runtime role's connection URL; every request runs as this role. It must not be a superuser, have `BYPASSRLS`, own a relation of the schema or be a member of the owner role — `serve` and `migrate` refuse it otherwise. `pool_max_conns=<n>` in the URL sizes the connection pool. **Security:** a credential: from a Secret. cowork never logs it; a URL pgx cannot parse appears in the startup error with its password masked, which pgx does on a best-effort basis |
+| `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the `migrate` init container only |
+| `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container |
+| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key; it signs the list cursors. Every replica needs the same key, and a new key invalidates the cursors clients hold (`400 invalid_cursor`). **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
-| `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | Apply pending migrations before listening. `false` for installations that run `cowork migrate` in a Job |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
 | `COWORK_LOG_FORMAT` | `json` `# default` | `json`, `text` | `text` for a terminal |
-| `COWORK_SHUTDOWN_TIMEOUT` | `15s` `# default` | a positive Go duration | Drain bound after `SIGTERM`; keep it below the pod's grace period |
+| `COWORK_SHUTDOWN_TIMEOUT` | `15s` `# default` | a positive duration | Drain bound after `SIGTERM`; the event streams end as the drain begins. A drain that outlasts it ends the process with exit 1. Keep it below the pod's grace period |
 | `COWORK_BASE_URL` | empty `# default` | `https://cowork.example.com` `# example` | The public URL. Read by nothing today; OIDC redirects will need it |
 
-The frontend container reads one variable:
+**Limits** ([ADR 0039](docs/adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md))
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `BACKEND_URL` | `http://localhost:8080` `# default` (image); the backend Service `# chart` | Where nginx proxies `/api/`. Rendered into the configuration at start and resolved per request through the cluster DNS; besides it only `NGINX_LOCAL_RESOLVERS`, set by the image entrypoint, is substituted |
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large` |
+| `COWORK_REQUEST_TIMEOUT` | `30s` `# default` | a duration, not negative; `0` disables | A request still running is cancelled and answered `504 timeout`; the event stream is exempt |
+| `COWORK_MAX_PAGE_SIZE` | `200` `# default` | a count; `0` disables | The largest page a list returns; a larger `limit` is clamped, not refused |
+| `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` is `400 validation_failed` |
+| `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` `# default` | a size; `0` disables | The largest upload; above it `413`, before anything is stored. Uploads are buffered in memory: with `0` one upload at a time is read whole, whatever its size ([docs/security/attachments.md](docs/security/attachments.md#h-12)) |
+| `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` `# default` | a count; `0` disables | The attachments one ticket takes; one more is `409 attachment_limit` |
+
+**Object storage** ([ADR 0016](docs/adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) —
+the endpoint, the bucket and both keys together, or none of them. Without them uploads answer
+`501 uploads_disabled` and the log warns at start; the other three are read only with them.
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_S3_ENDPOINT` | empty `# default` | `https://s3.example.com` `# example` | `http://` or `https://`, a host and an optional port. Not contacted at start; the first upload is the test |
+| `COWORK_S3_BUCKET` | empty `# default` | `cowork` `# example` | The bucket; it must exist — the backend never creates one |
+| `COWORK_S3_ACCESS_KEY_ID` | empty `# default` | `cowork-app` `# example` | The access key's id |
+| `COWORK_S3_SECRET_ACCESS_KEY` | empty `# default` | — | **Security:** a secret, never echoed; the key of a policy that reaches this bucket only, never root credentials |
+| `COWORK_S3_REGION` | empty `# default` | `eu-central-1` `# example` | Empty lets the client ask the server |
+| `COWORK_S3_USE_PATH_STYLE` | `true` `# default` | `true`, `false` | Path-style addressing, as MinIO expects; `false` for virtual-host style |
+| `COWORK_S3_CA` | empty `# default` | `/etc/cowork/s3-ca/ca.crt` `# example` | A PEM file of a private authority, trusted in addition to the system's |
+
+**Event stream** ([ADR 0054](docs/adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md))
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_SSE_REPLAY_WINDOW` | `5m` `# default` | a duration, not negative | How long a replica keeps events for a reconnect's `Last-Event-ID`; beyond it the stream starts with `resync`. `0` keeps no replay |
+| `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10` `# default` | a count; `0` disables | The streams one person holds on one replica; one more closes the oldest with `event: unavailable` |
+
+#### Frontend container
+
+The image's entrypoint substitutes these four variables into the nginx configuration, and
+nothing else:
+
+| Variable | Image default | The chart sets it to | Meaning |
+|---|---|---|---|
+| `BACKEND_URL` | `http://backend:8080` | the backend Service, `http://<fullname>-backend:8080` | Where nginx proxies `/api/`; resolved per request (cached 30 s), so the frontend starts before the backend |
+| `NGINX_LOCAL_RESOLVERS` | the nameservers of `/etc/resolv.conf`, exported by the entrypoint (`NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true`) | — | The DNS servers of that lookup |
+| `NGINX_CLIENT_MAX_BODY_SIZE` | `11m` | the larger of `backend.config.maxJsonBody` and `attachmentMaxBytes`, rounded up to MiB, plus 1 MiB; `0` (no limit) when either is `0` | nginx's body limit, kept above the backend's so the backend answers its own `413` |
+| `NGINX_PROXY_READ_TIMEOUT` | `40s` | `backend.config.requestTimeout` plus 10 s; `3600s` when it is `0` | nginx's read timeout on `/api/`, kept above the backend's so the backend answers its own `504`; the event stream has an hour of its own |
 
 ### CLI (backend)
 
 | Command | Does |
 |---|---|
-| `cowork serve` | Load configuration, migrate (unless disabled), connect, listen until `SIGINT`/`SIGTERM` |
-| `cowork migrate` | Load configuration, apply pending migrations, exit 0; exit 1 on a dirty or failing schema |
+| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; listen until `SIGINT`/`SIGTERM` |
+| `cowork migrate` | Load the configuration (`COWORK_DATABASE_URL` names the runtime role the migrations grant to, `COWORK_DATABASE_OWNER_URL` is the role they run as); apply pending migrations; exit 0. Exit 1 on a dirty or failing schema or a runtime role that could bypass row-level security |
 | `cowork version` | Print `cowork <version> (commit <sha>, built <epoch>)` |
-| `cowork help` | Print the usage |
+| `cowork help` | Print the usage (also `-h`, `--help`) |
 
 Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command or no command.
 
 ### API (backend)
 
-| Method and path | Status | Body |
-|---|---|---|
-| `GET /healthz` | `200` | `{"status":"ok"}` — the process serves |
-| `GET /readyz` | `200` / `503` | `{"status":"ready"}` / problem details with `code: not_ready` and the ping error as `detail` |
-| `GET /api/v1/version` | `200` | `{"version":"…","commit":"…","buildTime":"…"}` |
-| other methods on those paths | `405` | `Allow: GET, HEAD`, problem details with `code: method_not_allowed` |
-| any other path | `404` | problem details with `code: not_found` and `detail: no route <METHOD> <path>` |
+The contract is the OpenAPI 3.1 document in [`backend/api/`](backend/api/openapi.yaml)
+([ADR 0046](docs/adr/0046-spec-first-the-openapi-document-is-the-contract.md)); the backend
+serves it at `/api/v1/openapi.json` with `info.version` set to its own version, and validates
+every request against it. What this section says in one line per route, the document says in
+full.
 
-Every response carries `Content-Type: application/json; charset=utf-8` and
-`Cache-Control: no-store`. An error body is `application/problem+json`
-([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): `type`, `title`, `status`, `detail`,
-`instance`, plus the stable `code` (snake_case) — for example
-`{"type":"https://cowork.dev/problems/not-found","title":"Not found","status":404,"detail":"no route GET /x","instance":"/x","code":"not_found"}`.
+- **Authentication.** Every route under `/api/v1/` except `version` and `openapi.json` takes
+  a personal access token, `Authorization: Bearer cwk_…`; without a valid one the answer is
+  `401` (`unauthenticated`, `token_expired`, `token_revoked`) with
+  `WWW-Authenticate: Bearer realm="cowork"`. No route creates a token yet — that needs the
+  browser login. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an agent's; a
+  token with the agent flag makes it one with or without the header.
+- **Tenants.** A route under `/api/v1/tenants/{tenant}` answers `404 not_found` alike for an
+  unknown slug, a tenant the person does not belong to and a token restricted to another.
+- **Writes.** An entity's `ETag` is its version; an overwriting write needs it in `If-Match`
+  (`428` without, `412` with a stale one). An `Idempotency-Key` (a UUID) makes a creating
+  `POST` safe to retry for 24 hours — the same request replays the stored answer, another one
+  is `422`; an agent's creating `POST` must carry one.
+- **Lists.** `limit` (default 50, clamped to `COWORK_MAX_PAGE_SIZE`) and `cursor`, from the
+  previous page's `next_cursor`. The ticket lists and the tenant's time entries also take
+  numbered pages, `page` and `per_page` (`25`, `50`, `100`), with a total, up to row 10 000;
+  the ticket lists answer `304` to an unchanged page's weak `ETag` in `If-None-Match`. A query
+  parameter the route does not declare is `400`; a path parameter that cannot name anything is
+  `404`.
+- **Every response** carries `Cache-Control: no-store` (the event stream `no-cache`) and
+  `X-Request-Id`. An error is `application/problem+json`
+  ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): `type`, `title`, `status`, `detail`,
+  `instance`, the stable `code` (snake_case, [the table below](#problem-codes)), the
+  `request_id` and, for invalid fields, `errors[]` with a `pointer` each — for example
+  `{"type":"https://cowork.dev/problems/not-found","title":"Not found","status":404,"detail":"no such tenant","instance":"/api/v1/tenants/acme/projects","code":"not_found","request_id":"0199a3c2-1d2e-7f00-8000-0000000000ff"}`.
+
+| Method and path | Answers |
+|---|---|
+| `GET /healthz` | `200 {"status":"ok"}` — the process serves; no authentication |
+| `GET /readyz` | `200 {"status":"ready"}`, or `503 not_ready` when the database does not answer (the error goes to the log); no authentication |
+| `GET /api/v1/version` | `200 {"version":"…","commit":"…","build_time":"…"}`; no authentication |
+| `GET /api/v1/openapi.json` | the API document; no authentication |
+| a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
+| any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
+| `GET /api/v1/me` | the calling person and their memberships |
+| `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
+| `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
+| `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
+
+The routes of a tenant start with `/api/v1/tenants/{tenant}`, written `…` below; `…/{number}`
+stands for `/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}`.
+
+<details>
+<summary>Tenant and projects — 10 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …` | the tenant and its settings |
+| `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
+| `GET …/members` | the members and their roles |
+| `GET …/audit` | the audit record, newest first, for administrators; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv` |
+| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
+| `GET …/projects` | the projects the caller can see, by key; `include_archived` |
+| `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project` |
+| `GET …/projects/{project}` | one project |
+| `PATCH …/projects/{project}` | change its name or description — an administrator with `admin` scope; `If-Match` |
+| `PUT …/projects/{project}/archive` | archive it — an administrator, never an agent; it keeps its tickets and refuses new ones |
+
+</details>
+
+<details>
+<summary>Tickets — 18 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max`, `opened_after`, `opened_before`, `updated_after`, `updated_before`, `q`, `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
+| `GET …/projects/{project}/tickets` | the project's tickets in the order they were filed; the same filters but `project` |
+| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next |
+| `GET …/{number}` | one ticket |
+| `PATCH …/{number}` | change its fields; `If-Match` |
+| `PUT …/{number}/body` | replace its body as a whole; `If-Match` |
+| `PUT …/{number}/urgency-override` | override the derived urgency with a reason, until an input of the derivation changes; an agent needs `override-urgency`; `If-Match` |
+| `DELETE …/{number}/urgency-override` | withdraw the override; `If-Match` |
+| `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason; `If-Match` |
+| `POST …/{number}/transitions` | move it to another state; `from` must be the current state, else `409 state_conflict`; done needs a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; an agent needs `decide`, `close` or `drop` for those moves |
+| `GET …/{number}/links` | its links in both directions |
+| `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
+| `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
+| `GET …/{number}/interest` | who holds a stake in it |
+| `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise |
+| `DELETE …/{number}/interest` | remove the caller's own stake |
+| `GET …/{number}/markdown` | its canonical Markdown, `text/markdown`; the `ETag` is its version; every call is recorded |
+| `GET …/{number}/activity` | every recorded act on it, from the audit record |
+
+</details>
+
+<details>
+<summary>Questions and comments — 12 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …/{number}/questions` | its questions, by number |
+| `POST …/{number}/questions` | ask one; the person asked must be able to see the ticket — without one the question is open to the tenant |
+| `GET …/{number}/questions/{question}` | one question |
+| `PATCH …/{number}/questions/{question}` | edit it while open — the asker; `If-Match` |
+| `PUT …/{number}/questions/{question}/answer` | answer it, or change one's answer — a person decides; an agent with `record-answer` writes down its person's answer; `If-Match` once answered |
+| `PUT …/{number}/questions/{question}/withdrawal` | withdraw an open question — the asker |
+| `GET …/{number}/comments` | the comment thread, oldest first (`order=desc` for newest) |
+| `POST …/{number}/comments` | comment |
+| `GET …/{number}/comments/{comment}` | one comment |
+| `PATCH …/{number}/comments/{comment}` | edit it — its author, or the person whose agent wrote it; the old text is kept; `If-Match` |
+| `GET …/{number}/comments/{comment}/revisions` | a comment's earlier texts, oldest first; empty once withdrawn |
+| `PUT …/{number}/comments/{comment}/withdrawal` | withdraw it: the text is hidden, the entry stays — its author, their person, or an administrator |
+
+</details>
+
+<details>
+<summary>Time — 8 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …/{number}/time-entries` | the ticket's time entries the caller may see, and their sum |
+| `POST …/{number}/time-entries` | book the caller's own time — a member, never an agent; a locked day is `409 period_locked` |
+| `GET …/{number}/time-entries/{entry}` | one entry |
+| `PATCH …/{number}/time-entries/{entry}` | correct it — its author; the previous values are kept; `If-Match` |
+| `PUT …/{number}/time-entries/{entry}/void` | void it — its author; kept, and left out of every sum |
+| `GET …/{number}/time-entries/{entry}/revisions` | its previous values |
+| `GET …/time-entries` | the tenant's entries the caller may see, newest first; filters `from`, `to`, `project`, `ticket`, `person`, `include_voided`; CSV on `Accept: text/csv` |
+| `GET …/time-report` | minutes summed per `ticket`, `project`, `person` or `tenant` (`group_by`) over a period; CSV on `Accept: text/csv` |
+
+</details>
+
+<details>
+<summary>Attachments — 4 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …/{number}/attachments` | the ticket's attachments |
+| `POST …/{number}/attachments` | upload a file to the ticket, or to one of its comments: `multipart/form-data` with `file` and optionally `comment_id`; the type is detected from the bytes — PNG, JPEG, GIF, WebP, PDF, UTF-8 text, SVG — anything else is `415`; `501 uploads_disabled` without object storage |
+| `GET …/{number}/attachments/{attachment}` | its metadata |
+| `GET …/{number}/attachments/{attachment}/content` | its bytes, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; raster images inline, everything else as a download; the `ETag` is the SHA-256 of the bytes; every `200` is recorded |
+
+</details>
+
+#### Problem codes
+
+Generated by `make generate` from [`backend/internal/problem`](backend/internal/problem/problem.go);
+every error body carries one of these as `code`.
+
+<!-- problem-codes:start -->
+| `code` | Status | Meaning |
+|---|---|---|
+| `validation_failed` | 400 | The request does not match the API document, or a field breaks a rule; `errors[]` names each field |
+| `idempotency_key_required` | 400 | An agent's `POST` that creates something came without an `Idempotency-Key`; a transition needs none (docs/adr/0045 D2, D3) |
+| `invalid_cursor` | 400 | The cursor was altered, belongs to another list, or comes from another installation |
+| `page_too_deep` | 400 | A numbered page beyond the depth cap; follow the cursor instead |
+| `unauthenticated` | 401 | No token, a malformed one, or one cowork does not know |
+| `token_expired` | 401 | The token is past its expiry (docs/adr/0035 D4) |
+| `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
+| `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
+| `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
+| `agent_forbidden` | 403 | The act is on the agent hard-off list or needs a capability the token lacks; `detail` names which (docs/adr/0043 D5) |
+| `not_found` | 404 | No such route, or a tenant, project or ticket the caller cannot see — the answer does not say which (docs/adr/0047 D5) |
+| `method_not_allowed` | 405 | The path exists with other methods; `Allow` names them |
+| `project_key_taken` | 409 | The tenant has a project with this key; keys are never reused (docs/adr/0007 D4) |
+| `project_archived` | 409 | An archived project refuses new tickets (docs/adr/0006 D4) |
+| `state_conflict` | 409 | The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2) |
+| `parent_cycle` | 409 | The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2) |
+| `link_cycle` | 409 | The blocks link would close a cycle of prerequisites (docs/adr/0012 D4) |
+| `open_prerequisites` | 409 | Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7) |
+| `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
+| `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
+| `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
+| `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
+| `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |
+| `unsupported_media_type` | 415 | The body's type is not one the route accepts |
+| `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
+| `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
+| `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
+| `not_ready` | 503 | The backend cannot reach its database |
+| `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
+| `backend_unreachable` | 502 | The frontend's proxy could not reach the backend; answered by nginx without a request id (docs/adr/0047 D6) |
+<!-- problem-codes:end -->
 
 ### Helm chart values
 
@@ -213,14 +527,35 @@ serviceAccount:
   annotations: {}
   name: ""
   automountServiceAccountToken: false # neither pod talks to the Kubernetes API
-database:
+database:                             # the runtime role: owns nothing, held to row-level security
   existingSecret: ""                  # preferred: the URL never enters the release
   existingSecretKey: databaseUrl
   url: ""                             # renders <fullname>-database; plain text in the release Secret and in `helm get values`
+  owner:                              # the role the migrations run as; only the migrate init container reads it
+    existingSecret: ""                # preferred; this or url is required while backend.config.migrateOnStart is true
+    existingSecretKey: databaseUrl
+    url: ""                           # renders <fullname>-database-owner while migrateOnStart is true; plain text in the release either way
+session:                              # COWORK_SESSION_KEY, from a Secret only
+  existingSecret: ""                  # required: rendering fails without it
+  keys:
+    key: sessionKey
+storage:                              # S3-compatible object storage; without an endpoint uploads are refused
+  existingSecret: ""                  # required with an endpoint: the key of a bucket-scoped policy, never root
+  keys:
+    accessKeyId: accessKeyId          # COWORK_S3_ACCESS_KEY_ID
+    secretAccessKey: secretAccessKey  # COWORK_S3_SECRET_ACCESS_KEY
+  endpoint: ""                        # COWORK_S3_ENDPOINT, e.g. https://s3.example.com; setting it turns the storage on
+  bucket: ""                          # COWORK_S3_BUCKET; required with an endpoint
+  region: ""                          # COWORK_S3_REGION, set only when non-empty; empty asks the server
+  pathStyle: true                     # COWORK_S3_USE_PATH_STYLE
+  tls:
+    caConfigMap: ""                   # ConfigMap with a private authority's PEM, mounted at /etc/cowork/s3-ca
+    keys:
+      ca: ca.crt                      # the ConfigMap's key; COWORK_S3_CA=/etc/cowork/s3-ca/<key>
 ingress:                              # targets the frontend Service
   enabled: false
   className: ""
-  annotations: {}
+  annotations: {}                     # the event stream and uploads need some: docs/operations/runtime.md
   hosts:
     - host: cowork.example.com        # example
       paths:
@@ -228,8 +563,8 @@ ingress:                              # targets the frontend Service
           pathType: Prefix
   tls: []
 backend:
-  replicaCount: 1                     # several replicas migrate under one advisory lock
-  image:
+  replicaCount: 1                     # every pod migrates in its init container; they serialise on an advisory lock
+  image:                              # the migrate init container runs the same image
     repository: guidedtraffic/cowork-backend
     pullPolicy: IfNotPresent
     tag: ""                           # default: the chart appVersion
@@ -238,12 +573,20 @@ backend:
     type: ClusterIP
     port: 8080
   config:
-    migrateOnStart: true              # COWORK_MIGRATE_ON_START
-    logLevel: info                    # COWORK_LOG_LEVEL
-    logFormat: json                   # COWORK_LOG_FORMAT
+    migrateOnStart: true              # the migrate init container; false: nothing migrates — run `cowork migrate` yourself
+    logLevel: info                    # COWORK_LOG_LEVEL, also for the init container
+    logFormat: json                   # COWORK_LOG_FORMAT, also for the init container
     shutdownTimeout: 15s              # COWORK_SHUTDOWN_TIMEOUT; keep below terminationGracePeriodSeconds
     baseURL: ""                       # COWORK_BASE_URL, set only when non-empty
-  extraEnv: []                        # appended verbatim to the container env
+    maxJsonBody: 1048576              # COWORK_MAX_JSON_BODY, bytes; 0 disables
+    attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (nginx then has no body limit either)
+    attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
+    requestTimeout: 30                # COWORK_REQUEST_TIMEOUT, seconds; 0 disables; the event stream is exempt
+    maxPageSize: 200                  # COWORK_MAX_PAGE_SIZE; 0 disables
+    maxQueryLength: 256               # COWORK_MAX_QUERY_LENGTH, characters; 0 disables
+    sseReplayWindow: 5m               # COWORK_SSE_REPLAY_WINDOW
+    sseMaxStreamsPerPerson: 10        # COWORK_SSE_MAX_STREAMS_PER_PERSON, per replica; 0 disables
+  extraEnv: []                        # appended verbatim to the backend container's env
   podAnnotations: {}
   podLabels: {}
   podSecurityContext:                 # distroless nonroot user
@@ -253,19 +596,19 @@ backend:
     fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
-  securityContext:                    # the binary writes nothing to disk
+  securityContext:                    # the binary writes nothing to disk; the init container has the same
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
       drop: [ALL]
-  resources:
+  resources:                          # the init container has the same
     limits:
       memory: 256Mi
     requests:
       cpu: 50m
       memory: 128Mi
   probes:
-    startup:                          # /healthz; covers the migration run
+    startup:                          # /healthz; the migration ran before, in the init container
       periodSeconds: 5
       failureThreshold: 36
     liveness:                         # /healthz
@@ -286,7 +629,7 @@ frontend:
   service:
     type: ClusterIP
     port: 80
-  extraEnv: []                        # BACKEND_URL is set by the chart to the backend Service
+  extraEnv: []                        # the chart sets BACKEND_URL, NGINX_CLIENT_MAX_BODY_SIZE, NGINX_PROXY_READ_TIMEOUT
   podAnnotations: {}
   podLabels: {}
   podSecurityContext:                 # nginx-unprivileged user
@@ -318,16 +661,44 @@ frontend:
   affinity: {}
 ```
 
-Exactly one of `database.existingSecret` and `database.url` must be set; rendering fails
-otherwise (`helm lint` reports it as an info line, `helm template` and `helm install` fail).
-Security note on `database.url`: the credential is stored in plain text in the Helm release
-Secret and returned by `helm get values`; the chart's notes warn when it is set.
+Rendering fails, naming the value, without `database.existingSecret` or `database.url`;
+without `database.owner.existingSecret` or `database.owner.url` while
+`backend.config.migrateOnStart` is `true`; without `session.existingSecret`; and with a
+`storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`. `helm lint` reports
+these as info lines, `helm template` and `helm install` fail. Where a Secret reference and its
+inline URL are both set, the reference wins and the URL is ignored.
+
+The modes that change what is exposed:
+
+- **Secret references or inline URLs.** With `database.existingSecret` and
+  `database.owner.existingSecret` no credential enters the release. `database.url` and
+  `database.owner.url` are for throw-away installations: each is stored in plain text in the
+  Helm release Secret and returned by `helm get values`, and the chart's notes warn for each.
+  The owner URL is the worse one to inline — its role can switch row-level security off.
+- **The owner credential reaches the `migrate` init container only.** The serving container
+  gets the runtime URL and `COWORK_MIGRATE_ON_START=false`; never add the owner URL to
+  `backend.extraEnv`. With `migrateOnStart: false` the chart needs no owner credential and
+  renders no owner Secret — an inline `database.owner.url` still stays in the release values,
+  readable with `helm get values`, so leave it empty — and nothing migrates: the backend
+  refuses to start until `cowork migrate` has run.
+- **The server key has no inline path.** One Secret gives every replica the same key;
+  rotating it invalidates the cursors clients hold.
+- **The storage key comes from a Secret only**; endpoint, bucket and region are plain values.
+  Without `storage.endpoint` the backend runs without object storage and refuses uploads.
+- **`0` in `backend.config`** switches a backend limit off and opens nginx along with it —
+  `maxJsonBody: 0` leaves nginx without a body limit, `requestTimeout: 0` gives it an hour's
+  read timeout. No production values file should carry one
+  ([runtime.md, limits](docs/operations/runtime.md#limits)). `attachmentMaxBytes: 0` removes the
+  upload maximum and nginx's body limit with it; one upload at a time is then read whole
+  ([attachments.md H-12](docs/security/attachments.md#h-12)).
 
 ## 🛠 Development
 
 ```bash
 make help                 # every target, grouped
+make generate             # after a change to backend/api/, the SQL queries or the problem catalogue; CI fails on drift
 make lint cyclo gosec vuln
+make postgres-up minio-up # what the integration tier needs
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
 make build                # bin/cowork and frontend/dist/frontend/browser

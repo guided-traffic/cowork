@@ -1,0 +1,247 @@
+TenantSlug:
+  name: tenant
+  in: path
+  required: true
+  description: The tenant's slug (docs/adr/0005 D4)
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+ProjectKey:
+  name: project
+  in: path
+  required: true
+  description: The project's key (docs/adr/0007 D1)
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
+Cursor:
+  name: cursor
+  in: query
+  description: The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+  schema: {type: string, minLength: 1, maxLength: 512}
+Limit:
+  name: limit
+  in: query
+  description: Items per page; the server caps it at its configured maximum
+  schema: {type: integer, minimum: 1, default: 50}
+IdempotencyKey:
+  name: Idempotency-Key
+  in: header
+  description: |
+    A UUID the client generates per act and repeats on every retry of it; an
+    agent's POST requires one (docs/adr/0045 D3, D4).
+  schema: {type: string, format: uuid}
+IfMatch:
+  name: If-Match
+  in: header
+  description: |
+    The `ETag` of the version the client read. Required on overwriting writes:
+    without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
+  schema: {type: string, maxLength: 32}
+TicketNumber:
+  name: number
+  in: path
+  required: true
+  description: The ticket's number in its project
+  schema: {type: integer, minimum: 1, maximum: 2147483647}
+IfNoneMatch:
+  name: If-None-Match
+  in: header
+  description: The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+  schema: {type: string, maxLength: 128}
+Page:
+  name: page
+  in: query
+  description: A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+  schema: {type: integer, minimum: 1}
+PerPage:
+  name: per_page
+  in: query
+  schema: {type: integer, enum: [25, 50, 100]}
+FilterState:
+  name: state
+  in: query
+  description: 'A state, or !state; repeated values combine with OR (docs/adr/0049)'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterType:
+  name: type
+  in: query
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterSeverity:
+  name: severity
+  in: query
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterSecurity:
+  name: security
+  in: query
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterUrgency:
+  name: urgency
+  in: query
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterEffort:
+  name: effort
+  in: query
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
+FilterAssignee:
+  name: assignee
+  in: query
+  description: 'A person id, me or none, each negatable with !'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 64}}
+FilterReporter:
+  name: reporter
+  in: query
+  description: 'A person id or me, each negatable with !'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 64}}
+FilterParent:
+  name: parent
+  in: query
+  description: 'A ticket key, or none for roots'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 80}}
+FilterProject:
+  name: project
+  in: query
+  description: 'A project key, negatable with !'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 16}}
+ProgressMin:
+  name: progress_min
+  in: query
+  schema: {type: integer, minimum: 0, maximum: 100}
+ProgressMax:
+  name: progress_max
+  in: query
+  schema: {type: integer, minimum: 0, maximum: 100}
+OpenedAfter:
+  name: opened_after
+  in: query
+  schema: {type: string, format: date-time}
+OpenedBefore:
+  name: opened_before
+  in: query
+  schema: {type: string, format: date-time}
+UpdatedAfter:
+  name: updated_after
+  in: query
+  schema: {type: string, format: date-time}
+UpdatedBefore:
+  name: updated_before
+  in: query
+  schema: {type: string, format: date-time}
+Query:
+  name: q
+  in: query
+  description: Full text over title and body (docs/adr/0025); its length is capped by the server
+  schema: {type: string, minLength: 1, maxLength: 4096}
+IncludeTerminal:
+  name: include_terminal
+  in: query
+  description: Include done and dropped tickets; without it they show only when state names them
+  schema: {type: boolean, default: false}
+PathLinkType:
+  name: type
+  in: path
+  required: true
+  description: The link's type, the ticket in the path its source (docs/adr/0012 D1)
+  schema:
+    $ref: './schemas.yaml#/LinkType'
+OtherTicketKey:
+  name: other
+  in: path
+  required: true
+  description: The other end's key, <PROJECT>-<number>; a link never leaves the tenant (docs/adr/0012 D2)
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'}
+FilterBlocked:
+  name: blocked
+  in: query
+  description: Whether an open ticket the caller can see blocks the ticket (docs/adr/0049 D1)
+  schema: {type: boolean}
+QuestionNumber:
+  name: question
+  in: path
+  required: true
+  description: The question's number within the ticket
+  schema: {type: integer, minimum: 1, maximum: 2147483647}
+FilterHasOpenQuestions:
+  name: has_open_questions
+  in: query
+  description: Whether the ticket has an open question (docs/adr/0049 D1)
+  schema: {type: boolean}
+CommentID:
+  name: comment
+  in: path
+  required: true
+  description: The comment's id
+  schema: {type: string, format: uuid}
+Order:
+  name: order
+  in: query
+  description: Oldest first by default; desc for newest first (docs/adr/0048 D6)
+  schema: {type: string, enum: [asc, desc]}
+FilterInterest:
+  name: interest
+  in: query
+  description: 'me — the caller holds a stake; any — anyone does; each negatable with ! (docs/adr/0049 D1)'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 8}}
+TimeEntryID:
+  name: entry
+  in: path
+  required: true
+  description: The time entry's id
+  schema: {type: string, format: uuid}
+FromDay:
+  name: from
+  in: query
+  description: The first day of the period, inclusive
+  schema: {type: string, format: date}
+ToDay:
+  name: to
+  in: query
+  description: The last day of the period, inclusive
+  schema: {type: string, format: date}
+TimeProject:
+  name: project
+  in: query
+  description: A project key
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
+TimeTicket:
+  name: ticket
+  in: query
+  description: A ticket key, <PROJECT>-<number>
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'}
+TimePerson:
+  name: person
+  in: query
+  description: A person id, or me
+  schema: {type: string, maxLength: 64}
+IncludeVoided:
+  name: include_voided
+  in: query
+  schema: {type: boolean, default: false}
+GroupBy:
+  name: group_by
+  in: query
+  schema: {type: string, enum: [ticket, project, person, tenant], default: ticket}
+AttachmentID:
+  name: attachment
+  in: path
+  required: true
+  description: The attachment's id
+  schema: {type: string, format: uuid}

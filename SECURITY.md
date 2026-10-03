@@ -31,4 +31,5 @@ round trip. Anything that is **not** written there is what we most want to hear 
 Releases are cut from `main` only: semantic-release is configured with `main` as its one
 release branch ([.releaserc.json](.releaserc.json)), and there is no maintenance branch. A fix
 lands on `main` and ships in the next release; there is no backport to an earlier release.
-There is no release yet.
+No version has shipped yet: the GitHub release `v0.0.0` on the initial commit is an empty
+placeholder, and no image is published.

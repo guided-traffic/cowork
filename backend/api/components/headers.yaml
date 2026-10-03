@@ -1,0 +1,6 @@
+ETag:
+  description: The entity's version, the strong validator for `If-Match` (docs/adr/0050 D2)
+  schema: {type: string}
+Location:
+  description: The new entity's URL
+  schema: {type: string}

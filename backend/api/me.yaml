@@ -1,0 +1,63 @@
+# The calling person, across tenants (docs/adr/0023 D2).
+me:
+  get:
+    operationId: getMe
+    tags: [me]
+    summary: The calling person and their tenants
+    responses:
+      '200':
+        description: The person
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Me'
+            example:
+              id: 0199a3c2-1d2e-7f00-8000-000000000001
+              username: dev
+              display_name: Developer
+              memberships:
+                - tenant: {slug: acme, name: Acme}
+                  role: admin
+      default:
+        $ref: './components/responses.yaml#/Problem'
+tokens:
+  get:
+    operationId: listMyTokens
+    tags: [me]
+    summary: The person's tokens, revoked and expired ones included
+    description: |
+      Metadata only; a token's plaintext is shown once, at creation
+      (docs/adr/0035 D1, D6). Creating a token needs a browser session,
+      which does not exist yet (docs/adr/0038 D6).
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of tokens
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TokenList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+token:
+  parameters:
+    - name: token_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  delete:
+    operationId: revokeMyToken
+    tags: [me]
+    summary: Revoke one of the person's tokens
+    description: |
+      Immediate and recorded; the row stays listed (docs/adr/0035 D6). A
+      token may always revoke itself; revoking another token of the person
+      needs `write` scope, and an agent may revoke only the token it holds
+      (docs/adr/0043 D3). Revoking a revoked token changes nothing.
+    responses:
+      '204':
+        description: Revoked
+      default:
+        $ref: './components/responses.yaml#/Problem'

@@ -7,7 +7,15 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 and over an `or=` group parameter. The rules of D4–D7 were put to the owner with the
 question and not objected to.
 
-**Not built.** No list route exists.
+Amended 2026-10-02 (D1: what `blocked` means beside `state=blocked`, and which values `!`
+negates). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
+that adds something is the prerequisite one of [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
+D1.
+
+**Built** (phase 2, 2026-10-02): D1–D6 on the project's and the tenant's ticket lists,
+[`ticketlist.go`](../../backend/internal/api/ticketlist.go) parsing and
+[`tickets.go`](../../backend/internal/store/tickets.go) rendering; D6's board, dashboard and
+saved filters and D7 arrive with their views.
 
 ## Context
 
@@ -33,7 +41,7 @@ OR-ed, parameters are AND-ed.** The parameters on ticket lists:
 | `severity`, `security`, `urgency`, `effort` | the vocabularies of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) |
 | `assignee`, `reporter` | a person id, or `me`; `none` for unassigned |
 | `interest` | `me` (the caller has any interest), `any` (anyone has) |
-| `blocked` | `true`, `false` |
+| `blocked` | `true`, `false` — *(made concrete 2026-10-02)* whether an open ticket the caller can see is a direct `blocks` source of the ticket |
 | `project` | a project key; on tenant-wide lists |
 | `parent` | a ticket key, or `none` for roots |
 | `progress_min`, `progress_max` | 0–100 |
@@ -43,7 +51,10 @@ OR-ed, parameters are AND-ed.** The parameters on ticket lists:
 | `include_terminal` | `true` to include `done` and `dropped`; the default hides them unless `state` names them |
 
 **D2 — Negation is a `!` prefix on a value** (`state=!blocked`, `assignee=!me`); negated and
-plain values of one parameter combine as "any of the plain, none of the negated".
+plain values of one parameter combine as "any of the plain, none of the negated". *(Made
+concrete 2026-10-02: every repeatable parameter takes it — the vocabularies, `project`,
+`assignee`, `reporter`, `parent` (`!none`: has a parent) and `interest` (`!any`: nobody holds
+a stake); `assignee=!me` keeps the unassigned tickets. The booleans take `true` and `false`.)*
 
 **D3 — There is no query language and no filter body.** No `q=state:open …` grammar beyond
 full text in `q`, no `POST …/search` with a filter tree, no OR across different fields in the

@@ -1,0 +1,19 @@
+# oapi-codegen reads the bundled document (make generate) and writes the Go
+# server interface — strict, on net/http's ServeMux — and the Go client the
+# tests and the MCP server use (docs/adr/0046 D2, docs/adr/0040 D2).
+package: apigen
+output: internal/api/apigen/api.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+  client: true
+output-options:
+  nullable-type: true
+  # The event stream is served outside the generated server
+  # (internal/api/events.go): a stream is not a response a handler returns.
+  exclude-operation-ids: [streamEvents]
+compatibility:
+  # Every enum constant carries its type's name (EffortS, SecurityClassNone),
+  # so adding a value elsewhere never renames one.
+  always-prefix-enum-values: true

@@ -21,72 +21,13 @@ Written 2026-09-29.
 - **Verification is named.** "Done" in a ticket means: what was run, against what, with what
   result.
 
-## Phase 0 — Skeleton (done 2026-09-29)
+## Done
 
-**Delivered:** the repository structure with `backend/` and `frontend/`; a Go 1.27 backend
-with configuration, health endpoints, version endpoint, request log, JSON 404/405, embedded
-migrations applied on start; an Angular 22 workspace with a shell, a version service, ESLint
-and vitest; an nginx frontend container that serves the bundle and proxies `/api/`; a Helm
-chart with two Deployments; two Containerfiles; the Makefile; the three GitHub workflows;
-Renovate; the docs tree; the founding ADRs; this plan, the question catalog and the workflow
-plan.
-
-**Verified:** `make lint cyclo gosec vuln test-unit`, `make test-integration` against
-`postgres:18`, `make frontend-lint frontend-test-coverage frontend-build`,
-`make helm-lint helm-template`, `make test-release-tooling`, `make docker-build`; both images
-run together, read-only, against the same database: the frontend starts before the backend
-and follows it once it appears, and answers `/healthz`, `/api/v1/version` through the proxy,
-the UI shell, a deep link and a hashed asset; `SIGTERM` stops the backend cleanly.
-
-**Not verified:** the workflows on GitHub (runner pool, secrets — Q-G5 to Q-G7).
-
-## Phase 1 — Decide (done 2026-10-01)
-
-**Delivered:** the whole catalog, not only the phase-2 part — ADR 0004 to ADR 0073, one
-question per turn over three days, with the amendments the later answers forced on the
-earlier records; the catalog itself is a tombstone
-([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)).
-
-**Not done, by the owner's decision:** the conversion of phase 2 into tickets. It is the
-first thing of the next session, after the pipeline ticket
-([ADR 0061](../adr/0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
-D5, [ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)).
-
-## Phase 2 — Core domain and API
-
-**Goal:** Claude can create, read, update, link and move tickets in a tenant's project with a
-personal access token, through the documented API.
-
-**Delivers:**
-
-- Migrations: tenants (exists), users, memberships, projects, tickets, links, open questions,
-  comments, activity/audit, tokens, interest, attachments (metadata), time entries; a forced
-  row-level-security policy on every tenant-bound table and the per-transaction tenant
-  context (ADR 0021).
-- The data access layer (Q-B7), repositories per aggregate, integration tests per repository
-  against PostgreSQL.
-- Token authentication middleware; the token issue/revoke endpoints; the audit log with agent
-  attribution (Q-D4).
-- The API under `/api/v1/tenants/{tenant}/…` for projects, tickets, links, questions,
-  comments, transitions, interest, attachments (upload with sniffing and allow-list, download
-  streamed through the backend, ADR 0016), progress and time entries with sums and CSV
-  (ADR 0017); the event stream with `NOTIFY` publication and the polling fallback
-  (ADR 0054); the S3 client and `make minio-up` for the
-  integration tier; `GET …/tickets/{key}/markdown`; the error shape (Q-E2); ETags (Q-E5);
-  idempotency keys (Q-D7).
-- API tests with `httptest` against a real PostgreSQL (the integration tier grows an API
-  suite).
-- `docs/developer/` pages for the domain and the API; `docs/security/` pages for tokens,
-  tenancy and attachments, each with its "What this does not cover".
-
-**Verified when:** a scripted `curl` session with a token creates a project, files a ticket,
-opens a question, links two tickets, moves a state, and the audit log shows every step with
-the agent header; a token of tenant A cannot see tenant B (a test proves the refusal, not the
-absence of a bug); a deliberately unfiltered query under tenant A returns nothing of tenant B
-(ADR 0021's second line, proven in the integration tier); the application role cannot bypass
-row-level security.
-
-**Effort:** L.
+Phases 0 (skeleton, 2026-09-29), 1 (the decisions, 2026-10-01) and 2 (the core domain and the
+API, 2026-10-02) are done and deleted from this file
+([ADR 0002](../adr/0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
+D10): what they built is in the ADRs' `Status` sections and their index, how it works in
+[docs/developer/](../developer/README.md), and its gaps in [docs/security/](../security/README.md).
 
 ## Phase 3 — UI v1
 
@@ -95,6 +36,19 @@ row-level security.
 **Needs:** the API of phase 2. Everything is decided (ADR 0004–0073); assignments,
 per-person views, the inbox, the boards, the dashboard, PrimeNG with dark mode, signals and
 services, the event stream's client side and the Playwright tier are in this phase.
+
+**Carried over from phase 2** (decided, not built there): the rank column, its moves and the
+backlog ordered by it ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) —
+phase 2 orders a project's tickets by number); ticket deletion by a tenant administrator, the
+purge and its filter on every list ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md));
+numbered pages on the audit view, members, tokens and projects
+([ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D2); the
+person-level events (`?me=true`, `inbox.changed`) with the inbox
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D2); the per-tenant attachment quota in the tenant's administration
+([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6); the server-side Markdown sanitiser ([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)
+D6) with the first rendered body.
 
 **Delivers** ([ADR 0018](../adr/0018-the-views-of-the-first-release.md)): the generated API
 client; a temporary login with a token (until phase 4); tenant and project navigation; the
@@ -124,9 +78,12 @@ touching the API — and the Playwright suite covers that path with both identit
 **Delivers:** the OIDC code flow with PKCE (ADR 0029); server-side sessions (ADR 0031); the
 group gate, the group → tenant/role mapping and the manual grant (ADR 0030); the local
 administrator synced from a Secret, the init state and the bootstrap tenant (ADR 0032); CSRF
-protection; the role checks on every endpoint, project-level restrictions included if Q-C5
-decides them; `make dev-up` with PostgreSQL and a minimal Dex; security pages for identity,
-sessions, the local account and authorization.
+protection; the token creation route in a session ([ADR 0035](../adr/0035-personal-access-tokens.md)
+D2) and the source-address hash of its D2; the administration of memberships, roles and a
+restricted project's list, with `membership.changed` on the event stream; `make dev-up` with
+PostgreSQL and a minimal Dex; security pages for identity, sessions and the local account.
+The role checks on every endpoint and the project restriction's predicate exist since
+phase 2.
 
 **Verified when:** a user outside the allowed groups is refused with a test that proves it; a
 viewer cannot write; a member of one tenant cannot list another; a member outside a restricted
@@ -176,8 +133,14 @@ UI equals the `grep -rH '^state:'` count in the source repository at import time
 
 **Delivers:** metrics (ADR 0060); the inbound GitHub webhook on trial (ADR 0071); per-token rate limits if the audit log asks for them; the
 tenant Markdown export; the published chart and image through the release
-workflow; the operations pages for upgrading and backups completed; the security pages
-reviewed against the code once more.
+workflow; the chart's remaining references — the database component keys and the
+`existingConfigMap` sources ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3, D4), the example manifests (D1, D2) and the migration hook Job
+([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D2); request and response examples on every operation of the API document
+([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md) D6); the operations
+pages for upgrading and backups completed; the security pages reviewed against the code once
+more.
 
 **Verified when:** the release workflow has produced a tagged image and a chart index, an
 upgrade from the previous release has run in a cluster, and every `H-<n>` in

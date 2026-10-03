@@ -1,0 +1,158 @@
+# Open questions on a ticket (docs/adr/0011 D2, docs/adr/0066 D8).
+questions:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listQuestions
+    tags: [questions]
+    summary: The ticket's questions by number
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of questions
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/QuestionList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: askQuestion
+    tags: [questions]
+    summary: Ask a question on the ticket
+    description: |
+      A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The person
+      asked must be a member who can see the ticket; without one the question is open in the
+      tenant.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/QuestionCreate'
+    responses:
+      '201':
+        description: The new question
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Question'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+question:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/QuestionNumber'
+  get:
+    operationId: getQuestion
+    tags: [questions]
+    summary: One question
+    responses:
+      '200':
+        description: The question
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Question'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateQuestion
+    tags: [questions]
+    summary: Edit an open question
+    description: The asker's act, agents included, while the question is open; `If-Match` required.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/QuestionPatch'
+    responses:
+      '200':
+        description: The question
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Question'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+questionAnswer:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/QuestionNumber'
+  put:
+    operationId: answerQuestion
+    tags: [questions]
+    summary: Answer a question, or change one's answer
+    description: |
+      Only a person decides an answer (docs/adr/0011 D2): the person asked, or any member when
+      the question is open in the tenant; a person changes their own answer. An agent-marked
+      request needs `record-answer` and writes its person's answer down, marked as recorded by
+      an agent, and changes only an answer an agent of the same person recorded
+      (docs/adr/0066 D8). `If-Match` once the question is answered.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/AnswerSet'
+    responses:
+      '200':
+        description: The answered question
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Question'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+questionWithdrawal:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/QuestionNumber'
+  put:
+    operationId: withdrawQuestion
+    tags: [questions]
+    summary: Withdraw an open question
+    description: The asker's act; an agent withdraws only a question an agent of the same person asked. Idempotent.
+    responses:
+      '200':
+        description: The withdrawn question
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Question'
+      default:
+        $ref: './components/responses.yaml#/Problem'

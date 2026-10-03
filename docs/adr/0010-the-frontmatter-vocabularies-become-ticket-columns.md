@@ -2,11 +2,19 @@
 
 ## Status
 
-Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which
-frontmatter fields become first-class?": all of them, with the vocabularies the ticket rules
-already define.
+Accepted, amended 2026-10-02 (D3: the rule set v1 over the facts cowork holds, and the agent
+sentence that ADR 0043 D4 replaced). Date: 2026-09-29. Decided by the owner as the answer to
+the catalog question "which frontmatter fields become first-class?": all of them, with the
+vocabularies the ticket rules already define. The amendment of D3 is the owner's answer of
+2026-10-02 to the question which rules the derivation can evaluate: three of the five rows of
+the tickets page read facts cowork does not hold (a branch, tracked files, whether a trigger
+is live, whether a fix is cheap), and no row is a default. The owner chose a rule set over the
+facts cowork holds with `later` as its default, over new fact columns and over urgency set by
+the person.
 
-**Not built.** No `tickets` table exists.
+**Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
+as a CHECK and in the API, rule set v1 ([`DeriveUrgency`](../../backend/internal/domain/ticket.go)),
+the override and its end. D4's `found-in` link exists; D5 arrives with the importer.
 
 ## Context
 
@@ -38,7 +46,33 @@ table of the tickets page (first match, top down), applied over the ticket's own
 its links; the matched rule is stored with the value. A person may override the value with a
 reason; the override is a recorded act with its actor, it is shown beside the derived value,
 and it **expires** — when an input of the derivation changes, the rule runs again, the
-override is dropped, and the timeline says so. An agent may not override.
+override is dropped, and the timeline says so. ~~An agent may not override.~~ *(Amended
+2026-10-02: an agent overrides with the `override-urgency` capability of
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4, which replaced this sentence on 2026-10-01 without marking it here.)*
+
+*(Added 2026-10-02.)* **Rule set v1**, first match, top down; the stored rule names the
+version, so a later rule set can tell its rows apart:
+
+| Rule | Urgency | Stored rule |
+|---|---|---|
+| The ticket is `blocked` with the kind `release` ("is gated on it", [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D2) | `release` | `v1:release-block` |
+| The ticket is `blocked` with the kind `decision`, `human` or `product` | `icebox` | `v1:icebox-block` |
+| An open ticket of type `decision` `blocks` it | `icebox` | `v1:icebox-decision` |
+| None of the above | `later` | `v1:default` |
+
+`now`, `next` and "gates the release" are reached through the reasoned override only: the
+facts the tickets page's rows read for them — a branch, tracked files, a live trigger, a
+release ticket — are not columns of a ticket, and "gates the release" needs a way to know
+which ticket is the release that no record gives. The inputs of v1 are the ticket's state,
+its block kind, and the state and type of the tickets that `block` it. *(Made concrete
+2026-10-02: "an input of the derivation changes" is a change of what v1 tells apart — whether
+the ticket is blocked, the block kind while it is, whether an open `decision` blocks it; a
+transition from `filed` to `analysed` changes none of them and leaves an override standing.
+When one changes, the derivation runs in the same transaction, the override ends with an
+`overridden` act on that ticket — the reason "an input of the urgency derivation changed",
+attributed to the act that changed the input — and a value re-derived from a link or another
+ticket's change leaves the ticket's version alone.)*
 
 **D4 — Two fields dissolve into other records.** `filed-from` becomes a `found-in` link when
 it names a ticket, and a free-text note otherwise; `publication-accepted` becomes part of the

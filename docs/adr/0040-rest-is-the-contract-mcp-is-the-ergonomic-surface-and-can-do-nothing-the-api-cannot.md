@@ -8,8 +8,8 @@ server as a thin client of it, over REST alone, over MCP alone, and over an addi
 GraphQL surface. The rules of D4–D7 were put to the owner with the question and not objected
 to.
 
-**Partly built.** The REST surface has `/healthz`, `/readyz` and `/api/v1/version`; no
-OpenAPI document, no MCP server.
+**Partly built** (phase 2, 2026-10-02): D1, D6 and D7 — the REST API with its document, served
+at `/api/v1/openapi.json`. The MCP server of D2–D5 is phase 5.
 
 ## Context
 

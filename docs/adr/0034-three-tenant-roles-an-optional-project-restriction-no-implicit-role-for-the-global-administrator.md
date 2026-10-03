@@ -2,12 +2,24 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
-"roles?": three tenant roles with an optional per-project restriction, over tenant roles
+Accepted, amended 2026-10-02 (D1, D9: creating a project is a member act unless the tenant
+reserves it to administrators). Date: 2026-10-01. Decided by the owner as the answer to the
+catalog question "roles?": three tenant roles with an optional per-project restriction, over tenant roles
 alone, over a configurable permission matrix, and over an additional project-lead role. The
-rules of D6–D8 were put to the owner with the question and not objected to.
+rules of D6–D8 were put to the owner with the question and not objected to. D9 is the
+owner's answer of 2026-10-02 to the question whether an agent's `write` token may create a
+project when its person may: a tenant setting, because people who create projects in their
+Git forge want to feed them with work through cowork, and a tenant that wants exceptions
+switches it off.
 
-**Not built.** No `memberships`, `project_access` or role check exists.
+**Partly built** (phase 2, 2026-10-02): D1, D3–D6, D8, D9 and D7's member list — `memberships` and `project_access`
+(migrations 2 and 3), the role check of every act through
+[`auth.Authorize`](../../backend/internal/auth/authorize.go), the effective role of a restricted
+project, the visibility predicate in every ticket query, the time visibility of D5, and the
+tenant settings `timeVisibleToMembers` and `membersCreateProjects`, and agents bounded by their
+person's role minus [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)'s
+restrictions. Writing a restricted project's list and changing roles (D7's acts) arrive with
+the administration; D2's global administrator with the login.
 
 ## Context
 
@@ -31,8 +43,8 @@ in-tenant leak this record avoids by deciding it now.
 | Role | May |
 |---|---|
 | `viewer` | read everything of the tenant it may see (D3); register `watch` interest |
-| `member` | everything of the working day: create and edit tickets, transition them, comment, link, register any interest, ask questions and answer those asked of them or open in the tenant, book time, upload and download attachments, drag the rank |
-| `admin` | all of `member`, plus: members, mappings and grants, local accounts of the tenant, projects (create, archive, restrict), delete, restore and purge tickets, the time-period lock, the tenant's settings, read every time entry |
+| `member` | everything of the working day: create and edit tickets, transition them, comment, link, register any interest, ask questions and answer those asked of them or open in the tenant, book time, upload and download attachments, drag the rank; *(added 2026-10-02)* create projects while the tenant allows it (D9) |
+| `admin` | all of `member`, plus: members, mappings and grants, local accounts of the tenant, projects (~~create,~~ archive, restrict; *(amended 2026-10-02)* create always, D9), delete, restore and purge tickets, the time-period lock, the tenant's settings, read every time entry |
 
 **D2 — The global administrator has no implicit role in any tenant.** A global administrator
 creates and deletes tenants, reads installation-level audit rows and the allow-list, and in
@@ -69,6 +81,15 @@ list is an audit row ([ADR 0026](0026-one-append-only-audit-table-written-by-the
 **D8 — What a `viewer` cannot do is as fixed as what a `member` can.** A `viewer` answers no
 question, books no time, uploads nothing, moves nothing; the UI hides what the role forbids
 and the API answers `403` when asked anyway.
+
+**D9 — Who creates projects is a tenant setting.** *(Added 2026-10-02.)*
+`membersCreateProjects` (default on): on, a `member` creates projects in the tenant; off,
+only its administrators do. A tenant administrator changes it, and the change is a recorded
+act ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)). Creating a
+project is a `write`-scope act either way ([ADR 0035](0035-personal-access-tokens.md) D3), so
+an agent token creates one where its person may and its `create-project` capability is set
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4). Archiving, restricting and deleting a project stay administration acts.
 
 ## Consequences
 

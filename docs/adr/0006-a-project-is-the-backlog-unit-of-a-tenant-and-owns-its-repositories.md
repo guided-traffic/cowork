@@ -9,8 +9,10 @@ Date: 2026-09-29. Decided by the owner as the answer to the catalog question "wh
 project?": a project is a piece of work with its own backlog inside a tenant, not a git
 repository, and it owns zero or more repositories.
 
-**Not built.** No `projects` table exists; the workflow plan's repository binding
-(`.cowork.yaml`) is a plan.
+**Partly built** (phase 2, 2026-10-02): D1, D2 and D4 — `projects` (migration 3) with key,
+name, description and WIP limits, created, listed, edited and archived through the API; the
+repositories of D3 arrive with the repository binding of
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md).
 
 ## Context
 

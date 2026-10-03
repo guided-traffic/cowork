@@ -42,6 +42,12 @@ spec:
             # nginx proxies /api/ here; rendered into the configuration at start.
             - name: BACKEND_URL
               value: {{ include "cowork.backendURL" . | quote }}
+            # Sized from the backend's limits with headroom, so the backend
+            # answers its own 413 and 504 (docs/adr/0039 D3).
+            - name: NGINX_CLIENT_MAX_BODY_SIZE
+              value: {{ include "cowork.nginxBodySize" . | quote }}
+            - name: NGINX_PROXY_READ_TIMEOUT
+              value: {{ include "cowork.nginxReadTimeout" . | quote }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

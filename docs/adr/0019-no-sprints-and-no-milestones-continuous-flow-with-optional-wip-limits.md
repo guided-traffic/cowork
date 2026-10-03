@@ -6,7 +6,9 @@ Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog qu
 "iterations or sprints?": continuous flow, over sprints, over milestones (the
 recommendation), and over deferring milestones.
 
-**Not built.** No `projects` table exists.
+**Partly built** (phase 2, 2026-10-02): D1 (no time box exists) and D3 — WIP limits per state
+stored on the project, advisory, refusing nothing. D2's dashboard and D4's release ticket
+arrive with the views.
 
 ## Context
 

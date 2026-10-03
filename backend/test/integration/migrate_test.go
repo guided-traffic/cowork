@@ -1,14 +1,9 @@
 //go:build integration
 
-// Package integration holds the tests that need a running PostgreSQL 18.
-// `make test-integration` provides COWORK_TEST_DATABASE_URL; the variable is
-// required, not optional, so a misconfigured job fails instead of passing on
-// zero tests.
 package integration
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -18,66 +13,67 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
 
-const envTestDatabaseURL = "COWORK_TEST_DATABASE_URL"
-
-func databaseURL(t *testing.T) string {
-	t.Helper()
-	url := os.Getenv(envTestDatabaseURL)
-	if url == "" {
-		t.Fatalf("%s is not set: `make postgres-up` starts a local PostgreSQL 18 and `make test-integration` sets the variable", envTestDatabaseURL)
-	}
-	return url
-}
-
 func TestMigrateBringsFreshDatabaseToCurrentVersion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	url := databaseURL(t)
 
-	first, err := store.Migrate(ctx, url)
+	embedded, err := store.EmbeddedVersion()
 	require.NoError(t, err)
-	assert.False(t, first.Dirty)
-	assert.NotZero(t, first.Version)
+	assert.Equal(t, embedded, env.Migrated.Version, "TestMain's run reached the newest version")
+	assert.Equal(t, embedded, env.Migrated.Applied, "a fresh database applies every migration")
+	assert.False(t, env.Migrated.Dirty)
 
-	second, err := store.Migrate(ctx, url)
+	second, err := store.Migrate(ctx, env.OwnerURL, runtimeRole)
 	require.NoError(t, err)
-	assert.Equal(t, first.Version, second.Version, "a second run finds the schema current")
+	assert.Equal(t, embedded, second.Version, "a second run finds the schema current")
 	assert.Zero(t, second.Applied, "a second run applies nothing")
 	assert.False(t, second.Dirty)
+	assert.False(t, second.Ahead)
 
-	pool, err := store.Connect(ctx, url)
+	db := openRuntime(t)
+	state, err := db.SchemaState(ctx)
 	require.NoError(t, err)
-	defer pool.Close()
+	assert.Equal(t, embedded, state.Version, "the runtime role reads the recorded version")
+	pending, err := state.Pending()
+	require.NoError(t, err)
+	assert.Zero(t, pending)
 
-	var serverVersion int
-	require.NoError(t, pool.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&serverVersion))
-	assert.GreaterOrEqual(t, serverVersion, 180000, "the schema relies on PostgreSQL 18 built-ins such as uuidv7()")
+	f := fixtures(t)
+	serverVersion, err := f.QueryCount(ctx, "SELECT current_setting('server_version_num')::int")
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, serverVersion, int64(180000), "the schema relies on PostgreSQL 18 built-ins such as uuidv7()")
+}
 
-	var tenantsExists bool
-	require.NoError(t, pool.QueryRow(ctx, "SELECT to_regclass('public.tenants') IS NOT NULL").Scan(&tenantsExists))
-	assert.True(t, tenantsExists, "migration 000001 creates tenants")
+// An image rolled back over a newer schema keeps serving: neither `migrate`
+// nor the start-up check refuses a database ahead of the binary
+// (docs/adr/0028 D4, docs/adr/0057 D3).
+func TestSchemaAheadOfTheBinaryIsServed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	f := fixtures(t)
+	require.NoError(t, f.Exec(ctx, "UPDATE "+store.MigrationsTable+" SET version = version + 1"))
+	t.Cleanup(func() {
+		require.NoError(t, f.Exec(context.Background(), "UPDATE "+store.MigrationsTable+" SET version = version - 1"))
+	})
 
-	var recorded uint
-	require.NoError(t, pool.QueryRow(ctx, "SELECT version FROM "+store.MigrationsTable).Scan(&recorded))
-	assert.Equal(t, first.Version, recorded)
+	res, err := store.Migrate(ctx, env.OwnerURL, runtimeRole)
+	require.NoError(t, err)
+	assert.True(t, res.Ahead)
+	assert.Zero(t, res.Applied)
+
+	state, err := openRuntime(t).SchemaState(ctx)
+	require.NoError(t, err)
+	assert.True(t, state.Ahead())
+	pending, err := state.Pending()
+	require.NoError(t, err)
+	assert.Zero(t, pending)
 }
 
 func TestTenantIdsAreUUIDv7(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	url := databaseURL(t)
-
-	_, err := store.Migrate(ctx, url)
+	f := fixtures(t)
+	id, err := f.Tenant(ctx, uniqueSlug("uuid"), "uuid")
 	require.NoError(t, err)
-
-	pool, err := store.Connect(ctx, url)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	var version int
-	err = pool.QueryRow(ctx,
-		`WITH t AS (INSERT INTO tenants (slug, name) VALUES ('it-' || substr(md5(random()::text), 1, 8), 'integration') RETURNING id)
-		 SELECT uuid_extract_version(id) FROM t`).Scan(&version)
-	require.NoError(t, err)
-	assert.Equal(t, 7, version)
+	assert.EqualValues(t, 7, id.Version())
 }

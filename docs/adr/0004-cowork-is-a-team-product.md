@@ -8,8 +8,10 @@ option (owner, agent, occasional guests per tenant) and the owner chose the wide
 record states the decision; no rationale beyond the choice was given, and none is invented
 here.
 
-**Not built.** Nothing in the tree implements a user, a membership or an assignment yet; the
-`tenants` table of migration `000001` is the only domain object.
+**Partly built** (phase 2, 2026-10-02): D1, D3 and D4 — people with identities of their own,
+memberships, assignment, every act attributed to a person (and agent) in the audit record, the
+tenant boundary equal for everyone. D2's views and D5's priority participation arrive with the
+UI and the score.
 
 ## Context
 

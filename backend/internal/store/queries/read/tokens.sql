@@ -1,0 +1,47 @@
+-- name: GetTokenByHash :one
+-- The resolver's lookup: the policy admits the row whose hash the lookup
+-- transaction set in app.token_hash, and no other.
+SELECT id, user_id, name, scope, restricted_tenant_id, restricted_project_id, agent,
+       capabilities, created_at, expires_at, last_used_on, revoked_at
+FROM tokens
+WHERE token_hash = sqlc.arg(token_hash);
+
+-- name: CountRecentRefusals :one
+-- docs/adr/0035 D9: a refused use is recorded at most once per token, reason
+-- and hour.
+SELECT count(*)
+FROM audit_events
+WHERE tenant_id IS NULL
+  AND token_id = sqlc.arg(token_id)
+  AND action = 'refused'
+  AND reason = sqlc.arg(reason)
+  AND created_at > now() - interval '1 hour';
+
+-- name: ListTokensOfUser :many
+-- The person's tokens, newest first, revoked and expired ones included
+-- (docs/adr/0035 D6); only one of them for a restricted token.
+SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_project_id, t.created_at,
+       t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
+FROM tokens t
+LEFT JOIN tenants rt ON rt.id = t.restricted_tenant_id
+WHERE t.user_id = sqlc.arg(user_id)
+  AND (sqlc.narg(only_id)::uuid IS NULL OR t.id = sqlc.narg(only_id)::uuid)
+  AND (sqlc.narg(before)::uuid IS NULL OR t.id < sqlc.narg(before)::uuid)
+ORDER BY t.id DESC
+LIMIT sqlc.arg(page_size);
+
+-- name: GetTokenOfUser :one
+SELECT id, revoked_at
+FROM tokens
+WHERE id = sqlc.arg(token_id) AND user_id = sqlc.arg(user_id);
+
+-- name: TokenStillUsable :one
+-- Whether a stream's token may go on: not revoked, not expired, its person
+-- not deactivated (docs/adr/0035 D6).
+SELECT EXISTS (
+    SELECT 1
+    FROM tokens t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.id = sqlc.arg(token_id) AND t.user_id = sqlc.arg(user_id) AND t.revoked_at IS NULL
+      AND t.expires_at > now() AND u.deactivated_at IS NULL
+) AS usable;

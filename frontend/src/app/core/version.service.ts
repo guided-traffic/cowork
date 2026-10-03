@@ -2,11 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
-/** The body of GET /api/v1/version; see internal/httpserver/server.go. */
+/** The body of GET /api/v1/version: the Version schema of backend/api/components/schemas.yaml. */
 export interface VersionInfo {
   version: string;
   commit: string;
-  buildTime: string;
+  build_time: string;
 }
 
 @Injectable({ providedIn: 'root' })

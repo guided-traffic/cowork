@@ -9,7 +9,10 @@ record and may mark a request as an agent's but never un-mark one — over the f
 over the header alone, and over service accounts. The additional rules of D5–D8 were put to
 the owner with the question and explicitly confirmed.
 
-**Not built.** No token, no resolver, no audit row.
+**Partly built** (phase 2, 2026-10-02): D1–D5 and D7 — the token's person as the actor, the
+flag and the header that only narrows ([`principal.go`](../../backend/internal/auth/principal.go)),
+`unknown-agent`, the `write` ceiling as a CHECK on `tokens`, and the agent restrictions on
+every marked request. D6's timeline arrives with the UI; D8 needs nothing.
 
 ## Context
 

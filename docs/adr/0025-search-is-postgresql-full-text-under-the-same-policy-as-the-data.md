@@ -6,7 +6,18 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 "search?": PostgreSQL only, over an external engine and over "PostgreSQL now, engine later".
 The rules of D5 were put to the owner with the question and not objected to.
 
-**Not built.** No searchable table exists.
+Amended 2026-10-02 (D2: `unaccent` sits in a text search configuration). PostgreSQL refuses
+`to_tsvector('simple', unaccent(…))` in a stored generated column because `unaccent` is not
+immutable ("generation expression is not immutable", PostgreSQL 18.6); a configuration
+that applies `unaccent` as a filter dictionary is accepted and indexes the same tokens.
+
+**Partly built** (phase 2, 2026-10-02): D1, D2 and D6 — the extensions, the configuration
+`cowork_simple`, the generated columns and tenant-led GIN indexes on tickets, questions,
+comments and attachment names, a trigram index on ticket titles, and the ticket lists' `q`
+filter (`plainto_tsquery('cowork_simple', …)`, capped by `COWORK_MAX_QUERY_LENGTH`). The search
+routes with ranking and headlines (D4, D5) and D3's key half arrive with the search view; a
+short key is never stored ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)
+D3), so it needs an expression of its own there.
 
 ## Context
 
@@ -24,7 +35,9 @@ D1 replaces the body on every update, so the index has to follow in the same tra
 No external engine, no synchronisation, no second index of tenant data.
 
 **D2 — Every searchable table carries a stored, generated `tsvector` column** built from its
-text fields with the `simple` dictionary after `unaccent`, and a GIN index led by
+text fields with the `simple` dictionary after `unaccent` *(amended 2026-10-02: through the
+configuration `cowork_simple`, a copy of `simple` with `unaccent` as a filter dictionary in
+front of it, created by the first migration that needs it)*, and a GIN index led by
 `tenant_id` (`btree_gin`). Tickets: title and body; comments: text; questions: question,
 options, recommendation, answer. The column is generated, so a body replacement updates it in
 the same statement.

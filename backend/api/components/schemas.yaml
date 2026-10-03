@@ -1,0 +1,877 @@
+Problem:
+  type: object
+  required: [type, title, status, code]
+  properties:
+    type: {type: string}
+    title: {type: string}
+    status: {type: integer}
+    detail: {type: string}
+    instance: {type: string}
+    code:
+      $ref: './problem-codes.yaml#/ProblemCode'
+    request_id: {type: string}
+    errors:
+      type: array
+      items:
+        $ref: '#/FieldError'
+FieldError:
+  type: object
+  required: [pointer, message]
+  properties:
+    pointer:
+      type: string
+      description: A JSON pointer into the body, or query:<name> / header:<name>
+    message: {type: string}
+    current:
+      type: [string, number, integer, boolean, object, array, 'null']
+      description: The server's current value of the field, on a 412; null when the field is empty
+      x-go-type: interface{}
+Version:
+  type: object
+  required: [version, commit, build_time]
+  properties:
+    version: {type: string}
+    commit: {type: string}
+    build_time: {type: string}
+Role:
+  type: string
+  enum: [viewer, member, admin]
+  description: A tenant role, lowest first (docs/adr/0034 D1)
+Scope:
+  type: string
+  enum: [read, write, admin]
+  description: A token's scope (docs/adr/0035 D3)
+Capability:
+  type: string
+  enum: [decide, close, drop, rank, override-urgency, interest, upload, create-project, record-answer]
+  description: An agent capability (docs/adr/0043 D4)
+Person:
+  type: object
+  required: [id, display_name]
+  properties:
+    id: {type: string, format: uuid}
+    username:
+      type: [string, 'null']
+      description: The local identity's username, `local:<username>` (docs/adr/0033 D2)
+    display_name: {type: string}
+TenantRef:
+  type: object
+  required: [slug, name]
+  properties:
+    slug: {type: string}
+    name: {type: string}
+Membership:
+  type: object
+  required: [tenant, role]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    role:
+      $ref: '#/Role'
+Me:
+  type: object
+  required: [id, display_name, memberships]
+  properties:
+    id: {type: string, format: uuid}
+    username: {type: [string, 'null']}
+    display_name: {type: string}
+    memberships:
+      type: array
+      items:
+        $ref: '#/Membership'
+TokenState:
+  type: string
+  enum: [active, expired, revoked]
+Token:
+  type: object
+  required: [id, name, scope, agent, capabilities, created_at, expires_at, state]
+  properties:
+    id: {type: string, format: uuid}
+    name: {type: string}
+    scope:
+      $ref: '#/Scope'
+    agent:
+      type: boolean
+      description: The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+    capabilities:
+      type: array
+      items:
+        $ref: '#/Capability'
+    restricted_tenant:
+      type: [string, 'null']
+      description: The slug of the tenant the token is restricted to
+    restricted_project_id:
+      type: [string, 'null']
+      format: uuid
+      description: The id of the project the token is restricted to
+    created_at: {type: string, format: date-time}
+    expires_at: {type: string, format: date-time}
+    last_used_on:
+      type: [string, 'null']
+      format: date
+    revoked_at:
+      type: [string, 'null']
+      format: date-time
+    state:
+      $ref: '#/TokenState'
+TokenList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Token'
+    next_cursor:
+      type: [string, 'null']
+Tenant:
+  type: object
+  required: [slug, name, version, time_visible_to_members, members_create_projects, created_at, updated_at]
+  properties:
+    slug: {type: string}
+    name: {type: string}
+    version: {type: integer}
+    time_visible_to_members:
+      type: boolean
+      description: Members see every time entry of the projects they see, not only their own (docs/adr/0034 D5)
+    time_locked_until:
+      type: [string, 'null']
+      format: date
+      description: Time entries on or before this date cannot change (docs/adr/0017 D8)
+    members_create_projects:
+      type: boolean
+      description: Members create projects; off, only administrators do (docs/adr/0034 D9)
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+TenantPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    name: {type: string, minLength: 1, maxLength: 200}
+    time_visible_to_members: {type: boolean}
+    time_locked_until:
+      type: [string, 'null']
+      format: date
+    members_create_projects: {type: boolean}
+Member:
+  type: object
+  required: [person, role]
+  properties:
+    person:
+      $ref: '#/Person'
+    role:
+      $ref: '#/Role'
+MemberList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Member'
+    next_cursor:
+      type: [string, 'null']
+AuditAction:
+  type: string
+  enum: [created, updated, transitioned, linked, unlinked, commented, edited, withdrawn, assigned,
+    interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
+    exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
+    confidential_lifted, expired]
+AuditEvent:
+  type: object
+  required: [id, created_at, actor, entity_type, action]
+  properties:
+    id: {type: string, format: uuid}
+    created_at: {type: string, format: date-time}
+    actor:
+      type: object
+      description: A person, or a system actor such as system:idempotency-expiry
+      properties:
+        person:
+          oneOf:
+            - $ref: '#/Person'
+            - type: 'null'
+        system: {type: [string, 'null']}
+    agent:
+      type: [string, 'null']
+      description: The agent mark, name/model/session or unknown-agent (docs/adr/0036)
+    agent_capabilities:
+      type: [array, 'null']
+      items: {type: string}
+    token_id:
+      type: [string, 'null']
+      format: uuid
+    entity_type: {type: string}
+    entity_id:
+      type: [string, 'null']
+      format: uuid
+    ticket_key: {type: [string, 'null']}
+    action:
+      $ref: '#/AuditAction'
+    before:
+      description: The changed fields before the act
+    after:
+      description: The changed fields after the act
+    reason: {type: [string, 'null']}
+    note: {type: [string, 'null']}
+    request_id:
+      type: [string, 'null']
+      format: uuid
+    idempotency_key:
+      type: [string, 'null']
+      format: uuid
+AuditList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/AuditEvent'
+    next_cursor:
+      type: [string, 'null']
+WipLimits:
+  type: object
+  additionalProperties: false
+  description: Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+  properties:
+    analysed: {type: integer, minimum: 1}
+    decided: {type: integer, minimum: 1}
+    in-progress: {type: integer, minimum: 1}
+    blocked: {type: integer, minimum: 1}
+Project:
+  type: object
+  required: [id, key, name, description, restricted, wip_limits, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    key: {type: string}
+    name: {type: string}
+    description: {type: string}
+    restricted:
+      type: boolean
+      description: Visible to administrators and the people on its list only (docs/adr/0034 D3)
+    wip_limits:
+      $ref: '#/WipLimits'
+    archived_at:
+      type: [string, 'null']
+      format: date-time
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+ProjectCreate:
+  type: object
+  additionalProperties: false
+  required: [key, name]
+  properties:
+    key: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
+    name: {type: string, minLength: 1, maxLength: 200}
+    description: {type: string, maxLength: 10000}
+    wip_limits:
+      $ref: '#/WipLimits'
+ProjectPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    name: {type: string, minLength: 1, maxLength: 200}
+    description: {type: string, maxLength: 10000}
+    wip_limits:
+      $ref: '#/WipLimits'
+ProjectList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Project'
+    next_cursor:
+      type: [string, 'null']
+TicketType:
+  type: string
+  enum: [task, bug, feature, decision, question]
+  description: docs/adr/0008 D1
+TicketState:
+  type: string
+  enum: [filed, analysed, decided, in-progress, blocked, done, dropped]
+  description: docs/adr/0009 D1
+BlockKind:
+  type: string
+  enum: [decision, human, product, release, external, ticket]
+  description: What a blocked ticket waits on (docs/adr/0009 D2)
+Severity:
+  type: string
+  enum: [critical, high, medium, low, cosmetic]
+SecurityClass:
+  type: string
+  enum: [live, boundary, hardening, none]
+Urgency:
+  type: string
+  enum: [now, release, next, later, icebox]
+Effort:
+  type: string
+  enum: [XS, S, M, L]
+Block:
+  type: object
+  required: [from, kind, reason]
+  properties:
+    from:
+      $ref: '#/TicketState'
+    kind:
+      $ref: '#/BlockKind'
+    reason: {type: string}
+    ticket:
+      type: [string, 'null']
+      description: The key of the ticket it waits on, when the caller can see that ticket
+    external_ref: {type: [string, 'null']}
+UrgencyOverride:
+  type: object
+  required: [value, reason, at]
+  properties:
+    value:
+      $ref: '#/Urgency'
+    reason: {type: string}
+    by:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    at: {type: string, format: date-time}
+Ticket:
+  type: object
+  required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
+    urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_derived, parent, reporter,
+    assignee, confidential, opened_at, decided_at, done_at, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    key:
+      type: string
+      description: The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+    project: {type: string, description: The project's key}
+    number: {type: integer}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    body: {type: string, description: 'Markdown, the current state, replaced as a whole (docs/adr/0011 D1)'}
+    state:
+      $ref: '#/TicketState'
+    block:
+      oneOf:
+        - $ref: '#/Block'
+        - type: 'null'
+    severity:
+      $ref: '#/Severity'
+    security:
+      $ref: '#/SecurityClass'
+    threat: {type: [string, 'null']}
+    urgency:
+      $ref: '#/Urgency'
+    urgency_derived:
+      $ref: '#/Urgency'
+    urgency_rule: {type: string, description: 'The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)'}
+    urgency_override:
+      oneOf:
+        - $ref: '#/UrgencyOverride'
+        - type: 'null'
+    effort:
+      $ref: '#/Effort'
+    progress:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: 100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)
+    progress_derived: {type: boolean, description: The progress is derived from the children and takes no manual value}
+    parent: {type: [string, 'null'], description: The parent's key}
+    reporter:
+      $ref: '#/Person'
+    assignee:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    confidential:
+      type: boolean
+      description: Visible to the tenant's administrators, the assignee and the reporter only (docs/adr/0065)
+    opened_at: {type: string, format: date-time}
+    decided_at: {type: [string, 'null'], format: date-time}
+    done_at: {type: [string, 'null'], format: date-time}
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+TicketCreate:
+  type: object
+  additionalProperties: false
+  required: [type, title, severity, security, effort]
+  properties:
+    type:
+      $ref: '#/TicketType'
+    title: {type: string, minLength: 1, maxLength: 300}
+    body: {type: string, maxLength: 200000}
+    severity:
+      $ref: '#/Severity'
+    security:
+      $ref: '#/SecurityClass'
+    threat: {type: string, minLength: 1, maxLength: 2000}
+    effort:
+      $ref: '#/Effort'
+    parent: {type: string, description: 'A ticket key of the same project, short or full'}
+    assignee: {type: string, format: uuid, description: A member of the tenant}
+TicketPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    type:
+      $ref: '#/TicketType'
+    title: {type: string, minLength: 1, maxLength: 300}
+    severity:
+      $ref: '#/Severity'
+    security:
+      $ref: '#/SecurityClass'
+    threat: {type: [string, 'null'], maxLength: 2000}
+    effort:
+      $ref: '#/Effort'
+    parent: {type: [string, 'null'], description: 'A ticket key of the same project; null makes the ticket a root'}
+    assignee: {type: [string, 'null'], format: uuid}
+    progress: {type: integer, minimum: 0, maximum: 100, multipleOf: 5}
+    comment:
+      type: string
+      minLength: 1
+      maxLength: 100000
+      description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+TicketBodyReplace:
+  type: object
+  additionalProperties: false
+  required: [body]
+  properties:
+    body: {type: string, maxLength: 200000}
+    comment:
+      type: string
+      minLength: 1
+      maxLength: 100000
+      description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+UrgencyOverrideSet:
+  type: object
+  additionalProperties: false
+  required: [value, reason]
+  properties:
+    value:
+      $ref: '#/Urgency'
+    reason: {type: string, minLength: 1, maxLength: 2000}
+ConfidentialSet:
+  type: object
+  additionalProperties: false
+  required: [confidential]
+  properties:
+    confidential: {type: boolean}
+    reason: {type: string, minLength: 1, maxLength: 2000, description: Required to lift the flag (docs/adr/0065 D3)}
+Transition:
+  type: object
+  additionalProperties: false
+  required: [from, to]
+  properties:
+    from:
+      $ref: '#/TicketState'
+    to:
+      $ref: '#/TicketState'
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      description: Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites
+    note:
+      type: string
+      minLength: 1
+      maxLength: 10000
+      description: The verification note done requires — what was run, against what, with what result (docs/adr/0009 D5)
+    block:
+      $ref: '#/BlockSet'
+    override_prerequisites:
+      type: boolean
+      description: Close over open prerequisites, with a reason; a person's act, never an agent's (docs/adr/0012 D7)
+    comment:
+      type: string
+      minLength: 1
+      maxLength: 100000
+      description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+BlockSet:
+  type: object
+  additionalProperties: false
+  required: [kind]
+  description: What a ticket entering blocked waits on (docs/adr/0009 D2)
+  properties:
+    kind:
+      $ref: '#/BlockKind'
+    ticket:
+      type: string
+      maxLength: 80
+      description: The ticket it waits on, which gets a blocks link to this one; required with kind ticket
+    external_ref: {type: string, minLength: 1, maxLength: 500}
+Comment:
+  type: object
+  required: [id, author, agent, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    author:
+      $ref: '#/Person'
+    agent: {type: [string, 'null'], description: The agent mark when an agent wrote it in the author's name}
+    body: {type: [string, 'null'], description: 'Markdown; null once withdrawn (docs/adr/0015 D3)'}
+    withdrawn: {type: boolean}
+    withdrawn_at: {type: [string, 'null'], format: date-time}
+    edited: {type: boolean, description: The comment has an edit history}
+    explains:
+      type: array
+      description: The acts this comment explains (docs/adr/0015 D2)
+      items:
+        $ref: '#/AuditAction'
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+CommentWrite:
+  type: object
+  additionalProperties: false
+  required: [body]
+  properties:
+    body: {type: string, minLength: 1, maxLength: 100000}
+CommentList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Comment'
+    next_cursor:
+      type: [string, 'null']
+CommentRevision:
+  type: object
+  required: [body, edited_by, agent, at]
+  properties:
+    body: {type: string, description: The text before the edit}
+    edited_by:
+      $ref: '#/Person'
+    agent: {type: [string, 'null']}
+    at: {type: string, format: date-time}
+CommentRevisionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/CommentRevision'
+    next_cursor:
+      type: [string, 'null']
+Activity:
+  type: object
+  required: [id, at, actor, actor_system, agent, action, entity_type, entity_id, before, after, reason, note,
+    explained_by_comment, redacted]
+  properties:
+    id: {type: string, format: uuid}
+    at: {type: string, format: date-time}
+    actor:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    actor_system: {type: [string, 'null']}
+    agent: {type: [string, 'null']}
+    action:
+      $ref: '#/AuditAction'
+    entity_type: {type: string}
+    entity_id: {type: [string, 'null'], format: uuid}
+    before:
+      type: [object, 'null']
+      description: The changed fields before the act; null when redacted
+    after:
+      type: [object, 'null']
+      description: The changed fields after the act; null when redacted
+    reason: {type: [string, 'null']}
+    note: {type: [string, 'null']}
+    explained_by_comment: {type: [string, 'null'], format: uuid}
+    redacted:
+      type: boolean
+      description: The act names a ticket the caller cannot see; its payload, reason and note are withheld
+ActivityList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Activity'
+    next_cursor:
+      type: [string, 'null']
+Attachment:
+  type: object
+  required: [id, file_name, size, sha256, content_type, comment, uploaded_by, agent, created_at, content_url]
+  properties:
+    id: {type: string, format: uuid}
+    file_name: {type: string, description: 'The uploaded name, sanitised (docs/adr/0016 D1)'}
+    size: {type: integer, format: int64}
+    sha256: {type: string, description: "The hex SHA-256 of the bytes, also the download's ETag"}
+    content_type:
+      type: string
+      description: Detected from the bytes (docs/adr/0016 D3)
+      enum: [image/png, image/jpeg, image/gif, image/webp, application/pdf, 'text/plain; charset=utf-8', image/svg+xml]
+    comment: {type: [string, 'null'], format: uuid, description: The comment the attachment belongs to}
+    uploaded_by:
+      $ref: '#/Person'
+    agent: {type: [string, 'null']}
+    created_at: {type: string, format: date-time}
+    content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
+AttachmentList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Attachment'
+    next_cursor:
+      type: [string, 'null']
+TimeEntry:
+  type: object
+  required: [id, ticket, person, author, minutes, day, note, voided, voided_at, edited, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    ticket: {type: string, description: The ticket's key}
+    person:
+      $ref: '#/Person'
+    author:
+      $ref: '#/Person'
+    minutes: {type: integer, minimum: 1, maximum: 1440}
+    day: {type: string, format: date, description: The day worked}
+    note: {type: string}
+    voided: {type: boolean, description: Kept and excluded from every sum (docs/adr/0017 D7)}
+    voided_at: {type: [string, 'null'], format: date-time}
+    edited: {type: boolean}
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+TimeEntryCreate:
+  type: object
+  additionalProperties: false
+  required: [minutes, day]
+  properties:
+    minutes: {type: integer, minimum: 1, maximum: 1440}
+    day: {type: string, format: date}
+    note: {type: string, maxLength: 2000}
+TimeEntryPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    minutes: {type: integer, minimum: 1, maximum: 1440}
+    day: {type: string, format: date}
+    note: {type: string, maxLength: 2000}
+TimeEntryList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/TimeEntry'
+    next_cursor:
+      type: [string, 'null']
+    total_minutes: {type: integer, description: 'The visible minutes of the ticket, voided entries excluded'}
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
+TimeEntryRevision:
+  type: object
+  required: [minutes, day, note, edited_by, at]
+  properties:
+    minutes: {type: integer}
+    day: {type: string, format: date}
+    note: {type: string}
+    edited_by:
+      $ref: '#/Person'
+    at: {type: string, format: date-time}
+TimeEntryRevisionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/TimeEntryRevision'
+    next_cursor:
+      type: [string, 'null']
+TimeReport:
+  type: object
+  required: [group_by, items, total_minutes]
+  properties:
+    group_by: {type: string, enum: [ticket, project, person, tenant]}
+    items:
+      type: array
+      items:
+        type: object
+        required: [key, label, minutes]
+        properties:
+          key: {type: string, description: 'The ticket key, the project key, the person id, or tenant'}
+          label: {type: string}
+          minutes: {type: integer}
+    total_minutes: {type: integer}
+InterestWeight:
+  type: string
+  enum: [watch, need, urgent]
+  description: docs/adr/0013 D1
+Interest:
+  type: object
+  required: [person, weight, note, since, updated_at, settled]
+  properties:
+    person:
+      $ref: '#/Person'
+    weight:
+      $ref: '#/InterestWeight'
+    note: {type: string}
+    since: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+    settled: {type: boolean, description: The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)}
+InterestSet:
+  type: object
+  additionalProperties: false
+  required: [weight]
+  properties:
+    weight:
+      $ref: '#/InterestWeight'
+    note: {type: string, maxLength: 2000, description: Expected for need and urgent}
+InterestList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Interest'
+    next_cursor:
+      type: [string, 'null']
+QuestionStatus:
+  type: string
+  enum: [open, answered, withdrawn]
+  description: docs/adr/0011 D2
+Question:
+  type: object
+  required: [id, number, question, options, recommendation, answer, status, asked_by, asked_by_agent,
+    asked_of, answered_by, answered_at, recorded_by_agent, withdrawn_at, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    number: {type: integer, description: 'Stable within the ticket: Q<n> (docs/adr/0011 D4)'}
+    question: {type: string}
+    options: {type: string, description: 'Markdown: the context and the options'}
+    recommendation: {type: string}
+    answer: {type: [string, 'null'], description: Markdown}
+    status:
+      $ref: '#/QuestionStatus'
+    asked_by:
+      $ref: '#/Person'
+    asked_by_agent: {type: [string, 'null'], description: The agent mark of the request that asked}
+    asked_of:
+      description: The person asked; null for a question open in the tenant
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    answered_by:
+      description: The person whose answer it is, also when an agent wrote it down
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    answered_at: {type: [string, 'null'], format: date-time}
+    recorded_by_agent:
+      type: boolean
+      description: An agent wrote the person's answer down (docs/adr/0066 D8)
+    withdrawn_at: {type: [string, 'null'], format: date-time}
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+QuestionCreate:
+  type: object
+  additionalProperties: false
+  required: [question]
+  properties:
+    question: {type: string, minLength: 1, maxLength: 2000}
+    options: {type: string, maxLength: 100000}
+    recommendation: {type: string, maxLength: 10000}
+    asked_of:
+      type: string
+      format: uuid
+      description: A member who can see the ticket; omitted, the question is open in the tenant
+QuestionPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    question: {type: string, minLength: 1, maxLength: 2000}
+    options: {type: string, maxLength: 100000}
+    recommendation: {type: string, maxLength: 10000}
+    asked_of: {type: [string, 'null'], format: uuid}
+AnswerSet:
+  type: object
+  additionalProperties: false
+  required: [answer]
+  properties:
+    answer: {type: string, minLength: 1, maxLength: 100000}
+QuestionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Question'
+    next_cursor:
+      type: [string, 'null']
+LinkType:
+  type: string
+  enum: [blocks, relates-to, duplicates, found-in]
+  description: docs/adr/0012 D1
+TicketRef:
+  type: object
+  required: [key, title, state]
+  properties:
+    key: {type: string}
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+Link:
+  type: object
+  required: [id, type, direction, name, ticket, created_by, created_at]
+  properties:
+    id: {type: string, format: uuid}
+    type:
+      $ref: '#/LinkType'
+    direction:
+      type: string
+      enum: [outgoing, incoming]
+      description: Outgoing when the ticket read is the link's source; relates-to is stored once
+    name:
+      type: string
+      description: 'The link read from this ticket: blocks, blocked by, relates to, duplicates, duplicated by, found in, found here'
+    ticket:
+      $ref: '#/TicketRef'
+    created_by:
+      $ref: '#/Person'
+    created_at: {type: string, format: date-time}
+LinkList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Link'
+    next_cursor:
+      type: [string, 'null']
+TicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Ticket'
+    next_cursor:
+      type: [string, 'null']
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}

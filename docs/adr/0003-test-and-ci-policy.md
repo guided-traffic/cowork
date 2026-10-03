@@ -14,6 +14,9 @@ locally (`make lint`, `make cyclo`, `make gosec`, `make vuln`, `make test-unit`,
 `make frontend-build`, `make helm-lint`, `make helm-template`, `make test-release-tooling`,
 `make docker-build`) and by running both built images together, read-only, against the same
 database (the nginx proxy path included). **Not built:** the end-to-end tier (D2, row "E2E") — decided, no test exists.
+Amended 2026-10-02 (D2's integration row and D3: the integration tier needs an S3-compatible
+server since attachments exist). Re-verified on 2026-10-02 for the backend tiers, the chart and
+the images after phase 2.
 **Not verified:** that the `self-hosted` runner pool of the sibling project serves this
 repository, and that the repository secrets the workflows name exist (D9); both are open
 questions in the planning catalog.
@@ -38,7 +41,7 @@ a bump is a missing file and installs itself.
 | Tier | Target | Build tag | Needs | Proves |
 |---|---|---|---|---|
 | Backend unit | `make test-unit` | none | nothing running | Configuration parsing, the handler, the SPA fallback, the server lifecycle, the migration set's well-formedness — against `httptest`, `fstest.MapFS` and injected lookups |
-| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL` | What only the database decides: the migrations apply and are idempotent, the schema relies on 18, the recorded version matches |
+| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`; *(added 2026-10-02)* an S3-compatible server at `COWORK_TEST_S3_*` (`make minio-up`) | What only the database decides: the migrations apply and are idempotent, the schema relies on 18, the recorded version matches; *(added 2026-10-02)* the store and the whole API against both servers, every response checked against the document |
 | Frontend unit | `make frontend-test` | — (vitest, jsdom) | Node.js | Components and services against `HttpTestingController`; no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | The chart lints strictly and renders with each `ci/*-values.yaml` |
 | Container | the `container-malware-scan` job, one leg per image | — | Docker | Each `Containerfile` builds from its own directory on a clean checkout; each image passes Trivy at CRITICAL/HIGH |
@@ -46,8 +49,9 @@ a bump is a missing file and installs itself.
 | End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | A person and a token can do a workflow through the real API and UI. Decided in [ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright against the built containers, two identities, both colour schemes, a required gate from the first workflow *(amended 2026-10-01)* |
 
 **D3 — No `-short`, no `testing.Short()`, no skip on a missing dependency.** The integration
-tier fails when `COWORK_TEST_DATABASE_URL` is unset and says how to set it. A test CI never
-runs is not a test.
+tier fails when `COWORK_TEST_DATABASE_URL` is unset and says how to set it *(amended
+2026-10-02: and when the `COWORK_TEST_S3_*` variables of the attachment tests are)*. A test CI
+never runs is not a test.
 
 **D4 — A gate that is not required is not a gate.** The `semantic-release` job lists every
 verification job in `needs:`; a new job is added to that list in the change that adds it.

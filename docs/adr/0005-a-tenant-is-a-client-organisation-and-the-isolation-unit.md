@@ -7,10 +7,10 @@ is a tenant?": the hard-boundary option, with two points the owner added — a p
 several tenants, and most installations will run exactly one tenant with every user in it,
 while some will create several to keep their tickets apart.
 
-**Partly built.** The `tenants` table of migration
-[`000001_tenants`](../../backend/internal/store/migrations/000001_tenants.up.sql) exists with
-`id uuid` (UUIDv7), `slug` (unique, `^[a-z0-9][a-z0-9-]{1,62}$`) and `name`; nothing else of
-this record is implemented.
+**Partly built** (phase 2, 2026-10-02): D1–D4 and D6 — the tenant as the isolation unit in the
+path and in row-level security, memberships (migration 2), nothing crossing the boundary (links
+and parents by composite keys), the slug immutable and the name editable. D5's creation by a
+global administrator arrives with that role; tenants come from the fixture until then.
 
 ## Context
 

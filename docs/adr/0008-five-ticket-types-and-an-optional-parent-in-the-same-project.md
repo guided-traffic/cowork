@@ -6,7 +6,9 @@ Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog qu
 types and hierarchy?": a small fixed set of types and an optional parent, over labels only,
 over configurable types, and over a parent expressed as a link.
 
-**Not built.** No `tickets` table exists.
+**Partly built** (phase 2, 2026-10-02): D1 and D2 — the five types and the parent in the same
+project (a composite key; a cycle refused by a walk under a per-project lock). The views of
+D3 and the importer's mapping arrive with them.
 
 ## Context
 

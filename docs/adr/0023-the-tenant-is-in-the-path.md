@@ -7,7 +7,15 @@ does a request name its tenant?": the tenant slug in the path, over a header, ov
 subdomain per tenant, and over a default tenant for the single-tenant case. The rules of D5
 were put to the owner with the question and not objected to.
 
-**Partly built.** The API has `/api/v1/version`; nothing tenant-bound exists.
+Amended 2026-10-02 (D3: the key is one path segment). The router takes a wildcard only as a
+whole path segment, so `{KEY}-{number}` cannot be two parameters; the first implementation
+reads the segment as one key and splits it at its last hyphen, which a project key never
+contains ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D1).
+
+**Partly built** (phase 2, 2026-10-02): D1–D3 and D5 — every tenant-bound route is under
+`/api/v1/tenants/{tenant}/`, `/api/v1/me` and `/api/v1/me/tokens` serve the person, the
+resolver answers with the canonical route's body and `ETag`, and an unknown tenant answers
+like a missing membership. D2's person-level lists and D4's UI arrive with their phases.
 
 ## Context
 
@@ -36,7 +44,10 @@ one iteration per tenant (ADR 0021 D5), and every item names its tenant. An opti
 **D3 — One resolver takes a canonical key in one piece:**
 `GET /api/v1/tickets/{slug}/{KEY}-{number}` answers with the ticket (no redirect, so an
 agent handed a key reaches the ticket in one round trip). It is the only route under
-`/api/v1/tickets/`.
+`/api/v1/tickets/`. *(Amended 2026-10-02: the route is `GET /api/v1/tickets/{slug}/{key}`
+with `{key}` one segment, `<PROJECT>-<number>`, split at its last hyphen; it answers the same
+body and the same `ETag` as the ticket's own route, and a key that names nothing the caller
+can see is the same 404.)*
 
 **D4 — The UI mirrors the API:** `/t/{slug}` (the tenant: board, dashboard, members, filters),
 `/t/{slug}/p/{KEY}/backlog`, `/t/{slug}/p/{KEY}/board`, `/t/{slug}/tickets/{KEY}-{number}`,

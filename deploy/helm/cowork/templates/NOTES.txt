@@ -9,7 +9,13 @@ Database: Secret {{ include "cowork.databaseSecretName" . }}, key {{ include "co
   release Secret and in `helm get values`; use database.existingSecret for anything
   beyond a throw-away installation.
 {{- end }}
-Migrations on start: {{ .Values.backend.config.migrateOnStart }}
+{{- if and .Values.database.owner.url (not .Values.database.owner.existingSecret) }}
+  WARNING: database.owner.url is set inline. The owner credential is stored in plain
+  text in the release Secret and in `helm get values`; use database.owner.existingSecret
+  for anything beyond a throw-away installation.
+{{- end }}
+Migrations: {{ if .Values.backend.config.migrateOnStart }}an init container of every backend pod, as the owner role{{ else }}none; run `cowork migrate` with the owner credential before the pods start{{ end }}
+Attachments: {{ if .Values.storage.endpoint }}{{ .Values.storage.endpoint }}, bucket {{ .Values.storage.bucket }}{{ else }}no object storage; uploads are refused{{ end }}
 
 Reach the UI:
 {{- if .Values.ingress.enabled }}

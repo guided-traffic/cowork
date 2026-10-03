@@ -8,12 +8,11 @@ shape?": RFC 9457 `application/problem+json` with the extensions `code`, `reques
 extensions, and over a constant `type`. The rules of D5–D7 were put to the owner with the
 question and not objected to.
 
-**Partly built.** Verified in the working tree on 2026-10-01: the backend's three routes
-answer problem details with `type`, `title`, `status`, `detail`, `instance` and `code`
-([`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go),
-`writeProblem`), and the tests check the envelope. Not built: `request_id` (no request id
-middleware yet), `errors[]` (no validation middleware yet), the code catalogue, nginx's
-`error_page` bodies.
+**Built** (phase 2, 2026-10-02): every rule — the envelope with `request_id` and `errors[]` on
+every route, the catalogue in [`internal/problem`](../../backend/internal/problem/problem.go)
+that generates the document's enum and the README's table, the indistinguishable `404`, and
+nginx's static problem bodies for what it answers itself (`413`, `502`, `503`, `504`, without
+`instance` and `request_id`; the code `backend_unreachable` is nginx's alone).
 
 ## Context
 

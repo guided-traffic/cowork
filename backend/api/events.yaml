@@ -1,0 +1,33 @@
+# The event stream of a tenant (docs/adr/0054). It is served outside the
+# generated server: a stream is not a response a handler returns.
+events:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: streamEvents
+    tags: [events]
+    summary: The tenant's events the caller may see, as server-sent events
+    description: |
+      `ticket.changed` (an upload included), `comment.changed`, `question.changed`,
+      `link.changed` and `interest.changed`, each with `data: {"key", "version", "kind"}` — a key
+      and a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a
+      project the caller cannot see, or of a confidential ticket they may not read, never
+      arrives (D3). A reconnect with `Last-Event-ID` inside the replay window replays the gap;
+      beyond it the stream starts with `event: resync`, and the client refetches its lists (D5).
+      A comment every twenty seconds keeps proxies open and checks the token and the
+      membership again; the stream ends when either fails. `event: unavailable` ends a stream
+      the server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).
+    parameters:
+      - name: Last-Event-ID
+        in: header
+        description: The id of the last event the client received
+        schema: {type: string, format: uuid}
+    responses:
+      '200':
+        description: The stream
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'

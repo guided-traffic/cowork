@@ -4,7 +4,8 @@ Repo: https://github.com/guided-traffic/cowork — a multi-tenant backlog and ka
 one person working across many projects with an LLM as co-worker. Two containers: a Go
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
 (`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart.
-**Status: skeleton;** the product decisions are open and are worked one at a time.
+**Status: phase 2 (core domain and API) is built;** every founding decision is an ADR, and
+what comes next is [the project plan](docs/planning/project-plan.md).
 
 ## Language policy
 
@@ -24,7 +25,8 @@ A statement has exactly one home
 | The threat model and the gap each mechanism leaves | [docs/security/](docs/security/README.md), one page per perspective, each ending with `## What this does not cover`; reporting is [SECURITY.md](SECURITY.md) |
 | Work still outstanding | a [ticket](docs/tickets/README.md), archived when the work lands |
 | The reference tables (configuration, CLI, API, Helm values) | [README.md](README.md) and nowhere else |
-| Open decisions, the plan, the workflow plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
+| An open decision | the `## Open questions` section of a [ticket](docs/tickets/README.md) |
+| The plan, the workflow plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
 
 **Read the page for a subsystem before you change it, and update it in the same change.**
 
@@ -44,36 +46,45 @@ A statement has exactly one home
 - **Nothing outside `docs/tickets/` cites a ticket** — not by number, label, path or file name.
   Cite the ADR.
 
-## The question catalog is worked one question at a time
+## Open decisions are worked one question at a time
 
-[docs/planning/questions.md](docs/planning/questions.md) holds every open decision with
-options, cost and a recommendation. Present **one** question per turn to the owner, with the
-options researched against this tree and the recommended one justified. An answered question
-becomes an ADR (or an amendment) in the same session and is deleted from the catalog. A
-question that needs code to answer becomes a ticket. Do not build on an unanswered question.
+[docs/planning/questions.md](docs/planning/questions.md) is consumed: every founding question
+became an ADR (ADR 0074). A new open decision lives in a ticket's `## Open questions` section.
+Present **one** question per turn to the owner, with the options researched against this tree
+and the recommended one justified. An answered question becomes an ADR (or an amendment) in
+the same session. A question that needs code to answer becomes a ticket. Do not build on an
+unanswered question.
 
 ## Stack facts
 
-- Backend: module `github.com/guided-traffic/cowork/backend`, Go 1.27 (`backend/go.mod`),
-  stdlib `net/http` mux with method patterns, `log/slog`, `pgx/v5`, `golang-migrate` over
-  embedded SQL, `testify`. It serves no UI: unknown path → JSON 404, wrong method → 405.
+- Backend: module `github.com/guided-traffic/cowork/backend`, Go 1.27 (`backend/go.mod`).
+  `/api/` is routed and validated against the OpenAPI document by kin-openapi and served by
+  the oapi-codegen strict server on `net/http`; sqlc over `pgx/v5`, `golang-migrate` over
+  embedded SQL, `minio-go`, `log/slog`, `testify`. It serves no UI: unknown path → JSON 404,
+  wrong method → 405.
 - Frontend: `frontend/` is an Angular 22 CLI workspace (project `frontend`): standalone
   components, signals, zoneless, vitest on jsdom, angular-eslint. The container is
   `nginxinc/nginx-unprivileged` with [`frontend/nginx/default.conf.template`](frontend/nginx/default.conf.template):
   `/healthz` itself, `/api/` proxied to `BACKEND_URL`, hashed bundles immutable, everything
-  else `index.html` with `no-store`. `BACKEND_URL` and `NGINX_LOCAL_RESOLVERS` are the only
-  substituted variables; the backend is resolved per request, so the frontend starts before it.
+  else `index.html` with `no-store`. `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
+  `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT` are the only substituted
+  variables (the chart sizes the last two from the backend's limits); the backend is resolved
+  per request, so the frontend starts before it.
 - Both toolchains track the newest stable release (ADR 0001 D9); TypeScript stays in
   Angular's peer range. Do not pin back.
 - Backend configuration is `COWORK_*` environment variables only
   ([`backend/internal/config`](backend/internal/config/config.go)).
 - Migrations: `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n`
   without a gap, **no down files**; a unit test enforces it. A migration never drops, renames
-  or narrows what the previous release reads (expand before contract, ADR 0028). Applied on
-  start unless `COWORK_MIGRATE_ON_START=false`.
-- The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*`, `ingress.*`
-  (targets the frontend Service). The database URL comes from `database.existingSecret`
-  (preferred) or `database.url` (throw-away only, plain text in the release).
+  or narrows what the previous release reads (expand before contract, ADR 0028). They run as
+  the owner role (`COWORK_DATABASE_OWNER_URL`) — the chart's `migrate` init container, locally
+  `make run` and `make migrate`; `serve` connects as the runtime role and refuses a dirty
+  schema or pending migrations.
+- The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*` (with
+  `database.owner.*`), `session.*`, `storage.*`, `ingress.*` (targets the frontend Service).
+  The runtime and the owner URL each come from an `existingSecret` (preferred) or a `url`
+  (throw-away only, plain text in the release); the owner URL reaches only the `migrate` init
+  container; the session key and the storage key come from Secrets only.
 
 ## Testing
 
@@ -83,7 +94,7 @@ question that needs code to answer becomes a ticket. Do not build on an unanswer
 | Tier | Target | Needs |
 |---|---|---|
 | Backend unit | `make test-unit` | nothing |
-| Backend integration (tag `integration`) | `make postgres-up && make test-integration` | Docker; `POSTGRES_PORT=` moves the container |
+| Backend integration (tag `integration`) | `make postgres-up minio-up && make test-integration` | Docker; `POSTGRES_PORT=` and `MINIO_PORT=` move the containers |
 | Frontend unit | `make frontend-test` | Node.js 26 |
 | Static analysis | `make lint cyclo gosec vuln`, `make frontend-lint` | — |
 | Chart | `make helm-lint helm-template` | Helm |
@@ -91,19 +102,22 @@ question that needs code to answer becomes a ticket. Do not build on an unanswer
 | Everything a PR gets | see [docs/developer/ci-and-release.md](docs/developer/ci-and-release.md) | |
 
 No `-short`, no `testing.Short()`, no skip on a missing dependency: the integration tier fails
-without `COWORK_TEST_DATABASE_URL` and says how to set it. A fix comes with the test that
-failed without it. Every CI job is in the `needs:` list of `semantic-release`; a new job is
-added there in the same change.
+without `COWORK_TEST_DATABASE_URL` or the `COWORK_TEST_S3_*` variables and says how to set
+them. A fix comes with the test that failed without it. Every CI job is in the `needs:` list
+of `semantic-release`; a new job is added there in the same change.
 
 ## Conventions that bite
 
 - Conventional commits, **no apostrophe anywhere in a commit message**, scope where one
   exists. semantic-release reads them.
-- Errors wrap with `%w` and a verb; the configuration error names the variable, never its value.
-- The request log carries method, path, status, duration — no bodies, no headers, no query.
+- Errors wrap with `%w` and a verb; the configuration error names the variable and never
+  echoes the value of a URL, a key or a secret.
+- The request log carries method, path, status, duration and the request id — no bodies, no
+  headers, no query.
 - Every API error is an RFC 9457 problem details body (`application/problem+json`: `type`,
-  `title`, `status`, `detail`, `instance`, `code`; later `request_id` and `errors[]`), written
-  through `writeProblem` — never an ad-hoc JSON error (ADR 0047).
+  `title`, `status`, `detail`, `instance`, `code`, `request_id`, and `errors[]` for invalid
+  fields), written through `problem.Write` with a code from the catalogue in
+  `backend/internal/problem` — never an ad-hoc JSON error (ADR 0047).
 - Every Go tool runs inside `backend/`; the frontend tree is never in its path. nginx has no
   unit test: a change to the template is verified by running the image.
 

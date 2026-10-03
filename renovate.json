@@ -353,9 +353,20 @@
         "/^Makefile$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*(?:[^\\s:@]+:)?(?<currentValue>[^\\s:@]+)\\n"
       ],
       "versioningTemplate": "{{#if (equals datasource 'docker')}}docker{{else}}semver{{/if}}"
+    },
+    {
+      "description": "Update image digests pinned in the Makefile as tag@digest via renovate comments (the S3 test server)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>docker) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*[^\\s@]+:(?<currentValue>[^\\s:@/]+)@(?<currentDigest>sha256:[a-f0-9]{64})\\n"
+      ],
+      "versioningTemplate": "docker"
     },
     {
       "description": "Update Go version in the backend Containerfile",

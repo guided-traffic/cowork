@@ -23,14 +23,34 @@ change.
 ## What has to be in your head first
 
 - **Two containers, one origin.** The Go backend in `backend/` serves the API and migrates
-  the schema on start; the nginx frontend in `frontend/` serves the Angular bundle and proxies
+  the schema; the nginx frontend in `frontend/` serves the Angular bundle and proxies
   `/api/` to the backend
   ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)).
+- **Two database roles.** The owner role owns the schema and runs the migrations; the runtime
+  role the server connects as owns nothing and is held by row-level security on every table.
+  `cowork serve` refuses a runtime role that could see past it
+  ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2,
+  [data-access.md](data-access.md#two-database-roles)).
+- **The API document is the contract.** A change to the API starts in
+  [`backend/api/`](../../backend/api/); `make generate` turns it into the Go server interface,
+  the client and the bundle the server validates every request against
+  ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md), [api.md](api.md)).
+- **The tenant boundary, then the visibility predicate.** A request under
+  `/api/v1/tenants/{tenant}` is admitted to the tenant before any handler runs; inside, every
+  query runs in a transaction bound to that tenant, and the predicates in SQL hide restricted
+  projects and confidential tickets. What the caller may not see answers exactly like what does
+  not exist ([api.md](api.md#the-tenant-boundary), [data-access.md](data-access.md#visibility-in-sql)).
+- **Every write is `Mutate`, and every act is an audit row.** A request's write commits through
+  `store.Mutate` together with one audit row per act it records — no act, no commit — and a
+  ticket's act is published to the event streams at commit; a job commits through
+  `store.RunJob`, and the token's last-used day is the one write outside both
+  ([ADR 0027](../adr/0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md),
+  [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md)).
 - **`make` is the entry point**, from the repository root. CI runs Makefile targets; so do
   you ([ADR 0003](../adr/0003-test-and-ci-policy.md) D1). Go targets `cd backend`, npm
   targets `cd frontend`. `make help` lists them.
 - **Nothing is skipped.** No `-short`, no `testing.Short()`, no "skip when the database is
-  missing". The integration tier fails and tells you how to start the database.
+  missing". The integration tier fails and tells you how to start PostgreSQL and MinIO.
 - **Newest toolchains.** Go 1.27 and Angular 22 today, moved by Renovate; a lagging version
   is a defect (ADR 0001 D9).
 - **A statement has one home.** Decision → ADR; work → ticket; how → `docs/developer/`; run →
@@ -39,31 +59,38 @@ change.
   Whoever changes behaviour updates the page that describes it in the same change.
 - **English only**, in code, comments, commits and documentation.
 
-
 | Page | Read it when |
 |---|---|
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [build-test-lint.md](build-test-lint.md) | You want to build, run or lint anything, locally or the images together |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant boundary, authorization, errors, idempotency, versions, paging, filters |
+| [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
+| [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
+| [storage.md](storage.md) | You touch attachments or the object storage |
+| [events.md](events.md) | You touch the event stream, from `NOTIFY` to nginx |
+| [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or need its exact form |
+| [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
 | [testing.md](testing.md) | You are adding a test, choosing a tier, or a suite is failing and you need to know what it is for and what it needs |
 | [ci-and-release.md](ci-and-release.md) | You touch a workflow, Renovate or the release |
-| [adding-things.md](adding-things.md) | You add a configuration variable, a migration, an endpoint, a frontend feature, an nginx path, a chart value or a CI job |
-| [conventions.md](conventions.md) | You write a commit, Go, Angular, documentation or anything security-relevant |
+| [adding-things.md](adding-things.md) | You add an API operation, a table, a migration, a problem code, a configuration variable, a frontend feature, an nginx path, a chart value or a CI job |
+| [conventions.md](conventions.md) | You write a commit, Go, SQL, an act, Angular, documentation or anything security-relevant |
 
 ## Core flows, one fact each
 
 | Flow | The fact | Where |
 |---|---|---|
-| Backend start | Configuration is validated completely before anything else runs; the migration runs before the listener opens | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
-| Backend request | Method patterns on the mux; every known path is registered twice so the wrong method is a `405`, not the catch-all's `404` | [architecture.md](architecture.md#backend-request-path) |
-| Frontend request | nginx: `/healthz` itself, `/api/` proxied to `BACKEND_URL`, hashed bundles immutable, everything else `index.html` with `no-store` | [architecture.md](architecture.md#frontend-container) |
-| Migration | golang-migrate over embedded files, advisory lock across replicas, dirty version refuses to start | [runtime.md](../operations/runtime.md#the-migration-run) |
-
+| Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security and a dirty or pending schema | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
+| Backend request | Request id, log and recovery wrap a mux; `/api/` runs the pipeline: route in the document, authenticate, tenant boundary, limits, validation, then the generated handler | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
+| A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
+| A write | `Mutate` commits the change with one audit row per act, stores a keyed response, and publishes a ticket's acts with `NOTIFY` (not downloads, exports or time entries) — or commits nothing | [data-access.md](data-access.md#mutate-acts-idempotency-publication) |
+| An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version, never content | [events.md](events.md) |
+| Frontend request | nginx: `/healthz` itself, `/api/` proxied to `BACKEND_URL` with its own problem bodies, the event stream unbuffered, hashed bundles immutable, everything else `index.html` with `no-store` | [architecture.md](architecture.md#frontend-container) |
+| Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
 
 ## What has no page here
 
-There are no subsystems beyond the pages above yet: no domain, no authentication, no API
-beyond health and version. The order in which they are to be built is
-[docs/planning/project-plan.md](../planning/project-plan.md); each gets its page here when it
-exists.
+The UI beyond the shell, the login, the MCP server, the board and rank, deletion, import, the
+notification inbox and metrics are not built ([architecture.md](architecture.md#what-is-not-built)).
+The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
+each gets its page here when it exists.

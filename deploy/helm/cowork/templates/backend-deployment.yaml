@@ -16,6 +16,9 @@ spec:
         {{- if and .Values.database.url (not .Values.database.existingSecret) }}
         checksum/database-secret: {{ .Values.database.url | sha256sum }}
         {{- end }}
+        {{- if and .Values.backend.config.migrateOnStart .Values.database.owner.url (not .Values.database.owner.existingSecret) }}
+        checksum/database-owner-secret: {{ .Values.database.owner.url | sha256sum }}
+        {{- end }}
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -35,6 +38,35 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      {{- if .Values.backend.config.migrateOnStart }}
+      # The migrations run here, as the owner role, before the server starts
+      # (docs/adr/0057 D1); only this container holds the owner credential.
+      # It reads the runtime URL as well, for the runtime role's grants.
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          args: ["migrate"]
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          env:
+            - name: COWORK_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.databaseSecretName" . }}
+                  key: {{ include "cowork.databaseSecretKey" . }}
+            - name: COWORK_DATABASE_OWNER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.ownerSecretName" . }}
+                  key: {{ include "cowork.ownerSecretKey" . }}
+            - name: COWORK_LOG_LEVEL
+              value: {{ .Values.backend.config.logLevel | quote }}
+            - name: COWORK_LOG_FORMAT
+              value: {{ .Values.backend.config.logFormat | quote }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
@@ -50,8 +82,57 @@ spec:
                 secretKeyRef:
                   name: {{ include "cowork.databaseSecretName" . }}
                   key: {{ include "cowork.databaseSecretKey" . }}
+            # The serving container never migrates: it holds no owner
+            # credential and refuses to start on pending migrations.
             - name: COWORK_MIGRATE_ON_START
-              value: {{ .Values.backend.config.migrateOnStart | quote }}
+              value: "false"
+            - name: COWORK_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.sessionSecretName" . }}
+                  key: {{ .Values.session.keys.key }}
+            - name: COWORK_MAX_JSON_BODY
+              value: {{ .Values.backend.config.maxJsonBody | int64 | toString | quote }}
+            - name: COWORK_ATTACHMENT_MAX_BYTES
+              value: {{ .Values.backend.config.attachmentMaxBytes | int64 | toString | quote }}
+            - name: COWORK_ATTACHMENT_MAX_PER_TICKET
+              value: {{ .Values.backend.config.attachmentMaxPerTicket | int64 | toString | quote }}
+            - name: COWORK_REQUEST_TIMEOUT
+              value: {{ printf "%ds" (.Values.backend.config.requestTimeout | int64) | quote }}
+            - name: COWORK_MAX_PAGE_SIZE
+              value: {{ .Values.backend.config.maxPageSize | int64 | toString | quote }}
+            - name: COWORK_MAX_QUERY_LENGTH
+              value: {{ .Values.backend.config.maxQueryLength | int64 | toString | quote }}
+            - name: COWORK_SSE_REPLAY_WINDOW
+              value: {{ .Values.backend.config.sseReplayWindow | quote }}
+            - name: COWORK_SSE_MAX_STREAMS_PER_PERSON
+              value: {{ .Values.backend.config.sseMaxStreamsPerPerson | int64 | toString | quote }}
+            {{- if .Values.storage.endpoint }}
+            - name: COWORK_S3_ENDPOINT
+              value: {{ .Values.storage.endpoint | quote }}
+            - name: COWORK_S3_BUCKET
+              value: {{ required "storage.bucket is required with storage.endpoint" .Values.storage.bucket | quote }}
+            {{- with .Values.storage.region }}
+            - name: COWORK_S3_REGION
+              value: {{ . | quote }}
+            {{- end }}
+            - name: COWORK_S3_USE_PATH_STYLE
+              value: {{ .Values.storage.pathStyle | quote }}
+            - name: COWORK_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "storage.existingSecret is required with storage.endpoint" .Values.storage.existingSecret }}
+                  key: {{ .Values.storage.keys.accessKeyId }}
+            - name: COWORK_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.storage.existingSecret }}
+                  key: {{ .Values.storage.keys.secretAccessKey }}
+            {{- if .Values.storage.tls.caConfigMap }}
+            - name: COWORK_S3_CA
+              value: /etc/cowork/s3-ca/{{ .Values.storage.tls.keys.ca }}
+            {{- end }}
+            {{- end }}
             - name: COWORK_LOG_LEVEL
               value: {{ .Values.backend.config.logLevel | quote }}
             - name: COWORK_LOG_FORMAT
@@ -87,6 +168,18 @@ spec:
             periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          {{- if and .Values.storage.endpoint .Values.storage.tls.caConfigMap }}
+          volumeMounts:
+            - name: s3-ca
+              mountPath: /etc/cowork/s3-ca
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.storage.endpoint .Values.storage.tls.caConfigMap }}
+      volumes:
+        - name: s3-ca
+          configMap:
+            name: {{ .Values.storage.tls.caConfigMap }}
+      {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

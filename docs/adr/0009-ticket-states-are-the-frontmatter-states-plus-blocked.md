@@ -12,7 +12,13 @@ The transition rules of D3–D6 were put to the owner together with the question
 objected to; they are recorded as proposed and stay open to objection until the first
 implementation makes them concrete.
 
-**Not built.** No `tickets` table exists.
+**Built** (phase 2, 2026-10-02): D1–D6 — the states and the block columns (migration 8), the
+transition route with the matrix of [`transition.go`](../../backend/internal/domain/transition.go)
+(forward one step; `in-progress → decided | analysed` and `decided → analysed` with a reason;
+into `blocked` from any open state with a kind and a text and out of it only to its origin;
+`dropped` with a reason; `done` from `in-progress` with a note; a reopen to `filed` with a
+reason), the `from` precondition, the notes and reasons on the `transitioned` acts, and
+`decided_at` and `done_at` set by those acts.
 
 ## Context
 

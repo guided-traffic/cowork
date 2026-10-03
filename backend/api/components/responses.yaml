@@ -1,0 +1,20 @@
+Problem:
+  description: |
+    An RFC 9457 problem details body with a stable `code`, the `request_id`
+    and, for validation failures, `errors[]` (docs/adr/0047).
+  headers:
+    X-Request-Id:
+      description: The request's id, also in the body and in the log line
+      schema: {type: string}
+  content:
+    application/problem+json:
+      schema:
+        $ref: './schemas.yaml#/Problem'
+      example:
+        type: https://cowork.dev/problems/not-found
+        title: Not found
+        status: 404
+        detail: no such tenant
+        instance: /api/v1/tenants/acme
+        code: not_found
+        request_id: 0199a3c2-1d2e-7f00-8000-0000000000ff
