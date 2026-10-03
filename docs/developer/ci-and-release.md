@@ -11,6 +11,17 @@ image: builds the `Containerfile` from its directory, Trivy at CRITICAL/HIGH), `
 push to `main`, `semantic-release` — which `needs:` every one of them — cuts a release from the
 conventional commits with a GitHub App token and commits the badge.
 
+**`main` is protected** by the ruleset `main`
+([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)):
+a change arrives by pull request; the thirteen jobs are required checks, bound to the GitHub
+Actions app; the branch must be up to date with `main`; history stays linear; force pushes and
+deletion are refused. A pull request is squashed, and the squash commit's subject is the pull
+request's title — so the title is the conventional commit semantic-release reads, and a
+`fix:` or `feat:` title cuts a release. Auto-merge is on, and the head branch is deleted on
+merge. The organisation's administrators and the release App bypass the ruleset; the App
+because semantic-release pushes its release commit to `main`. Release tags `v*` are created,
+moved or deleted only by that App (the ruleset `release tags`).
+
 Two jobs need more explanation than their targets:
 
 - **`linter`** (Code Linting) runs `make lint` and then `make generate-check`: the generated
