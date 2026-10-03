@@ -70,11 +70,25 @@ Membership:
       $ref: '#/Role'
 Me:
   type: object
-  required: [id, display_name, memberships]
+  required: [id, display_name, global_admin, local, password_change_required, memberships]
   properties:
     id: {type: string, format: uuid}
     username: {type: [string, 'null']}
     display_name: {type: string}
+    global_admin:
+      type: boolean
+      description: |
+        The person is a global administrator: they create tenants and hold no role
+        in any of them until they grant themselves one (docs/adr/0004 D4,
+        docs/adr/0034 D2)
+    local:
+      type: boolean
+      description: The person has a local account, a password of their own (docs/adr/0033)
+    password_change_required:
+      type: boolean
+      description: |
+        The account's password is temporary: a session can do nothing but change
+        it, read this answer and log out until it has (docs/adr/0033 D4)
     memberships:
       type: array
       items:
@@ -114,6 +128,51 @@ Token:
       format: date-time
     state:
       $ref: '#/TokenState'
+TokenCreate:
+  type: object
+  additionalProperties: false
+  required: [name, scope]
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    scope:
+      $ref: '#/Scope'
+    agent:
+      type: boolean
+      default: false
+      description: The agent flag; it cannot be changed afterwards (docs/adr/0036 D2)
+    capabilities:
+      type: array
+      uniqueItems: true
+      items:
+        $ref: '#/Capability'
+      description: Only with `agent`; omitted, an agent token gets every capability, and an empty list gives it none, the baseline only (docs/adr/0043 D4)
+    tenant:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+      description: The slug of the tenant the token is restricted to
+    project:
+      type: string
+      pattern: '^[A-Z][A-Z0-9]{1,9}$'
+      description: The key of the project of that tenant the token is restricted to; needs `tenant`
+    lifetime_days:
+      type: integer
+      minimum: 1
+      maximum: 3650
+      description: |
+        Days until the token expires; by default `COWORK_TOKEN_DEFAULT_LIFETIME`,
+        shortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)
+TokenCreated:
+  description: A token as listed, and its plaintext in the answer that created it
+  allOf:
+    - $ref: '#/Token'
+    - type: object
+      properties:
+        token:
+          type: string
+          description: |
+            The plaintext, `cwk_` and 43 base62 characters, shown once: cowork
+            keeps its SHA-256 only (docs/adr/0035 D1). An answer replayed for an
+            `Idempotency-Key` leaves it out.
 TokenList:
   type: object
   required: [items, next_cursor]
@@ -143,6 +202,16 @@ Tenant:
       description: Members create projects; off, only administrators do (docs/adr/0034 D9)
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+TenantCreate:
+  type: object
+  additionalProperties: false
+  required: [slug, name]
+  properties:
+    slug:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+      description: The tenant's public identifier, immutable and never reused (docs/adr/0005 D4)
+    name: {type: string, minLength: 1, maxLength: 200}
 TenantPatch:
   type: object
   additionalProperties: false
@@ -177,7 +246,8 @@ AuditAction:
   enum: [created, updated, transitioned, linked, unlinked, commented, edited, withdrawn, assigned,
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
-    confidential_lifted, expired]
+    confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
+    password_reset, deactivated, reactivated]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -875,3 +945,106 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+AuthOptions:
+  type: object
+  required: [local, oidc]
+  properties:
+    local:
+      type: boolean
+      description: An active local account exists, so the login page shows the local form (docs/adr/0033 D8)
+    oidc:
+      type: boolean
+      description: An identity provider is configured; none is built yet, so false
+LocalLoginRequest:
+  type: object
+  additionalProperties: false
+  required: [username, password]
+  properties:
+    username:
+      type: string
+      minLength: 1
+      maxLength: 200
+      description: Trimmed and lower-cased by the server; a value that cannot be a username is a failed login like any other
+    password:
+      type: string
+      minLength: 1
+      maxLength: 1024
+LocalLoginResult:
+  type: object
+  required: [password_change_required]
+  properties:
+    password_change_required:
+      type: boolean
+      description: The password is temporary and has to be changed before anything else (docs/adr/0033 D4)
+PasswordChange:
+  type: object
+  additionalProperties: false
+  required: [current_password, new_password]
+  properties:
+    current_password:
+      type: string
+      minLength: 1
+      maxLength: 1024
+    new_password:
+      type: string
+      minLength: 1
+      maxLength: 1024
+      description: At least `COWORK_PASSWORD_MIN_LENGTH` characters, and not the current password (docs/adr/0033 D3)
+Account:
+  type: object
+  required: [id, username, display_name, role, password_change_required, locked, deactivated_at, created_at]
+  properties:
+    id: {type: string, format: uuid}
+    username: {type: string}
+    display_name: {type: string}
+    role:
+      description: The person's highest role in this tenant; null when they have none any more
+      oneOf:
+        - $ref: '#/Role'
+        - type: 'null'
+    password_change_required:
+      type: boolean
+      description: The password is temporary and its person has not changed it yet
+    locked:
+      type: boolean
+      description: Failed logins locked the account at the moment (docs/adr/0033 D6)
+    deactivated_at:
+      type: [string, 'null']
+      format: date-time
+    created_at: {type: string, format: date-time}
+AccountList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Account'
+    next_cursor:
+      type: [string, 'null']
+AccountCreate:
+  type: object
+  additionalProperties: false
+  required: [username, display_name, temporary_password, role]
+  properties:
+    username:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9._-]{0,62}$'
+      description: The account's identity is `local:<username>`, unique in the installation (docs/adr/0033 D2)
+    display_name: {type: string, minLength: 1, maxLength: 200}
+    temporary_password:
+      type: string
+      minLength: 1
+      maxLength: 1024
+      description: At least `COWORK_PASSWORD_MIN_LENGTH` characters; the person changes it at the first login (docs/adr/0033 D3, D4)
+    role:
+      $ref: '#/Role'
+AccountPasswordReset:
+  type: object
+  additionalProperties: false
+  required: [temporary_password]
+  properties:
+    temporary_password:
+      type: string
+      minLength: 1
+      maxLength: 1024

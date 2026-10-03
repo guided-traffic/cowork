@@ -41,14 +41,21 @@ var (
 	IdempotencyKeyRequired = Code{"idempotency_key_required", http.StatusBadRequest, "Idempotency key required", "An agent's `POST` that creates something came without an `Idempotency-Key`; a transition needs none (docs/adr/0045 D2, D3)"}
 	InvalidCursor          = Code{"invalid_cursor", http.StatusBadRequest, "Invalid cursor", "The cursor was altered, belongs to another list, or comes from another installation"}
 	PageTooDeep            = Code{"page_too_deep", http.StatusBadRequest, "Page too deep", "A numbered page beyond the depth cap; follow the cursor instead"}
-	Unauthenticated        = Code{"unauthenticated", http.StatusUnauthorized, "Unauthenticated", "No token, a malformed one, or one cowork does not know"}
+	Unauthenticated        = Code{"unauthenticated", http.StatusUnauthorized, "Unauthenticated", "No token or session, a malformed one, or one cowork does not know; a session that expired or was ended answers the same"}
 	TokenExpired           = Code{"token_expired", http.StatusUnauthorized, "Token expired", "The token is past its expiry (docs/adr/0035 D4)"}
 	TokenRevoked           = Code{"token_revoked", http.StatusUnauthorized, "Token revoked", "The token was revoked, or its person deactivated (docs/adr/0035 D6)"}
+	InvalidCredentials     = Code{"invalid_credentials", http.StatusUnauthorized, "Invalid credentials", "The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6)"}
 	Forbidden              = Code{"forbidden", http.StatusForbidden, "Forbidden", "The person's role does not allow the act (docs/adr/0034)"}
 	InsufficientScope      = Code{"insufficient_scope", http.StatusForbidden, "Insufficient scope", "The token's scope does not reach the act (docs/adr/0035 D3)"}
 	AgentForbidden         = Code{"agent_forbidden", http.StatusForbidden, "Agent forbidden", "The act is on the agent hard-off list or needs a capability the token lacks; `detail` names which (docs/adr/0043 D5)"}
+	SessionRequired        = Code{"session_required", http.StatusForbidden, "Session required", "The route is for a person in a browser session; a personal access token cannot call it (docs/adr/0035 D5)"}
+	PasswordChangeRequired = Code{"password_change_required", http.StatusForbidden, "Password change required", "The session's account has a temporary password, which has to be changed before anything else (docs/adr/0033 D4)"}
+	NotInitialised         = Code{"not_initialised", http.StatusForbidden, "Not initialised", "The installation has no tenant yet and the person is not a global administrator (docs/adr/0032 D5)"}
+	Csrf                   = Code{"csrf", http.StatusForbidden, "CSRF check failed", "A cookie-authenticated write, or the login, did not come from COWORK_BASE_URL or lacks `X-Requested-With: cowork` (docs/adr/0037 D1)"}
 	NotFound               = Code{"not_found", http.StatusNotFound, "Not found", "No such route, or a tenant, project or ticket the caller cannot see — the answer does not say which (docs/adr/0047 D5)"}
 	MethodNotAllowed       = Code{"method_not_allowed", http.StatusMethodNotAllowed, "Method not allowed", "The path exists with other methods; `Allow` names them"}
+	UsernameTaken          = Code{"username_taken", http.StatusConflict, "Username taken", "The installation has a person with this username; usernames are unique (docs/adr/0033 D2)"}
+	TenantSlugTaken        = Code{"tenant_slug_taken", http.StatusConflict, "Tenant slug taken", "The installation has a tenant with this slug; slugs are never reused (docs/adr/0005 D4)"}
 	ProjectKeyTaken        = Code{"project_key_taken", http.StatusConflict, "Project key taken", "The tenant has a project with this key; keys are never reused (docs/adr/0007 D4)"}
 	ProjectArchived        = Code{"project_archived", http.StatusConflict, "Project archived", "An archived project refuses new tickets (docs/adr/0006 D4)"}
 	StateConflict          = Code{"state_conflict", http.StatusConflict, "State conflict", "The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2)"}
@@ -63,6 +70,7 @@ var (
 	UnsupportedMediaType   = Code{"unsupported_media_type", http.StatusUnsupportedMediaType, "Unsupported media type", "The body's type is not one the route accepts"}
 	IdempotencyMismatch    = Code{"idempotency_mismatch", http.StatusUnprocessableEntity, "Idempotency mismatch", "The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4)"}
 	PreconditionRequired   = Code{"precondition_required", http.StatusPreconditionRequired, "Precondition required", "An overwriting write came without `If-Match` (docs/adr/0050 D3)"}
+	TooManyAttempts        = Code{"too_many_attempts", http.StatusTooManyRequests, "Too many attempts", "More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6)"}
 	Internal               = Code{"internal", http.StatusInternalServerError, "Internal error", "Something failed inside cowork; the `request_id` finds it in the log"}
 	NotReady               = Code{"not_ready", http.StatusServiceUnavailable, "Not ready", "The backend cannot reach its database"}
 	Timeout                = Code{"timeout", http.StatusGatewayTimeout, "Timeout", "The request took longer than the configured limit (docs/adr/0039 D2)"}
@@ -75,11 +83,11 @@ var (
 // Catalogue lists every code; the generators read it.
 var Catalogue = []Code{
 	ValidationFailed, IdempotencyKeyRequired, InvalidCursor, PageTooDeep,
-	Unauthenticated, TokenExpired, TokenRevoked,
-	Forbidden, InsufficientScope, AgentForbidden,
-	NotFound, MethodNotAllowed, ProjectKeyTaken, ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
+	Unauthenticated, TokenExpired, TokenRevoked, InvalidCredentials,
+	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
+	NotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
 	PreconditionFailed, PayloadTooLarge,
-	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired,
+	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts,
 	Internal, NotReady, Timeout, BackendUnreachable,
 }
 

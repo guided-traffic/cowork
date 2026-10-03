@@ -1,0 +1,154 @@
+# The local accounts of a tenant, /api/v1/tenants/{tenant}/accounts
+# (docs/adr/0033 D1, D4, D5, docs/adr/0031 D4). For the tenant's administrators
+# with `admin` scope; an agent never (docs/adr/0043 D3). Creating an account and
+# resetting a password take a browser session only (docs/adr/0033 D1, D5): what
+# they make — an account, a password the administrator knows — would outlive
+# the revocation of a leaked token. The other routes remove or restrict access
+# and stay open to an administrator's token. An account is a person across the
+# whole installation, so a tenant manages the accounts its administrators
+# created and no others: another tenant's account, a global administrator, the
+# local administrator all answer 404, like an unknown username.
+accounts:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listAccounts
+    tags: [accounts]
+    summary: The local accounts the tenant manages
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of accounts, by person id
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AccountList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createAccount
+    tags: [accounts]
+    summary: Create a local account in the tenant
+    description: |
+      The administrator sets a temporary password; the person changes it at the
+      first login, before anything else (docs/adr/0033 D4). The account gets a
+      marked grant with the given role in this tenant (docs/adr/0030 D3) and
+      is managed by this tenant. There is no registration and no invitation:
+      this route is the gate (D1). A username is unique in the installation,
+      so `409 username_taken` also tells an administrator that another tenant
+      has the name.
+
+      A browser session only: a token, an administrator's included, answers
+      `403 session_required`. An account made with a leaked token would
+      survive the token's revocation, and so would the password the
+      administrator chose.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/AccountCreate'
+          example:
+            username: sam
+            display_name: Sam Rivera
+            temporary_password: change-me-at-first-login
+            role: member
+    responses:
+      '201':
+        description: The account
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Account'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+accountPassword:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/Username'
+  put:
+    operationId: resetAccountPassword
+    tags: [accounts]
+    summary: Set a new temporary password
+    description: |
+      The person must change it at the next login (docs/adr/0033 D5), and every
+      session of the account ends. Not for the administrator's own account: an
+      administrator changes theirs with `PUT /api/v1/me/password`, which asks
+      for the current one (`403 forbidden`).
+
+      A browser session only, like creating an account (`403 session_required`
+      for a token): a password reset with a leaked token would be access that
+      survives the token's revocation.
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/AccountPasswordReset'
+          example:
+            temporary_password: change-me-at-first-login
+    responses:
+      '204':
+        description: Reset
+      default:
+        $ref: './components/responses.yaml#/Problem'
+accountLockout:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/Username'
+  delete:
+    operationId: unlockAccount
+    tags: [accounts]
+    summary: Lift the lockout of an account
+    description: |
+      Forgets the failed attempts and the lock of the username
+      (docs/adr/0033 D6). Not for the administrator's own account
+      (`403 forbidden`). Unlocking an account that is not locked changes
+      nothing.
+    responses:
+      '204':
+        description: Unlocked
+      default:
+        $ref: './components/responses.yaml#/Problem'
+accountDeactivation:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/Username'
+  put:
+    operationId: deactivateAccount
+    tags: [accounts]
+    summary: Deactivate an account
+    description: |
+      The person can no longer log in, their tokens are revoked and their
+      sessions end (docs/adr/0024 D5); the person and every act they made stay.
+      Not for the administrator's own account (`403 forbidden`). Deactivating a
+      deactivated account changes nothing.
+    responses:
+      '204':
+        description: Deactivated
+      default:
+        $ref: './components/responses.yaml#/Problem'
+accountSessions:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/Username'
+  delete:
+    operationId: endAccountSessions
+    tags: [accounts]
+    summary: End every session of an account
+    description: |
+      Immediate: the next request with such a session's cookie is
+      unauthenticated (docs/adr/0031 D4). Tokens are not affected.
+    responses:
+      '204':
+        description: Ended
+      default:
+        $ref: './components/responses.yaml#/Problem'

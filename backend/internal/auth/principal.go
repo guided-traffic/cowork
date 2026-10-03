@@ -38,12 +38,29 @@ const (
 var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapOverrideUrgency,
 	CapInterest, CapUpload, CapCreateProject, CapRecordAnswer}
 
-// Principal is who a request acts for, after authentication.
+// Principal is who a request acts for, after authentication: a person through
+// a personal access token or through a browser session, resolved by one
+// authentication step (docs/adr/0031 D6).
 type Principal struct {
 	PersonID    uuid.UUID
 	DisplayName string
-	TokenID     uuid.UUID
-	Scope       domain.Scope
+	// TokenID is the token the request presented; uuid.Nil for a session.
+	TokenID uuid.UUID
+	// Session says the request was authenticated by the session cookie, and
+	// SessionHash is the SHA-256 of the cookie value it presented; both are
+	// zero for a token. The hash is what finds the session's row again and
+	// is recorded nowhere (docs/adr/0031 D7).
+	Session     bool
+	SessionHash []byte
+	// Scope is the token's scope. A session has no scope of its own: it
+	// acts with the person's full role, which is what the scope admin
+	// leaves to the role (docs/adr/0035 D3).
+	Scope domain.Scope
+	// GlobalAdmin is the person's global administrator flag (docs/adr/0004
+	// D4); PasswordChangeRequired says a temporary password is still to be
+	// changed (docs/adr/0033 D4).
+	GlobalAdmin            bool
+	PasswordChangeRequired bool
 	// RestrictedTenantID and RestrictedProjectID are the token's restriction
 	// (docs/adr/0035 D3); uuid.Nil when there is none.
 	RestrictedTenantID  uuid.UUID

@@ -18,8 +18,14 @@ type Caller struct {
 	UserID uuid.UUID
 	// System names a system actor, "system:<name>"; empty for a person.
 	System string
-	// TokenID is the personal access token the request presented.
+	// TokenID is the personal access token the request presented; uuid.Nil
+	// for a browser session.
 	TokenID uuid.UUID
+	// SessionHash is the SHA-256 of the session cookie the request presented
+	// (docs/adr/0031 D1); the policies of the sessions table admit that one
+	// row to the request through it. It is never recorded in an audit row
+	// (docs/adr/0031 D7). Nil for a token and for a system caller.
+	SessionHash []byte
 	// RestrictedProjectID is the token's project restriction
 	// (docs/adr/0035 D3); the visibility predicate admits that project only.
 	RestrictedProjectID uuid.UUID

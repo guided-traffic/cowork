@@ -5,11 +5,11 @@ INSERT INTO idempotency_keys (
     token_id, user_id, tenant_id, key, fingerprint, response_status, response_headers,
     response_body, expires_at
 ) VALUES (
-    sqlc.arg(token_id), sqlc.arg(user_id), sqlc.narg(tenant_id), sqlc.arg(key), sqlc.arg(fingerprint),
+    sqlc.narg(token_id), sqlc.arg(user_id), sqlc.narg(tenant_id), sqlc.arg(key), sqlc.arg(fingerprint),
     sqlc.arg(response_status), sqlc.arg(response_headers), sqlc.arg(response_body),
     now() + interval '24 hours'
 )
-ON CONFLICT (token_id, key) DO UPDATE
+ON CONFLICT (user_id, token_id, key) DO UPDATE
 SET user_id = EXCLUDED.user_id, tenant_id = EXCLUDED.tenant_id, fingerprint = EXCLUDED.fingerprint,
     response_status = EXCLUDED.response_status, response_headers = EXCLUDED.response_headers,
     response_body = EXCLUDED.response_body, created_at = now(), expires_at = EXCLUDED.expires_at

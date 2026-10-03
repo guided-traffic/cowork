@@ -1,0 +1,31 @@
+# The local administrator shape (docs/adr/0032 D1, D6): every credential from a
+# Secret with key names of its own, a bootstrap tenant, and the login's values
+# changed from their defaults. The CSRF check needs the public origin.
+database:
+  existingSecret: cowork-database
+  existingSecretKey: url
+  owner:
+    existingSecret: cowork-database-owner
+    existingSecretKey: url
+session:
+  existingSecret: cowork-session
+  lifetime: 8h
+  idle: 30m
+localAdmin:
+  existingSecret: cowork-local-admin
+  keys:
+    username: admin-name
+    password: admin-secret
+bootstrap:
+  tenant:
+    slug: acme
+    name: Acme Corp
+auth:
+  local:
+    passwordMinLength: 16
+    lockout: admin
+    maxFailures: 3
+    addressLimit: 0
+backend:
+  config:
+    baseURL: https://cowork.example.com

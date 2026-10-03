@@ -44,7 +44,6 @@ type apiServer struct {
 func newAPI(t *testing.T, opts ...func(*api.Options)) apiServer {
 	t.Helper()
 	o := api.Options{
-		DB:                openRuntime(t),
 		Logger:            slog.New(slog.NewTextHandler(testLog{t}, &slog.HandlerOptions{Level: slog.LevelWarn})),
 		Version:           "9.9.9-test",
 		Commit:            "test",
@@ -62,6 +61,9 @@ func newAPI(t *testing.T, opts ...func(*api.Options)) apiServer {
 	}
 	for _, f := range opts {
 		f(&o)
+	}
+	if o.DB == nil {
+		o.DB = openRuntime(t)
 	}
 	if o.Events == nil {
 		o.Events = events.New(time.Minute, 10)
@@ -82,7 +84,7 @@ func newAPI(t *testing.T, opts ...func(*api.Options)) apiServer {
 	}
 	h, err := api.New(o)
 	require.NoError(t, err)
-	srv := httptest.NewServer(httpserver.New(httpserver.Options{API: h}))
+	srv := httptest.NewServer(httpserver.New(httpserver.Options{API: h, Logger: o.Logger}))
 	t.Cleanup(func() {
 		o.Events.Close()
 		srv.Close()

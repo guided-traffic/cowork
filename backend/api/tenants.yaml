@@ -1,3 +1,43 @@
+# Creating a tenant, /api/v1/tenants (docs/adr/0005 D5).
+tenants:
+  post:
+    operationId: createTenant
+    tags: [tenants]
+    summary: Create a tenant
+    description: |
+      A global administrator, in a browser session: no token creates a tenant
+      (`403 session_required`), and a person who is not a global administrator
+      is `403 forbidden`. The creator becomes the tenant's first administrator
+      by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+      administrator has no other role in it (docs/adr/0034 D2). The slug is
+      immutable and never reused (docs/adr/0005 D4).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TenantCreate'
+          example:
+            slug: acme
+            name: Acme Corp
+    responses:
+      '201':
+        description: The tenant
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Tenant'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 # Everything under one tenant, /api/v1/tenants/{tenant}/… (docs/adr/0023 D1).
 # An unknown slug, a tenant the person is not a member of, and a token
 # restricted to another tenant answer alike: 404 not_found (D5).

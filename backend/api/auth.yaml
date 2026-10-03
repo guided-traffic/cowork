@@ -1,0 +1,100 @@
+# The browser's login flows (docs/adr/0031, 0033, 0037 D5). Their paths are
+# outside /api/v1, as ADR 0037 D5 names them: the frontend's nginx and the
+# development proxy send /auth/ to the backend beside /api/. They are in this
+# document so the pipeline validates them, the generated clients know them and
+# the document tells which route needs which credential; the session cookie
+# they set is the credential of every other route that declares `sessionCookie`.
+options:
+  get:
+    operationId: getAuthOptions
+    tags: [auth]
+    summary: What the login page offers
+    description: |
+      The local form is offered when at least one active local account exists,
+      the identity provider's button when one is configured (docs/adr/0033 D8).
+      No identity provider exists yet, so `oidc` is always false.
+    security: []
+    responses:
+      '200':
+        description: The ways to log in
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AuthOptions'
+            example:
+              local: true
+              oidc: false
+      default:
+        $ref: './components/responses.yaml#/Problem'
+local:
+  post:
+    operationId: loginLocal
+    tags: [auth]
+    summary: Log in with a local account
+    description: |
+      Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+      SameSite=Lax; Path=/`) and answers whether the password is temporary
+      and must be changed before anything else (docs/adr/0033 D4). A new
+      session is made at every login, and the one the request presented is
+      ended (docs/adr/0031 D5).
+
+      Every failure is the same `401 invalid_credentials` in the same time —
+      an unknown username, a wrong password, a locked or a deactivated
+      account — so neither the answer nor the lockout says whether an account
+      exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+      username within fifteen minutes lock it; more attempts from one client
+      address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+      `429 too_many_attempts` — the client being the TCP peer, or behind
+      `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+      right, that is not one of them (docs/adr/0035 D2). While no
+      tenant exists, only a global administrator may log in: anyone else, with
+      the right password, gets `403 not_initialised` and no session
+      (docs/adr/0032 D5).
+
+      There is no session yet to carry a CSRF check, so the request must come
+      from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+      to equal it, else `403 csrf` (docs/adr/0037 D5).
+    security: []
+    x-cowork-origin-check: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/LocalLoginRequest'
+          example:
+            username: ada
+            password: correct horse battery staple
+    responses:
+      '200':
+        description: Logged in; the cookie is set
+        headers:
+          Set-Cookie:
+            $ref: './components/headers.yaml#/SetCookie'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/LocalLoginResult'
+            example:
+              password_change_required: false
+      default:
+        $ref: './components/responses.yaml#/Problem'
+logout:
+  post:
+    operationId: logout
+    tags: [auth]
+    summary: End the session
+    description: |
+      Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
+      write of a session, so the CSRF check applies: a page of another site
+      cannot log a person out (docs/adr/0037 D5).
+    security:
+      - sessionCookie: []
+    responses:
+      '204':
+        description: Logged out; the cookie is cleared
+        headers:
+          Set-Cookie:
+            $ref: './components/headers.yaml#/SetCookie'
+      default:
+        $ref: './components/responses.yaml#/Problem'

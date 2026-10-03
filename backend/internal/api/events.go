@@ -127,13 +127,21 @@ func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Princi
 }
 
 // stillAdmitted checks at every heartbeat what a new request would: the
-// token is usable and the person still belongs to the tenant
-// (docs/adr/0035 D6). It returns the tenant as the person holds it now,
-// their role included.
+// token is usable — or the session is, neither limit passed — and the person
+// still belongs to the tenant (docs/adr/0035 D6, docs/adr/0031 D3, D4). An
+// open stream does not extend the session's idle time: a forgotten tab must
+// log out. It returns the tenant as the person holds it now, their role
+// included.
 func (h *handler) stillAdmitted(ctx context.Context, t tenantScope, p auth.Principal) (tenantScope, bool) {
 	usable := false
 	err := h.opts.DB.Installation(ctx, func(r *store.Reader) error {
 		var err error
+		if p.Session {
+			now := h.opts.Now()
+			usable, err = r.SessionStillUsable(ctx, readq.SessionStillUsableParams{
+				TokenHash: p.SessionHash, UserID: p.PersonID, Now: now, IdleBefore: now.Add(-h.opts.SessionIdle)})
+			return err
+		}
 		usable, err = r.TokenStillUsable(ctx, readq.TokenStillUsableParams{TokenID: p.TokenID, UserID: p.PersonID})
 		return err
 	})

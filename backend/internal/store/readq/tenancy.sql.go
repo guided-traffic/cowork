@@ -85,19 +85,30 @@ func (q *Queries) GetTenantForPerson(ctx context.Context, arg GetTenantForPerson
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, username, display_name, deactivated_at, created_at
-FROM users
-WHERE id = $1
+SELECT u.id, u.username, u.display_name, u.deactivated_at, u.created_at, u.global_admin,
+       (a.user_id IS NOT NULL)::boolean AS local,
+       COALESCE(a.password_change_required, false)::boolean AS password_change_required
+FROM users u
+LEFT JOIN local_accounts a ON a.user_id = u.id
+WHERE u.id = $1
 `
 
 type GetUserRow struct {
-	ID            uuid.UUID
-	Username      *string
-	DisplayName   string
-	DeactivatedAt *time.Time
-	CreatedAt     time.Time
+	ID                     uuid.UUID
+	Username               *string
+	DisplayName            string
+	DeactivatedAt          *time.Time
+	CreatedAt              time.Time
+	GlobalAdmin            bool
+	Local                  bool
+	PasswordChangeRequired bool
 }
 
+// The person with what the resolvers and GET /api/v1/me need: whether they are
+// a global administrator, whether they have a local account, and whether its
+// password must be changed before anything else (docs/adr/0033 D4). The
+// account row is the person's own to read, so another person's flags are not
+// this query's to answer.
 func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, userID)
 	var i GetUserRow
@@ -107,6 +118,9 @@ func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, er
 		&i.DisplayName,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.GlobalAdmin,
+		&i.Local,
+		&i.PasswordChangeRequired,
 	)
 	return i, err
 }

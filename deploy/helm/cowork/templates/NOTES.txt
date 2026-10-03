@@ -14,6 +14,32 @@ Database: Secret {{ include "cowork.databaseSecretName" . }}, key {{ include "co
   text in the release Secret and in `helm get values`; use database.owner.existingSecret
   for anything beyond a throw-away installation.
 {{- end }}
+{{- if include "cowork.localAdminEnabled" . }}
+Login:    the local administrator from Secret {{ include "cowork.localAdminSecretName" . }}; log in at {{ .Values.backend.config.baseURL }}
+{{- if and (not .Values.localAdmin.existingSecret) .Values.localAdmin.username }}
+  WARNING: localAdmin.username and localAdmin.password are set inline. The credential is
+  stored in plain text in the release Secret and in `helm get values`; use
+  localAdmin.existingSecret for anything beyond a throw-away installation.
+{{- end }}
+{{- if .Values.bootstrap.tenant.slug }}
+          creates the tenant "{{ .Values.bootstrap.tenant.slug }}" at start while none exists
+{{- end }}
+{{- else }}
+Login:    no local administrator (localAdmin is empty); nobody can log in until one is set
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+Network:  NetworkPolicy {{ include "cowork.backend.fullname" . }} admits only the frontend pods to the backend (a network plugin that implements NetworkPolicy enforces it)
+{{- else if .Values.backend.config.trustedProxies }}
+  WARNING: networkPolicy.enabled is false while backend.config.trustedProxies is set. Any pod
+  that can reach the backend can write X-Forwarded-For and choose its client address for the
+  login throttle.
+{{- end }}
+{{- if and (include "cowork.localAdminEnabled" .) (not .Values.backend.config.trustedProxies) (gt (int .Values.auth.local.addressLimit) 0) }}
+  NOTE: backend.config.trustedProxies is empty, so the login throttle counts the frontend pod as
+  the one client of every browser: auth.local.addressLimit attempts a minute for the whole
+  installation. Name the networks of the proxies in front of the backend
+  (docs/operations/installation.md).
+{{- end }}
 Migrations: {{ if .Values.backend.config.migrateOnStart }}an init container of every backend pod, as the owner role{{ else }}none; run `cowork migrate` with the owner credential before the pods start{{ end }}
 Attachments: {{ if .Values.storage.endpoint }}{{ .Values.storage.endpoint }}, bucket {{ .Values.storage.bucket }}{{ else }}no object storage; uploads are refused{{ end }}
 

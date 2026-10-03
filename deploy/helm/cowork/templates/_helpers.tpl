@@ -161,3 +161,47 @@ backend answers its own 504; an hour when the backend has none.
 {{- printf "%ds" (add $t 10) }}
 {{- end }}
 {{- end }}
+
+{{/*
+Whether the local administrator is configured (docs/adr/0032 D1): an existing
+Secret, or the inline username and password, which come together.
+*/}}
+{{- define "cowork.localAdminEnabled" -}}
+{{- if or .Values.localAdmin.existingSecret .Values.localAdmin.username .Values.localAdmin.password -}}
+{{- if and (not .Values.localAdmin.existingSecret) (not (and .Values.localAdmin.username .Values.localAdmin.password)) -}}
+{{- fail "set localAdmin.username and localAdmin.password together, or localAdmin.existingSecret" -}}
+{{- end -}}
+{{- if not .Values.backend.config.baseURL -}}
+{{- fail "set backend.config.baseURL: a cookie login needs the origin the browser sees (docs/adr/0037 D6)" -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The Secret and keys that hold the local administrator: localAdmin.existingSecret,
+or the release Secret rendered from the inline values. The existing Secret wins.
+*/}}
+{{- define "cowork.localAdminSecretName" -}}
+{{- if .Values.localAdmin.existingSecret }}
+{{- .Values.localAdmin.existingSecret }}
+{{- else }}
+{{- printf "%s-local-admin" (include "cowork.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{- define "cowork.localAdminUsernameKey" -}}
+{{- if .Values.localAdmin.existingSecret }}
+{{- .Values.localAdmin.keys.username }}
+{{- else }}
+{{- "username" }}
+{{- end }}
+{{- end }}
+
+{{- define "cowork.localAdminPasswordKey" -}}
+{{- if .Values.localAdmin.existingSecret }}
+{{- .Values.localAdmin.keys.password }}
+{{- else }}
+{{- "password" }}
+{{- end }}
+{{- end }}

@@ -91,6 +91,43 @@ func TestServeMigratingOnStartWithoutOwnerURLFails(t *testing.T) {
 	assert.Contains(t, stderr.String(), config.EnvDatabaseOwnerURL+" is required while "+config.EnvMigrateOnStart+" is true")
 }
 
+// docs/adr/0032 D2, D3: one of the two local administrator variables alone, or a
+// password shorter than the configured minimum, refuses the start with a
+// message that names the variable and never the value.
+func TestServeRefusesAHalfConfiguredLocalAdministrator(t *testing.T) {
+	base := map[string]string{
+		config.EnvDatabaseURL: "postgres://cowork_app@db/cowork", config.EnvDatabaseOwnerURL: "postgres://cowork_owner@db/cowork",
+		config.EnvSessionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", config.EnvBaseURL: "https://cowork.example.com",
+	}
+	for name, c := range map[string]struct {
+		env    map[string]string
+		wanted string
+	}{
+		"a username alone": {map[string]string{config.EnvLocalAdminUsername: "ada"}, config.EnvLocalAdminPassword + " is required while " + config.EnvLocalAdminUsername + " is set"},
+		"a password alone": {map[string]string{config.EnvLocalAdminPassword: "a very secret password"}, config.EnvLocalAdminUsername + " is required while " + config.EnvLocalAdminPassword + " is set"},
+		"a short password": {map[string]string{config.EnvLocalAdminUsername: "ada", config.EnvLocalAdminPassword: "tooshort"}, config.EnvLocalAdminPassword + " must be at least 12 characters"},
+		"no base URL": {map[string]string{config.EnvLocalAdminUsername: "ada", config.EnvLocalAdminPassword: "a very secret password", config.EnvBaseURL: ""},
+			config.EnvBaseURL + " is required while " + config.EnvLocalAdminUsername + " is set"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := map[string]string{}
+			for k, v := range base {
+				env[k] = v
+			}
+			for k, v := range c.env {
+				env[k] = v
+			}
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), []string{"serve"}, envOf(env), &stdout, &stderr)
+			assert.Equal(t, 1, code)
+			assert.Contains(t, stderr.String(), c.wanted)
+			for _, secret := range []string{"a very secret password", "tooshort"} {
+				assert.NotContains(t, stderr.String(), secret)
+			}
+		})
+	}
+}
+
 func TestMigrateWithUnparsableDatabaseURLFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	env := envOf(map[string]string{

@@ -4,6 +4,12 @@ TenantSlug:
   required: true
   description: The tenant's slug (docs/adr/0005 D4)
   schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+Username:
+  name: username
+  in: path
+  required: true
+  description: A local account's username (docs/adr/0033 D2)
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9._-]{0,62}$'}
 ProjectKey:
   name: project
   in: path

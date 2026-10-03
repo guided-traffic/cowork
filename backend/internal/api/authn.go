@@ -6,16 +6,70 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
 
-// authenticate resolves the request's bearer token to its person
+// credentials are what an operation accepts, read from the security
+// requirements the document declares for it (docs/adr/0046 D6): the bearer
+// token, the session cookie, or either.
+type credentials struct{ bearer, session bool }
+
+func (c credentials) any() bool { return c.bearer || c.session }
+
+// credentialsOf reads the operation's own requirements, or the document's
+// default when it declares none.
+func credentialsOf(doc *openapi3.T, op *openapi3.Operation) credentials {
+	reqs := doc.Security
+	if op.Security != nil {
+		reqs = *op.Security
+	}
+	var c credentials
+	for _, req := range reqs {
+		if _, ok := req["bearerToken"]; ok {
+			c.bearer = true
+		}
+		if _, ok := req["sessionCookie"]; ok {
+			c.session = true
+		}
+	}
+	return c
+}
+
+// authenticate resolves a request to its person by one resolver for both
+// credentials (docs/adr/0031 D6). A request with an Authorization header is a
+// token's, whatever else it carries — its cookie, if any, is not looked at, so
+// the CSRF check that belongs to cookies is never one request's way past a
+// token and a token never borrows a session. Otherwise the session cookie
+// decides, where the operation takes one. A token on an operation that takes
+// a session only is refused with 403 once it has proved to be a token.
+func (h *handler) authenticate(r *http.Request, accepts credentials) (auth.Principal, *problem.Error) {
+	if r.Header.Get("Authorization") != "" {
+		p, perr := h.authenticateToken(r)
+		if perr != nil {
+			return auth.Principal{}, perr
+		}
+		if !accepts.bearer {
+			return auth.Principal{}, problem.New(problem.SessionRequired, "this route is for a person in a browser session; a token cannot call it")
+		}
+		return p, nil
+	}
+	if accepts.session {
+		if cookie, err := r.Cookie(auth.SessionCookie); err == nil {
+			return h.authenticateSession(r, cookie.Value)
+		}
+	}
+	return auth.Principal{}, unauthenticated(problem.Unauthenticated, "a personal access token or a session is required")
+}
+
+// authenticateToken resolves the request's bearer token to its person
 // (docs/adr/0035, docs/adr/0036). A token is presented in the Authorization
 // header only, never in a query parameter or a cookie (docs/adr/0035 D7).
-func (h *handler) authenticate(r *http.Request) (auth.Principal, *problem.Error) {
+func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.Error) {
 	plaintext, ok := bearer(r.Header.Get("Authorization"))
 	if !ok || !auth.WellFormedToken(plaintext) {
 		return auth.Principal{}, unauthenticated(problem.Unauthenticated, "a personal access token is required: Authorization: Bearer cwk_…")

@@ -10,11 +10,18 @@ ProblemCode:
     - unauthenticated
     - token_expired
     - token_revoked
+    - invalid_credentials
     - forbidden
     - insufficient_scope
     - agent_forbidden
+    - session_required
+    - password_change_required
+    - not_initialised
+    - csrf
     - not_found
     - method_not_allowed
+    - username_taken
+    - tenant_slug_taken
     - project_key_taken
     - project_archived
     - state_conflict
@@ -29,6 +36,7 @@ ProblemCode:
     - unsupported_media_type
     - idempotency_mismatch
     - precondition_required
+    - too_many_attempts
     - internal
     - not_ready
     - timeout
