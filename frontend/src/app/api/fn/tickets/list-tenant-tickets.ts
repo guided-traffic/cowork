@@ -53,6 +53,11 @@ export interface ListTenantTickets$Params {
   updated_before?: string;
 
 /**
+ * Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
+ */
+  done_after?: string;
+
+/**
  * Full text over title and body (docs/adr/0025); its length is capped by the server
  */
   q?: string;
@@ -119,6 +124,7 @@ export function listTenantTickets(http: HttpClient, rootUrl: string, params: Lis
     rb.query('opened_before', params.opened_before, {});
     rb.query('updated_after', params.updated_after, {});
     rb.query('updated_before', params.updated_before, {});
+    rb.query('done_after', params.done_after, {});
     rb.query('q', params.q, {});
     rb.query('include_terminal', params.include_terminal, {});
     rb.query('blocked', params.blocked, {});

@@ -5,5 +5,5 @@
 /**
  * docs/adr/0009 D1
  */
-export type TicketState = 'filed' | 'analysed' | 'decided' | 'in-progress' | 'blocked' | 'done' | 'dropped';
+export type TicketState = 'filed' | 'analysed' | 'decided' | 'in-progress' | 'review' | 'blocked' | 'done' | 'dropped';
 

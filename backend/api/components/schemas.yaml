@@ -304,11 +304,14 @@ AuditList:
 WipLimits:
   type: object
   additionalProperties: false
-  description: Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+  description: |
+    Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+    board's Refinement column, which holds filed and analysed, counts against the analysed limit.
   properties:
     analysed: {type: integer, minimum: 1}
     decided: {type: integer, minimum: 1}
     in-progress: {type: integer, minimum: 1}
+    review: {type: integer, minimum: 1}
     blocked: {type: integer, minimum: 1}
 Project:
   type: object
@@ -364,7 +367,7 @@ TicketType:
   description: docs/adr/0008 D1
 TicketState:
   type: string
-  enum: [filed, analysed, decided, in-progress, blocked, done, dropped]
+  enum: [filed, analysed, decided, in-progress, review, blocked, done, dropped]
   description: docs/adr/0009 D1
 BlockKind:
   type: string
@@ -401,7 +404,9 @@ UrgencyOverride:
   properties:
     value:
       $ref: '#/Urgency'
-    reason: {type: string}
+    reason:
+      type: [string, 'null']
+      description: Null when a person set the override without one (docs/adr/0010 D3)
     by:
       oneOf:
         - $ref: '#/Person'
@@ -410,8 +415,9 @@ UrgencyOverride:
 Ticket:
   type: object
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
-    urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_derived, parent, reporter,
-    assignee, confidential, opened_at, decided_at, done_at, version, created_at, updated_at]
+    urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_refinement, progress_review,
+    progress_derived, parent, reporter, assignee, confidential, opened_at, decided_at, done_at, done_from, done_by_hand,
+    open_prerequisites, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -449,8 +455,22 @@ Ticket:
       type: integer
       minimum: 0
       maximum: 100
-      description: 100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)
-    progress_derived: {type: boolean, description: The progress is derived from the children and takes no manual value}
+      description: |
+        The implementation stage, the work of in-progress; derived from the children while there are any
+        (docs/adr/0017 D2, D3). Done leaves it as it is.
+    progress_refinement:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: The refinement stage, the work of filed and analysed; derived like progress (docs/adr/0017 D2, D3)
+    progress_review:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: The review stage, the work of review; derived like progress (docs/adr/0017 D2, D3)
+    progress_derived:
+      type: boolean
+      description: The three stages are derived from the children and take no manual value; such a ticket is never done by them
     parent: {type: [string, 'null'], description: The parent's key}
     reporter:
       $ref: '#/Person'
@@ -464,6 +484,22 @@ Ticket:
     opened_at: {type: string, format: date-time}
     decided_at: {type: [string, 'null'], format: date-time}
     done_at: {type: [string, 'null'], format: date-time}
+    done_from:
+      description: The state the ticket was done from, while it is done (docs/adr/0009 D5)
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    done_by_hand:
+      type: boolean
+      description: |
+        Done by hand rather than by its three stages: the stages stay editable and the ticket stays
+        done until the done by hand is withdrawn (docs/adr/0009 D5). False while the ticket is not done.
+    open_prerequisites:
+      type: integer
+      minimum: 0
+      description: |
+        The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
+        docs/adr/0018 D1); a ticket the caller cannot see is never counted
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
@@ -502,7 +538,35 @@ TicketPatch:
       $ref: '#/Effort'
     parent: {type: [string, 'null'], description: 'A ticket key of the same project; null makes the ticket a root'}
     assignee: {type: [string, 'null'], format: uuid}
-    progress: {type: integer, minimum: 0, maximum: 100, multipleOf: 5}
+    progress:
+      type: integer
+      minimum: 0
+      maximum: 100
+      multipleOf: 5
+      description: The implementation stage (docs/adr/0017 D2)
+    progress_refinement: {type: integer, minimum: 0, maximum: 100, multipleOf: 5}
+    progress_review: {type: integer, minimum: 0, maximum: 100, multipleOf: 5}
+    note:
+      type: string
+      minLength: 1
+      maxLength: 10000
+      description: |
+        The verification note the change needs when it brings the last of the three stages of a ticket
+        without children to 100, which is the done act — what was run, against what, with what result
+        (docs/adr/0009 D5); refused on any other change
+    override_prerequisites:
+      type: boolean
+      description: |
+        Close over open prerequisites, with a reason, when the change is the done act; a person's act,
+        never an agent's (docs/adr/0012 D7)
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      description: |
+        Required when the change lowers a stage of a ticket done by its stages, which reopens it, and with
+        override_prerequisites; recorded on the done act otherwise, refused on a change that moves no state
+        (docs/adr/0009 D5)
     comment:
       type: string
       minLength: 1
@@ -522,11 +586,15 @@ TicketBodyReplace:
 UrgencyOverrideSet:
   type: object
   additionalProperties: false
-  required: [value, reason]
+  required: [value]
   properties:
     value:
       $ref: '#/Urgency'
-    reason: {type: string, minLength: 1, maxLength: 2000}
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      description: Optional for a person, required of an agent (docs/adr/0010 D3)
 ConfidentialSet:
   type: object
   additionalProperties: false
@@ -547,7 +615,9 @@ Transition:
       type: string
       minLength: 1
       maxLength: 2000
-      description: Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites
+      description: |
+        Required backward, into blocked (the block's text), to dropped, on a reopen, on the withdrawal of a
+        done by hand, and with override_prerequisites
     note:
       type: string
       minLength: 1

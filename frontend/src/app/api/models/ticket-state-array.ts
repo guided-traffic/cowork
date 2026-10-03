@@ -11,6 +11,7 @@ export const TICKET_STATE: TicketState[] = [
   'analysed',
   'decided',
   'in-progress',
+  'review',
   'blocked',
   'done',
   'dropped'

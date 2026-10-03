@@ -51,6 +51,15 @@
           "type": "string"
         }
       },
+      "DoneAfter": {
+        "description": "Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal",
+        "in": "query",
+        "name": "done_after",
+        "schema": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
       "FilterAssignee": {
         "description": "A person id, me or none, each negatable with !",
         "explode": true,
@@ -2296,6 +2305,21 @@
               "null"
             ]
           },
+          "done_by_hand": {
+            "description": "Done by hand rather than by its three stages: the stages stay editable and the ticket stays\ndone until the done by hand is withdrawn (docs/adr/0009 D5). False while the ticket is not done.\n",
+            "type": "boolean"
+          },
+          "done_from": {
+            "description": "The state the ticket was done from, while it is done (docs/adr/0009 D5)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "effort": {
             "$ref": "#/components/schemas/Effort"
           },
@@ -2310,6 +2334,11 @@
           "number": {
             "type": "integer"
           },
+          "open_prerequisites": {
+            "description": "The open tickets that block this one and that the caller can see (docs/adr/0012 D7,\ndocs/adr/0018 D1); a ticket the caller cannot see is never counted\n",
+            "minimum": 0,
+            "type": "integer"
+          },
           "opened_at": {
             "format": "date-time",
             "type": "string"
@@ -2322,14 +2351,26 @@
             ]
           },
           "progress": {
-            "description": "100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)",
+            "description": "The implementation stage, the work of in-progress; derived from the children while there are any\n(docs/adr/0017 D2, D3). Done leaves it as it is.\n",
             "maximum": 100,
             "minimum": 0,
             "type": "integer"
           },
           "progress_derived": {
-            "description": "The progress is derived from the children and takes no manual value",
+            "description": "The three stages are derived from the children and take no manual value; such a ticket is never done by them",
             "type": "boolean"
+          },
+          "progress_refinement": {
+            "description": "The refinement stage, the work of filed and analysed; derived like progress (docs/adr/0017 D2, D3)",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_review": {
+            "description": "The review stage, the work of review; derived like progress (docs/adr/0017 D2, D3)",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
           },
           "project": {
             "description": "The project's key",
@@ -2406,6 +2447,8 @@
           "urgency_override",
           "effort",
           "progress",
+          "progress_refinement",
+          "progress_review",
           "progress_derived",
           "parent",
           "reporter",
@@ -2414,6 +2457,9 @@
           "opened_at",
           "decided_at",
           "done_at",
+          "done_from",
+          "done_by_hand",
+          "open_prerequisites",
           "version",
           "created_at",
           "updated_at"
@@ -2538,6 +2584,16 @@
           "effort": {
             "$ref": "#/components/schemas/Effort"
           },
+          "note": {
+            "description": "The verification note the change needs when it brings the last of the three stages of a ticket\nwithout children to 100, which is the done act — what was run, against what, with what result\n(docs/adr/0009 D5); refused on any other change\n",
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "override_prerequisites": {
+            "description": "Close over open prerequisites, with a reason, when the change is the done act; a person's act,\nnever an agent's (docs/adr/0012 D7)\n",
+            "type": "boolean"
+          },
           "parent": {
             "description": "A ticket key of the same project; null makes the ticket a root",
             "type": [
@@ -2546,10 +2602,29 @@
             ]
           },
           "progress": {
+            "description": "The implementation stage (docs/adr/0017 D2)",
             "maximum": 100,
             "minimum": 0,
             "multipleOf": 5,
             "type": "integer"
+          },
+          "progress_refinement": {
+            "maximum": 100,
+            "minimum": 0,
+            "multipleOf": 5,
+            "type": "integer"
+          },
+          "progress_review": {
+            "maximum": 100,
+            "minimum": 0,
+            "multipleOf": 5,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Required when the change lowers a stage of a ticket done by its stages, which reopens it, and with\noverride_prerequisites; recorded on the done act otherwise, refused on a change that moves no state\n(docs/adr/0009 D5)\n",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
           },
           "security": {
             "$ref": "#/components/schemas/SecurityClass"
@@ -2622,6 +2697,7 @@
           "analysed",
           "decided",
           "in-progress",
+          "review",
           "blocked",
           "done",
           "dropped"
@@ -3078,7 +3154,7 @@
             "type": "boolean"
           },
           "reason": {
-            "description": "Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites",
+            "description": "Required backward, into blocked (the block's text), to dropped, on a reopen, on the withdrawal of a\ndone by hand, and with override_prerequisites\n",
             "maxLength": 2000,
             "minLength": 1,
             "type": "string"
@@ -3120,7 +3196,11 @@
             ]
           },
           "reason": {
-            "type": "string"
+            "description": "Null when a person set the override without one (docs/adr/0010 D3)",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "value": {
             "$ref": "#/components/schemas/Urgency"
@@ -3137,6 +3217,7 @@
         "additionalProperties": false,
         "properties": {
           "reason": {
+            "description": "Optional for a person, required of an agent (docs/adr/0010 D3)",
             "maxLength": 2000,
             "minLength": 1,
             "type": "string"
@@ -3146,8 +3227,7 @@
           }
         },
         "required": [
-          "value",
-          "reason"
+          "value"
         ],
         "type": "object"
       },
@@ -3172,7 +3252,7 @@
       },
       "WipLimits": {
         "additionalProperties": false,
-        "description": "Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)",
+        "description": "Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The\nboard's Refinement column, which holds filed and analysed, counts against the analysed limit.\n",
         "properties": {
           "analysed": {
             "minimum": 1,
@@ -3187,6 +3267,10 @@
             "type": "integer"
           },
           "in-progress": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "review": {
             "minimum": 1,
             "type": "integer"
           }
@@ -4084,7 +4168,7 @@
         }
       ],
       "patch": {
-        "description": "An administrator's act with `admin` scope; `If-Match` is required.",
+        "description": "A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).\n`If-Match` is required. The WIP limits are advisory, per state, `review` included\n(docs/adr/0019 D3).\n",
         "operationId": "updateProject",
         "parameters": [
           {
@@ -4121,7 +4205,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Change a project's name or description",
+        "summary": "Change a project's name, description or WIP limits",
         "tags": [
           "projects"
         ]
@@ -4167,7 +4251,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets": {
       "get": {
-        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5).\n",
+        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5). `state=done\u0026done_after=\u003ctime\u003e` counts what the board shows for done\n(docs/adr/0018 D1).\n",
         "operationId": "listProjectTickets",
         "parameters": [
           {
@@ -4214,6 +4298,9 @@
           },
           {
             "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/DoneAfter"
           },
           {
             "$ref": "#/components/parameters/Query"
@@ -4387,7 +4474,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9).\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicket",
         "parameters": [
           {
@@ -5938,7 +6025,7 @@
         }
       ],
       "post": {
-        "description": "The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into\nblocked from any open state with a block and out of it only to where it came from,\ndropped from any open state with a reason, done from in-progress with a verification\nnote. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045\nD2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides\nwith a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`\nfor done, `drop` for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away,\na reopen ranks it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is\nrecorded on the act, not required (docs/adr/0045 D3, D7).\n",
+        "description": "The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →\nreview), backward with a reason (in-progress → decided or analysed, decided → analysed,\nreview → in-progress), into blocked from any open state with a block and out of it only to\nwhere it came from, dropped from any open state with a reason, and dropped → filed, the\nreopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it\n(docs/adr/0045 D2).\n\nTo done is done by hand (docs/adr/0009 D5): from any open state for a person, from\nin-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a\nverification note; it leaves the progress stages as they are and sets `done_by_hand` and\n`done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides\nwith a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:\nthe ticket returns there, ranked at the bottom of its project — unless it has no children and\nits three stages are full, when it stays done by them (recorded as `updated`). A ticket done\nby its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409\n`state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`\nfor dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks\nit at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the\nact, not required (docs/adr/0045 D3, D7).\n",
         "operationId": "transitionTicket",
         "parameters": [
           {
@@ -5949,7 +6036,7 @@
           "content": {
             "application/json": {
               "example": {
-                "from": "in-progress",
+                "from": "review",
                 "note": "make test-integration passed against PostgreSQL 18.6",
                 "to": "done"
               },
@@ -5988,6 +6075,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override": {
       "delete": {
+        "description": "The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).",
         "operationId": "withdrawUrgencyOverride",
         "parameters": [
           {
@@ -6031,7 +6119,7 @@
         }
       ],
       "put": {
-        "description": "The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent\nneeds the override-urgency capability (docs/adr/0043 D4).\n",
+        "description": "The override holds until a person or an agent withdraws it or sets another; when an input of\nthe derivation changes, the derived value and its rule change beside it and the override stays\n(docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request\nwithout one is 400 at `/reason`. An agent needs the override-urgency capability\n(docs/adr/0043 D4).\n",
         "operationId": "overrideUrgency",
         "parameters": [
           {
@@ -6068,7 +6156,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Override the derived urgency with a reason",
+        "summary": "Override the derived urgency",
         "tags": [
           "tickets"
         ]
@@ -6076,7 +6164,7 @@
     },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
-        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them.\n",
+        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time.\n",
         "operationId": "listTenantTickets",
         "parameters": [
           {
@@ -6126,6 +6214,9 @@
           },
           {
             "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/DoneAfter"
           },
           {
             "$ref": "#/components/parameters/Query"

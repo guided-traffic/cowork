@@ -300,10 +300,13 @@ func TestRankLeavesWithDoneAndReturnsWithAReopen(t *testing.T) {
 		"the unranked follow the ranked, by number")
 
 	e.place(t, member, d, false, a)
-	reopened := e.move(t, member, b, apigen.Transition{From: apigen.TicketStateDone, To: apigen.TicketStateFiled, Reason: ptr("the fix regressed")})
+	reopened := e.move(t, member, b, apigen.Transition{From: apigen.TicketStateDone, To: apigen.TicketStateInProgress, Reason: ptr("the fix regressed")})
 	require.Equal(t, http.StatusOK, reopened.StatusCode(), string(reopened.Body))
-	require.NotNil(t, rankOf(t, f, b.Id), "a reopen ranks the ticket")
+	require.NotNil(t, rankOf(t, f, b.Id), "the withdrawal of a done by hand ranks the ticket")
 	assert.Equal(t, []string{"d", "a", "b"}, e.titles(t, member, e.projectTickets("ALPHA"), ""), "at the bottom")
+	reopened = e.move(t, member, c, apigen.Transition{From: apigen.TicketStateDropped, To: apigen.TicketStateFiled, Reason: ptr("needed")})
+	require.Equal(t, http.StatusOK, reopened.StatusCode(), string(reopened.Body))
+	assert.Equal(t, []string{"d", "a", "b", "c"}, e.titles(t, member, e.projectTickets("ALPHA"), ""), "so does a reopen")
 }
 
 // Concurrent moves in one project, with filings and reopens among them, are
@@ -348,7 +351,7 @@ func TestConcurrentRankMoves(t *testing.T) {
 	for _, d := range done {
 		sends = append(sends, func() int {
 			res, err := cl.TransitionTicketWithResponse(e.ctx, e.SlugA, "ALPHA", d.Number, &apigen.TransitionTicketParams{},
-				apigen.Transition{From: apigen.TicketStateDone, To: apigen.TicketStateFiled, Reason: ptr("again")})
+				apigen.Transition{From: apigen.TicketStateDone, To: apigen.TicketStateInProgress, Reason: ptr("again")})
 			if err != nil {
 				return 0
 			}
@@ -450,7 +453,7 @@ func TestRankKeyIsNeverShown(t *testing.T) {
 		"a ticket": e.s.do(t, member, http.MethodGet, ticket(a.Number), nil),
 		"a move":   e.s.do(t, member, http.MethodPut, ticket(a.Number)+"/rank", map[string]any{"after": b.Number}),
 		"a reopen": e.s.do(t, member, http.MethodPost, ticket(e.walk(t, member, e.file(t, member, "ALPHA", task("d")), toAnalysed,
-			toDecided, toInProgress, toDone).Number)+"/transitions", map[string]any{"from": "done", "to": "filed", "reason": "again"}),
+			toDecided, toInProgress, toDone).Number)+"/transitions", map[string]any{"from": "done", "to": "in-progress", "reason": "again"}),
 	} {
 		var body map[string]any
 		decode(name, res, &body)

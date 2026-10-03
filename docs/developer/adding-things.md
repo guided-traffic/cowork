@@ -85,8 +85,11 @@ the mechanics are [api.md](api.md)).
    It runs as the owner role; whatever the runtime role needs is granted in the same file.
    A migration that rewrites rows of a forced table sees none of them — no tenant is set — so it
    lifts the force for itself and restores it later in the same file, as `000017_ticket_rank`
-   does ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
-   D1); a unit test holds every lift to its restore.
+   and `000019_progress_stages` do ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+   D1); a unit test holds every lift to its restore. A file is one transaction, and PostgreSQL
+   refuses a new enum value in the transaction that adds it: `ALTER TYPE … ADD VALUE` goes into a
+   file of its own, and what uses the value into the next, as `000018_ticket_state_review` and
+   `000019` do.
 2. Run `make postgres-up minio-up test-integration`; add an assertion there for what only the
    database proves. A rewrite of existing rows is tested from the version before it:
    `migrateTo(t, ownerURL, n-1)` in [`migrate_test.go`](../../backend/test/integration/migrate_test.go)

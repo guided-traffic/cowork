@@ -33,9 +33,11 @@ const (
 	StateAnalysed   TicketState = "analysed"
 	StateDecided    TicketState = "decided"
 	StateInProgress TicketState = "in-progress"
-	StateBlocked    TicketState = "blocked"
-	StateDone       TicketState = "done"
-	StateDropped    TicketState = "dropped"
+	// StateReview is the check of the work before it ends (docs/adr/0009 D1).
+	StateReview  TicketState = "review"
+	StateBlocked TicketState = "blocked"
+	StateDone    TicketState = "done"
+	StateDropped TicketState = "dropped"
 )
 
 // Terminal reports whether s is done or dropped (docs/adr/0009 D1).
@@ -126,7 +128,8 @@ type UrgencyInputs struct {
 // Normalized keeps of the inputs what rule set v1 tells apart: the state
 // only as blocked or not, the block kind only while blocked. Two inputs equal
 // after it derive alike, and a change between them is a change of the
-// derivation's input, which ends an override (docs/adr/0010 D3).
+// derivation's input, which derives the urgency again; a standing override
+// stays (docs/adr/0010 D3).
 func (in UrgencyInputs) Normalized() UrgencyInputs {
 	if in.State != StateBlocked {
 		return UrgencyInputs{OpenDecisionBlocker: in.OpenDecisionBlocker}

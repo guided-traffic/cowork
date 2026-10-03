@@ -17,7 +17,9 @@ import (
 // absent keys.
 type Ticket struct {
 	Key, Title, Type, State, Severity, Security, Threat, Urgency, Effort string
-	Progress                                                             int
+	// The three progress stages (docs/adr/0017 D2): Progress is the
+	// implementation stage and keeps its key.
+	ProgressRefinement, Progress, ProgressReview int
 	// Assignee is the display name; Parent the full key.
 	Assignee, Parent string
 	Opened           time.Time
@@ -66,7 +68,9 @@ func Render(t Ticket) []byte {
 	}
 	field("urgency", t.Urgency)
 	field("effort", t.Effort)
+	raw("progress-refinement", strconv.Itoa(t.ProgressRefinement))
 	raw("progress", strconv.Itoa(t.Progress))
+	raw("progress-review", strconv.Itoa(t.ProgressReview))
 	field("assignee", t.Assignee)
 	field("parent", t.Parent)
 	raw("opened", day(&t.Opened))

@@ -101,15 +101,25 @@ transitions:
     tags: [tickets]
     summary: Move the ticket to another state
     description: |
-      The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-      blocked from any open state with a block and out of it only to where it came from,
-      dropped from any open state with a reason, done from in-progress with a verification
-      note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-      D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-      with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-      for done, `drop` for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away,
-      a reopen ranks it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is
-      recorded on the act, not required (docs/adr/0045 D3, D7).
+      The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+      review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+      review → in-progress), into blocked from any open state with a block and out of it only to
+      where it came from, dropped from any open state with a reason, and dropped → filed, the
+      reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+      (docs/adr/0045 D2).
+
+      To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+      in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+      verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+      `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+      with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+      the ticket returns there, ranked at the bottom of its project — unless it has no children and
+      its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+      by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+      `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+      for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+      it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+      act, not required (docs/adr/0045 D3, D7).
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -119,7 +129,7 @@ transitions:
           schema:
             $ref: './components/schemas.yaml#/Transition'
           example:
-            from: in-progress
+            from: review
             to: done
             note: make test-integration passed against PostgreSQL 18.6
     responses:

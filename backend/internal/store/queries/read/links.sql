@@ -35,7 +35,7 @@ SELECT blocks_path_exists(sqlc.arg(tenant_id), sqlc.arg(from_id), sqlc.arg(to_id
 -- the ticket, not to a reader: an open decision that blocks it counts whether
 -- or not the caller can see it, and only the derived value leaves.
 -- visibility: exempt (the derivation's inputs of a ticket the caller writes)
-SELECT t.state, t.block_kind, (t.urgency_override IS NOT NULL)::boolean AS overridden,
+SELECT t.state, t.block_kind,
        EXISTS (SELECT 1
                FROM ticket_links l
                JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
@@ -59,11 +59,11 @@ ORDER BY sp.key, s.number;
 
 -- name: ListBlockedTickets :many
 -- The tickets a ticket blocks, whose urgency derivation reads it
--- (docs/adr/0010 D3). Their keys reach only their own timelines.
+-- (docs/adr/0010 D3). Only their derived urgency changes; nothing of them
+-- reaches the caller.
 -- visibility: exempt (the dependents of a derivation input)
-SELECT t.id, p.key AS project_key, t.number
+SELECT t.id
 FROM ticket_links l
 JOIN tickets t ON t.tenant_id = l.tenant_id AND t.id = l.target_id
-JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.source_id = sqlc.arg(ticket_id) AND l.type = 'blocks'
 ORDER BY t.id;

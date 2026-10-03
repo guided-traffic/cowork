@@ -36,6 +36,7 @@ type ticketQuery struct {
 	assignee, reporter, parent, interest                     *[]string
 	progressMin, progressMax                                 *int
 	openedAfter, openedBefore, updatedAfter, updatedBefore   *time.Time
+	doneAfter                                                *time.Time
 	q                                                        *string
 	includeTerminal, blocked, hasOpenQuestions               *bool
 	cursor                                                   *string
@@ -65,8 +66,8 @@ func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectT
 		assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax,
 		openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter, updatedBefore: p.UpdatedBefore,
-		q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor, limit: p.Limit, page: p.Page,
-		perPage: (*int)(p.PerPage),
+		doneAfter: p.DoneAfter, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions,
+		cursor: p.Cursor, limit: p.Limit, page: p.Page, perPage: (*int)(p.PerPage),
 	}
 	list, tag, err := s.listTickets(ctx, "listProjectTickets", req.Project, q, store.ByRank)
 	if err != nil {
@@ -86,7 +87,8 @@ func (s *Server) ListTenantTickets(ctx context.Context, req apigen.ListTenantTic
 		project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, urgency: p.Urgency,
 		effort: p.Effort, assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax, openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter,
-		updatedBefore: p.UpdatedBefore, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
+		updatedBefore: p.UpdatedBefore, doneAfter: p.DoneAfter, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked,
+		hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
 		limit: p.Limit, page: p.Page, perPage: (*int)(p.PerPage),
 	}
 	list, tag, err := s.listTickets(ctx, "listTenantTickets", "", q, store.NewestFirst)
@@ -203,6 +205,7 @@ func (s *Server) parseTicketQuery(ctx context.Context, q ticketQuery, op, scope 
 	errs = append(errs, interestFilter(q.interest, me, &f.Interest)...)
 	f.ProgressMin, f.ProgressMax = q.progressMin, q.progressMax
 	f.OpenedAfter, f.OpenedBefore, f.UpdatedAfter, f.UpdatedBefore = q.openedAfter, q.openedBefore, q.updatedAfter, q.updatedBefore
+	f.DoneAfter = q.doneAfter
 	f.IncludeTerminal = q.includeTerminal != nil && *q.includeTerminal
 	f.Blocked, f.HasOpenQuestions = q.blocked, q.hasOpenQuestions
 	if q.q != nil {

@@ -149,6 +149,11 @@ UpdatedBefore:
   name: updated_before
   in: query
   schema: {type: string, format: date-time}
+DoneAfter:
+  name: done_after
+  in: query
+  description: 'Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal'
+  schema: {type: string, format: date-time}
 Query:
   name: q
   in: query

@@ -3,11 +3,13 @@
 
 
 /**
- * Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+ * Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+ * board's Refinement column, which holds filed and analysed, counts against the analysed limit.
  */
 export interface WipLimits {
   analysed?: number;
   blocked?: number;
   decided?: number;
   'in-progress'?: number;
+  review?: number;
 }

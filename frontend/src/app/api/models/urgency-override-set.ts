@@ -3,6 +3,10 @@
 
 import { Urgency } from '../models/urgency';
 export interface UrgencyOverrideSet {
-  reason: string;
+
+  /**
+   * Optional for a person, required of an agent (docs/adr/0010 D3)
+   */
+  reason?: string;
   value: Urgency;
 }

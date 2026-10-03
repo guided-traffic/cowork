@@ -38,17 +38,25 @@ func ticketURL(t tenantScope, project string, number int32) string {
 // computed over tickets the caller may not see (docs/adr/0014 D2), and the
 // list's order is what the caller reads of the rank.
 func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
+	stages := stagesOf(r)
 	v := apigen.Ticket{
 		Id: r.ID, Key: domain.FullKey(t.Slug, r.ProjectKey, r.Number), Project: r.ProjectKey, Number: int(r.Number),
 		Type: apigen.TicketType(r.Type), Title: r.Title, Body: r.Body, State: apigen.TicketState(r.State),
 		Severity: apigen.Severity(r.Severity), Security: apigen.SecurityClass(r.Security), Threat: nullableOf(r.Threat),
 		Urgency: apigen.Urgency(r.UrgencyDerived), UrgencyDerived: apigen.Urgency(r.UrgencyDerived), UrgencyRule: r.UrgencyRule,
-		Effort: apigen.Effort(r.Effort), Progress: effectiveProgress(r), ProgressDerived: r.ProgressDerived != nil, Confidential: r.Confidential,
+		Effort: apigen.Effort(r.Effort), Progress: stages.Implementation, ProgressRefinement: stages.Refinement,
+		ProgressReview: stages.Review, ProgressDerived: hasChildren(r), Confidential: r.Confidential,
 		OpenedAt: r.OpenedAt, DecidedAt: nullableOf(r.DecidedAt), DoneAt: nullableOf(r.DoneAt),
-		Version: int(r.Version), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		DoneFrom: nullableOf[apigen.TicketState](nil), DoneByHand: doneByHand(r),
+		OpenPrerequisites: int(r.OpenPrerequisites),
+		Version:           int(r.Version), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Reporter: personView(r.ReporterID, r.ReporterUsername, r.ReporterName),
 		Block:    nullableOf[apigen.Block](nil), UrgencyOverride: nullableOf[apigen.UrgencyOverride](nil),
 		Assignee: nullableOf[apigen.Person](nil), Parent: nullableOf[string](nil),
+	}
+	if r.State == domain.StateDone {
+		from := apigen.TicketState(origin(r))
+		v.DoneFrom = nullableOf(&from)
 	}
 	if r.State == domain.StateBlocked && r.BlockedFrom != nil && r.BlockKind != nil {
 		b := apigen.Block{From: apigen.TicketState(*r.BlockedFrom), Kind: apigen.BlockKind(*r.BlockKind),
@@ -63,10 +71,8 @@ func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
 		v.Block = nullableOf(&b)
 	}
 	if r.UrgencyOverride != nil && r.UrgencyOverrideAt != nil {
-		o := apigen.UrgencyOverride{Value: apigen.Urgency(*r.UrgencyOverride), At: *r.UrgencyOverrideAt, By: nullableOf[apigen.Person](nil)}
-		if r.UrgencyOverrideReason != nil {
-			o.Reason = *r.UrgencyOverrideReason
-		}
+		o := apigen.UrgencyOverride{Value: apigen.Urgency(*r.UrgencyOverride), At: *r.UrgencyOverrideAt, By: nullableOf[apigen.Person](nil),
+			Reason: nullableOf(r.UrgencyOverrideReason)}
 		if r.UrgencyOverrideBy != nil {
 			p := apigen.Person{Id: *r.UrgencyOverrideBy, Username: nullableOf[string](nil)}
 			o.By = nullableOf(&p)
@@ -85,21 +91,47 @@ func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
 	return v
 }
 
-// effectiveProgress is the progress a ticket shows: 100 when done, the
-// derived value while it has children, else its own (docs/adr/0017 D3, D5).
-func effectiveProgress(r store.TicketRow) int {
-	switch {
-	case r.State == domain.StateDone:
-		return 100
-	case r.ProgressDerived != nil:
-		return int(*r.ProgressDerived)
+// hasChildren reports whether a ticket's stages are derived from children:
+// the derivation keeps progress_derived set while there are any
+// (docs/adr/0017 D3) — this release and the previous one alike.
+func hasChildren(r store.TicketRow) bool { return r.ProgressDerived != nil }
+
+// stagesOf is the three progress stages a ticket shows: each derived from the
+// children while there are any, else its own (docs/adr/0017 D2, D3). Done
+// leaves them as they are (D5). The derived refinement and review count only
+// while progress_derived says there are children: the previous release, run
+// over this schema in a rollback (docs/adr/0028 D4), derives the
+// implementation stage alone, and when a parent's last child leaves it clears
+// progress_derived and leaves the other two as they were.
+func stagesOf(r store.TicketRow) domain.Stages {
+	if !hasChildren(r) {
+		return domain.Stages{Refinement: int(r.ProgressRefinement), Implementation: int(r.Progress), Review: int(r.ProgressReview)}
 	}
-	return int(r.Progress)
+	return domain.Stages{
+		Refinement:     int(derivedOr(r.ProgressRefinementDerived, r.ProgressRefinement)),
+		Implementation: int(*r.ProgressDerived),
+		Review:         int(derivedOr(r.ProgressReviewDerived, r.ProgressReview)),
+	}
 }
 
-// refreshProgress derives the progress of a parent again after a change of
-// its children, and of its ancestors as far as the value changes; their
-// versions stay (docs/adr/0017 D3, docs/adr/0050 D1).
+// doneByHand reports whether a done ticket is done by hand: every done but the
+// one by its stages (docs/adr/0009 D5). The column says what was set by hand;
+// a parent, and a leaf whose stages are short of full, are done by hand
+// whatever it holds.
+func doneByHand(r store.TicketRow) bool {
+	return r.State == domain.StateDone && !domain.DoneByStages(r.DoneByHand, hasChildren(r), stagesOf(r))
+}
+
+func derivedOr(derived *int16, own int16) int16 {
+	if derived != nil {
+		return *derived
+	}
+	return own
+}
+
+// refreshProgress derives the stages of a parent again after a change of its
+// children, and of its ancestors as far as a value changes; their versions
+// stay (docs/adr/0017 D3, docs/adr/0050 D1).
 func refreshProgress(ctx context.Context, w *store.Writer, t tenantScope, parents ...*uuid.UUID) error {
 	for _, id := range parents {
 		for id != nil {
@@ -402,7 +434,10 @@ func (s *Server) UpdateTicket(ctx context.Context, req apigen.UpdateTicketReques
 		if tc.row.Version != version {
 			return stale(tc.row.Version, pick(ch.before, ch.sent))
 		}
-		if out, err = writeTicketChange(ctx, w, t, tc, ch, req.Body.Comment); errors.Is(err, store.ErrNoChange) {
+		if perr := stageInputs(principal(ctx), tc, ch.effect, *req.Body); perr != nil {
+			return perr
+		}
+		if out, err = writeTicketChange(ctx, w, t, tc, ch, *req.Body); errors.Is(err, store.ErrNoChange) {
 			out = tc.row
 		}
 		return err
@@ -414,17 +449,21 @@ func (s *Server) UpdateTicket(ctx context.Context, req apigen.UpdateTicketReques
 }
 
 // writeTicketChange writes a patch with its acts, its explaining comment and
-// its effects; a patch that changes nothing is ErrNoChange.
-func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, ch ticketChange, comment *string) (store.TicketRow, error) {
+// its effects — the done act or the reopen its stages make among them; a
+// patch that changes nothing is ErrNoChange.
+func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, ch ticketChange, body apigen.TicketPatch) (store.TicketRow, error) {
 	changedBefore, changedAfter := diffDeep(ch.before, ch.after)
 	if len(changedAfter) == 0 {
 		return store.TicketRow{}, store.ErrNoChange
+	}
+	sm, err := planStageMove(ctx, w, t, tc, ch, body)
+	if err != nil {
+		return store.TicketRow{}, err
 	}
 	// An open ticket turning into a decision, or out of one, is an input of
 	// the tickets it blocks (docs/adr/0010 D3).
 	var deps []dependent
 	if (tc.row.Type == domain.TypeDecision) != (ch.params.Type == domain.TypeDecision) && !tc.row.State.Terminal() {
-		var err error
 		if deps, err = dependentsOf(ctx, w, t, tc.row.ID); err != nil {
 			return store.TicketRow{}, err
 		}
@@ -434,20 +473,131 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 	} else if err != nil {
 		return store.TicketRow{}, err
 	}
-	explainedBy, err := explain(ctx, w, t, tc, comment)
+	explainedBy, err := explain(ctx, w, t, tc, body.Comment)
 	if err != nil {
 		return store.TicketRow{}, err
 	}
 	recordTicketChange(w, t, tc, changedBefore, changedAfter, ch, explainedBy)
+	if sm != nil {
+		if err := sm.write(ctx, w, t, tc, ch.params, body, explainedBy); err != nil {
+			return store.TicketRow{}, err
+		}
+	}
 	if err := rederiveAll(ctx, w, t, deps); err != nil {
 		return store.TicketRow{}, err
 	}
-	if changes(changedAfter, fieldParent, "effort", "progress") {
+	if sm != nil || changes(changedAfter, fieldParent, "effort", fieldProgress, fieldRefinement, fieldReview) {
 		if err := refreshProgress(ctx, w, t, tc.row.ParentID, ch.params.ParentID); err != nil {
 			return store.TicketRow{}, err
 		}
 	}
 	return reread(ctx, w, t, tc.row.ID)
+}
+
+// stageMove is the state change a patch's stages make: the done act, or the
+// reopen of a ticket done by its stages (docs/adr/0009 D5).
+type stageMove struct {
+	change stateChange
+	after  map[string]any
+	refs   []uuid.UUID
+}
+
+// planStageMove prepares what the patch's stages do before any ticket row is
+// written: the done act is refused over open prerequisites unless a person
+// overrides (docs/adr/0012 D7); a reopen takes its key at the bottom of the
+// rank under the project's lock (docs/adr/0014 D2). nil when the stages move
+// no state.
+func planStageMove(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, ch ticketChange, body apigen.TicketPatch) (*stageMove, error) {
+	switch ch.effect {
+	case domain.StagesComplete:
+		m := &stageMove{change: stateChange{from: tc.row.State, to: domain.StateDone},
+			after: map[string]any{fieldState: string(domain.StateDone), fieldDoneByHand: false}}
+		var ev store.Event
+		if err := closeOver(ctx, w.Reader, t, tc, overrides(body.OverridePrerequisites), lastStageSent(ch.sent), m.after, &ev); err != nil {
+			return nil, err
+		}
+		m.refs = ev.Refs
+		return m, nil
+	case domain.StagesReopen:
+		key, err := rankAtBottom(ctx, w, t, tc.project.ID)
+		if err != nil {
+			return nil, err
+		}
+		to := origin(tc.row)
+		return &stageMove{change: stateChange{from: domain.StateDone, to: to, rank: &key},
+			after: map[string]any{fieldState: string(to)}}, nil
+	}
+	return nil, nil
+}
+
+// lastStageSent is the pointer of the last stage a patch sent: the field a
+// refusal of its done act names.
+func lastStageSent(sent []string) string {
+	pointer := "/" + fieldReview
+	for _, f := range sent {
+		if f == fieldRefinement || f == fieldProgress || f == fieldReview {
+			pointer = "/" + f
+		}
+	}
+	return pointer
+}
+
+// write moves the state after the fields are written — the version raised
+// once, by the fields — and records the transition beside the field act, with
+// the note and the reason (docs/adr/0009 D5, D6). The move reads the type and
+// the parent the patch gave the ticket.
+func (m *stageMove) write(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, params writeq.UpdateTicketFieldsParams, body apigen.TicketPatch, explainedBy uuid.UUID) error {
+	moved := tc
+	moved.row.Type, moved.row.ParentID = params.Type, params.ParentID
+	if _, err := move(ctx, w, t, moved, m.change, m.after); err != nil {
+		return err
+	}
+	w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
+		Action: actionTransitioned, Before: map[string]any{fieldState: string(m.change.from)}, After: m.after,
+		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs})
+	return nil
+}
+
+// stageInputs holds a patch to what its stages do (docs/adr/0009 D5,
+// docs/adr/0017 D4, docs/adr/0043 D4): the done act needs the verification
+// note, of an agent close and a ticket in in-progress or review, and an
+// override of the prerequisites a person with a reason; the reopen of a ticket
+// done by its stages needs a reason; a change that moves no state takes no
+// note, no override and no reason.
+func stageInputs(p auth.Principal, tc ticketCtx, effect domain.StageEffect, body apigen.TicketPatch) *problem.Error {
+	override := overrides(body.OverridePrerequisites)
+	switch effect {
+	case domain.StagesComplete:
+		if perr := mayClose(p, tc.role, tc.row.State, override); perr != nil {
+			return perr
+		}
+		switch {
+		case blank(body.Note):
+			return problem.Field("/note", "this change brings the last progress stage to 100 and completes the ticket: "+
+				"it needs the verification note — what was run, against what, with what result")
+		case override && blank(body.Reason):
+			return problem.Field("/reason", "overriding the open prerequisites needs a reason")
+		}
+	case domain.StagesReopen:
+		switch {
+		case blank(body.Reason):
+			return problem.Field("/reason", "this change lowers a stage of a ticket done by its stages and reopens it: it needs a reason")
+		case body.Note != nil:
+			return problem.Field("/note", "only the change that completes the ticket takes a verification note")
+		case override:
+			return problem.Field("/override_prerequisites", "only the change that completes the ticket is refused by prerequisites")
+		}
+	default:
+		switch {
+		case body.Note != nil:
+			return problem.Field("/note", "only the change that completes the ticket takes a verification note")
+		case override:
+			return problem.Field("/override_prerequisites", "only the change that completes the ticket is refused by prerequisites")
+		case body.Reason != nil:
+			return problem.Field("/reason", "a reason goes with a change that reopens the ticket or overrides its prerequisites")
+		}
+	}
+	return nil
 }
 
 // changes reports whether any of the fields changed.
@@ -460,21 +610,31 @@ func changes(changed map[string]any, fields ...string) bool {
 	return false
 }
 
-// ticketChange is a patch applied to a ticket: the update and the values of
-// the fields before and after, keyed as the request names them.
+// ticketChange is a patch applied to a ticket: the update, the values of the
+// fields before and after, keyed as the request names them, and what its
+// stages do to the state.
 type ticketChange struct {
 	params             writeq.UpdateTicketFieldsParams
 	before, after      map[string]any
 	sent               []string
 	becameConfidential bool
+	effect             domain.StageEffect
 }
+
+// The patch's names of the three progress stages (docs/adr/0017 D2).
+const (
+	fieldProgress   = "progress"
+	fieldRefinement = "progress_refinement"
+	fieldReview     = "progress_review"
+)
 
 func applyTicketPatch(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch) (ticketChange, error) {
 	row := tc.row
 	ch := ticketChange{params: writeq.UpdateTicketFieldsParams{
 		TenantID: t.ID, ID: row.ID, Version: row.Version, Type: row.Type, Title: row.Title, Severity: row.Severity,
 		Security: row.Security, Threat: row.Threat, Effort: row.Effort, ParentID: row.ParentID,
-		AssigneeID: row.AssigneeID, Progress: row.Progress, Confidential: row.Confidential,
+		AssigneeID: row.AssigneeID, Progress: row.Progress, ProgressRefinement: row.ProgressRefinement,
+		ProgressReview: row.ProgressReview, Confidential: row.Confidential,
 	}}
 	ch.before = ticketFields(ch.params)
 	applyScalars(p, &ch)
@@ -489,10 +649,8 @@ func applyTicketPatch(ctx context.Context, w *store.Writer, t tenantScope, tc ti
 	if err := applyRelations(ctx, w, t, tc, p, &ch); err != nil {
 		return ch, err
 	}
-	if p.Progress != nil {
-		if perr := applyProgress(row, *p.Progress, &ch); perr != nil {
-			return ch, perr
-		}
+	if perr := applyStages(row, p, &ch); perr != nil {
+		return ch, perr
 	}
 	ch.after = ticketFields(ch.params)
 	return ch, nil
@@ -525,20 +683,43 @@ func applyScalars(p apigen.TicketPatch, ch *ticketChange) {
 	}
 }
 
-// applyProgress sets the progress of an open ticket (docs/adr/0017 D2).
-func applyProgress(row store.TicketRow, v int, ch *ticketChange) *problem.Error {
-	if row.State.Terminal() {
-		return &problem.Error{Code: problem.StateConflict, Detail: "a " + string(row.State) + " ticket's progress does not change",
-			Errors: []problem.FieldError{{Pointer: "/progress", Message: "the ticket is " + string(row.State), Current: row.Progress}}}
+// applyStages sets the progress stages a patch sends, in every state but
+// dropped, on a ticket without children (docs/adr/0017 D2, D3), and decides
+// what they do to its state (docs/adr/0009 D5).
+func applyStages(row store.TicketRow, p apigen.TicketPatch, ch *ticketChange) *problem.Error {
+	shown := stagesOf(row)
+	for _, s := range []struct {
+		field   string
+		value   *int
+		dst     *int16
+		current int
+	}{
+		{fieldRefinement, p.ProgressRefinement, &ch.params.ProgressRefinement, shown.Refinement},
+		{fieldProgress, p.Progress, &ch.params.Progress, shown.Implementation},
+		{fieldReview, p.ProgressReview, &ch.params.ProgressReview, shown.Review},
+	} {
+		if s.value == nil {
+			continue
+		}
+		switch {
+		case row.State == domain.StateDropped:
+			return &problem.Error{Code: problem.StateConflict, Detail: "a dropped ticket's progress does not change",
+				Errors: []problem.FieldError{{Pointer: "/" + s.field, Message: "the ticket is dropped", Current: s.current}}}
+		case hasChildren(row):
+			return &problem.Error{Code: problem.StateConflict, Detail: "the progress is derived from the ticket's children",
+				Errors: []problem.FieldError{{Pointer: "/" + s.field, Message: "derived", Current: s.current}}}
+		}
+		v := *s.value
+		if v < 0 || v > 100 || !domain.ValidProgress(v) {
+			return problem.Field("/"+s.field, "0 to 100 in steps of five")
+		}
+		*s.dst, ch.sent = int16(v), append(ch.sent, s.field)
 	}
-	if row.ProgressDerived != nil {
-		return &problem.Error{Code: problem.StateConflict, Detail: "the progress is derived from the ticket's children",
-			Errors: []problem.FieldError{{Pointer: "/progress", Message: "derived", Current: int(*row.ProgressDerived)}}}
+	if !hasChildren(row) {
+		after := domain.Stages{Refinement: int(ch.params.ProgressRefinement), Implementation: int(ch.params.Progress),
+			Review: int(ch.params.ProgressReview)}
+		ch.effect = domain.EffectOfStages(row.State, doneByHand(row), shown, after)
 	}
-	if v < 0 || v > 100 || v%5 != 0 {
-		return problem.Field("/progress", "0 to 100 in steps of five")
-	}
-	ch.params.Progress, ch.sent = int16(v), append(ch.sent, "progress")
 	return nil
 }
 
@@ -595,7 +776,8 @@ func ticketFields(p writeq.UpdateTicketFieldsParams) map[string]any {
 	}
 	return map[string]any{
 		fieldType: string(p.Type), "title": p.Title, "severity": string(p.Severity), "security": string(p.Security),
-		"threat": threat, "effort": string(p.Effort), fieldParent: parent, fieldAssignee: assignee, "progress": int(p.Progress),
+		"threat": threat, "effort": string(p.Effort), fieldParent: parent, fieldAssignee: assignee, fieldProgress: int(p.Progress),
+		fieldRefinement: int(p.ProgressRefinement), fieldReview: int(p.ProgressReview),
 	}
 }
 
@@ -675,12 +857,13 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 	return apigen.ReplaceTicketBody200JSONResponse{Body: ticketView(t, out), Headers: apigen.ReplaceTicketBody200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
-// OverrideUrgency sets a reasoned override; an agent needs override-urgency
-// (docs/adr/0010 D3, docs/adr/0043 D4).
+// OverrideUrgency sets an override, which holds until it is withdrawn or
+// replaced; its reason is optional for a person and required of an agent,
+// which needs override-urgency (docs/adr/0010 D3, docs/adr/0043 D4).
 func (s *Server) OverrideUrgency(ctx context.Context, req apigen.OverrideUrgencyRequestObject) (apigen.OverrideUrgencyResponseObject, error) {
 	t := tenantFrom(ctx)
 	value := domain.Urgency(req.Body.Value)
-	out, err := s.setOverride(ctx, t, req.Project, req.Number, req.Params.IfMatch, &value, &req.Body.Reason)
+	out, err := s.setOverride(ctx, t, req.Project, req.Number, req.Params.IfMatch, &value, req.Body.Reason)
 	if err != nil {
 		return nil, err
 	}
@@ -708,9 +891,7 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 		if err != nil {
 			return err
 		}
-		need := work
-		need.Capability = auth.CapOverrideUrgency
-		if perr := auth.Authorize(principal(ctx), tc.role, need); perr != nil {
+		if perr := overrideInputs(principal(ctx), tc.role, value, reason); perr != nil {
 			return perr
 		}
 		cur := map[string]any{fieldUrgencyOverride: tc.row.UrgencyOverride, "urgency_override_reason": tc.row.UrgencyOverrideReason}
@@ -746,6 +927,21 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 		return store.TicketRow{}, err
 	}
 	return out, nil
+}
+
+// overrideInputs holds an override to its rules: a member's act with write
+// scope; an agent needs override-urgency, and a reason for a value it sets
+// (docs/adr/0010 D3, docs/adr/0043 D4).
+func overrideInputs(p auth.Principal, role domain.Role, value *domain.Urgency, reason *string) *problem.Error {
+	need := work
+	need.Capability = auth.CapOverrideUrgency
+	if perr := auth.Authorize(p, role, need); perr != nil {
+		return perr
+	}
+	if value != nil && p.IsAgent() && blank(reason) {
+		return problem.Field("/reason", "an agent's urgency override needs a reason")
+	}
+	return nil
 }
 
 // SetConfidential sets or lifts the confidential flag: a tenant

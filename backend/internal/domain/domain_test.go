@@ -95,29 +95,39 @@ func TestSecurityClassesThatMakeATicketConfidential(t *testing.T) {
 	assert.False(t, SecurityNone.MakesConfidential())
 }
 
-// docs/adr/0009 D2–D4: every pair of states, and exactly the matrix's pairs
-// move; a blocked ticket leaves only to where it came from.
+// docs/adr/0009 D2–D5: every pair of states, and exactly the matrix's pairs
+// move; a blocked ticket leaves only to where it came from, a done one only
+// to the state it was done from, a dropped one only to filed.
 func TestClassifyMove(t *testing.T) {
-	states := []TicketState{StateFiled, StateAnalysed, StateDecided, StateInProgress, StateBlocked, StateDone, StateDropped}
+	states := []TicketState{StateFiled, StateAnalysed, StateDecided, StateInProgress, StateReview, StateBlocked, StateDone, StateDropped}
 	allowed := map[[2]TicketState]Move{
 		{StateFiled, StateAnalysed}:      MoveForward,
 		{StateAnalysed, StateDecided}:    MoveForward,
 		{StateDecided, StateInProgress}:  MoveForward,
-		{StateInProgress, StateDone}:     MoveDone,
+		{StateInProgress, StateReview}:   MoveForward,
 		{StateInProgress, StateDecided}:  MoveBackward,
 		{StateInProgress, StateAnalysed}: MoveBackward,
 		{StateDecided, StateAnalysed}:    MoveBackward,
+		{StateReview, StateInProgress}:   MoveBackward,
 		{StateFiled, StateBlocked}:       MoveBlock,
 		{StateAnalysed, StateBlocked}:    MoveBlock,
 		{StateDecided, StateBlocked}:     MoveBlock,
 		{StateInProgress, StateBlocked}:  MoveBlock,
+		{StateReview, StateBlocked}:      MoveBlock,
 		{StateBlocked, StateDecided}:     MoveUnblock,
+		{StateFiled, StateDone}:          MoveDone,
+		{StateAnalysed, StateDone}:       MoveDone,
+		{StateDecided, StateDone}:        MoveDone,
+		{StateInProgress, StateDone}:     MoveDone,
+		{StateReview, StateDone}:         MoveDone,
+		{StateBlocked, StateDone}:        MoveDone,
+		{StateDone, StateDecided}:        MoveWithdraw,
 		{StateFiled, StateDropped}:       MoveDrop,
 		{StateAnalysed, StateDropped}:    MoveDrop,
 		{StateDecided, StateDropped}:     MoveDrop,
 		{StateInProgress, StateDropped}:  MoveDrop,
+		{StateReview, StateDropped}:      MoveDrop,
 		{StateBlocked, StateDropped}:     MoveDrop,
-		{StateDone, StateFiled}:          MoveReopen,
 		{StateDropped, StateFiled}:       MoveReopen,
 	}
 	for _, from := range states {
@@ -125,9 +135,78 @@ func TestClassifyMove(t *testing.T) {
 			assert.Equal(t, allowed[[2]TicketState{from, to}], ClassifyMove(from, to, StateDecided), "%s → %s", from, to)
 		}
 	}
-	assert.True(t, MoveBlock.NeedsReason())
+	assert.Equal(t, MoveUnblock, ClassifyMove(StateBlocked, StateReview, StateReview), "blocked from review returns there")
+	assert.Equal(t, MoveWithdraw, ClassifyMove(StateDone, StateBlocked, StateBlocked), "done from blocked withdraws to blocked")
+	assert.Equal(t, MoveWithdraw, ClassifyMove(StateDone, StateFiled, StateFiled), "done from filed withdraws to filed")
+	assert.Equal(t, MoveInvalid, ClassifyMove(StateDone, StateFiled, StateReview), "the reopen to filed is the way out of dropped only")
+	for _, m := range []Move{MoveBackward, MoveBlock, MoveDrop, MoveReopen, MoveWithdraw} {
+		assert.True(t, m.NeedsReason(), m)
+	}
 	assert.False(t, MoveForward.NeedsReason())
+	assert.False(t, MoveUnblock.NeedsReason())
 	assert.False(t, MoveDone.NeedsReason(), "done needs a note, not a reason")
+}
+
+// docs/adr/0043 D4: an agent closes from in-progress and review only.
+func TestAgentCloses(t *testing.T) {
+	for _, s := range []TicketState{StateInProgress, StateReview} {
+		assert.True(t, s.AgentCloses(), s)
+	}
+	for _, s := range []TicketState{StateFiled, StateAnalysed, StateDecided, StateBlocked, StateDone, StateDropped} {
+		assert.False(t, s.AgentCloses(), s)
+	}
+}
+
+// docs/adr/0009 D5, docs/adr/0017 D4, D5: the write that brings the last
+// stage to 100 closes an open ticket; the write that lowers a stage of a
+// ticket done by its stages reopens it; done by hand and dropped keep their
+// state whatever the stages do.
+func TestEffectOfStages(t *testing.T) {
+	full := Stages{100, 100, 100}
+	almost := Stages{100, 100, 95}
+	for name, c := range map[string]struct {
+		state      TicketState
+		doneByHand bool
+		before     Stages
+		after      Stages
+		want       StageEffect
+	}{
+		"the last stage filled":            {StateReview, false, almost, full, StagesComplete},
+		"from any open state":              {StateFiled, false, Stages{0, 0, 0}, full, StagesComplete},
+		"from blocked":                     {StateBlocked, false, almost, full, StagesComplete},
+		"a stage short of full":            {StateInProgress, false, Stages{0, 50, 0}, almost, StagesKeep},
+		"already full, nothing filled":     {StateInProgress, false, full, full, StagesKeep},
+		"lowered while open":               {StateReview, false, almost, Stages{100, 90, 95}, StagesKeep},
+		"lowered while done by its stages": {StateDone, false, full, almost, StagesReopen},
+		"each stage counts":                {StateDone, false, full, Stages{95, 100, 100}, StagesReopen},
+		"lowered while done by hand":       {StateDone, true, almost, Stages{100, 50, 95}, StagesKeep},
+		"filled while done by hand":        {StateDone, true, almost, full, StagesKeep},
+		"raised while done by its stages":  {StateDone, false, almost, full, StagesKeep},
+		"dropped takes no effect":          {StateDropped, false, almost, full, StagesKeep},
+	} {
+		assert.Equal(t, c.want, EffectOfStages(c.state, c.doneByHand, c.before, c.after), name)
+	}
+	assert.True(t, full.Lowered(almost))
+	assert.False(t, almost.Lowered(full))
+	assert.False(t, full.Lowered(full))
+}
+
+// docs/adr/0009 D5: withdrawing a done by hand leaves a ticket without
+// children done by its stages when all three are full; a parent goes back.
+func TestWithdrawalStaysDone(t *testing.T) {
+	assert.True(t, WithdrawalStaysDone(false, Stages{100, 100, 100}))
+	assert.False(t, WithdrawalStaysDone(false, Stages{100, 100, 95}))
+	assert.False(t, WithdrawalStaysDone(true, Stages{100, 100, 100}), "a parent is never done by its stages")
+}
+
+// docs/adr/0009 D5: a done ticket is done by its stages only without a done by
+// hand on record, without children and with the three stages full; a leaf
+// short of full — which the release before the stages leaves — is done by hand.
+func TestDoneByStages(t *testing.T) {
+	assert.True(t, DoneByStages(false, false, Stages{100, 100, 100}))
+	assert.False(t, DoneByStages(true, false, Stages{100, 100, 100}), "done by hand on record")
+	assert.False(t, DoneByStages(false, true, Stages{100, 100, 100}), "a parent")
+	assert.False(t, DoneByStages(false, false, Stages{100, 40, 100}), "a leaf short of full")
 }
 
 // docs/adr/0016 D3: the allow-list as a fixture; a change to it is a change

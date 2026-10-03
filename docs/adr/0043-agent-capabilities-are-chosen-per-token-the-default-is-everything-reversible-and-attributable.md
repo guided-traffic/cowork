@@ -24,10 +24,14 @@ set on the token, the baseline, the hard-off list and the capabilities checked b
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
 on a move in the rank since 2026-10-03 and on adopting the score with the score,
 `create-project`'s repository binding with that binding — the set recorded on
-each act. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
+each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
+`PATCH` that fills the last progress stage, refused with `agent_forbidden` outside `in-progress`
+and `review` ([`mayClose`](../../backend/internal/api/transitions.go)); without `close` that
+`PATCH` is refused whole and the stage keeps its value. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
 the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
-— reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens,
+— reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
+(since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
 removing a stake, editing a question, editing a project — until a review after experience.
 
 ## Context

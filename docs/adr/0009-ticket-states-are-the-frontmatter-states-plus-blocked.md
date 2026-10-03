@@ -4,7 +4,10 @@
 
 Accepted, amended 2026-10-03 (D1, D3: the state `review` between `in-progress` and `done`,
 and the board's columns as a view over the states; D5: `done` reached by the last progress
-stage or by hand, the hand's done withdrawn with a reason). Date: 2026-09-29. Decided by the
+stage or by hand, the hand's done withdrawn with a reason; D5 made concrete the same day, when
+it was built: the way out of done, the block a ticket done from `blocked` keeps, a parent's
+done, which done is by the stages — the tickets closed before the stages among them — and an
+open ticket whose stages are full already). Date: 2026-09-29. Decided by the
 owner as the answer to the catalog question "workflow states?": the states of the existing
 Markdown frontmatter, unchanged, plus a `blocked` state for work that waits on something
 outside the team's reach — the owner's example is a firewall rule an external provider has to
@@ -33,7 +36,14 @@ transition route with the matrix of [`transition.go`](../../backend/internal/dom
 into `blocked` from any open state with a kind and a text and out of it only to its origin;
 `dropped` with a reason; `done` from `in-progress` with a note; a reopen to `filed` with a
 reason), the `from` precondition, the notes and reasons on the `transitioned` acts, and
-`decided_at` and `done_at` set by those acts. The amendment of 2026-10-03 is not built yet.
+`decided_at` and `done_at` set by those acts. **Built in the API** (2026-10-03): the amendment
+of D1, D3 and D5 — the state `review` ([migration 18](../../backend/internal/store/migrations/000018_ticket_state_review.up.sql))
+and its moves in the matrix of `transition.go`; done by the stages, the `PATCH` that fills the
+last of the three ([`tickets.go`](../../backend/internal/api/tickets.go) `planStageMove`), and
+done by hand, each with the note, the prerequisite refusal and `close` from `in-progress` or
+`review` only; the withdrawal with a reason, the lowering of a stage that reopens, and
+`done_from` and `done_by_hand` ([migration 19](../../backend/internal/store/migrations/000019_progress_stages.up.sql)).
+The board's columns of D1 are the views' ([ADR 0018](0018-the-views-of-the-first-release.md)).
 
 ## Context
 
@@ -92,6 +102,28 @@ withdrawn, with a reason, which returns it to the state it was in before `done` 
 three stages are full, when it stays done by them. A write that lowers a stage of a ticket
 done by its stages reopens it, with a reason, to the state it was in before `done`. A parent,
 whose stages its children make, is not done by them: it is done by hand.
+
+*(Made concrete 2026-10-03, when it was built.)* The write that fills the last stage is a
+`PATCH` of the stages, and the version rises once for it. Leaving done — the withdrawal, or a
+lower stage — ranks the ticket at the bottom of its project, as a reopen does
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2). Any transition out of a
+ticket done by its stages is refused (`409 state_conflict`): a lower stage is its way out. A
+withdrawal that leaves the ticket done by its full stages is recorded as `updated`,
+`done_by_hand` from true to false, with its reason. A ticket done from `blocked` keeps its
+block, and the way back to `blocked` takes it back. A done ticket that gains children is done
+by hand from then on, and a parent is withdrawn to the state it came from whatever its stages
+say. A done ticket is done by its stages only while it has no children, its three stages are
+full and no done by hand is on record; any other done is by hand. A ticket a release before
+the stages closed counts as done from `in-progress` — the one way that release had — by its
+stages when they are full, and by hand when it has children or when its progress fell below
+100 after it closed — a parent that release closed takes the last derived value as its own
+when its last child leaves. What that release writes over the newer schema when its image is
+rolled back to
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4) is
+read by the same rule. An open ticket whose three stages are all full — a parent whose last
+child left with its children's stages full
+([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D3) — is closed by hand: no write of the stages brings the last of them to 100.
 
 **D6 — Every transition is a recorded act:** actor (and agent, when one acted), from, to,
 reason or note, timestamp — in the audit record and the timeline. The dates the frontmatter

@@ -26,8 +26,11 @@ required reason and over a generated one.
 **Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
 as a CHECK and in the API, rule set v1 ([`DeriveUrgency`](../../backend/internal/domain/ticket.go)),
 the override and its end. D4's `found-in` link exists; D5 arrives with the importer. The
-amendment of 2026-10-03 is not built yet: the override still ends on an input change and
-still requires a reason.
+amendment of 2026-10-03 is built (2026-10-03): an input change derives the value and its rule
+again beside a standing override, which stays, and records no act of its own (`rederive` in
+[`links.go`](../../backend/internal/api/links.go)); the reason is optional for a person and
+required of an agent, whose override without one is `400` at `/reason`; migration 19 lets an
+override stand without a reason.
 
 ## Context
 

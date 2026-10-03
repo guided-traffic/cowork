@@ -18,11 +18,11 @@ import (
 )
 
 // The rank of a project's open tickets (docs/adr/0014 D1, D2). Every write
-// that hands out a key — a filing, a reopen, a move — takes the project's rank
-// lock before it writes a ticket row, ranks the open tickets an earlier
-// release left without a key, and computes its key from keys read under the
-// lock; so two writes never compute a key from the same neighbours, and a key
-// is never handed out twice. A key is computed over tickets the caller may
+// that hands out a key — a filing, a return from done or dropped, a move —
+// takes the project's rank lock before it writes a ticket row, ranks the open
+// tickets an earlier release left without a key, and computes its key from
+// keys read under the lock; so two writes never compute a key from the same
+// neighbours, and a key is never handed out twice. A key is computed over tickets the caller may
 // not see, so it is never shown: not on a ticket (ticketView), not in the act,
 // not in a cursor (sealPosition).
 

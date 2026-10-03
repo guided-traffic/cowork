@@ -25,7 +25,14 @@ done when all three are full, by the done act of
 **Built** (phase 2, 2026-10-02): D1–D10 — the progress columns and the derivation
 (`ticket_derived_progress`, migration 8), `time_entries` with their revisions (migration 13),
 booking, correcting, voiding, the lock, the visibility function `app_time_visible`, the
-tenant's list and the report as JSON and CSV. The amendment of 2026-10-03 is not built yet.
+tenant's list and the report as JSON and CSV. **Built in the API** (2026-10-03): the amendment
+of D2–D5 — `progress_refinement` and `progress_review` beside `progress` and their backfill
+([migration 19](../../backend/internal/store/migrations/000019_progress_stages.up.sql)), each
+stage derived from the children's same stage (`ticket_derived_stage`), settable in every state
+but `dropped`, the done act and the reopen of
+[ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5, and the three
+stages in the export. The bars on the board's cards and the detail's three sliders are the
+views' ([ADR 0018](0018-the-views-of-the-first-release.md)).
 
 ## Context
 
@@ -64,7 +71,8 @@ nearest multiple of five, halves up; a parent whose children are all dropped sho
 that has children counts with its own derived value; the derivation is maintained in the
 transaction of every change to its inputs, up the ancestors, without changing their versions
 ([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
-D1); a `done` ticket shows 100 whatever its children say.)* *(Amended 2026-10-03: each stage
+D1); ~~a `done` ticket shows 100 whatever its children say~~ *(superseded 2026-10-03 by D5:
+done leaves the stages as they are)*.)* *(Amended 2026-10-03: each stage
 is derived from the same stage of the children, by this rule; a done child counts as 100 in
 each. A parent whose three stages are full is not done by them — it is done by hand, ADR 0009
 D5 — and a parent done by hand shows its stages as its children make them.)*

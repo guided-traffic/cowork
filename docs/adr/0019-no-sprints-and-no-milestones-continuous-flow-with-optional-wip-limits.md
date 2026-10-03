@@ -10,7 +10,9 @@ over sprints, over milestones (the recommendation), and over deferring milestone
 
 **Partly built** (phase 2, 2026-10-02): D1 (no time box exists) and D3 — WIP limits per state
 stored on the project, advisory, refusing nothing. D2's dashboard and D4's release ticket
-arrive with the views. The amendment of 2026-10-03 is not built yet.
+arrive with the views. The amendment of 2026-10-03 is built in the API (2026-10-03): `review`
+takes a limit (`wip_limits.review`); counting the Refinement column against the `analysed`
+limit is the board's ([ADR 0018](0018-the-views-of-the-first-release.md)).
 
 ## Context
 

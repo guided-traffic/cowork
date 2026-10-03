@@ -28,11 +28,13 @@ func queryBlocks(t *testing.T, path string) map[string]string {
 func normalise(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // The list builder selects exactly the columns of GetTicketByNumber, so a list
-// row and a single ticket are one type and scan by position.
+// row and a single ticket are one type and scan by position. The query's own
+// WHERE starts a line; the count of open prerequisites in the column list has
+// an indented one of its own.
 func TestTicketListSelectsWhatTheQueriesSelect(t *testing.T) {
 	q := queryBlocks(t, "queries/read/tickets.sql")["GetTicketByNumber"]
 	require.NotEmpty(t, q)
-	where := strings.Index(q, "WHERE")
+	where := strings.Index(q, "\nWHERE")
 	require.Positive(t, where)
 	assert.Equal(t, normalise(ticketSelect+" "+ticketFrom), normalise(q[:where]))
 }

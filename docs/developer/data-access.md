@@ -29,8 +29,10 @@ refuses a dirty or a pending schema and warns about one that is ahead.
 
 A migration file runs as one statement string over the simple protocol, so PostgreSQL runs it
 as one transaction. A migration that rewrites rows runs as the owner with no tenant set, and
-the forced policy hides every row from it: `000017_ticket_rank` lifts the force on `tickets`
-for its backfill and restores it later in the file ([ADR 0021] D1).
+the forced policy hides every row from it: `000017_ticket_rank` and `000019_progress_stages`
+lift the force on `tickets` for their backfills and restore it later in the file
+([ADR 0021] D1). A new enum value cannot be used in the transaction that adds it, so
+`000018_ticket_state_review` adds `review` alone and `000019` uses it.
 `TestLiftedForceIsRestoredInTheSameMigration` holds every lifted force to a restore in the same
 file; the integration tier reads the force back after the run.
 
@@ -190,9 +192,11 @@ the one on the ticket the query reads.
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
-The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists` and `ticket_derived_progress`
+The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
+(the implementation stage, kept for the release before the stages) and `ticket_derived_stage`
 read the tenant's tickets past the predicate for the same reasons; row-level security still
-holds them to the tenant.
+holds them to the tenant. The ticket's columns count `open_prerequisites` in a subquery with
+the predicate on every prerequisite, `GetWrittenTicket` included: a hidden one is never counted.
 
 ## The ticket list builder
 
@@ -211,7 +215,8 @@ enters the SQL text; only the integer `LIMIT` and `OFFSET` are formatted in. The
 | terminal states | `done` and `dropped` are hidden unless `IncludeTerminal` or `States.In` names them |
 | `Blocked` | an open ticket the caller can see blocks the ticket |
 | `HasOpenQuestions`, `Interest` | an open question exists; the caller's or anyone's stake exists |
-| progress filters | on the effective progress: 100 when done, else derived, else own |
+| progress filters | on the implementation stage the ticket shows: derived while it has children, else its own |
+| `DoneAfter` | `t.done_at > …`, the tickets done after a time; like the opened and updated bounds it excludes the bound ([ADR 0049] D1) |
 | `Query` | `search @@ plainto_tsquery('cowork_simple', …)` ([ADR 0025]) |
 | `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number — and `NewestFirst` (id descending) for the tenant's; `Position` writes a row's cursor position, the id or `<key>.<number>` with an empty key for an unranked ticket, which the API seals ([api.md](api.md#paging)) |
 | `TicketPage` | after a cursor position with `LIMIT` one above the page, or a numbered page with `LIMIT`/`OFFSET` and a `count(*)` total |
@@ -236,8 +241,9 @@ cannot pass the check together. golang-migrate takes a single `bigint` key; the 
 never meets it. Two orderings are row locks, not advisory: the `ticket_counters` row and the
 tenant row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
 project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
-and a reopen lock it `FOR UPDATE` (`LockProjectRank`) before they read a key, and each of the
-three takes it before it writes a ticket row, so they cannot deadlock over it
+and a return from done or dropped — a reopen, a withdrawal of a done by hand, a lower stage that
+reopens — lock it `FOR UPDATE` (`LockProjectRank`) before they read a key, and each of them takes
+it before it writes a ticket row, so they cannot deadlock over it
 ([domain.md](domain.md#rank)). It is a row of its own so that filing never waits for a change
 of the project's settings.
 
@@ -307,5 +313,6 @@ one connection outside the pool on the channel. The rest is [events.md](events.m
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
+[ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

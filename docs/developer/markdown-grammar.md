@@ -5,7 +5,7 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 ([ADR 0011] D4). This page is grammar v1 exactly as
 [`markdown.Render`](../../backend/internal/markdown/markdown.go) writes it; the golden files in
 [`internal/markdown/testdata/`](../../backend/internal/markdown/testdata/) are its examples.
-Read against the tree on 2026-10-02.
+Read against the tree on 2026-10-03.
 
 ## The route
 
@@ -48,7 +48,9 @@ left out.
 | `threat` | the threat; only when `security` is not `none` |
 | `urgency` | the urgency the ticket shows: the override when one stands, else the derived value |
 | `effort` | the effort |
-| `progress` | always present: 100 when done, else the derived value while there are children, else the ticket's own |
+| `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
+| `progress` | always present: the implementation stage, likewise |
+| `progress-review` | always present: the review stage, likewise |
 | `assignee` | the assignee's display name |
 | `parent` | the parent's full key, when the reader can see the parent |
 | `opened`, `decided`, `done` | dates, `YYYY-MM-DD` in UTC; `opened` always, the others when set |
@@ -57,7 +59,7 @@ left out.
 | `blocked-by`, `blocked-reason`, `blocked-from` | state `blocked`: the block's kind, its text, the state it came from |
 | `attachments` | when there are any: a list, one `  - <file name>` line each, in upload order |
 
-**Values.** `progress` and the dates are written as they are. Every other value is written plain
+**Values.** The three stages and the dates are written as they are. Every other value is written plain
 when YAML reads it back as the same string — it matches `^[A-Za-z0-9][A-Za-z0-9 _./()+-]*$`, is
 not `true`, `false`, `yes`, `no`, `on`, `off`, `null`, `~` in any case, does not start with a
 digit followed only by digits and `._:+-`, and does not end in a space — and otherwise as a
@@ -92,11 +94,13 @@ severity: low
 security: none
 urgency: release
 effort: S
+progress-refinement: 100
 progress: 0
+progress-review: 0
 opened: 2026-10-01
 blocked-by: release
 blocked-reason: needs 2.0 out
-blocked-from: decided
+blocked-from: review
 ---
 
 ## Open questions
@@ -116,5 +120,6 @@ reads. The importer will read this form back ([ADR 0044] D3), so a change of the
 change of a contract.
 
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
+[ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md

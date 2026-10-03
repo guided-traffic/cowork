@@ -193,7 +193,7 @@ reaches further than its person does at that moment.
 | Capability | Guards |
 |---|---|
 | `decide` | `analysed → decided` |
-| `close` | `in-progress → done`; the verification note stays required, and the open prerequisites the agent can see still refuse |
+| `close` | the done act, both ways to `done` ([ADR 0009](../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5): done by hand, and the `PATCH` that brings the last of a ticket's three progress stages to 100 — only from `in-progress` or `review`, otherwise `agent_forbidden` (`mayClose` in [`api/transitions.go`](../../backend/internal/api/transitions.go)); the verification note stays required, and the open prerequisites the agent can see still refuse. Without it that `PATCH` is refused whole, and the stage keeps its value |
 | `drop` | a move to `dropped` from any state but `done` and `dropped` |
 | `override-urgency` | setting and withdrawing an urgency override |
 | `interest` | a `need` or `urgent` stake |
@@ -204,21 +204,26 @@ reaches further than its person does at that moment.
 
 Without a capability, an agent with `write` scope whose person is a member has the baseline
 (ADR 0043 D2, as the handlers build it): filing a ticket and editing its fields and its body,
-comments, links, questions, progress, a `watch` stake, the transitions `filed → analysed`,
-`decided → in-progress`, into `blocked` and back, and the acts of H-6.
+comments, links, questions, the progress stages short of the done act, a `watch` stake, the
+transitions `filed → analysed`, `decided → in-progress`, `in-progress → review`, into `blocked`
+and back, and the acts of H-6. An agent's urgency override needs a reason as well as
+`override-urgency` (`400` without one; a person may leave it out,
+[ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3).
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
 |---|---|
 | administration | the tenant's settings, archiving a project |
 | booking time | booking, editing and voiding time entries — refused before the `Idempotency-Key` is looked at |
-| overriding the prerequisite refusal | `override_prerequisites` on a transition to `done` |
+| overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
 
-Three rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
+Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
 edits or withdraws only comments an agent of the same person wrote
 ([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D4), it
-withdraws only questions an agent asked, and it changes only an answer an agent recorded.
+withdraws only questions an agent asked, it changes only an answer an agent recorded, and with
+`close` it closes a ticket from `in-progress` or `review` only, so that `close` never stands in
+for `decide` (ADR 0043 D4).
 
 ## An agent's POST carries an Idempotency-Key
 
@@ -255,9 +260,12 @@ the capability set that applied:
   calls around a hard-off rule ([`api/links.go`](../../backend/internal/api/links.go)
   `UnlinkTickets`).
 - **Backward moves and reopens.** `in-progress → decided` or `→ analysed`,
-  `decided → analysed`, and `done` or `dropped → filed` need no capability, so a token without
-  `decide` and `close` — the "assisted" set — can undo what its person kept for themselves
-  ([`api/transitions.go`](../../backend/internal/api/transitions.go) `checkTransition`).
+  `decided → analysed`, `review → in-progress`, `dropped → filed`, the withdrawal of a done by
+  hand and the `PATCH` that lowers a stage of a ticket done by its stages need no capability,
+  only a reason, so a token without `decide` and `close` — the "assisted" set — can undo what
+  its person kept for themselves, a person's close included
+  ([`api/transitions.go`](../../backend/internal/api/transitions.go) `checkTransition`,
+  [`api/tickets.go`](../../backend/internal/api/tickets.go) `stageInputs`).
 - **Removing its person's stake**, or lowering it to `watch`, whatever weight the person gave
   it; only setting `need` or `urgent` needs `interest`
   ([`api/interest.go`](../../backend/internal/api/interest.go)).

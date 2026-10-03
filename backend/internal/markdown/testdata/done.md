@@ -7,7 +7,9 @@ severity: medium
 security: none
 urgency: later
 effort: XS
+progress-refinement: 100
 progress: 100
+progress-review: 100
 opened: 2026-10-01
 decided: 2026-10-01
 done: 2026-10-02

@@ -7,11 +7,13 @@ severity: low
 security: none
 urgency: release
 effort: S
+progress-refinement: 100
 progress: 0
+progress-review: 0
 opened: 2026-10-01
 blocked-by: release
 blocked-reason: needs 2.0 out
-blocked-from: decided
+blocked-from: review
 ---
 
 ## Open questions

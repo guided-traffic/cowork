@@ -144,8 +144,9 @@ func TestConcurrentBlocksLinks(t *testing.T) {
 }
 
 // docs/adr/0010 D3: an open decision that blocks a ticket makes it icebox;
-// the change of that input ends an override, with a row on the ticket's
-// timeline; neither changes the ticket's version (docs/adr/0050 D1).
+// the change of that input derives the urgency again beside a standing
+// override, which holds; neither changes the ticket's version (docs/adr/0050
+// D1) nor records an act of its own.
 func TestLinksDeriveUrgency(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -153,37 +154,44 @@ func TestLinksDeriveUrgency(t *testing.T) {
 	work := e.file(t, member, "ALPHA", task("Build it"))
 	decision := e.file(t, member, "ALPHA", task("Which database?", func(b *apigen.TicketCreate) { b.Type = apigen.TicketTypeDecision }))
 	other := e.file(t, member, "ALPHA", task("Some task"))
+	plain := e.file(t, member, "ALPHA", task("No override"))
 
 	etag := strconv.Quote(strconv.Itoa(work.Version))
 	ov, err := e.s.client(t, member).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", work.Number,
-		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.UrgencyNow, Reason: "demo on Friday"})
+		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.UrgencyNow, Reason: ptr("demo on Friday")})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, ov.StatusCode(), string(ov.Body))
 	version := ov.JSON200.Version
 
 	require.Equal(t, http.StatusCreated, e.link(t, member, other, apigen.LinkTypeBlocks, work).StatusCode)
 	got := e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "a task that blocks is no input of v1: the override stands")
+	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "a task that blocks is no input of v1")
+	assert.Equal(t, "v1:default", got.UrgencyRule)
 
 	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, work).StatusCode)
 	got = e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyIcebox, got.Urgency)
+	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the input changed: the override holds")
+	assert.Equal(t, "demo on Friday", got.UrgencyOverride.MustGet().Reason.MustGet())
+	assert.Equal(t, apigen.UrgencyIcebox, got.UrgencyDerived, "and the derived value changes beside it")
 	assert.Equal(t, "v1:icebox-decision", got.UrgencyRule)
-	assert.True(t, got.UrgencyOverride.IsNull(), "the input changed: the override ended")
 	assert.Equal(t, version, got.Version, "a derived change leaves the version")
-	var reason string
-	require.NoError(t, f.QueryRow(e.ctx, `SELECT reason FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'
-		ORDER BY id DESC LIMIT 1`, work.Id).Scan(&reason))
-	assert.Equal(t, "an input of the urgency derivation changed", reason)
+	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", work.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the derivation records no act of its own")
 
-	assert.Equal(t, []string{"Build it"}, e.titles(t, member, e.tenantTickets(), "blocked=true"))
+	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, plain).StatusCode)
+	got = e.get(t, member, "ALPHA", plain.Number).JSON200
+	assert.Equal(t, apigen.UrgencyIcebox, got.Urgency, "without an override the derived value shows")
+
+	assert.Equal(t, []string{"No override", "Build it"}, e.titles(t, member, e.tenantTickets(), "blocked=true"))
 	assert.NotContains(t, e.titles(t, member, e.tenantTickets(), "blocked=false"), "Build it")
 
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
 	del := e.s.do(t, agent, http.MethodDelete, e.linkPath(decision, apigen.LinkTypeBlocks, work), nil)
 	require.Equal(t, http.StatusNoContent, del.StatusCode, "an agent removes an open blocks link: the open gate")
 	got = e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyLater, got.Urgency)
+	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the override still holds")
+	assert.Equal(t, apigen.UrgencyLater, got.UrgencyDerived)
 	assert.Equal(t, "v1:default", got.UrgencyRule)
 }
 

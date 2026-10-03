@@ -75,6 +75,13 @@ chain; `FuzzClientAddress` holds that an untrusted peer is always the client —
 the lockout mode, the lifetimes, the base URL as an origin, the bootstrap tenant, the trusted
 proxies as CIDRs and the error that quotes the offending entry only).
 
+The rules of the states and the progress stages without a database:
+[`domain_test.go`](../../backend/internal/domain/domain_test.go) (the move matrix, what a write of
+the stages does, which done is by the stages) and
+[`api/transitions_test.go`](../../backend/internal/api/transitions_test.go) (the transition and
+`PATCH` checks for persons and agents over `store.TicketRow` values built by `in`, the stages and
+the done by hand a ticket shows — rows the release before the stages left included).
+
 ## Backend integration tests
 
 [`backend/test/integration/`](../../backend/test/integration/), build tag `integration`.
@@ -137,7 +144,7 @@ is not a generated response and is not validated.
 
 | File | What it proves |
 |---|---|
-| [`migrate_test.go`](../../backend/test/integration/migrate_test.go) | A fresh database reaches the embedded version, a second run applies nothing, the runtime role reads the version; PostgreSQL 18 or newer; a schema ahead of the binary is served; tenant ids are UUIDv7; migration 17 ranks every project's open tickets in number order and restores the force it lifts (`TestRankMigrationKeepsNumberOrder`, on a database of its own that `migrateTo` brings to version 16 first) |
+| [`migrate_test.go`](../../backend/test/integration/migrate_test.go) | A fresh database reaches the embedded version, a second run applies nothing, the runtime role reads the version; PostgreSQL 18 or newer; a schema ahead of the binary is served; tenant ids are UUIDv7; migration 17 ranks every project's open tickets in number order and restores the force it lifts (`TestRankMigrationKeepsNumberOrder`, on a database of its own that `migrateTo` brings to version 16 first); migrations 18 and 19 backfill the three progress stages, `done_from` and `done_by_hand` on the tickets a release before them left, derive the parents' new stages a level at a time, grant the new columns and restore the force (`TestStagesMigrationBackfill`, from version 17) |
 | [`store_test.go`](../../backend/test/integration/store_test.go) | The runtime role check; an unfiltered query under tenant A sees nothing of B in any tenant-bound table; the context dies with its transaction; the wrappers; the append-only audit record; `Mutate`'s acts, rollbacks and idempotency, concurrent duplicates included; the expiry job and its lock; the token lookup, refusal bound and last-used date |
 | [`api_core_test.go`](../../backend/test/integration/api_core_test.go) | Unauthenticated meta routes, unknown routes and methods, authentication and the agent header, one tenant's token in another, `/me` and tokens, tenant settings, the audit view, the body limit, cursors, validation |
 | [`api_boundary_test.go`](../../backend/test/integration/api_boundary_test.go) | Every tenant route refuses another tenant's token exactly like an unknown tenant (`TestEveryTenantRouteRefusesAnotherTenantLikeNoTenant`); the routes come from a walk over the document (`tenantRoutes`), shared with the session test below, so the account routes are covered the day they exist; `POST /tenants` has no tenant in its path and is tested by `TestOnlyAGlobalAdministratorCreatesATenant` |
@@ -146,7 +153,7 @@ is not a generated response and is not validated.
 | [`api_session_routes_test.go`](../../backend/test/integration/api_session_routes_test.go) | The routes only a session calls: a token created and shown once, its lifetime clamped, its idempotency; a tenant created by a global administrator only; the CSRF refusals (the `Referer` fallback, no origin, a second header, a cookie beside a token); the event stream ending with its session; the cross-tenant harness again with a cookie; no password, cookie or token in the log, the answers or the audit record |
 | [`policy_login_test.go`](../../backend/test/integration/policy_login_test.go) | The policies of the persons, their accounts and their sessions as the runtime role sees them, with no handler in front; the session lookup finds the presented row only |
 | [`bootstrap_test.go`](../../backend/test/integration/bootstrap_test.go) | The start-up synchronisation on an isolated database: created, left alone, re-hashed with the sessions ended, deactivated and reactivated, taken over from a tenant's account of the same name, four replicas at once |
-| `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_transitions_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents |
+| `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_transitions_test.go`, `api_stages_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents; `api_stages_test.go` the state `review`, done by hand and its withdrawal, done by the stages and the reopen, their refusals for persons and agents, a parent's stages, an open ticket whose stages are full, what the release before the stages writes over this schema in a rollback (its statements verbatim), the override that holds, `done_after` and the `review` limit |
 
 ## Frontend unit tests
 

@@ -228,8 +228,8 @@ The exemptions, each with its reason written in its query file:
 Where the predicate hides a related ticket, the visible one shows less rather than more: a
 parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
 `parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
-hidden is absent from the list, and the `blocked` filter and the prerequisites of `done`
-count only the blockers the caller sees.
+hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
+a ticket's `open_prerequisites` count only the blockers the caller sees.
 
 ## The project restriction
 
@@ -361,16 +361,18 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
 - The `blocks` cycle refusal walks the tenant's whole `blocks` graph past the predicate
   (`blocks_path_exists`): `409 link_cycle` can depend on confidential tickets and on tickets
   of restricted projects.
-- `done` is refused only by the open prerequisites the closer can see
-  (`ListOpenPrerequisites`): a ticket can be closed over an open prerequisite its closer
-  cannot see, without an override and without a mention in the act.
+- The done act — by hand, or the `PATCH` that fills the last progress stage — is refused only
+  by the open prerequisites the closer can see (`ListOpenPrerequisites`): a ticket can be
+  closed over an open prerequisite its closer cannot see, without an override and without a
+  mention in the act, and its `open_prerequisites` reads 0 to that closer.
 - Rule `v1:icebox-decision` counts an open decision that blocks the ticket whether or not the
   reader can see it (`GetUrgencyInputs`), and every reader sees the derived urgency and the
-  rule's name. When such a decision opens or settles, the tickets it blocks are derived again,
-  and a standing override ends with an `overridden` act on their timelines in the name of the
-  person who changed the hidden decision.
-- The derived progress is the effort-weighted mean of every child not dropped, confidential
-  ones included (`ticket_derived_progress`).
+  rule's name. When such a decision opens or settles, the tickets it blocks are derived again;
+  a standing override stays, and no act is recorded on their timelines — the change shows in
+  `urgency_derived` and `urgency_rule` alone.
+- Each derived progress stage is the effort-weighted mean of the same stage of every child not
+  dropped, confidential ones included (`ticket_derived_stage`), and a parent whose children are
+  all done shows 100 in each.
 - A new project's key is refused as taken whether or not the caller can see the project that
   holds it (`ProjectKeyTaken`).
 - A filing, a reopen and a move in the rank compute their key over every ticket of the project

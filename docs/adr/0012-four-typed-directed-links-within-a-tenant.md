@@ -24,6 +24,13 @@ over open direct prerequisites the closer can see unless a person overrides with
 (an agent cannot). D6's prerequisite view arrives with the ticket detail. Removing a `blocks`
 link is open to agents until the agent gates are reviewed after experience
 ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).
+*(2026-10-03.)* Every ticket carries `open_prerequisites`, built as D7 counts: the open tickets
+that block it directly and that the caller can see, computed per read under the visibility
+predicate ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D4, D5). D6 and the Consequences describe the count on the card otherwise — the open
+prerequisites of the transitive closure, cached on the ticket — and the two disagree; which
+count the card shows is open. A count cached on the ticket would be the same for every caller
+and would count prerequisites some of them cannot see.
 
 ## Context
 

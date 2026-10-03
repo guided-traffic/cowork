@@ -13,6 +13,28 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
+const endDoneByHand = `-- name: EndDoneByHand :one
+UPDATE tickets
+SET done_by_hand = false, version = version + 1, updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND state = 'done' AND done_by_hand
+RETURNING version
+`
+
+type EndDoneByHandParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// The withdrawal of a done by hand from a ticket whose three stages are full:
+// it stays done, by its stages (docs/adr/0009 D5); a compare-and-set on the
+// done by hand.
+func (q *Queries) EndDoneByHand(ctx context.Context, arg EndDoneByHandParams) (int32, error) {
+	row := q.db.QueryRow(ctx, endDoneByHand, arg.TenantID, arg.ID)
+	var version int32
+	err := row.Scan(&version)
+	return version, err
+}
+
 const getTicketRank = `-- name: GetTicketRank :one
 SELECT state, rank FROM tickets
 WHERE tenant_id = $1 AND id = $2
@@ -43,10 +65,17 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        bp.key AS block_project_key, bt.number AS block_number,
        t.severity, t.security, t.threat, t.urgency_derived, t.urgency_rule, t.urgency_override,
        t.urgency_override_reason, t.urgency_override_by, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
+       t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       (SELECT count(*) FROM ticket_links pl
+        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
+        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
+          AND ps.state NOT IN ('done', 'dropped')
+          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
@@ -65,49 +94,56 @@ type GetWrittenTicketParams struct {
 }
 
 type GetWrittenTicketRow struct {
-	ID                    uuid.UUID
-	ProjectID             uuid.UUID
-	ProjectKey            string
-	Number                int32
-	Type                  domain.TicketType
-	Title                 string
-	Body                  string
-	State                 domain.TicketState
-	BlockedFrom           *domain.TicketState
-	BlockKind             *domain.BlockKind
-	BlockReason           *string
-	BlockTicketID         *uuid.UUID
-	BlockExternalRef      *string
-	BlockProjectKey       *string
-	BlockNumber           *int32
-	Severity              domain.Severity
-	Security              domain.SecurityClass
-	Threat                *string
-	UrgencyDerived        domain.Urgency
-	UrgencyRule           string
-	UrgencyOverride       *domain.Urgency
-	UrgencyOverrideReason *string
-	UrgencyOverrideBy     *uuid.UUID
-	UrgencyOverrideAt     *time.Time
-	Effort                domain.Effort
-	Progress              int16
-	ProgressDerived       *int16
-	ParentID              *uuid.UUID
-	ParentNumber          *int32
-	ReporterID            uuid.UUID
-	ReporterUsername      *string
-	ReporterName          *string
-	AssigneeID            *uuid.UUID
-	AssigneeUsername      *string
-	AssigneeName          *string
-	Confidential          bool
-	Rank                  *string
-	OpenedAt              time.Time
-	DecidedAt             *time.Time
-	DoneAt                *time.Time
-	Version               int32
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ID                        uuid.UUID
+	ProjectID                 uuid.UUID
+	ProjectKey                string
+	Number                    int32
+	Type                      domain.TicketType
+	Title                     string
+	Body                      string
+	State                     domain.TicketState
+	BlockedFrom               *domain.TicketState
+	BlockKind                 *domain.BlockKind
+	BlockReason               *string
+	BlockTicketID             *uuid.UUID
+	BlockExternalRef          *string
+	BlockProjectKey           *string
+	BlockNumber               *int32
+	Severity                  domain.Severity
+	Security                  domain.SecurityClass
+	Threat                    *string
+	UrgencyDerived            domain.Urgency
+	UrgencyRule               string
+	UrgencyOverride           *domain.Urgency
+	UrgencyOverrideReason     *string
+	UrgencyOverrideBy         *uuid.UUID
+	UrgencyOverrideAt         *time.Time
+	Effort                    domain.Effort
+	Progress                  int16
+	ProgressDerived           *int16
+	ProgressRefinement        int16
+	ProgressRefinementDerived *int16
+	ProgressReview            int16
+	ProgressReviewDerived     *int16
+	ParentID                  *uuid.UUID
+	ParentNumber              *int32
+	ReporterID                uuid.UUID
+	ReporterUsername          *string
+	ReporterName              *string
+	AssigneeID                *uuid.UUID
+	AssigneeUsername          *string
+	AssigneeName              *string
+	Confidential              bool
+	Rank                      *string
+	OpenedAt                  time.Time
+	DecidedAt                 *time.Time
+	DoneAt                    *time.Time
+	DoneFrom                  *domain.TicketState
+	DoneByHand                bool
+	OpenPrerequisites         int32
+	Version                   int32
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 // The ticket as a write in this transaction left it, for the answer to that
@@ -147,6 +183,10 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 		&i.Effort,
 		&i.Progress,
 		&i.ProgressDerived,
+		&i.ProgressRefinement,
+		&i.ProgressRefinementDerived,
+		&i.ProgressReview,
+		&i.ProgressReviewDerived,
 		&i.ParentID,
 		&i.ParentNumber,
 		&i.ReporterID,
@@ -160,6 +200,9 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 		&i.OpenedAt,
 		&i.DecidedAt,
 		&i.DoneAt,
+		&i.DoneFrom,
+		&i.DoneByHand,
+		&i.OpenPrerequisites,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -297,8 +340,9 @@ type LockProjectRankParams struct {
 }
 
 // The project's counter row, locked until the transaction ends. A filing takes
-// it with its number (NextTicketNumber); a move and a reopen take it before
-// they read a key. So every write that hands out a key in the project is
+// it with its number (NextTicketNumber); a move and a return from done or
+// dropped — a reopen, a withdrawal, a lower stage — take it before they read
+// a key. So every write that hands out a key in the project is
 // ordered by one row — two of them never compute a key from the same
 // neighbours (docs/adr/0014 D2) — and filing still never waits for a change of
 // the project's settings (migration 3). Taken before any ticket row is written.
@@ -472,13 +516,27 @@ func (q *Queries) RankUnrankedTicket(ctx context.Context, arg RankUnrankedTicket
 }
 
 const refreshDerivedProgress = `-- name: RefreshDerivedProgress :one
-WITH d AS (SELECT ticket_derived_progress($1, $2) AS v)
+WITH d AS (SELECT ticket_derived_stage($1, $2, 'refinement') AS refinement,
+                  ticket_derived_stage($1, $2, 'implementation') AS implementation,
+                  ticket_derived_stage($1, $2, 'review') AS review)
 UPDATE tickets t
-SET progress_derived = d.v,
-    progress = CASE WHEN d.v IS NULL THEN coalesce(t.progress_derived, t.progress) ELSE t.progress END,
+SET progress_derived = d.implementation,
+    progress_refinement_derived = d.refinement,
+    progress_review_derived = d.review,
+    progress = CASE WHEN d.implementation IS NULL THEN coalesce(t.progress_derived, t.progress) ELSE t.progress END,
+    progress_refinement = CASE WHEN d.refinement IS NULL
+                               THEN coalesce(t.progress_refinement_derived, t.progress_refinement)
+                               ELSE t.progress_refinement END,
+    progress_review = CASE WHEN d.review IS NULL
+                           THEN coalesce(t.progress_review_derived, t.progress_review)
+                           ELSE t.progress_review END,
+    done_by_hand = t.done_by_hand OR (t.state = 'done' AND d.implementation IS NOT NULL),
     updated_at = now()
 FROM d
-WHERE t.tenant_id = $1 AND t.id = $2 AND t.progress_derived IS DISTINCT FROM d.v
+WHERE t.tenant_id = $1 AND t.id = $2
+  AND (t.progress_derived IS DISTINCT FROM d.implementation
+       OR t.progress_refinement_derived IS DISTINCT FROM d.refinement
+       OR t.progress_review_derived IS DISTINCT FROM d.review)
 RETURNING t.parent_id
 `
 
@@ -487,10 +545,13 @@ type RefreshDerivedProgressParams struct {
 	ID       uuid.UUID
 }
 
-// The ticket's derived progress after a change of its children. It leaves
-// the version alone (docs/adr/0050 D1); when the last child has left, the
-// ticket's own value starts at the last derived one (docs/adr/0017 D3). No
-// row when nothing changed; else the parent, whose progress reads this one.
+// The ticket's derived stages after a change of its children
+// (docs/adr/0017 D3), progress_derived the implementation stage's. It leaves
+// the version alone (docs/adr/0050 D1); when the last child has left, each
+// stage's own value starts at the last derived one. A done ticket that gains
+// children is done by hand from then on: a parent is never done by its stages
+// (docs/adr/0009 D5). No row when nothing changed; else the parent, whose
+// stages read this one's.
 func (q *Queries) RefreshDerivedProgress(ctx context.Context, arg RefreshDerivedProgressParams) (*uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, refreshDerivedProgress, arg.TenantID, arg.ID)
 	var parent_id *uuid.UUID
@@ -543,7 +604,7 @@ type SetUrgencyOverrideParams struct {
 	Version         int32
 }
 
-// A reasoned override, or none (docs/adr/0010 D3).
+// An override, its reason optional for a person, or none (docs/adr/0010 D3).
 func (q *Queries) SetUrgencyOverride(ctx context.Context, arg SetUrgencyOverrideParams) (int32, error) {
 	row := q.db.QueryRow(ctx, setUrgencyOverride,
 		arg.UrgencyOverride,
@@ -601,13 +662,12 @@ SET state = $1,
     block_external_ref = $6,
     rank = CASE WHEN $1::ticket_state IN ('done', 'dropped') THEN NULL
                 ELSE coalesce($7::text, rank) END,
-    progress = CASE WHEN $1::ticket_state = 'done' THEN 100 ELSE progress END,
     decided_at = CASE WHEN $1::ticket_state = 'decided' THEN now() ELSE decided_at END,
-    done_at = CASE WHEN $1::ticket_state = 'done' THEN now()
-                   WHEN $1::ticket_state = 'filed' THEN NULL
-                   ELSE done_at END,
-    version = version + 1, updated_at = now()
-WHERE tenant_id = $8 AND id = $9 AND state = $10
+    done_at = CASE WHEN $1::ticket_state = 'done' THEN now() END,
+    done_from = CASE WHEN $1::ticket_state = 'done' THEN $8::ticket_state END,
+    done_by_hand = $1::ticket_state = 'done' AND $9::boolean,
+    version = version + CASE WHEN $10::boolean THEN 1 ELSE 0 END, updated_at = now()
+WHERE tenant_id = $11 AND id = $12 AND state = $8
 RETURNING version
 `
 
@@ -619,17 +679,24 @@ type TransitionTicketParams struct {
 	BlockTicketID    *uuid.UUID
 	BlockExternalRef *string
 	Rank             *string
+	FromState        domain.TicketState
+	DoneByHand       bool
+	Bump             bool
 	TenantID         uuid.UUID
 	ID               uuid.UUID
-	FromState        domain.TicketState
 }
 
 // A move between states, a compare-and-set on the state the request names
-// (docs/adr/0045 D2). done sets progress to 100 (docs/adr/0017 D5); the
-// dates are the acts' (docs/adr/0009 D6): decided_at the last time the ticket
-// reached decided, done_at while it is done. done and dropped take the rank
-// away, a reopen brings the key it is given — the bottom — and every other
-// move keeps the rank (docs/adr/0014 D1).
+// (docs/adr/0045 D2). The dates are the acts' (docs/adr/0009 D6): decided_at
+// the last time the ticket reached decided, done_at while it is done. done
+// keeps the state it came from and whether it was set by hand, and leaves the
+// progress stages as they are (docs/adr/0009 D5, docs/adr/0017 D5). The block
+// columns are what the move gives them: the block entering blocked, the block a
+// ticket done from blocked keeps and takes back, none otherwise. done and
+// dropped take the rank away, a reopen brings the key it is given — the
+// bottom — and every other move keeps the rank (docs/adr/0014 D1). bump is
+// false where the request raised the version already, in a PATCH whose stages
+// close or reopen the ticket.
 func (q *Queries) TransitionTicket(ctx context.Context, arg TransitionTicketParams) (int32, error) {
 	row := q.db.QueryRow(ctx, transitionTicket,
 		arg.ToState,
@@ -639,9 +706,11 @@ func (q *Queries) TransitionTicket(ctx context.Context, arg TransitionTicketPara
 		arg.BlockTicketID,
 		arg.BlockExternalRef,
 		arg.Rank,
+		arg.FromState,
+		arg.DoneByHand,
+		arg.Bump,
 		arg.TenantID,
 		arg.ID,
-		arg.FromState,
 	)
 	var version int32
 	err := row.Scan(&version)
@@ -679,29 +748,33 @@ UPDATE tickets
 SET type = $1, title = $2, severity = $3,
     security = $4, threat = $5, effort = $6,
     parent_id = $7, assignee_id = $8,
-    progress = $9, confidential = $10,
+    progress = $9, progress_refinement = $10,
+    progress_review = $11, confidential = $12,
     version = version + 1, updated_at = now()
-WHERE tenant_id = $11 AND id = $12 AND version = $13
+WHERE tenant_id = $13 AND id = $14 AND version = $15
 RETURNING version
 `
 
 type UpdateTicketFieldsParams struct {
-	Type         domain.TicketType
-	Title        string
-	Severity     domain.Severity
-	Security     domain.SecurityClass
-	Threat       *string
-	Effort       domain.Effort
-	ParentID     *uuid.UUID
-	AssigneeID   *uuid.UUID
-	Progress     int16
-	Confidential bool
-	TenantID     uuid.UUID
-	ID           uuid.UUID
-	Version      int32
+	Type               domain.TicketType
+	Title              string
+	Severity           domain.Severity
+	Security           domain.SecurityClass
+	Threat             *string
+	Effort             domain.Effort
+	ParentID           *uuid.UUID
+	AssigneeID         *uuid.UUID
+	Progress           int16
+	ProgressRefinement int16
+	ProgressReview     int16
+	Confidential       bool
+	TenantID           uuid.UUID
+	ID                 uuid.UUID
+	Version            int32
 }
 
-// The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1).
+// The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1);
+// progress is the implementation stage (docs/adr/0017 D2).
 func (q *Queries) UpdateTicketFields(ctx context.Context, arg UpdateTicketFieldsParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updateTicketFields,
 		arg.Type,
@@ -713,6 +786,8 @@ func (q *Queries) UpdateTicketFields(ctx context.Context, arg UpdateTicketFields
 		arg.ParentID,
 		arg.AssigneeID,
 		arg.Progress,
+		arg.ProgressRefinement,
+		arg.ProgressReview,
 		arg.Confidential,
 		arg.TenantID,
 		arg.ID,

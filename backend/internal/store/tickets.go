@@ -27,10 +27,17 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
        bp.key AS block_project_key, bt.number AS block_number,
        t.severity, t.security, t.threat, t.urgency_derived, t.urgency_rule, t.urgency_override,
        t.urgency_override_reason, t.urgency_override_by, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
+       t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at`
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       (SELECT count(*) FROM ticket_links pl
+        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
+        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
+          AND ps.state NOT IN ('done', 'dropped')
+          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       t.version, t.created_at, t.updated_at`
 
 const ticketFrom = `FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -83,7 +90,11 @@ type TicketFilter struct {
 	OpenedBefore  *time.Time
 	UpdatedAfter  *time.Time
 	UpdatedBefore *time.Time
-	Query         string
+	// DoneAfter keeps the tickets done after it, as OpenedAfter and
+	// UpdatedAfter keep theirs: the board's count of what was done lately
+	// (docs/adr/0018 D1).
+	DoneAfter *time.Time
+	Query     string
 	// Blocked filters by whether an open ticket the caller can see blocks
 	// the ticket (docs/adr/0049 D1).
 	Blocked *bool
@@ -290,6 +301,7 @@ func (b *queryBuilder) filter(f TicketFilter) {
 	}{
 		{"t.opened_at > ", f.OpenedAfter}, {"t.opened_at < ", f.OpenedBefore},
 		{"t.updated_at > ", f.UpdatedAfter}, {"t.updated_at < ", f.UpdatedBefore},
+		{"t.done_at > ", f.DoneAfter},
 	} {
 		if c.at != nil {
 			b.where(c.expr + b.arg(*c.at))
@@ -321,9 +333,10 @@ func (b *queryBuilder) exists(cond string, set *bool) {
 	b.where(cond)
 }
 
-// effectiveProgress is the progress a ticket shows: 100 when done, the
-// derived value while it has children, else its own (docs/adr/0017 D3, D5).
-const effectiveProgress = "CASE WHEN t.state = 'done' THEN 100 ELSE coalesce(t.progress_derived, t.progress) END"
+// effectiveProgress is the implementation stage a ticket shows: the derived
+// value while it has children, else its own; done leaves it as it is
+// (docs/adr/0017 D2, D3, D5).
+const effectiveProgress = "coalesce(t.progress_derived, t.progress)"
 
 // openQuestion holds when t has an open question; a question is visible
 // with its ticket.

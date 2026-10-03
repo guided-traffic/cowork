@@ -491,6 +491,7 @@ const (
 	TicketStateAnalysed   TicketState = "analysed"
 	TicketStateDecided    TicketState = "decided"
 	TicketStateInProgress TicketState = "in-progress"
+	TicketStateReview     TicketState = "review"
 	TicketStateBlocked    TicketState = "blocked"
 	TicketStateDone       TicketState = "done"
 	TicketStateDropped    TicketState = "dropped"
@@ -848,43 +849,49 @@ type Tenant struct {
 }
 
 type Ticket struct {
-	ID                    uuid.UUID
-	TenantID              uuid.UUID
-	ProjectID             uuid.UUID
-	Number                int32
-	Type                  domain.TicketType
-	Title                 string
-	Body                  string
-	State                 domain.TicketState
-	BlockedFrom           *domain.TicketState
-	BlockKind             *domain.BlockKind
-	BlockReason           *string
-	BlockTicketID         *uuid.UUID
-	BlockExternalRef      *string
-	Severity              domain.Severity
-	Security              domain.SecurityClass
-	Threat                *string
-	UrgencyDerived        domain.Urgency
-	UrgencyRule           string
-	UrgencyOverride       *domain.Urgency
-	UrgencyOverrideReason *string
-	UrgencyOverrideBy     *uuid.UUID
-	UrgencyOverrideAt     *time.Time
-	Effort                domain.Effort
-	Progress              int16
-	ProgressDerived       *int16
-	ParentID              *uuid.UUID
-	ReporterID            uuid.UUID
-	AssigneeID            *uuid.UUID
-	Confidential          bool
-	OpenedAt              time.Time
-	DecidedAt             *time.Time
-	DoneAt                *time.Time
-	Search                interface{}
-	Version               int32
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	Rank                  *string
+	ID                        uuid.UUID
+	TenantID                  uuid.UUID
+	ProjectID                 uuid.UUID
+	Number                    int32
+	Type                      domain.TicketType
+	Title                     string
+	Body                      string
+	State                     domain.TicketState
+	BlockedFrom               *domain.TicketState
+	BlockKind                 *domain.BlockKind
+	BlockReason               *string
+	BlockTicketID             *uuid.UUID
+	BlockExternalRef          *string
+	Severity                  domain.Severity
+	Security                  domain.SecurityClass
+	Threat                    *string
+	UrgencyDerived            domain.Urgency
+	UrgencyRule               string
+	UrgencyOverride           *domain.Urgency
+	UrgencyOverrideReason     *string
+	UrgencyOverrideBy         *uuid.UUID
+	UrgencyOverrideAt         *time.Time
+	Effort                    domain.Effort
+	Progress                  int16
+	ProgressDerived           *int16
+	ParentID                  *uuid.UUID
+	ReporterID                uuid.UUID
+	AssigneeID                *uuid.UUID
+	Confidential              bool
+	OpenedAt                  time.Time
+	DecidedAt                 *time.Time
+	DoneAt                    *time.Time
+	Search                    interface{}
+	Version                   int32
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	Rank                      *string
+	ProgressRefinement        int16
+	ProgressReview            int16
+	ProgressRefinementDerived *int16
+	ProgressReviewDerived     *int16
+	DoneFrom                  *domain.TicketState
+	DoneByHand                bool
 }
 
 type TicketCounter struct {
