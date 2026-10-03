@@ -1,42 +1,5 @@
-<section class="page">
-  <header class="head">
-    <div class="title">
-      <span class="key">{{ project() }}</span>
-      <h1>{{ details()?.name ?? project() }}</h1>
-      <span class="spacer"></span>
-      @if (session.tenant(); as tenant) {
-        <a
-          pButton
-          [text]="true"
-          [rounded]="true"
-          severity="secondary"
-          [routerLink]="['/t', tenant, 'p', project(), 'settings']"
-          data-testid="project-settings"
-          [iconOnly]="true"
-          aria-label="Project settings"
-          ><i class="pi pi-cog"></i
-        ></a>
-        <button
-          pButton
-          type="button"
-          size="small"
-          data-testid="new-ticket"
-          (click)="creating.set(true)"
-        >
-          <i class="pi pi-plus"></i>New ticket
-        </button>
-        <app-new-ticket-dialog
-          [tenant]="tenant"
-          [project]="project()"
-          [(visible)]="creating"
-          (filed)="filed($event)"
-        />
-      }
-    </div>
-    @if (details()?.description; as description) {
-      <p class="muted">{{ description }}</p>
-    }
-  </header>
+<section class="page" cdkDropListGroup>
+  <app-project-header [project]="project()" (filed)="filed()" />
 
   <div class="toolbar">
     <p-iconfield class="search">
@@ -58,100 +21,317 @@
       optionValue="state"
       [ngModel]="selectedStates()"
       (ngModelChange)="onStates($event ?? [])"
-      placeholder="Every state"
+      placeholder="Every open state"
       [showClear]="true"
-      size="small"
       ariaLabel="States"
       data-testid="state-filter"
     />
     <span class="spacer"></span>
-    <span class="muted tabular" data-testid="total">{{ total() }} tickets</span>
+    <span class="muted tabular" data-testid="total">{{ summary() }}</span>
+    <label class="closed-toggle">
+      <p-toggleswitch
+        [ngModel]="showClosed()"
+        (ngModelChange)="showClosed.set($event)"
+        data-testid="show-closed"
+      />
+      <span>Show closed</span>
+    </label>
   </div>
 
-  <div class="panel">
-    <p-table
-      [value]="rows()"
-      [lazy]="true"
-      (onLazyLoad)="onLazyLoad($event)"
-      [paginator]="true"
-      [rows]="perPage()"
-      [first]="(page() - 1) * perPage()"
-      [rowsPerPageOptions]="pageSizes"
-      [totalRecords]="total()"
-      [loading]="loading()"
-      [showLoader]="false"
-      dataKey="key"
-      size="small"
-      [rowHover]="true"
+  <div class="panel" [class.loading]="loading()" [attr.aria-busy]="loading()">
+    <table
       class="tickets"
+      aria-label="Open tickets, grouped by urgency"
       data-testid="backlog-table"
     >
-      <ng-template #header>
+      <thead>
         <tr>
+          <th class="col-handle"><span class="sr-only">Drag</span></th>
           <th class="col-key">Key</th>
           <th>Title</th>
+          <th class="col-size">Size</th>
           <th class="col-state">State</th>
-          <th class="col-badge">Severity</th>
+          <th class="col-severity">Severity</th>
           <th class="col-assignee">Assignee</th>
           <th class="col-progress">Progress</th>
-          <th class="col-urgency">Urgency</th>
           <th class="col-when">Updated</th>
+          <th class="col-menu"><span class="sr-only">Move</span></th>
         </tr>
-      </ng-template>
-      <ng-template #body let-ticket>
-        <tr class="row" (click)="open(ticket)" [attr.data-testid]="'row-' + ticket.key">
-          <td class="col-key">
-            <a
-              [routerLink]="[
-                '/t',
-                session.tenant(),
-                'tickets',
-                ticket.project + '-' + ticket.number,
-              ]"
-              (click)="$event.stopPropagation()"
-              class="tabular"
-              >{{ ticket.project }}-{{ ticket.number }}</a
+      </thead>
+
+      @for (group of visibleGroups(); track group.urgency) {
+        <tbody
+          cdkDropList
+          [cdkDropListData]="group"
+          (cdkDropListDropped)="dropped($event)"
+          class="group"
+          [attr.data-urgency]="group.urgency"
+          [attr.data-testid]="'group-' + group.urgency"
+        >
+          <tr class="group-head">
+            <th colspan="10" scope="rowgroup">
+              <span
+                class="group-name"
+                [pTooltip]="meanings.urgency[group.urgency]"
+                [showDelay]="400"
+                >{{ group.urgency }}</span
+              >
+              <span class="count tabular" [attr.data-testid]="'count-' + group.urgency">{{
+                group.rows.length
+              }}</span>
+            </th>
+          </tr>
+          @for (row of group.rows; track row.ticket.key) {
+            <tr
+              cdkDrag
+              [cdkDragData]="row.ticket"
+              (cdkDragStarted)="dragStarted()"
+              (cdkDragEnded)="dragEnded()"
+              class="row"
+              (click)="open(row.ticket)"
+              [attr.data-testid]="'row-' + row.ticket.key"
             >
-          </td>
-          <td>
-            <div class="cell-title">
-              <app-type [value]="ticket.type" />
-              <span class="text">{{ ticket.title }}</span>
-              <app-security [value]="ticket.security" />
-            </div>
-          </td>
-          <td class="col-state"><app-state [value]="ticket.state" /></td>
-          <td class="col-badge"><app-severity [value]="ticket.severity" /></td>
-          <td class="col-assignee">
-            @if (ticket.assignee; as assignee) {
-              <span>{{ assignee.display_name }}</span>
-            } @else {
-              <span class="muted">—</span>
+              <!-- A click on the handle is the start of a drag that did not happen: it opens nothing. -->
+              <td class="col-handle" (click)="$event.stopPropagation()">
+                <span cdkDragHandle class="grip" aria-hidden="true" data-testid="grip">
+                  <svg viewBox="0 0 10 16" focusable="false">
+                    <circle cx="2.5" cy="3" r="1.25" />
+                    <circle cx="7.5" cy="3" r="1.25" />
+                    <circle cx="2.5" cy="8" r="1.25" />
+                    <circle cx="7.5" cy="8" r="1.25" />
+                    <circle cx="2.5" cy="13" r="1.25" />
+                    <circle cx="7.5" cy="13" r="1.25" />
+                  </svg>
+                </span>
+              </td>
+              <ng-container
+                [ngTemplateOutlet]="cells"
+                [ngTemplateOutletContext]="{ $implicit: row }"
+              />
+              <td class="col-menu">
+                <button
+                  pButton
+                  type="button"
+                  [text]="true"
+                  [rounded]="true"
+                  severity="secondary"
+                  size="small"
+                  [iconOnly]="true"
+                  aria-haspopup="menu"
+                  [attr.aria-label]="'Move ' + shortKey(row.ticket.key)"
+                  [attr.data-testid]="'row-menu-' + row.ticket.key"
+                  (click)="$event.stopPropagation(); openMenu($event, group, row)"
+                >
+                  <i class="pi pi-ellipsis-v"></i>
+                </button>
+              </td>
+              <ng-template cdkDragPreview>
+                <div class="drag-card" data-testid="drag-preview">
+                  <app-type [value]="row.ticket.type" />
+                  <span class="key tabular">{{ shortKey(row.ticket.key) }}</span>
+                  <span class="text">{{ row.ticket.title }}</span>
+                </div>
+              </ng-template>
+            </tr>
+          } @empty {
+            <tr class="group-empty">
+              <td colspan="10" [attr.data-testid]="'empty-' + group.urgency">
+                @if (dragging()) {
+                  Drop here to make a ticket {{ group.urgency }}
+                } @else {
+                  No tickets
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      }
+
+      @if (showClosed()) {
+        <tbody class="group closed" data-testid="group-closed">
+          <tr class="group-head">
+            <th colspan="10" scope="rowgroup">
+              @if (doneAfter(); as since) {
+                <span class="group-name" data-testid="closed-name">done</span>
+                <span class="since" data-testid="closed-since">since {{ dateTime(since) }}</span>
+              } @else {
+                <span
+                  class="group-name"
+                  pTooltip="Done, or dropped without doing it"
+                  [showDelay]="400"
+                  data-testid="closed-name"
+                  >closed</span
+                >
+              }
+              <span class="count tabular" data-testid="count-closed">{{
+                closedRows().length
+              }}</span>
+              @if (doneAfter()) {
+                <button
+                  pButton
+                  type="button"
+                  [text]="true"
+                  size="small"
+                  class="all-closed"
+                  (click)="allClosed()"
+                  data-testid="all-closed"
+                >
+                  Show all closed
+                </button>
+              }
+            </th>
+          </tr>
+          @for (row of closedRows(); track row.ticket.key) {
+            <tr class="row" (click)="open(row.ticket)" [attr.data-testid]="'row-' + row.ticket.key">
+              <td class="col-handle"></td>
+              <ng-container
+                [ngTemplateOutlet]="cells"
+                [ngTemplateOutletContext]="{ $implicit: row }"
+              />
+              <td class="col-menu"></td>
+            </tr>
+          } @empty {
+            @if (!loadingClosed()) {
+              <tr class="group-empty">
+                <td colspan="10" data-testid="empty-closed">
+                  {{ doneAfter() ? 'No ticket done since then' : 'No closed tickets' }}
+                </td>
+              </tr>
             }
-          </td>
-          <td class="col-progress">
-            <div
-              class="progress"
-              [pTooltip]="
-                ticket.progress + '%' + (ticket.progress_derived ? ', from its children' : '')
-              "
-            >
-              <span [style.width.%]="ticket.progress"></span>
-            </div>
-          </td>
-          <td class="col-urgency">
-            <span [pTooltip]="urgencyMeaning(ticket)" [showDelay]="400">{{ ticket.urgency }}</span>
-          </td>
-          <td class="col-when muted">{{ ago(ticket.updated_at) }}</td>
-        </tr>
-      </ng-template>
-      <ng-template #emptymessage>
-        <tr>
-          <td colspan="8" class="empty muted" data-testid="empty">
-            {{ failure() ?? 'No tickets match.' }}
-          </td>
-        </tr>
-      </ng-template>
-    </p-table>
+          }
+          @if (moreClosed()) {
+            <tr class="group-more">
+              <td colspan="10">
+                <button
+                  pButton
+                  type="button"
+                  severity="secondary"
+                  [outlined]="true"
+                  size="small"
+                  [disabled]="loadingClosed()"
+                  (click)="loadMoreClosed()"
+                  data-testid="load-more-closed"
+                >
+                  Load more
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      }
+    </table>
   </div>
+
+  @if (failure(); as message) {
+    <p class="failure" role="alert" data-testid="failure">{{ message }}</p>
+  }
+
+  @if (more()) {
+    <div class="more">
+      <button
+        pButton
+        type="button"
+        severity="secondary"
+        [outlined]="true"
+        [disabled]="loading()"
+        (click)="loadMore()"
+        data-testid="load-more"
+      >
+        Load more
+      </button>
+    </div>
+  }
+
+  @if (zones().length > 0) {
+    <div class="dock" aria-hidden="true" data-testid="zones">
+      @for (group of zones(); track group.urgency) {
+        <div
+          cdkDropList
+          [cdkDropListData]="group"
+          (cdkDropListDropped)="dropped($event)"
+          class="zone"
+          [attr.data-testid]="'zone-' + group.urgency"
+        >
+          <span class="group-name">{{ group.urgency }}</span>
+          <span class="muted">Drop here to make a ticket {{ group.urgency }}</span>
+        </div>
+      }
+    </div>
+  }
+
+  <p-menu #rowMenu [model]="menuItems()" [popup]="true" appendTo="body" />
+  <p class="sr-only" role="status" aria-live="polite" data-testid="status">{{ status() }}</p>
 </section>
+
+<!-- The cells that an open row and a closed one have in common. -->
+<ng-template #cells let-row>
+  <td class="col-key">
+    <a
+      [routerLink]="['/t', session.tenant(), 'tickets', shortKey(row.ticket.key)]"
+      (click)="$event.stopPropagation()"
+      class="tabular"
+      >{{ shortKey(row.ticket.key) }}</a
+    >
+  </td>
+  <td class="col-title">
+    <div class="cell-title" [style.padding-left.rem]="row.depth * 1.75">
+      <app-type [value]="row.ticket.type" />
+      <span class="text">{{ row.ticket.title }}</span>
+      <app-security [value]="row.ticket.security" />
+      @if (row.elsewhere; as parent) {
+        <a
+          class="chip"
+          [routerLink]="['/t', session.tenant(), 'tickets', shortKey(parent)]"
+          (click)="$event.stopPropagation()"
+          [attr.aria-label]="'Parent ' + shortKey(parent)"
+          pTooltip="Its parent is in another group"
+          [showDelay]="400"
+          ><i class="pi pi-sitemap"></i>{{ shortKey(parent) }}</a
+        >
+      }
+    </div>
+    @if (asking(); as asked) {
+      @if (asked.key === row.ticket.key) {
+        <input
+          pInputText
+          size="small"
+          class="reason"
+          data-testid="reason"
+          [ngModel]="reason()"
+          (ngModelChange)="reason.set($event)"
+          [readOnly]="sendingReason()"
+          (keydown.enter)="sendReason()"
+          (keydown.escape)="dismissReason(true)"
+          (blur)="dismissReason()"
+          (click)="$event.stopPropagation()"
+          [attr.aria-label]="
+            'Why ' + shortKey(row.ticket.key) + ' is ' + asked.value + ', optional'
+          "
+          [placeholder]="'Why ' + asked.value + '? Enter saves, Esc skips'"
+        />
+      }
+    }
+  </td>
+  <td class="col-size"><app-size [value]="row.ticket.effort" /></td>
+  <td class="col-state"><app-state [value]="row.ticket.state" /></td>
+  <td class="col-severity"><app-severity [value]="row.ticket.severity" /></td>
+  <td class="col-assignee">
+    @if (row.ticket.assignee; as assignee) {
+      <span>{{ assignee.display_name }}</span>
+    } @else {
+      <span class="muted">—</span>
+    }
+  </td>
+  <td class="col-progress">
+    @if (stageOf(row.ticket); as stage) {
+      <app-stage-bar
+        [stage]="stage"
+        [value]="stageValue(row.ticket, stage)"
+        [derived]="row.ticket.progress_derived"
+      />
+    } @else {
+      <span class="muted">—</span>
+    }
+  </td>
+  <td class="col-when muted">{{ ago(row.ticket.updated_at) }}</td>
+</ng-template>

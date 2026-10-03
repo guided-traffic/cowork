@@ -51,7 +51,7 @@
 
 .limits {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -60,6 +60,20 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.75rem;
+
+  .column {
+    font-weight: 550;
+  }
+
+  // The states a column counts sit above the field of every column at the same height.
+  .counts {
+    min-height: 2lh;
+  }
+
+  :host ::ng-deep & .p-inputnumber,
+  :host ::ng-deep & input {
+    width: 100%;
+  }
 }
 
 .actions {

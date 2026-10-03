@@ -3,7 +3,10 @@
 ## Status
 
 Accepted, amended 2026-10-01 (D1, D2: the prerequisite count on cards and the prerequisite
-tree on the detail page, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6).
+tree on the detail page, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6)
+and 2026-10-03 (D1: the backlog grouped by urgency; the board's columns as a view over the
+states, its `next` column and the urgencies its other columns hold; D2: the three progress
+stages and done by hand).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -11,12 +14,41 @@ recommendation was the minimum plus saved filters without the swimlane board and
 dashboards. The dashboard's fixed tile set (D6) and the board's drag rules (D4) are this
 record's proposal for implementing the choice.
 
-**Partly built** (phase 3, 2026-10-03): D1's backlog as a table in number order with filing
-(rank and its drag arrive with rank); D2's detail page with its fields to edit, the progress
-slider, the moves, questions with the answer form, links, interest, comments, activity,
-attachments and time (the body as text until it is rendered; the prerequisite tree missing);
-the time report; and as the tenant's front page, until D6's dashboard, each project's open
-tickets by state with the tickets updated last.
+The amendment of 2026-10-03 is the owner's plan for the two views of a project. The backlog
+stays a table, its open tickets grouped by `now`, `next` and `later`; asked where `release`
+and `icebox` go, the owner chose groups of their own in the order of
+[ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) — `release` on the
+board as `now` is, `icebox` off it as `later` is — over three groups that hold the other two
+with a badge, and over a board of `now` and `next` alone. The board is for the current work:
+the columns Refinement, Ready, In Progress, Blocked and Review, which the owner chose as a view
+over the states of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
+with a new state `review`, over renaming the states and over a column per state; no column
+for `done`, which the owner found a waste of space; left of them a column `next`, a dimension
+of its own, with compact cards in whatever state and a button that makes a ticket `now`; on
+every card the effort as a T-shirt-size icon and the bar of the current one of the three
+progress stages of [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D2. The rest of the amended D1 — the drags between the columns, a child's place outside its
+parent's group, the count that stands in for `done` — is this record's proposal and stays
+open to objection until the board is built.
+
+**Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-03 — the backlog as a table
+grouped by urgency in the project's rank ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)),
+loaded with the cursor, its rows dragged within and between the groups with the urgency override
+or its withdrawal and moved by a row menu from the keyboard, `release` and `icebox` offered as
+drop zones docked at the foot of the window while a row is dragged, the closed tickets on
+request, filing; the board with the column `next` and its Now button, the columns Refinement,
+Ready, In Progress, Blocked and Review with their WIP counts, the count of the tickets done in
+the last fourteen days (the filter `done_after`,
+[ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D1), cards
+with the size, the bar of the current stage, the block and the count of the open tickets that
+block a card directly and that the caller can see (`open_prerequisites`,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6 as amended 2026-10-03), and
+drags between the columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
+the note when the last stage fills, the moves with done by hand and its withdrawal, questions
+with the answer form, links, interest, comments, activity, attachments and time (the body as
+text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's
+front page, until D6's dashboard, each project's open tickets by state with the tickets updated
+last. Not built: the score's marker in the backlog, D3–D7.
 
 ## Context
 
@@ -34,13 +66,39 @@ have that overview in every form at once rather than grow into it.
 
 **D1 — Per project: the ranked backlog and the board.** The backlog orders by rank, marks
 the score's disagreement, indents children under their parent, and is where rank is dragged.
-The board has one column per state of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
-in order, shows the tickets that carry work (the leaves, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
+The board has ~~one column per state of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
+in order~~ *(amended 2026-10-03: the columns below)*, shows the tickets that carry work (the leaves, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
 D4) with type, severity, security class, assignee, progress bar, block reason and the count
 of open prerequisites *(added 2026-10-01)* on the card; a drag between columns is a transition and asks for the reason or note the transition
 requires.
 
-**D2 — The ticket detail:** frontmatter columns, the progress slider, the assignee, the
+*(Amended 2026-10-03.)* **The backlog is a table that groups its open tickets by urgency**,
+in the order of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 —
+`now`, `release`, `next`, `later`, `icebox` — each group a section of the one table, ordered
+by rank; `release` and `icebox` show while they hold a ticket or while a ticket is dragged. A
+drag within a group moves the rank. A drag into another group moves the rank and sets the
+urgency to the group's value: an override, or the override's withdrawal where the group is
+the derived value (ADR 0010 D3, whose reason a person may leave out). A child is indented
+under its parent where both sit in one group; in another group its row names the parent.
+Closed tickets are in no group; the table shows them on request, below the groups.
+
+*(Amended 2026-10-03.)* **The board shows the current work:** the open leaves of urgency
+`now` and `release` (the latter marked) in the columns **Refinement** (`filed` and
+`analysed`, the card telling which), **Ready** (`decided`), **In Progress**, **Blocked** and
+**Review**, each ordered by rank, which the backlog owns; `later` and `icebox` are not on the
+board. `done` is no column — the board's header counts the tickets done in the last fourteen
+days and leads to them — and neither is `dropped`, which a ticket reaches from its detail.
+**Left of them, the column `next`** holds the leaves of urgency `next` in whatever open state
+they are, as compact cards, each with a button that sets the urgency to `now`; the ticket
+then shows in the column of its state. A drag between the other columns is a transition of
+ADR 0009 and asks for the reason, note or block it requires; a column the transition does
+not allow takes no drop. Every card carries the ticket's effort as a T-shirt-size icon and
+the bar of its current progress stage (ADR 0017 D2): Refinement shows refinement, In Progress
+implementation, Review review, Blocked the stage of the state it came from, Ready none.
+
+**D2 — The ticket detail:** frontmatter columns, ~~the progress slider~~ *(amended
+2026-10-03: the three progress stages of ADR 0017 D2, each a bar with its slider, and done by
+hand with its withdrawal, ADR 0009 D5)*, the assignee, the
 Markdown body, the open questions with their answer form, links with their reverse views,
 the prerequisite tree — everything that has to be done before this ticket can be finished,
 transitively, with state, assignee and progress per node *(added 2026-10-01, ADR 0012 D6)* —
@@ -83,6 +141,10 @@ tenants beyond D3, Gantt or timeline views, a calendar.
   was adjusted in the same change.
 - D4's refusal to change project by drag keeps the board honest about what a drag means; a
   ticket that belongs elsewhere is moved in its detail, as a recorded act.
+- *(Added 2026-10-03.)* A new ticket derives `later` (ADR 0010 D3) and is not on the board
+  until it is moved to `next` or `now` in the backlog: the backlog is where work is planned,
+  the board where it is carried out. A `next` ticket that is already in progress stays in the
+  `next` column, its state on the card.
 - D6's fixed tile set means the dashboard is a set of tested queries, not a widget system;
   every tile has a definition a reader can check against the record.
 - Live updates become a question with weight: two boards and a dashboard that poll are a

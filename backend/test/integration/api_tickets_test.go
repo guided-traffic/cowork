@@ -548,8 +548,9 @@ func TestRestrictedProjectTickets(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 }
 
-// docs/adr/0010 D3: the derived urgency, a reasoned override and its
-// withdrawal; an agent needs override-urgency (docs/adr/0043 D4).
+// docs/adr/0010 D3: the derived urgency, an override and its withdrawal; an
+// agent needs override-urgency (docs/adr/0043 D4) and a reason, which the
+// override shows.
 func TestUrgencyOverride(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -558,7 +559,7 @@ func TestUrgencyOverride(t *testing.T) {
 	override := func(c caller, version int) *apigen.OverrideUrgencyResponse {
 		etag := strconv.Quote(strconv.Itoa(version))
 		res, err := e.s.client(t, c).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number,
-			&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.UrgencyNow, Reason: "a customer is down"})
+			&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.UrgencyNow, Reason: ptr("a customer is down")})
 		require.NoError(t, err)
 		return res
 	}
@@ -574,7 +575,7 @@ func TestUrgencyOverride(t *testing.T) {
 	assert.Equal(t, apigen.UrgencyNow, res.JSON200.Urgency)
 	assert.Equal(t, apigen.UrgencyLater, res.JSON200.UrgencyDerived)
 	o := res.JSON200.UrgencyOverride.MustGet()
-	assert.Equal(t, "a customer is down", o.Reason)
+	assert.Equal(t, "a customer is down", o.Reason.MustGet())
 	assert.Equal(t, e.MemberA, o.By.MustGet().Id)
 	assert.Equal(t, tk.Version+1, res.JSON200.Version)
 
@@ -639,10 +640,10 @@ func TestEditingTickets(t *testing.T) {
 	outsider := e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodPatch, path, map[string]any{"title": "x"}, "If-Match", `"4"`)
 	assertProblem(t, outsider, http.StatusNotFound, "not_found")
 
-	require.NoError(t, f.Exec(e.ctx, "UPDATE tickets SET state = 'done', done_at = now() WHERE id = $1", tk.Id))
-	done := e.patch(t, member, *agent.JSON200, apigen.TicketPatch{Progress: ptr(40)})
-	require.Equal(t, http.StatusConflict, done.StatusCode())
-	assert.Equal(t, "state_conflict", string(done.ApplicationproblemJSONDefault.Code))
+	require.NoError(t, f.Exec(e.ctx, "UPDATE tickets SET state = 'dropped' WHERE id = $1", tk.Id))
+	dropped := e.patch(t, member, *agent.JSON200, apigen.TicketPatch{Progress: ptr(40)})
+	require.Equal(t, http.StatusConflict, dropped.StatusCode(), "a stage is set in every state but dropped (docs/adr/0017 D2)")
+	assert.Equal(t, "state_conflict", string(dropped.ApplicationproblemJSONDefault.Code))
 
 	assignedEvents, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1", tk.Id)
 	require.NoError(t, err)

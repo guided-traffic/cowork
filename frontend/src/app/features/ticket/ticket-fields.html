@@ -101,19 +101,43 @@
     }
   </dd>
 
-  <dt>Progress</dt>
-  <dd class="progress-field">
-    <p-slider
-      [ngModel]="progressShown()"
-      (ngModelChange)="moveProgress($event)"
-      [step]="25"
-      [disabled]="ticket().progress_derived || ticket().state === 'done'"
-      ariaLabel="Progress"
-      data-testid="field-progress"
-    />
-    <span class="small muted tabular"
-      >{{ progressShown() }}%{{ ticket().progress_derived ? ' from its children' : '' }}</span
-    >
+  <dt class="top">Progress</dt>
+  <dd class="stages" data-testid="stages">
+    @for (stage of stages; track stage) {
+      <div
+        class="stage"
+        [class.current]="current() === stage"
+        [attr.data-testid]="'stage-' + stage"
+      >
+        <span class="stage-head">
+          <span class="stage-name">{{ stageNames[stage] }}</span>
+          <span class="small muted tabular" [attr.data-testid]="'stage-value-' + stage"
+            >{{ stagesShown()[stage] }}%</span
+          >
+        </span>
+        @if (ticket().progress_derived) {
+          <app-stage-bar [stage]="stage" [value]="stagesShown()[stage]" [derived]="true" />
+        } @else {
+          <p-slider
+            [ngModel]="stagesShown()[stage]"
+            (ngModelChange)="moveStage(stage, $event)"
+            [step]="5"
+            [disabled]="ticket().state === 'dropped'"
+            [ariaLabel]="stageNames[stage]"
+            [attr.data-testid]="'field-' + stage"
+          />
+        }
+      </div>
+    }
+    @if (ticket().progress_derived) {
+      <small class="muted" data-testid="stages-note">From its children</small>
+    } @else if (ticket().state === 'done') {
+      <small class="muted" data-testid="stages-note">{{
+        ticket().done_by_hand
+          ? 'Done by hand: the stages stay editable.'
+          : 'Done by its stages: lowering one reopens it.'
+      }}</small>
+    }
   </dd>
 
   <dt>Reporter</dt>
@@ -129,3 +153,5 @@
   <dt>Updated</dt>
   <dd [pTooltip]="dateTime(ticket().updated_at)">{{ ago(ticket().updated_at) }}</dd>
 </dl>
+
+<app-move-dialog [ticket]="ticket()" [request]="stageRequest()" (closed)="stageClosed()" />

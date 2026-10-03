@@ -1,5 +1,8 @@
 -- The ticket's columns are listed once more in the list builder
 -- (internal/store/tickets.go); a unit test holds the two lists equal.
+-- open_prerequisites counts the open tickets that block it which the caller
+-- can see, the number on a board card (docs/adr/0018 D1, docs/adr/0012 D7); a
+-- hidden one is never counted.
 
 -- name: GetTicketByNumber :one
 SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.body, t.state,
@@ -7,10 +10,17 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        bp.key AS block_project_key, bt.number AS block_number,
        t.severity, t.security, t.threat, t.urgency_derived, t.urgency_rule, t.urgency_override,
        t.urgency_override_reason, t.urgency_override_by, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
+       t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       (SELECT count(*) FROM ticket_links pl
+        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
+        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
+          AND ps.state NOT IN ('done', 'dropped')
+          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id

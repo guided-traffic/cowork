@@ -15,10 +15,36 @@ export interface TicketPatch {
   effort?: Effort;
 
   /**
+   * The verification note the change needs when it brings the last of the three stages of a ticket
+   * without children to 100, which is the done act — what was run, against what, with what result
+   * (docs/adr/0009 D5); refused on any other change
+   */
+  note?: string;
+
+  /**
+   * Close over open prerequisites, with a reason, when the change is the done act; a person's act,
+   * never an agent's (docs/adr/0012 D7)
+   */
+  override_prerequisites?: boolean;
+
+  /**
    * A ticket key of the same project; null makes the ticket a root
    */
   parent?: (string | null);
+
+  /**
+   * The implementation stage (docs/adr/0017 D2)
+   */
   progress?: number;
+  progress_refinement?: number;
+  progress_review?: number;
+
+  /**
+   * Required when the change lowers a stage of a ticket done by its stages, which reopens it, and with
+   * override_prerequisites; recorded on the done act otherwise, refused on a change that moves no state
+   * (docs/adr/0009 D5)
+   */
+  reason?: string;
   security?: SecurityClass;
   severity?: Severity;
   threat?: (string | null);

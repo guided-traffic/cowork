@@ -10,9 +10,11 @@ put to the owner with the question and not objected to.
 Amended 2026-10-02 (D1: the key list of grammar v1; D6: the key that lists the attachments).
 D1 named no key for the transition's note or reason, for the block, or for the attachments;
 the first implementation spells them as the tickets page of this repository does, a v1 that
-is reviewed after experience.
+is reviewed after experience. Amended 2026-10-03 (D1: the keys of the three progress stages of
+[ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D2, whose amendment says the export carries them; written when the stages were built).
 
-**Partly built** (phase 2, 2026-10-02): D1, D5 and D6 for `/markdown`
+**Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
 call is recorded, and in phase 2 every caller is a token. D2's `/context` and D4 arrive with
 the MCP server, D3 with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
@@ -38,7 +40,9 @@ and `## Open questions` with their `**Answer:**` lines, in the fixed order of AD
 It is what the importer reads and what a repository file looks like; a round trip through it
 is lossless. *(Made concrete 2026-10-02, grammar v1:)* the keys in that order, an absent value
 omitted — `threat` only when `security` is not `none`, `urgency` the effective value,
-`assignee` the display name, `parent` the full key, dates as UTC dates — then the state's note:
+`assignee` the display name, `parent` the full key, dates as UTC dates — *(made concrete
+2026-10-03:)* `progress-refinement` before `progress`, which is the implementation stage, and
+`progress-review` after it, each always written, as the ticket shows them — then the state's note:
 `shipped` (the verification note of the `done` act), `dropped-reason`, and for `blocked` the
 keys `blocked-by` (the kind), `blocked-reason` and `blocked-from`; then `attachments` (D6).
 Strings are written plain when YAML reads them back unchanged, otherwise double-quoted. After

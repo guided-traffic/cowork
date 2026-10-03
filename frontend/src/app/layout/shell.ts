@@ -1,3 +1,4 @@
+import { CdkScrollable } from '@angular/cdk/scrolling';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -52,6 +53,7 @@ export function initials(name: string): string {
   imports: [
     Avatar,
     ButtonDirective,
+    CdkScrollable,
     FormsModule,
     LiveIndicator,
     Menu,

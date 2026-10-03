@@ -75,7 +75,7 @@ func (q *Queries) GetLink(ctx context.Context, arg GetLinkParams) (GetLinkRow, e
 }
 
 const getUrgencyInputs = `-- name: GetUrgencyInputs :one
-SELECT t.state, t.block_kind, (t.urgency_override IS NOT NULL)::boolean AS overridden,
+SELECT t.state, t.block_kind,
        EXISTS (SELECT 1
                FROM ticket_links l
                JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
@@ -93,7 +93,6 @@ type GetUrgencyInputsParams struct {
 type GetUrgencyInputsRow struct {
 	State               domain.TicketState
 	BlockKind           *domain.BlockKind
-	Overridden          bool
 	OpenDecisionBlocker bool
 }
 
@@ -104,20 +103,14 @@ type GetUrgencyInputsRow struct {
 func (q *Queries) GetUrgencyInputs(ctx context.Context, arg GetUrgencyInputsParams) (GetUrgencyInputsRow, error) {
 	row := q.db.QueryRow(ctx, getUrgencyInputs, arg.TenantID, arg.ID)
 	var i GetUrgencyInputsRow
-	err := row.Scan(
-		&i.State,
-		&i.BlockKind,
-		&i.Overridden,
-		&i.OpenDecisionBlocker,
-	)
+	err := row.Scan(&i.State, &i.BlockKind, &i.OpenDecisionBlocker)
 	return i, err
 }
 
 const listBlockedTickets = `-- name: ListBlockedTickets :many
-SELECT t.id, p.key AS project_key, t.number
+SELECT t.id
 FROM ticket_links l
 JOIN tickets t ON t.tenant_id = l.tenant_id AND t.id = l.target_id
-JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE l.tenant_id = $1 AND l.source_id = $2 AND l.type = 'blocks'
 ORDER BY t.id
 `
@@ -127,28 +120,23 @@ type ListBlockedTicketsParams struct {
 	TicketID uuid.UUID
 }
 
-type ListBlockedTicketsRow struct {
-	ID         uuid.UUID
-	ProjectKey string
-	Number     int32
-}
-
 // The tickets a ticket blocks, whose urgency derivation reads it
-// (docs/adr/0010 D3). Their keys reach only their own timelines.
+// (docs/adr/0010 D3). Only their derived urgency changes; nothing of them
+// reaches the caller.
 // visibility: exempt (the dependents of a derivation input)
-func (q *Queries) ListBlockedTickets(ctx context.Context, arg ListBlockedTicketsParams) ([]ListBlockedTicketsRow, error) {
+func (q *Queries) ListBlockedTickets(ctx context.Context, arg ListBlockedTicketsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listBlockedTickets, arg.TenantID, arg.TicketID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListBlockedTicketsRow{}
+	items := []uuid.UUID{}
 	for rows.Next() {
-		var i ListBlockedTicketsRow
-		if err := rows.Scan(&i.ID, &i.ProjectKey, &i.Number); err != nil {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

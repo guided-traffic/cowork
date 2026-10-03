@@ -23,7 +23,8 @@ export interface Transition {
   override_prerequisites?: boolean;
 
   /**
-   * Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites
+   * Required backward, into blocked (the block's text), to dropped, on a reopen, on the withdrawal of a
+   * done by hand, and with override_prerequisites
    */
   reason?: string;
   to: TicketState;

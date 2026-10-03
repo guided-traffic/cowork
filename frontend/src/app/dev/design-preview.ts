@@ -67,6 +67,7 @@ export class DesignPreview {
     'analysed',
     'decided',
     'in-progress',
+    'review',
     'blocked',
     'done',
     'dropped',

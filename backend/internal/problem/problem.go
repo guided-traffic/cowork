@@ -47,7 +47,7 @@ var (
 	InvalidCredentials     = Code{"invalid_credentials", http.StatusUnauthorized, "Invalid credentials", "The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6)"}
 	Forbidden              = Code{"forbidden", http.StatusForbidden, "Forbidden", "The person's role does not allow the act (docs/adr/0034)"}
 	InsufficientScope      = Code{"insufficient_scope", http.StatusForbidden, "Insufficient scope", "The token's scope does not reach the act (docs/adr/0035 D3)"}
-	AgentForbidden         = Code{"agent_forbidden", http.StatusForbidden, "Agent forbidden", "The act is on the agent hard-off list or needs a capability the token lacks; `detail` names which (docs/adr/0043 D5)"}
+	AgentForbidden         = Code{"agent_forbidden", http.StatusForbidden, "Agent forbidden", "The act is on the agent hard-off list, needs a capability the token lacks, or lies outside what the capability grants — `close` closes from in-progress and review only; `detail` names which (docs/adr/0043 D4, D5)"}
 	SessionRequired        = Code{"session_required", http.StatusForbidden, "Session required", "The route is for a person in a browser session; a personal access token cannot call it (docs/adr/0035 D5)"}
 	PasswordChangeRequired = Code{"password_change_required", http.StatusForbidden, "Password change required", "The session's account has a temporary password, which has to be changed before anything else (docs/adr/0033 D4)"}
 	NotInitialised         = Code{"not_initialised", http.StatusForbidden, "Not initialised", "The installation has no tenant yet and the person is not a global administrator (docs/adr/0032 D5)"}

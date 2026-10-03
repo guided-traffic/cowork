@@ -73,16 +73,18 @@ func TestTransitionMatrix(t *testing.T) {
 	noNote := e.move(t, member, tk, apigen.Transition{From: tk.State, To: toDone})
 	assert.Equal(t, http.StatusBadRequest, noNote.StatusCode(), "done needs a verification note")
 	tk = e.walk(t, member, tk, toDone)
-	assert.Equal(t, 100, tk.Progress, "done sets progress to 100 (docs/adr/0017 D5)")
+	assert.Equal(t, 0, tk.Progress, "done by hand leaves the stages as they are (docs/adr/0017 D5)")
 	assert.False(t, tk.DoneAt.IsNull())
 
-	reopen := e.move(t, member, tk, apigen.Transition{From: toDone, To: apigen.TicketStateAnalysed, Reason: ptr("x")})
-	assert.Equal(t, http.StatusConflict, reopen.StatusCode(), "a terminal ticket reopens to filed only")
-	reopen = e.move(t, member, tk, apigen.Transition{From: toDone, To: apigen.TicketStateFiled, Reason: ptr("the fix regressed")})
+	reopen := e.move(t, member, tk, apigen.Transition{From: toDone, To: apigen.TicketStateFiled, Reason: ptr("x")})
+	assert.Equal(t, http.StatusConflict, reopen.StatusCode(), "a done ticket returns to the state it was done from only")
+	reopen = e.move(t, member, tk, apigen.Transition{From: toDone, To: toInProgress, Reason: ptr("the fix regressed")})
 	require.Equal(t, http.StatusOK, reopen.StatusCode(), string(reopen.Body))
-	assert.True(t, reopen.JSON200.DoneAt.IsNull(), "a reopened ticket is not done")
+	assert.True(t, reopen.JSON200.DoneAt.IsNull(), "a withdrawn ticket is not done")
+	back = e.move(t, member, *reopen.JSON200, apigen.Transition{From: toInProgress, To: apigen.TicketStateAnalysed, Reason: ptr("rethink")})
+	require.Equal(t, http.StatusOK, back.StatusCode(), string(back.Body))
 
-	drop := e.move(t, member, *reopen.JSON200, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDropped})
+	drop := e.move(t, member, *back.JSON200, apigen.Transition{From: apigen.TicketStateAnalysed, To: apigen.TicketStateDropped})
 	assert.Equal(t, http.StatusBadRequest, drop.StatusCode(), "dropped needs a reason")
 
 	var note string
@@ -91,7 +93,7 @@ func TestTransitionMatrix(t *testing.T) {
 	assert.Equal(t, "go test ./... passed", note, "the note lives on the act (docs/adr/0009 D5)")
 	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'transitioned'", tk.Id)
 	require.NoError(t, err)
-	assert.EqualValues(t, 7, n, "one act per transition and none for a refusal")
+	assert.EqualValues(t, 8, n, "one act per transition and none for a refusal")
 }
 
 // docs/adr/0009 D2: blocked keeps its origin and leaves only to it; a block
@@ -218,11 +220,11 @@ func TestAgentTransitions(t *testing.T) {
 	back := e.move(t, bare, tk, apigen.Transition{From: toInProgress, To: toAnalysed, Reason: ptr("the analysis was wrong")})
 	require.Equal(t, http.StatusOK, back.StatusCode(), "an agent's backward move: the open gate")
 	tk = e.walk(t, agent, *back.JSON200, toDecided, toInProgress, toDone)
-	reopen := e.move(t, bare, tk, apigen.Transition{From: toDone, To: apigen.TicketStateFiled, Reason: ptr("regressed")})
-	require.Equal(t, http.StatusOK, reopen.StatusCode(), "an agent's reopen: the open gate")
+	reopen := e.move(t, bare, tk, apigen.Transition{From: toDone, To: toInProgress, Reason: ptr("regressed")})
+	require.Equal(t, http.StatusOK, reopen.StatusCode(), "an agent withdraws a done by hand: the open gate")
 
 	assert.Equal(t, http.StatusForbidden, e.move(t, caller{Token: e.tk.ViewerA}, *reopen.JSON200,
-		apigen.Transition{From: apigen.TicketStateFiled, To: toAnalysed}).StatusCode())
+		apigen.Transition{From: toInProgress, To: apigen.TicketStateReview}).StatusCode())
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodPost,
 		fmt.Sprintf("%s/%d/transitions", e.projectTickets("ALPHA"), tk.Number), map[string]any{"from": "filed", "to": "analysed"}),
 		http.StatusNotFound, "not_found")

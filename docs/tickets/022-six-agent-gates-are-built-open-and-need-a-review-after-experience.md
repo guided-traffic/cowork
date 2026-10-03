@@ -35,9 +35,13 @@ names them as a gap.
   D9). An agent of a person who sees the ticket can assign it to anyone in the tenant; the
   disclosure cannot be undone, which puts it outside the "reversible" of ADR 0043's own default.
 - **Backward moves and reopens** (`checkTransition`,
-  [`transitions.go`](../../backend/internal/api/transitions.go)). `decided → analysed`, `in-progress → analysed` and the
-  reopen of `done` or `dropped` need no capability, so an "assisted" token — whose person kept
-  `decide` and `close` — can undo its person's decision or close.
+  [`transitions.go`](../../backend/internal/api/transitions.go); the stage writes in
+  [`tickets.go`](../../backend/internal/api/tickets.go)). `decided → analysed`,
+  `in-progress → analysed` and the reopen of `dropped` need no capability, and neither do the two
+  ways out of `done` ([ADR 0009](../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
+  D5): withdrawing a done by hand, and lowering a stage of a ticket done by its stages, each with
+  a reason. An "assisted" token — whose person kept `decide` and `close` — can undo its person's
+  decision or close.
 - **Removing its person's stake** (`RemoveInterest`, [`interest.go`](../../backend/internal/api/interest.go)).
   Registering `need` or `urgent` takes the `interest` capability (ADR 0043 D4); removing any
   stake takes none, so an agent without `interest` can withdraw what its person registered.
@@ -89,8 +93,9 @@ that admits a new person to a confidential finding.
 
 - **(a) Keep them allowed** (ADR 0043's title: everything reversible and attributable).
 - **(b) Undoing needs the gate's capability:** `in-progress → analysed` and `decided → analysed`
-  need `decide`, reopening `done` needs `close`, reopening `dropped` needs `drop`;
-  `in-progress → decided` stays baseline.
+  need `decide`; withdrawing a done by hand and lowering a stage of a ticket done by its stages
+  need `close`; reopening `dropped` needs `drop`; `in-progress → decided` and
+  `review → in-progress` stay baseline.
 - **(c) Every backward move and reopen is hard-off for agents.**
 
 Recommended: **(b)** — an "assisted" token's gate then holds in both directions, a "full" token

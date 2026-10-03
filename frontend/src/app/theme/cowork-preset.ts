@@ -83,6 +83,7 @@ const accents = {
     analysed: 'light-dark(#1f6fb2, #7dc4ff)',
     decided: 'light-dark(#5636d9, #b09ff9)',
     inProgress: 'light-dark(#a35f00, #f5c46b)',
+    review: 'light-dark(#4d7c0f, #bef264)',
     blocked: 'light-dark(#c2410c, #ff9466)',
     done: 'light-dark(#0f7a65, #70e6ce)',
     dropped: 'light-dark(#666379, #89869c)',

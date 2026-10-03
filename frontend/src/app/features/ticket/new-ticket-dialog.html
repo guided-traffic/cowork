@@ -8,7 +8,7 @@
   [header]="'New ticket in ' + project()"
   data-testid="new-ticket-dialog"
 >
-  <form class="form" (ngSubmit)="save()">
+  <form class="form" ngNoForm novalidate (submit)="$event.preventDefault(); save()">
     <label class="field">
       <span>Title</span>
       <input

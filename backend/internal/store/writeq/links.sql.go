@@ -73,9 +73,7 @@ func (q *Queries) InsertLink(ctx context.Context, arg InsertLinkParams) (InsertL
 
 const rederiveUrgency = `-- name: RederiveUrgency :exec
 UPDATE tickets
-SET urgency_derived = $1, urgency_rule = $2,
-    urgency_override = NULL, urgency_override_reason = NULL, urgency_override_by = NULL,
-    urgency_override_at = NULL, updated_at = now()
+SET urgency_derived = $1, urgency_rule = $2, updated_at = now()
 WHERE tenant_id = $3 AND id = $4
 `
 
@@ -86,10 +84,12 @@ type RederiveUrgencyParams struct {
 	ID             uuid.UUID
 }
 
-// A new derivation after an input changed, which ends the override
-// (docs/adr/0010 D3). Caused by another entity — a link, another ticket's
-// state — it leaves the ticket's version alone (docs/adr/0050 D1); the
-// ticket's own transitions bump the version themselves.
+// A new derivation after an input changed (docs/adr/0010 D3). A standing
+// override stays: it holds until a person or an agent withdraws it or sets
+// another, and the new derived value shows beside it. Caused by another
+// entity — a link, another ticket's state — it leaves the ticket's version
+// alone (docs/adr/0050 D1); the ticket's own transitions bump the version
+// themselves.
 func (q *Queries) RederiveUrgency(ctx context.Context, arg RederiveUrgencyParams) error {
 	_, err := q.db.Exec(ctx, rederiveUrgency,
 		arg.UrgencyDerived,

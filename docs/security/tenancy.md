@@ -151,6 +151,18 @@ catalog for every table with a `tenant_id` column, seeds each with a row of a se
 and asserts that an unfiltered query as the runtime role under the first tenant sees none of
 them — a new table is covered the day it is created.
 
+One migration lifts the force for itself. The rank's backfill
+([migration 17](../../backend/internal/store/migrations/000017_ticket_rank.up.sql)) rewrites
+`tickets` as the owner with no tenant set, which the forced policy would hide every row from,
+so it runs `NO FORCE` before the backfill and `FORCE` after it
+([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D1). The
+file runs as one transaction, which holds `tickets` exclusively from its first `ALTER` on: no
+other transaction sees the table unforced, and a failed run rolls the lift back with the rest.
+The runtime role is held by the policy either way — the force concerns the owner alone.
+`TestLiftedForceIsRestoredInTheSameMigration` holds every lift to a restore in the same file,
+which `TestEveryTableHasItsPolicyAndGrant` alone would not notice, and
+`TestRankMigrationKeepsNumberOrder` reads the force back after the run.
+
 ## A row never points into another tenant
 
 A plain foreign key ignores row-level security, so a row of one tenant could name a parent of
@@ -211,12 +223,13 @@ The exemptions, each with its reason written in its query file:
 | `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation's inputs and the tickets that depend on them (H-3) |
 | `CanSeeProject`, `CanSeeTicket` | whether another person — an assignee, a person asked — sees what the caller reads |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
+| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice (H-3) |
 
 Where the predicate hides a related ticket, the visible one shows less rather than more: a
 parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
 `parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
-hidden is absent from the list, and the `blocked` filter and the prerequisites of `done`
-count only the blockers the caller sees.
+hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
+a ticket's `open_prerequisites` count only the blockers the caller sees.
 
 ## The project restriction
 
@@ -348,24 +361,44 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
 - The `blocks` cycle refusal walks the tenant's whole `blocks` graph past the predicate
   (`blocks_path_exists`): `409 link_cycle` can depend on confidential tickets and on tickets
   of restricted projects.
-- `done` is refused only by the open prerequisites the closer can see
-  (`ListOpenPrerequisites`): a ticket can be closed over an open prerequisite its closer
-  cannot see, without an override and without a mention in the act.
+- The done act — by hand, or the `PATCH` that fills the last progress stage — is refused only
+  by the open prerequisites the closer can see (`ListOpenPrerequisites`): a ticket can be
+  closed over an open prerequisite its closer cannot see, without an override and without a
+  mention in the act, and its `open_prerequisites` reads 0 to that closer.
 - Rule `v1:icebox-decision` counts an open decision that blocks the ticket whether or not the
   reader can see it (`GetUrgencyInputs`), and every reader sees the derived urgency and the
-  rule's name. When such a decision opens or settles, the tickets it blocks are derived again,
-  and a standing override ends with an `overridden` act on their timelines in the name of the
-  person who changed the hidden decision.
-- The derived progress is the effort-weighted mean of every child not dropped, confidential
-  ones included (`ticket_derived_progress`).
+  rule's name. When such a decision opens or settles, the tickets it blocks are derived again;
+  a standing override stays, and no act is recorded on their timelines — the change shows in
+  `urgency_derived` and `urgency_rule` alone.
+- Each derived progress stage is the effort-weighted mean of the same stage of every child not
+  dropped, confidential ones included (`ticket_derived_stage`), and a parent whose children are
+  all done shows 100 in each.
 - A new project's key is refused as taken whether or not the caller can see the project that
   holds it (`ProjectKeyTaken`).
+- A filing, a reopen and a move in the rank compute their key over every ticket of the project
+  ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D2), so a key would
+  tell where hidden tickets sit, how many were open when migration 17 spaced the keys over
+  them, and — done and dropped take the key away — whether one is still open. No answer shows a
+  key: not a ticket (`ticketView`), not the act of a move, which names only the neighbour, not a
+  cursor, which carries its position sealed (`sealPosition`,
+  [ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D1).
+  Whether a move writes is decided over the tickets the mover can see (`NextSeenRankedTicket`,
+  `PreviousSeenRankedTicket`): a ticket that sits next to its neighbour for the mover answers
+  unchanged, whatever sits between unseen, and a move that writes puts the ticket where the
+  mover sees it go whether or not a hidden ticket sits there. Two signals remain. A move into a
+  gap that moves of hidden tickets wore down — 635 to 762 moves into one gap — fails as an
+  internal error, as any exhausted gap does. And the one write that ranks the open tickets an
+  earlier release left without a key — a hidden ticket's filing, reopen or move included —
+  changes how the list shows them, with no act the caller sees: with `include_terminal` they
+  move from among the done and dropped tickets, by number, to before them, and a cursor
+  positioned on one changes. `TestRankAroundAHiddenTicket` and `TestRankKeyIsNeverShown` hold
+  the rest.
 
-Each reveals at most that such a ticket or project exists, and who acted on it when — never
-its content. Live as soon as a tenant has a confidential ticket, which a ticket classified
-`live` or `boundary` is until an administrator lifts the flag; a restricted project only the
-test fixture can make today. A tenant
-with neither has nothing to reveal.
+Each reveals at most that such a ticket or project exists — for the rank, at most that hidden
+tickets were moved or filed — and who acted on it when — never its content. Live as soon as a
+tenant has a confidential ticket, which a ticket classified `live` or `boundary` is until an
+administrator lifts the flag; a restricted project only the test fixture can make today. A
+tenant with neither has nothing to reveal.
 
 <a id="h-4"></a>
 ### H-4 — The event channel is readable by any role that can connect to the database

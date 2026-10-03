@@ -30,7 +30,7 @@ import {
   TicketEvent,
 } from './event-stream.service';
 import { SessionService } from './session.service';
-import { listReloadDelay, splitKey, TicketPage, TicketsService } from './tickets.service';
+import { listReloadDelay, pageSize, splitKey, TicketPage, TicketsService } from './tickets.service';
 
 function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Ticket {
   const [, short] = key.split('/');
@@ -58,12 +58,17 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     parent: null,
     progress: 0,
     progress_derived: false,
+    progress_refinement: 0,
+    progress_review: 0,
     threat: null,
     created_at: '2026-10-01T10:00:00Z',
     updated_at: '2026-10-01T10:00:00Z',
     opened_at: '2026-10-01T10:00:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version,
     ...overrides,
   };
@@ -315,6 +320,227 @@ describe('TicketsService', () => {
       expect(list.status()).toBe('error');
       expect(list.error()).toBeInstanceOf(HttpErrorResponse);
       expect(service.cache.ids()).toEqual([]);
+    });
+  });
+
+  describe('projectTicketPages', () => {
+    const pagesList = (pages = signal(1), extra: object = {}) =>
+      TestBed.runInInjectionContext(() =>
+        service.projectTicketPages(() => ({
+          tenant: 'acme',
+          project: 'VKO',
+          pages: pages(),
+          ...extra,
+        })),
+      );
+
+    it('asks for the first page at the largest size the server allows, without a numbered page', async () => {
+      pagesList();
+      await settle();
+
+      const request = http.expectOne((r) => r.url === projectUrl);
+
+      expect(request.request.method).toBe('GET');
+      expect(request.request.params.get('limit')).toBe(String(pageSize));
+      expect(pageSize).toBe(200);
+      expect(request.request.params.has('cursor')).toBe(false);
+      expect(request.request.params.has('page')).toBe(false);
+      expect(request.request.params.has('per_page')).toBe(false);
+      expect(request.request.params.has('pages')).toBe(false);
+      request.flush(listOf([]));
+      await settle();
+    });
+
+    it('passes the filters on', async () => {
+      pagesList(signal(1), { state: ['blocked', 'filed'], q: 'flicker' });
+      await settle();
+
+      const request = http.expectOne((r) => r.url === projectUrl);
+
+      expect(request.request.params.getAll('state')).toEqual(['blocked', 'filed']);
+      expect(request.request.params.get('q')).toBe('flicker');
+      request.flush(listOf([]));
+      await settle();
+    });
+
+    it('keeps the keys in the order of the server and every ticket in the cache', async () => {
+      const list = pagesList();
+      await settle();
+
+      await answer(
+        projectUrl,
+        listOf([ticket('acme/VKO-3'), ticket('acme/VKO-1', 4), ticket('acme/VKO-2')]),
+      );
+
+      expect(list.value()).toEqual<TicketPage>({
+        keys: ['acme/VKO-3', 'acme/VKO-1', 'acme/VKO-2'],
+        nextCursor: null,
+        versions: new Map([
+          ['acme/VKO-3', 1],
+          ['acme/VKO-1', 4],
+          ['acme/VKO-2', 1],
+        ]),
+      });
+      expect(service.cache.value('acme/VKO-1')?.version).toBe(4);
+      expect(service.cache.etag('acme/VKO-1')).toBe('"4"');
+    });
+
+    it('stops after the pages it was asked for and says that there is more', async () => {
+      const list = pagesList(signal(1));
+      await settle();
+
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+
+      expect(list.value()).toEqual<TicketPage>({
+        keys: ['acme/VKO-1'],
+        nextCursor: 'c1',
+        versions: new Map([['acme/VKO-1', 1]]),
+      });
+      http.expectNone((r) => r.url === projectUrl);
+    });
+
+    it('follows the cursor for as many pages as it was asked for', async () => {
+      const list = pagesList(signal(2));
+      await settle();
+
+      await answer(projectUrl, listOf([ticket('acme/VKO-1'), ticket('acme/VKO-2')], 'c1'));
+      const second = http.expectOne((r) => r.url === projectUrl);
+      expect(second.request.params.get('cursor')).toBe('c1');
+      expect(second.request.params.get('limit')).toBe(String(pageSize));
+      second.flush(listOf([ticket('acme/VKO-3')], 'c2'));
+      await settle();
+
+      expect(list.value()).toEqual<TicketPage>({
+        keys: ['acme/VKO-1', 'acme/VKO-2', 'acme/VKO-3'],
+        nextCursor: 'c2',
+        versions: new Map([
+          ['acme/VKO-1', 1],
+          ['acme/VKO-2', 1],
+          ['acme/VKO-3', 1],
+        ]),
+      });
+      http.expectNone((r) => r.url === projectUrl);
+    });
+
+    it('stops at the end of the list although more pages were asked for', async () => {
+      const list = pagesList(signal(3));
+      await settle();
+
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+      await answer(projectUrl, listOf([ticket('acme/VKO-2')], null));
+
+      expect(list.value()).toEqual<TicketPage>({
+        keys: ['acme/VKO-1', 'acme/VKO-2'],
+        nextCursor: null,
+        versions: new Map([
+          ['acme/VKO-1', 1],
+          ['acme/VKO-2', 1],
+        ]),
+      });
+      http.expectNone((r) => r.url === projectUrl);
+    });
+
+    it('says the version each ticket had in the answer, also where the cache holds a newer one', async () => {
+      const list = pagesList();
+      await settle();
+      service.cache.put('acme/VKO-1', ticket('acme/VKO-1', 7));
+
+      await answer(projectUrl, listOf([ticket('acme/VKO-1', 5)]));
+
+      expect(list.value()?.versions?.get('acme/VKO-1')).toBe(5);
+      expect(service.cache.value('acme/VKO-1')?.version).toBe(7);
+    });
+
+    it('shows a ticket that both answers had once, where the later answer has it', async () => {
+      const list = pagesList(signal(2));
+      await settle();
+
+      await answer(
+        projectUrl,
+        listOf([ticket('acme/VKO-1'), ticket('acme/VKO-2'), ticket('acme/VKO-3')], 'c1'),
+      );
+      await answer(projectUrl, listOf([ticket('acme/VKO-4'), ticket('acme/VKO-2', 2)]));
+
+      expect(list.value()?.keys).toEqual(['acme/VKO-1', 'acme/VKO-3', 'acme/VKO-4', 'acme/VKO-2']);
+      expect(list.value()?.versions?.get('acme/VKO-2')).toBe(2);
+      expect(service.cache.value('acme/VKO-2')?.version).toBe(2);
+    });
+
+    it('loads again from the first page, for all its pages, when it is reloaded', async () => {
+      const list = pagesList(signal(2));
+      await settle();
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+      await answer(projectUrl, listOf([ticket('acme/VKO-2')]));
+
+      list.reload();
+      await settle();
+
+      const first = http.expectOne((r) => r.url === projectUrl);
+      expect(first.request.params.has('cursor')).toBe(false);
+      first.flush(listOf([ticket('acme/VKO-2'), ticket('acme/VKO-1')], 'c1'));
+      await settle();
+      const second = http.expectOne((r) => r.url === projectUrl);
+      expect(second.request.params.get('cursor')).toBe('c1');
+      second.flush(listOf([ticket('acme/VKO-3')]));
+      await settle();
+      expect(list.value()?.keys).toEqual(['acme/VKO-2', 'acme/VKO-1', 'acme/VKO-3']);
+    });
+
+    it('loads again when it is asked for more pages', async () => {
+      const pages = signal(1);
+      const list = pagesList(pages);
+      await settle();
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+
+      pages.set(2);
+      await settle();
+
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+      await answer(projectUrl, listOf([ticket('acme/VKO-2')]));
+      expect(list.value()?.keys).toEqual(['acme/VKO-1', 'acme/VKO-2']);
+    });
+
+    it('asks for nothing while the parameters say there is nothing to ask for', async () => {
+      const wanted = signal(false);
+      const list = TestBed.runInInjectionContext(() =>
+        service.projectTicketPages(() =>
+          wanted() ? { tenant: 'acme', project: 'VKO', pages: 1 } : undefined,
+        ),
+      );
+      await settle();
+
+      expect(list.status()).toBe('idle');
+      http.expectNone((r) => r.url === projectUrl);
+
+      wanted.set(true);
+      await settle();
+      await answer(projectUrl);
+      expect(list.status()).toBe('resolved');
+    });
+
+    it('is reloaded a moment after an event, like every list on screen', async () => {
+      pagesList();
+      await settle();
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')]));
+
+      stream.next(changed('ticket.changed', 'acme/VKO-1', 1));
+      await wait(listReloadDelay);
+
+      expect(take(projectUrl)).toHaveLength(1);
+    });
+
+    it('fails with the HTTP error of any page, and leaves the keys of the others out', async () => {
+      const list = pagesList(signal(2));
+      await settle();
+      await answer(projectUrl, listOf([ticket('acme/VKO-1')], 'c1'));
+
+      http
+        .expectOne((r) => r.url === projectUrl)
+        .flush(problem(500), { status: 500, statusText: 'Internal Server Error' });
+      await settle();
+
+      expect(list.status()).toBe('error');
+      expect(list.error()).toBeInstanceOf(HttpErrorResponse);
     });
   });
 

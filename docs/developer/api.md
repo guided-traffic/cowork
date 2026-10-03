@@ -21,7 +21,7 @@ into the file of its path family.
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}` |
 | [`tenants.yaml`](../../backend/api/tenants.yaml) | creating a tenant (`POST /tenants`), the tenant, its members, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, interest, the Markdown export |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
@@ -204,21 +204,27 @@ another token. The checks run in this order; the first failure answers:
 2. `Need.Scope` above the token's scope: `403 insufficient_scope`.
 3. For an agent's request only: `Need.HardOff` set — `403 agent_forbidden`, detail
    `hard-off: <rule>`; `Need.Capability` not held — `403 agent_forbidden`, detail
-   `missing capability: <name>` ([ADR 0043] D3–D5).
+   `missing capability: <name>` ([ADR 0043] D3–D5). Beyond `Authorize`, `mayClose` in
+   [`transitions.go`](../../backend/internal/api/transitions.go) refuses an agent's done act —
+   by hand, or by the `PATCH` that fills the last progress stage — from any state but
+   `in-progress` and `review` with `403 agent_forbidden`, detail `close covers in-progress and
+   review: …` (ADR 0043 D4).
 
 | Need | Role, scope | Agent rule | Defined in |
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, an override `override-urgency`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
+| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
+| `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
 | `booking` | member, `write` | hard-off `booking time` | [`time.go`](../../backend/internal/api/time.go) |
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
 The handlers also build a few needs inline: `createProject` (admin, or member while the tenant
 allows it; `write`; `create-project`), `setConfidential` (admin, `admin`, hard-off), the
-prerequisite override of a transition (member, `write`, hard-off), `listAudit` (admin, `read`),
+done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
+override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
 (`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
 use `administer`; creating a tenant (`CreateTenant`) needs `Principal.GlobalAdmin` and a session,
@@ -272,13 +278,15 @@ missing, empty or `*` is `428 precondition_required`; a weak or unreadable tag i
 RETURNING version`); a moved version is `stale(version, current)`: `412` with the current `ETag`
 header and, per field the request tried to change, its current value in `errors[].current`,
 `null` for an empty field ([ADR 0050] D5). A write that changes nothing answers as one that did, with the current state,
-and records no act.
+and records no act. A `PATCH` whose progress stages close or reopen the ticket raises the version
+once: the state is written with `bump` false after the fields.
 
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
 `replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment` and
 `editTimeEntry`. Links, interest and attachments are written without it and carry no version
-([ADR 0050] D4).
+([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
+the ticket goes, so the last move wins — and raises the ticket's version.
 
 The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
 page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
@@ -293,16 +301,26 @@ under the label `cowork cursor v1`. The payload binds the position to the operat
 list or scope, is `400 invalid_cursor` ([ADR 0048] D5). Rotating the server key invalidates the
 cursors clients hold.
 
+A project's list seals its position, because a rank key is computed over tickets the caller
+may not see ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D2):
+`sealPosition` encrypts it with AES-256-GCM under a key derived under
+`cowork cursor position v1`, padded to 144 bytes, with an HMAC of the padded position under a
+key derived under `cowork cursor nonce v1` as the nonce — deterministic, so a page and its weak
+`ETag` stay the same while the list does. `openPosition` refuses what it did not seal, and the
+list answers that `invalid_cursor`.
+
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
 - `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
   `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
   per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
   `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
-- The sort is fixed per list ([ADR 0048] D6): a project's tickets by number; the tenant's
-  tickets and time entries, the audit record and the person's tokens newest first; comments and
-  activity oldest first unless `order=desc`; projects by key; questions by number; members and
-  interest by person id; the other lists by id.
+- The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
+  them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
+  `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
+  is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
+  tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
+  questions by number; members and interest by person id; the other lists by id.
 
 ## Filters
 

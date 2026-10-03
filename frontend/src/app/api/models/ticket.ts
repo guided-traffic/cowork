@@ -26,6 +26,17 @@ export interface Ticket {
   created_at: string;
   decided_at: (string | null);
   done_at: (string | null);
+
+  /**
+   * Done by hand rather than by its three stages: the stages stay editable and the ticket stays
+   * done until the done by hand is withdrawn (docs/adr/0009 D5). False while the ticket is not done.
+   */
+  done_by_hand: boolean;
+
+  /**
+   * The state the ticket was done from, while it is done (docs/adr/0009 D5)
+   */
+  done_from: (TicketState | null);
   effort: Effort;
   id: string;
 
@@ -34,6 +45,12 @@ export interface Ticket {
    */
   key: string;
   number: number;
+
+  /**
+   * The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
+   * docs/adr/0018 D1); a ticket the caller cannot see is never counted
+   */
+  open_prerequisites: number;
   opened_at: string;
 
   /**
@@ -42,14 +59,25 @@ export interface Ticket {
   parent: (string | null);
 
   /**
-   * 100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)
+   * The implementation stage, the work of in-progress; derived from the children while there are any
+   * (docs/adr/0017 D2, D3). Done leaves it as it is.
    */
   progress: number;
 
   /**
-   * The progress is derived from the children and takes no manual value
+   * The three stages are derived from the children and take no manual value; such a ticket is never done by them
    */
   progress_derived: boolean;
+
+  /**
+   * The refinement stage, the work of filed and analysed; derived like progress (docs/adr/0017 D2, D3)
+   */
+  progress_refinement: number;
+
+  /**
+   * The review stage, the work of review; derived like progress (docs/adr/0017 D2, D3)
+   */
+  progress_review: number;
 
   /**
    * The project's key

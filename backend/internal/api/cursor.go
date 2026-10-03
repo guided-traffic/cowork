@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -16,20 +18,34 @@ import (
 // (docs/adr/0048 D1).
 const defaultPageSize = 50
 
-// cursorCodec signs list cursors so a client can neither forge nor edit one
-// (docs/adr/0048 D1, D5). Its key is derived from the server key under a
-// label of its own, so the cursors and any later use of the server key never
-// share a key.
+// cursorCodec signs list cursors so a client can neither forge nor edit one,
+// and seals the positions a client must not read (docs/adr/0048 D1, D5). Its
+// keys are derived from the server key under labels of their own, so the
+// cursors and any later use of the server key never share a key.
 type cursorCodec struct {
 	key []byte
+	// sealer and nonceKey seal a position (sealPosition).
+	sealer   cipher.AEAD
+	nonceKey []byte
 }
 
 func newCursorCodec(sessionKey []byte) cursorCodec {
-	key, err := hkdf.Key(sha256.New, sessionKey, nil, "cowork cursor v1", sha256.Size)
-	if err != nil {
-		panic(err) // only an impossible key length fails
+	derive := func(label string) []byte {
+		key, err := hkdf.Key(sha256.New, sessionKey, nil, label, sha256.Size)
+		if err != nil {
+			panic(err) // only an impossible key length fails
+		}
+		return key
 	}
-	return cursorCodec{key: key}
+	block, err := aes.NewCipher(derive("cowork cursor position v1"))
+	if err != nil {
+		panic(err) // a 32-byte key never fails
+	}
+	sealer, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err) // the standard nonce and tag sizes never fail
+	}
+	return cursorCodec{key: derive("cowork cursor v1"), sealer: sealer, nonceKey: derive("cowork cursor nonce v1")}
 }
 
 // cursorPayload binds a position to the list it came from: the operation and
@@ -49,22 +65,62 @@ func (c cursorCodec) encode(op, scope, after string) string {
 // decode returns the sort value a cursor carries. A tampered cursor, or one
 // from another list or scope, is invalid_cursor.
 func (c cursorCodec) decode(op, scope, cursor string) (string, *problem.Error) {
-	invalid := &problem.Error{Code: problem.InvalidCursor, Detail: "the cursor does not belong to this list",
-		Errors: []problem.FieldError{{Pointer: "query:cursor", Message: "invalid cursor"}}}
 	encodedPayload, encodedMAC, ok := strings.Cut(cursor, ".")
 	if !ok {
-		return "", invalid
+		return "", invalidCursor()
 	}
 	payload, err1 := base64.RawURLEncoding.DecodeString(encodedPayload)
 	mac, err2 := base64.RawURLEncoding.DecodeString(encodedMAC)
 	if err1 != nil || err2 != nil || !hmac.Equal(mac, c.sign(payload)) {
-		return "", invalid
+		return "", invalidCursor()
 	}
 	var p cursorPayload
 	if err := json.Unmarshal(payload, &p); err != nil || p.Op != op || p.Scope != scope {
-		return "", invalid
+		return "", invalidCursor()
 	}
 	return p.After, nil
+}
+
+// invalidCursor answers a cursor this list did not hand out.
+func invalidCursor() *problem.Error {
+	return &problem.Error{Code: problem.InvalidCursor, Detail: "the cursor does not belong to this list",
+		Errors: []problem.FieldError{{Pointer: "query:cursor", Message: "invalid cursor"}}}
+}
+
+// sealedPositionSize is the length a sealed position is padded to: room for
+// the longest rank position — a key of 128 characters, the dot and a ticket
+// number — so a sealed position tells nothing by its length.
+const sealedPositionSize = 144
+
+// sealPosition encrypts a position the client must not read: the rank key of
+// a project's list, computed over tickets the caller may not see
+// (docs/adr/0014 D2). AES-256-GCM, deterministic: the nonce is an HMAC of the
+// padded position, so two positions share a nonce only when they are equal,
+// and a page and its weak ETag stay the same while the list does. The
+// signature of the cursor around it still binds it to its list.
+func (c cursorCodec) sealPosition(position string) string {
+	plain := make([]byte, max(sealedPositionSize, len(position)))
+	copy(plain, position)
+	m := hmac.New(sha256.New, c.nonceKey)
+	m.Write(plain)
+	n := c.sealer.NonceSize()
+	nonce := m.Sum(nil)[:n:n]
+	return base64.RawURLEncoding.EncodeToString(c.sealer.Seal(nonce, nonce, plain, nil))
+}
+
+// openPosition returns the position sealPosition sealed; false for anything
+// it did not seal under this server key.
+func (c cursorCodec) openPosition(sealed string) (string, bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(sealed)
+	n := c.sealer.NonceSize()
+	if err != nil || len(raw) < n {
+		return "", false
+	}
+	plain, err := c.sealer.Open(nil, raw[:n], raw[n:], nil)
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimRight(string(plain), "\x00"), true
 }
 
 func (c cursorCodec) sign(payload []byte) []byte {

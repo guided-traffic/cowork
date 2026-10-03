@@ -2,7 +2,7 @@ import { meanings } from './vocabulary';
 
 /** The values of the API's vocabularies, as the API spells them (docs/adr/0009, 0010, 0008). */
 const vocabulary = {
-  state: ['filed', 'analysed', 'decided', 'in-progress', 'blocked', 'done', 'dropped'],
+  state: ['filed', 'analysed', 'decided', 'in-progress', 'review', 'blocked', 'done', 'dropped'],
   severity: ['critical', 'high', 'medium', 'low', 'cosmetic'],
   security: ['live', 'boundary', 'hardening', 'none'],
   type: ['task', 'bug', 'feature', 'decision', 'question'],
@@ -27,6 +27,12 @@ describe('meanings', () => {
       expect(texts.every((text) => text.trim().length > 0)).toBe(true);
       expect(new Set(texts).size).toBe(texts.length);
     });
+  });
+
+  it('explains review as the check of the work before it ends (docs/adr/0009 D1)', () => {
+    expect(meanings.state.review).toBe(
+      'The work is checked before it ends: the code read, the result tried',
+    );
   });
 
   it('keeps the hyphen of in-progress instead of translating it', () => {

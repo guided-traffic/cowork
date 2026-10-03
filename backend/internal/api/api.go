@@ -43,8 +43,8 @@ type Options struct {
 	Version   string
 	Commit    string
 	BuildTime string
-	// SessionKey is the server key; list cursors are signed with a key
-	// derived from it (docs/adr/0048 D1).
+	// SessionKey is the server key; list cursors are signed, and the rank
+	// positions in them sealed, with keys derived from it (docs/adr/0048 D1).
 	SessionKey []byte
 	// MaxJSONBody, RequestTimeout, MaxPageSize and MaxQueryLength are the
 	// limits of docs/adr/0039 D2; 0 disables each.

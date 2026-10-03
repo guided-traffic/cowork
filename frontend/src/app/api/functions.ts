@@ -77,6 +77,8 @@ export type { UnlinkTickets$Params as UnlinkTickets$Params } from './fn/tickets/
 export { unlinkTickets as unlinkTickets } from './fn/tickets/unlink-tickets';
 export type { ExportTicket$Params as ExportTicket$Params } from './fn/tickets/export-ticket';
 export { exportTicket as exportTicket } from './fn/tickets/export-ticket';
+export type { MoveTicketRank$Params as MoveTicketRank$Params } from './fn/tickets/move-ticket-rank';
+export { moveTicketRank as moveTicketRank } from './fn/tickets/move-ticket-rank';
 export type { TransitionTicket$Params as TransitionTicket$Params } from './fn/tickets/transition-ticket';
 export { transitionTicket as transitionTicket } from './fn/tickets/transition-ticket';
 export type { OverrideUrgency$Params as OverrideUrgency$Params } from './fn/tickets/override-urgency';

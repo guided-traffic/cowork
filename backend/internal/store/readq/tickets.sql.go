@@ -50,10 +50,17 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        bp.key AS block_project_key, bt.number AS block_number,
        t.severity, t.security, t.threat, t.urgency_derived, t.urgency_rule, t.urgency_override,
        t.urgency_override_reason, t.urgency_override_by, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
+       t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       (SELECT count(*) FROM ticket_links pl
+        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
+        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
+          AND ps.state NOT IN ('done', 'dropped')
+          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
@@ -74,52 +81,63 @@ type GetTicketByNumberParams struct {
 }
 
 type GetTicketByNumberRow struct {
-	ID                    uuid.UUID
-	ProjectID             uuid.UUID
-	ProjectKey            string
-	Number                int32
-	Type                  domain.TicketType
-	Title                 string
-	Body                  string
-	State                 domain.TicketState
-	BlockedFrom           *domain.TicketState
-	BlockKind             *domain.BlockKind
-	BlockReason           *string
-	BlockTicketID         *uuid.UUID
-	BlockExternalRef      *string
-	BlockProjectKey       *string
-	BlockNumber           *int32
-	Severity              domain.Severity
-	Security              domain.SecurityClass
-	Threat                *string
-	UrgencyDerived        domain.Urgency
-	UrgencyRule           string
-	UrgencyOverride       *domain.Urgency
-	UrgencyOverrideReason *string
-	UrgencyOverrideBy     *uuid.UUID
-	UrgencyOverrideAt     *time.Time
-	Effort                domain.Effort
-	Progress              int16
-	ProgressDerived       *int16
-	ParentID              *uuid.UUID
-	ParentNumber          *int32
-	ReporterID            uuid.UUID
-	ReporterUsername      *string
-	ReporterName          *string
-	AssigneeID            *uuid.UUID
-	AssigneeUsername      *string
-	AssigneeName          *string
-	Confidential          bool
-	OpenedAt              time.Time
-	DecidedAt             *time.Time
-	DoneAt                *time.Time
-	Version               int32
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ID                        uuid.UUID
+	ProjectID                 uuid.UUID
+	ProjectKey                string
+	Number                    int32
+	Type                      domain.TicketType
+	Title                     string
+	Body                      string
+	State                     domain.TicketState
+	BlockedFrom               *domain.TicketState
+	BlockKind                 *domain.BlockKind
+	BlockReason               *string
+	BlockTicketID             *uuid.UUID
+	BlockExternalRef          *string
+	BlockProjectKey           *string
+	BlockNumber               *int32
+	Severity                  domain.Severity
+	Security                  domain.SecurityClass
+	Threat                    *string
+	UrgencyDerived            domain.Urgency
+	UrgencyRule               string
+	UrgencyOverride           *domain.Urgency
+	UrgencyOverrideReason     *string
+	UrgencyOverrideBy         *uuid.UUID
+	UrgencyOverrideAt         *time.Time
+	Effort                    domain.Effort
+	Progress                  int16
+	ProgressDerived           *int16
+	ProgressRefinement        int16
+	ProgressRefinementDerived *int16
+	ProgressReview            int16
+	ProgressReviewDerived     *int16
+	ParentID                  *uuid.UUID
+	ParentNumber              *int32
+	ReporterID                uuid.UUID
+	ReporterUsername          *string
+	ReporterName              *string
+	AssigneeID                *uuid.UUID
+	AssigneeUsername          *string
+	AssigneeName              *string
+	Confidential              bool
+	Rank                      *string
+	OpenedAt                  time.Time
+	DecidedAt                 *time.Time
+	DoneAt                    *time.Time
+	DoneFrom                  *domain.TicketState
+	DoneByHand                bool
+	OpenPrerequisites         int32
+	Version                   int32
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 // The ticket's columns are listed once more in the list builder
 // (internal/store/tickets.go); a unit test holds the two lists equal.
+// open_prerequisites counts the open tickets that block it which the caller
+// can see, the number on a board card (docs/adr/0018 D1, docs/adr/0012 D7); a
+// hidden one is never counted.
 func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberParams) (GetTicketByNumberRow, error) {
 	row := q.db.QueryRow(ctx, getTicketByNumber, arg.TenantID, arg.ProjectID, arg.Number)
 	var i GetTicketByNumberRow
@@ -151,6 +169,10 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 		&i.Effort,
 		&i.Progress,
 		&i.ProgressDerived,
+		&i.ProgressRefinement,
+		&i.ProgressRefinementDerived,
+		&i.ProgressReview,
+		&i.ProgressReviewDerived,
 		&i.ParentID,
 		&i.ParentNumber,
 		&i.ReporterID,
@@ -160,9 +182,13 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 		&i.AssigneeUsername,
 		&i.AssigneeName,
 		&i.Confidential,
+		&i.Rank,
 		&i.OpenedAt,
 		&i.DecidedAt,
 		&i.DoneAt,
+		&i.DoneFrom,
+		&i.DoneByHand,
+		&i.OpenPrerequisites,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,

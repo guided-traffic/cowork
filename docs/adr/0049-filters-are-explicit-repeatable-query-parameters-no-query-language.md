@@ -8,11 +8,13 @@ and over an `or=` group parameter. The rules of D4–D7 were put to the owner wi
 question and not objected to.
 
 Amended 2026-10-02 (D1: what `blocked` means beside `state=blocked`, and which values `!`
-negates). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
+negates) and 2026-10-03 (D1: `done_after`, for the board's count of the tickets done in the
+last fourteen days, [ADR 0018](0018-the-views-of-the-first-release.md) D1 as amended that
+day). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
 that adds something is the prerequisite one of [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
 D1.
 
-**Built** (phase 2, 2026-10-02): D1–D6 on the project's and the tenant's ticket lists,
+**Built** (phase 2, 2026-10-02; `done_after` since 2026-10-03): D1–D6 on the project's and the tenant's ticket lists,
 [`ticketlist.go`](../../backend/internal/api/ticketlist.go) parsing and
 [`tickets.go`](../../backend/internal/store/tickets.go) rendering; D6's board, dashboard and
 saved filters and D7 arrive with their views.
@@ -47,6 +49,7 @@ OR-ed, parameters are AND-ed.** The parameters on ticket lists:
 | `progress_min`, `progress_max` | 0–100 |
 | `has_open_questions` | `true`, `false` |
 | `opened_after`, `opened_before`, `updated_after`, `updated_before` | RFC 3339 timestamps |
+| `done_after` | an RFC 3339 timestamp: done after it — the bound excluded, as in the four above *(added 2026-10-03)* |
 | `q` | full text ([ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)), length-capped |
 | `include_terminal` | `true` to include `done` and `dropped`; the default hides them unless `state` names them |
 

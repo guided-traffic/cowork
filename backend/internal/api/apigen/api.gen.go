@@ -584,6 +584,7 @@ const (
 	TicketStateDropped    TicketState = "dropped"
 	TicketStateFiled      TicketState = "filed"
 	TicketStateInProgress TicketState = "in-progress"
+	TicketStateReview     TicketState = "review"
 )
 
 // Valid indicates whether the value is a known member of the TicketState enum.
@@ -602,6 +603,8 @@ func (e TicketState) Valid() bool {
 	case TicketStateFiled:
 		return true
 	case TicketStateInProgress:
+		return true
+	case TicketStateReview:
 		return true
 	default:
 		return false
@@ -1321,7 +1324,8 @@ type Project struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 	Version    int       `json:"version"`
 
-	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 	WipLimits WipLimits `json:"wip_limits"`
 }
 
@@ -1331,7 +1335,8 @@ type ProjectCreate struct {
 	Key         string  `json:"key"`
 	Name        string  `json:"name"`
 
-	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
 }
 
@@ -1346,7 +1351,8 @@ type ProjectPatch struct {
 	Description *string `json:"description,omitempty"`
 	Name        *string `json:"name,omitempty"`
 
-	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
 }
 
@@ -1477,22 +1483,40 @@ type Ticket struct {
 	CreatedAt    time.Time                    `json:"created_at"`
 	DecidedAt    nullable.Nullable[time.Time] `json:"decided_at"`
 	DoneAt       nullable.Nullable[time.Time] `json:"done_at"`
-	Effort       Effort                       `json:"effort"`
-	Id           openapi_types.UUID           `json:"id"`
+
+	// DoneByHand Done by hand rather than by its three stages: the stages stay editable and the ticket stays
+	// done until the done by hand is withdrawn (docs/adr/0009 D5). False while the ticket is not done.
+	DoneByHand bool `json:"done_by_hand"`
+
+	// DoneFrom The state the ticket was done from, while it is done (docs/adr/0009 D5)
+	DoneFrom nullable.Nullable[TicketState] `json:"done_from"`
+	Effort   Effort                         `json:"effort"`
+	Id       openapi_types.UUID             `json:"id"`
 
 	// Key The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
-	Key      string    `json:"key"`
-	Number   int       `json:"number"`
-	OpenedAt time.Time `json:"opened_at"`
+	Key    string `json:"key"`
+	Number int    `json:"number"`
+
+	// OpenPrerequisites The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
+	// docs/adr/0018 D1); a ticket the caller cannot see is never counted
+	OpenPrerequisites int       `json:"open_prerequisites"`
+	OpenedAt          time.Time `json:"opened_at"`
 
 	// Parent The parent's key
 	Parent nullable.Nullable[string] `json:"parent"`
 
-	// Progress 100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)
+	// Progress The implementation stage, the work of in-progress; derived from the children while there are any
+	// (docs/adr/0017 D2, D3). Done leaves it as it is.
 	Progress int `json:"progress"`
 
-	// ProgressDerived The progress is derived from the children and takes no manual value
+	// ProgressDerived The three stages are derived from the children and take no manual value; such a ticket is never done by them
 	ProgressDerived bool `json:"progress_derived"`
+
+	// ProgressRefinement The refinement stage, the work of filed and analysed; derived like progress (docs/adr/0017 D2, D3)
+	ProgressRefinement int `json:"progress_refinement"`
+
+	// ProgressReview The review stage, the work of review; derived like progress (docs/adr/0017 D2, D3)
+	ProgressReview int `json:"progress_review"`
 
 	// Project The project's key
 	Project  string        `json:"project"`
@@ -1562,9 +1586,27 @@ type TicketPatch struct {
 	Comment *string `json:"comment,omitempty"`
 	Effort  *Effort `json:"effort,omitempty"`
 
+	// Note The verification note the change needs when it brings the last of the three stages of a ticket
+	// without children to 100, which is the done act — what was run, against what, with what result
+	// (docs/adr/0009 D5); refused on any other change
+	Note *string `json:"note,omitempty"`
+
+	// OverridePrerequisites Close over open prerequisites, with a reason, when the change is the done act; a person's act,
+	// never an agent's (docs/adr/0012 D7)
+	OverridePrerequisites *bool `json:"override_prerequisites,omitempty"`
+
 	// Parent A ticket key of the same project; null makes the ticket a root
-	Parent   nullable.Nullable[string] `json:"parent,omitempty"`
-	Progress *int                      `json:"progress,omitempty"`
+	Parent nullable.Nullable[string] `json:"parent,omitempty"`
+
+	// Progress The implementation stage (docs/adr/0017 D2)
+	Progress           *int `json:"progress,omitempty"`
+	ProgressRefinement *int `json:"progress_refinement,omitempty"`
+	ProgressReview     *int `json:"progress_review,omitempty"`
+
+	// Reason Required when the change lowers a stage of a ticket done by its stages, which reopens it, and with
+	// override_prerequisites; recorded on the done act otherwise, refused on a change that moves no state
+	// (docs/adr/0009 D5)
+	Reason   *string                   `json:"reason,omitempty"`
 	Security *SecurityClass            `json:"security,omitempty"`
 	Severity *Severity                 `json:"severity,omitempty"`
 	Threat   nullable.Nullable[string] `json:"threat,omitempty"`
@@ -1572,6 +1614,15 @@ type TicketPatch struct {
 
 	// Type docs/adr/0008 D1
 	Type *TicketType `json:"type,omitempty"`
+}
+
+// TicketRankSet Exactly one of after and before, the number of an open ticket of the same project (docs/adr/0014 D2)
+type TicketRankSet struct {
+	// After The ticket this one is placed directly after
+	After *int `json:"after,omitempty"`
+
+	// Before The ticket this one is placed directly before
+	Before *int `json:"before,omitempty"`
 }
 
 // TicketRef defines model for TicketRef.
@@ -1770,7 +1821,8 @@ type Transition struct {
 	// OverridePrerequisites Close over open prerequisites, with a reason; a person's act, never an agent's (docs/adr/0012 D7)
 	OverridePrerequisites *bool `json:"override_prerequisites,omitempty"`
 
-	// Reason Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites
+	// Reason Required backward, into blocked (the block's text), to dropped, on a reopen, on the withdrawal of a
+	// done by hand, and with override_prerequisites
 	Reason *string `json:"reason,omitempty"`
 
 	// To docs/adr/0009 D1
@@ -1782,15 +1834,18 @@ type Urgency string
 
 // UrgencyOverride defines model for UrgencyOverride.
 type UrgencyOverride struct {
-	At     time.Time                 `json:"at"`
-	By     nullable.Nullable[Person] `json:"by,omitempty"`
-	Reason string                    `json:"reason"`
+	At time.Time                 `json:"at"`
+	By nullable.Nullable[Person] `json:"by,omitempty"`
+
+	// Reason Null when a person set the override without one (docs/adr/0010 D3)
+	Reason nullable.Nullable[string] `json:"reason"`
 	Value  Urgency                   `json:"value"`
 }
 
 // UrgencyOverrideSet defines model for UrgencyOverrideSet.
 type UrgencyOverrideSet struct {
-	Reason string  `json:"reason"`
+	// Reason Optional for a person, required of an agent (docs/adr/0010 D3)
+	Reason *string `json:"reason,omitempty"`
 	Value  Urgency `json:"value"`
 }
 
@@ -1801,12 +1856,14 @@ type Version struct {
 	Version   string `json:"version"`
 }
 
-// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)
+// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
+// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 type WipLimits struct {
 	Analysed   *int `json:"analysed,omitempty"`
 	Blocked    *int `json:"blocked,omitempty"`
 	Decided    *int `json:"decided,omitempty"`
 	InProgress *int `json:"in-progress,omitempty"`
+	Review     *int `json:"review,omitempty"`
 }
 
 // AttachmentID defines model for AttachmentID.
@@ -1817,6 +1874,9 @@ type CommentID = openapi_types.UUID
 
 // Cursor defines model for Cursor.
 type Cursor = string
+
+// DoneAfter defines model for DoneAfter.
+type DoneAfter = time.Time
 
 // FilterAssignee defines model for FilterAssignee.
 type FilterAssignee = []string
@@ -2074,6 +2134,9 @@ type ListProjectTicketsParams struct {
 	OpenedBefore  *OpenedBefore  `form:"opened_before,omitempty" json:"opened_before,omitempty"`
 	UpdatedAfter  *UpdatedAfter  `form:"updated_after,omitempty" json:"updated_after,omitempty"`
 	UpdatedBefore *UpdatedBefore `form:"updated_before,omitempty" json:"updated_before,omitempty"`
+
+	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
+	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
 
 	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
@@ -2345,6 +2408,9 @@ type ListTenantTicketsParams struct {
 	UpdatedAfter  *UpdatedAfter  `form:"updated_after,omitempty" json:"updated_after,omitempty"`
 	UpdatedBefore *UpdatedBefore `form:"updated_before,omitempty" json:"updated_before,omitempty"`
 
+	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
+	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
+
 	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
 
@@ -2484,6 +2550,9 @@ type UpdateQuestionJSONRequestBody = QuestionPatch
 
 // AnswerQuestionJSONRequestBody defines body for AnswerQuestion for application/json ContentType.
 type AnswerQuestionJSONRequestBody = AnswerSet
+
+// MoveTicketRankJSONRequestBody defines body for MoveTicketRank for application/json ContentType.
+type MoveTicketRankJSONRequestBody = TicketRankSet
 
 // BookTimeJSONRequestBody defines body for BookTime for application/json ContentType.
 type BookTimeJSONRequestBody = TimeEntryCreate
@@ -2892,18 +2961,22 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project} (the `GetProject` operationId).
 	GetProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateProjectWithBody Change a project's name or description
+	// UpdateProjectWithBody Change a project's name, description or WIP limits
 	//
-	// An administrator's act with `admin` scope; `If-Match` is required.
+	// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+	// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+	// (docs/adr/0019 D3).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project} (the `UpdateProject` operationId).
 	UpdateProjectWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *UpdateProjectParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateProject Change a project's name or description
+	// UpdateProject Change a project's name, description or WIP limits
 	//
-	// An administrator's act with `admin` scope; `If-Match` is required.
+	// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+	// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+	// (docs/adr/0019 D3).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2920,7 +2993,14 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListProjectTickets The project's tickets, in the order they were filed
+	// ListProjectTickets The project's tickets, in the project's rank
+	//
+	// The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+	// a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+	// and the number sealed, since a key is computed over tickets the caller may not see, and is
+	// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+	// D5). `state=done&done_after=<time>` counts what the board shows for done
+	// (docs/adr/0018 D1).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets (the `ListProjectTickets` operationId).
 	ListProjectTickets(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2928,8 +3008,9 @@ type ClientInterface interface {
 	// CreateTicketWithBody File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-	// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+	// (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2939,8 +3020,9 @@ type ClientInterface interface {
 	// CreateTicket File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-	// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+	// (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2957,6 +3039,21 @@ type ClientInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9).
 	//
+	// The three progress stages — `progress_refinement`, `progress` (implementation),
+	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+	// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+	// A change that brings the last of the three to 100 on a ticket without children is the done act
+	// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+	// verification (400 at `/note` otherwise); over open prerequisites it is 409
+	// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+	// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+	// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+	// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+	// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+	// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+	// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+	// on a change that moves no state are 400. The version rises once.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `UpdateTicket` operationId).
@@ -2966,6 +3063,21 @@ type ClientInterface interface {
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9).
+	//
+	// The three progress stages — `progress_refinement`, `progress` (implementation),
+	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+	// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+	// A change that brings the last of the three to 100 on a ticket without children is the done act
+	// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+	// verification (400 at `/note` otherwise); over open prerequisites it is 409
+	// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+	// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+	// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+	// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+	// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+	// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+	// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+	// on a change that moves no state are 400. The version rises once.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3267,6 +3379,42 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal (the `WithdrawQuestion` operationId).
 	WithdrawQuestion(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, question QuestionNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// MoveTicketRankWithBody Place the ticket directly after or before another ticket of its project
+	//
+	// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+	// the neighbour's and the next key on that side — every ticket of the project counts, those
+	// the caller cannot see included — so one row is written and the list is never renumbered.
+	// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+	// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+	// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+	// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+	// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+	// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+	// does not exist.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+	MoveTicketRankWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MoveTicketRank Place the ticket directly after or before another ticket of its project
+	//
+	// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+	// the neighbour's and the next key on that side — every ticket of the project counts, those
+	// the caller cannot see included — so one row is written and the list is never renumbered.
+	// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+	// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+	// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+	// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+	// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+	// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+	// does not exist.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+	MoveTicketRank(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries (the `ListTicketTime` operationId).
@@ -3329,14 +3477,25 @@ type ClientInterface interface {
 
 	// TransitionTicketWithBody Move the ticket to another state
 	//
-	// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-	// blocked from any open state with a block and out of it only to where it came from,
-	// dropped from any open state with a reason, done from in-progress with a verification
-	// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-	// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-	// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-	// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-	// not required (docs/adr/0045 D3, D7).
+	// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+	// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+	// review → in-progress), into blocked from any open state with a block and out of it only to
+	// where it came from, dropped from any open state with a reason, and dropped → filed, the
+	// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+	// (docs/adr/0045 D2).
+	//
+	// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+	// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+	// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+	// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+	// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+	// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+	// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+	// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+	// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+	// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+	// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+	// act, not required (docs/adr/0045 D3, D7).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3345,14 +3504,25 @@ type ClientInterface interface {
 
 	// TransitionTicket Move the ticket to another state
 	//
-	// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-	// blocked from any open state with a block and out of it only to where it came from,
-	// dropped from any open state with a reason, done from in-progress with a verification
-	// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-	// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-	// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-	// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-	// not required (docs/adr/0045 D3, D7).
+	// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+	// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+	// review → in-progress), into blocked from any open state with a block and out of it only to
+	// where it came from, dropped from any open state with a reason, and dropped → filed, the
+	// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+	// (docs/adr/0045 D2).
+	//
+	// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+	// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+	// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+	// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+	// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+	// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+	// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+	// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+	// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+	// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+	// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+	// act, not required (docs/adr/0045 D3, D7).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3361,23 +3531,31 @@ type ClientInterface interface {
 
 	// WithdrawUrgencyOverride Withdraw the urgency override
 	//
+	// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 	WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OverrideUrgencyWithBody Override the derived urgency with a reason
+	// OverrideUrgencyWithBody Override the derived urgency
 	//
-	// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-	// needs the override-urgency capability (docs/adr/0043 D4).
+	// The override holds until a person or an agent withdraws it or sets another; when an input of
+	// the derivation changes, the derived value and its rule change beside it and the override stays
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// (docs/adr/0043 D4).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OverrideUrgency Override the derived urgency with a reason
+	// OverrideUrgency Override the derived urgency
 	//
-	// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-	// needs the override-urgency capability (docs/adr/0043 D4).
+	// The override holds until a person or an agent withdraws it or sets another; when an input of
+	// the derivation changes, the derived value and its rule change beside it and the override stays
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// (docs/adr/0043 D4).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3388,7 +3566,8 @@ type ClientInterface interface {
 	//
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 	// value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
-	// show only with include_terminal or when state names them.
+	// show only with include_terminal or when state names them; done_after keeps those done
+	// after a time.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/tickets (the `ListTenantTickets` operationId).
 	ListTenantTickets(ctx context.Context, tenant TenantSlug, params *ListTenantTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4091,9 +4270,11 @@ func (c *Client) GetProject(ctx context.Context, tenant TenantSlug, project Proj
 	return c.Client.Do(req)
 }
 
-// UpdateProjectWithBody Change a project's name or description
+// UpdateProjectWithBody Change a project's name, description or WIP limits
 //
-// An administrator's act with `admin` scope; `If-Match` is required.
+// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+// (docs/adr/0019 D3).
 //
 // Takes any type of body and a specified content type.
 //
@@ -4110,9 +4291,11 @@ func (c *Client) UpdateProjectWithBody(ctx context.Context, tenant TenantSlug, p
 	return c.Client.Do(req)
 }
 
-// UpdateProject Change a project's name or description
+// UpdateProject Change a project's name, description or WIP limits
 //
-// An administrator's act with `admin` scope; `If-Match` is required.
+// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+// (docs/adr/0019 D3).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4149,7 +4332,14 @@ func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project 
 	return c.Client.Do(req)
 }
 
-// ListProjectTickets The project's tickets, in the order they were filed
+// ListProjectTickets The project's tickets, in the project's rank
+//
+// The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+// a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+// and the number sealed, since a key is computed over tickets the caller may not see, and is
+// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+// D5). `state=done&done_after=<time>` counts what the board shows for done
+// (docs/adr/0018 D1).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets (the `ListProjectTickets` operationId).
 func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4167,8 +4357,9 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // CreateTicketWithBody File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+// (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4188,8 +4379,9 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // CreateTicket File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+// (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4226,6 +4418,21 @@ func (c *Client) GetTicket(ctx context.Context, tenant TenantSlug, project Proje
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9).
 //
+// The three progress stages — `progress_refinement`, `progress` (implementation),
+// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+// A change that brings the last of the three to 100 on a ticket without children is the done act
+// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+// verification (400 at `/note` otherwise); over open prerequisites it is 409
+// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+// on a change that moves no state are 400. The version rises once.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `UpdateTicket` operationId).
@@ -4245,6 +4452,21 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9).
+//
+// The three progress stages — `progress_refinement`, `progress` (implementation),
+// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+// A change that brings the last of the three to 100 on a ticket without children is the done act
+// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+// verification (400 at `/note` otherwise); over open prerequisites it is 409
+// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+// on a change that moves no state are 400. The version rises once.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4896,6 +5118,62 @@ func (c *Client) WithdrawQuestion(ctx context.Context, tenant TenantSlug, projec
 	return c.Client.Do(req)
 }
 
+// MoveTicketRankWithBody Place the ticket directly after or before another ticket of its project
+//
+// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+// the neighbour's and the next key on that side — every ticket of the project counts, those
+// the caller cannot see included — so one row is written and the list is never renumbered.
+// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+// does not exist.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+func (c *Client) MoveTicketRankWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveTicketRankRequestWithBody(c.Server, tenant, project, number, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MoveTicketRank Place the ticket directly after or before another ticket of its project
+//
+// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+// the neighbour's and the next key on that side — every ticket of the project counts, those
+// the caller cannot see included — so one row is written and the list is never renumbered.
+// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+// does not exist.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+func (c *Client) MoveTicketRank(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveTicketRankRequest(c.Server, tenant, project, number, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListTicketTime The ticket's time entries the caller may see, and their sum
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries (the `ListTicketTime` operationId).
@@ -5038,14 +5316,25 @@ func (c *Client) VoidTimeEntry(ctx context.Context, tenant TenantSlug, project P
 
 // TransitionTicketWithBody Move the ticket to another state
 //
-// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-// blocked from any open state with a block and out of it only to where it came from,
-// dropped from any open state with a reason, done from in-progress with a verification
-// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-// not required (docs/adr/0045 D3, D7).
+// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+// review → in-progress), into blocked from any open state with a block and out of it only to
+// where it came from, dropped from any open state with a reason, and dropped → filed, the
+// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+// (docs/adr/0045 D2).
+//
+// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+// act, not required (docs/adr/0045 D3, D7).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5064,14 +5353,25 @@ func (c *Client) TransitionTicketWithBody(ctx context.Context, tenant TenantSlug
 
 // TransitionTicket Move the ticket to another state
 //
-// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-// blocked from any open state with a block and out of it only to where it came from,
-// dropped from any open state with a reason, done from in-progress with a verification
-// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-// not required (docs/adr/0045 D3, D7).
+// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+// review → in-progress), into blocked from any open state with a block and out of it only to
+// where it came from, dropped from any open state with a reason, and dropped → filed, the
+// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+// (docs/adr/0045 D2).
+//
+// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+// act, not required (docs/adr/0045 D3, D7).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5090,6 +5390,8 @@ func (c *Client) TransitionTicket(ctx context.Context, tenant TenantSlug, projec
 
 // WithdrawUrgencyOverride Withdraw the urgency override
 //
+// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+//
 // Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 func (c *Client) WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewWithdrawUrgencyOverrideRequest(c.Server, tenant, project, number, params)
@@ -5103,10 +5405,13 @@ func (c *Client) WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug,
 	return c.Client.Do(req)
 }
 
-// OverrideUrgencyWithBody Override the derived urgency with a reason
+// OverrideUrgencyWithBody Override the derived urgency
 //
-// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-// needs the override-urgency capability (docs/adr/0043 D4).
+// The override holds until a person or an agent withdraws it or sets another; when an input of
+// the derivation changes, the derived value and its rule change beside it and the override stays
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// (docs/adr/0043 D4).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5123,10 +5428,13 @@ func (c *Client) OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug,
 	return c.Client.Do(req)
 }
 
-// OverrideUrgency Override the derived urgency with a reason
+// OverrideUrgency Override the derived urgency
 //
-// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-// needs the override-urgency capability (docs/adr/0043 D4).
+// The override holds until a person or an agent withdraws it or sets another; when an input of
+// the derivation changes, the derived value and its rule change beside it and the override stays
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// (docs/adr/0043 D4).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5147,7 +5455,8 @@ func (c *Client) OverrideUrgency(ctx context.Context, tenant TenantSlug, project
 //
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 // value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
-// show only with include_terminal or when state names them.
+// show only with include_terminal or when state names them; done_after keeps those done
+// after a time.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/tickets (the `ListTenantTickets` operationId).
 func (c *Client) ListTenantTickets(ctx context.Context, tenant TenantSlug, params *ListTenantTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6792,6 +7101,18 @@ func NewListProjectTicketsRequest(server string, tenant TenantSlug, project Proj
 		if params.UpdatedBefore != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "updated_before", *params.UpdatedBefore, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.DoneAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "done_after", *params.DoneAfter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -9015,6 +9336,67 @@ func NewWithdrawQuestionRequest(server string, tenant TenantSlug, project Projec
 	return req, nil
 }
 
+// NewMoveTicketRankRequest calls the generic MoveTicketRank builder with application/json body
+func NewMoveTicketRankRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMoveTicketRankRequestWithBody(server, tenant, project, number, "application/json", bodyReader)
+}
+
+// NewMoveTicketRankRequestWithBody constructs an http.Request for the MoveTicketRank method, with any body, and a specified content type
+func NewMoveTicketRankRequestWithBody(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/rank", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListTicketTimeRequest constructs an http.Request for the ListTicketTime method
 func NewListTicketTimeRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketTimeParams) (*http.Request, error) {
 	var err error
@@ -9898,6 +10280,18 @@ func NewListTenantTicketsRequest(server string, tenant TenantSlug, params *ListT
 		if params.UpdatedBefore != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "updated_before", *params.UpdatedBefore, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.DoneAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "done_after", *params.DoneAfter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -10872,18 +11266,22 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project} (the `GetProject` operationId).
 	GetProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*GetProjectResponse, error)
 
-	// UpdateProjectWithBodyWithResponse Change a project's name or description
+	// UpdateProjectWithBodyWithResponse Change a project's name, description or WIP limits
 	//
-	// An administrator's act with `admin` scope; `If-Match` is required.
+	// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+	// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+	// (docs/adr/0019 D3).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project} (the `UpdateProject` operationId).
 	UpdateProjectWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *UpdateProjectParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProjectResponse, error)
 
-	// UpdateProjectWithResponse Change a project's name or description
+	// UpdateProjectWithResponse Change a project's name, description or WIP limits
 	//
-	// An administrator's act with `admin` scope; `If-Match` is required.
+	// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+	// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+	// (docs/adr/0019 D3).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10902,7 +11300,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ArchiveProjectResponse, error)
 
-	// ListProjectTicketsWithResponse The project's tickets, in the order they were filed
+	// ListProjectTicketsWithResponse The project's tickets, in the project's rank
+	//
+	// The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+	// a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+	// and the number sealed, since a key is computed over tickets the caller may not see, and is
+	// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+	// D5). `state=done&done_after=<time>` counts what the board shows for done
+	// (docs/adr/0018 D1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10912,8 +11317,9 @@ type ClientWithResponsesInterface interface {
 	// CreateTicketWithBodyWithResponse File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-	// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+	// (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10923,8 +11329,9 @@ type ClientWithResponsesInterface interface {
 	// CreateTicketWithResponse File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-	// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+	// (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10943,6 +11350,21 @@ type ClientWithResponsesInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9).
 	//
+	// The three progress stages — `progress_refinement`, `progress` (implementation),
+	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+	// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+	// A change that brings the last of the three to 100 on a ticket without children is the done act
+	// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+	// verification (400 at `/note` otherwise); over open prerequisites it is 409
+	// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+	// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+	// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+	// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+	// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+	// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+	// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+	// on a change that moves no state are 400. The version rises once.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `UpdateTicket` operationId).
@@ -10952,6 +11374,21 @@ type ClientWithResponsesInterface interface {
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9).
+	//
+	// The three progress stages — `progress_refinement`, `progress` (implementation),
+	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+	// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+	// A change that brings the last of the three to 100 on a ticket without children is the done act
+	// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+	// verification (400 at `/note` otherwise); over open prerequisites it is 409
+	// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+	// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+	// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+	// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+	// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+	// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+	// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+	// on a change that moves no state are 400. The version rises once.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11287,6 +11724,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal (the `WithdrawQuestion` operationId).
 	WithdrawQuestionWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, question QuestionNumber, reqEditors ...RequestEditorFn) (*WithdrawQuestionResponse, error)
 
+	// MoveTicketRankWithBodyWithResponse Place the ticket directly after or before another ticket of its project
+	//
+	// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+	// the neighbour's and the next key on that side — every ticket of the project counts, those
+	// the caller cannot see included — so one row is written and the list is never renumbered.
+	// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+	// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+	// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+	// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+	// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+	// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+	// does not exist.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+	MoveTicketRankWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveTicketRankResponse, error)
+
+	// MoveTicketRankWithResponse Place the ticket directly after or before another ticket of its project
+	//
+	// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+	// the neighbour's and the next key on that side — every ticket of the project counts, those
+	// the caller cannot see included — so one row is written and the list is never renumbered.
+	// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+	// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+	// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+	// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+	// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+	// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+	// does not exist.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+	MoveTicketRankWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveTicketRankResponse, error)
+
 	// ListTicketTimeWithResponse The ticket's time entries the caller may see, and their sum
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -11357,14 +11830,25 @@ type ClientWithResponsesInterface interface {
 
 	// TransitionTicketWithBodyWithResponse Move the ticket to another state
 	//
-	// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-	// blocked from any open state with a block and out of it only to where it came from,
-	// dropped from any open state with a reason, done from in-progress with a verification
-	// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-	// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-	// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-	// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-	// not required (docs/adr/0045 D3, D7).
+	// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+	// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+	// review → in-progress), into blocked from any open state with a block and out of it only to
+	// where it came from, dropped from any open state with a reason, and dropped → filed, the
+	// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+	// (docs/adr/0045 D2).
+	//
+	// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+	// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+	// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+	// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+	// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+	// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+	// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+	// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+	// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+	// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+	// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+	// act, not required (docs/adr/0045 D3, D7).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11373,14 +11857,25 @@ type ClientWithResponsesInterface interface {
 
 	// TransitionTicketWithResponse Move the ticket to another state
 	//
-	// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-	// blocked from any open state with a block and out of it only to where it came from,
-	// dropped from any open state with a reason, done from in-progress with a verification
-	// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-	// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-	// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-	// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-	// not required (docs/adr/0045 D3, D7).
+	// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+	// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+	// review → in-progress), into blocked from any open state with a block and out of it only to
+	// where it came from, dropped from any open state with a reason, and dropped → filed, the
+	// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+	// (docs/adr/0045 D2).
+	//
+	// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+	// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+	// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+	// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+	// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+	// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+	// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+	// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+	// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+	// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+	// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+	// act, not required (docs/adr/0045 D3, D7).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11389,25 +11884,33 @@ type ClientWithResponsesInterface interface {
 
 	// WithdrawUrgencyOverrideWithResponse Withdraw the urgency override
 	//
+	// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 	WithdrawUrgencyOverrideWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*WithdrawUrgencyOverrideResponse, error)
 
-	// OverrideUrgencyWithBodyWithResponse Override the derived urgency with a reason
+	// OverrideUrgencyWithBodyWithResponse Override the derived urgency
 	//
-	// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-	// needs the override-urgency capability (docs/adr/0043 D4).
+	// The override holds until a person or an agent withdraws it or sets another; when an input of
+	// the derivation changes, the derived value and its rule change beside it and the override stays
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// (docs/adr/0043 D4).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
 
-	// OverrideUrgencyWithResponse Override the derived urgency with a reason
+	// OverrideUrgencyWithResponse Override the derived urgency
 	//
-	// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-	// needs the override-urgency capability (docs/adr/0043 D4).
+	// The override holds until a person or an agent withdraws it or sets another; when an input of
+	// the derivation changes, the derived value and its rule change beside it and the override stays
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// (docs/adr/0043 D4).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11418,7 +11921,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 	// value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
-	// show only with include_terminal or when state names them.
+	// show only with include_terminal or when state names them; done_after keeps those done
+	// after a time.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14548,6 +15052,68 @@ func (r WithdrawQuestionResponse) ContentType() string {
 	return ""
 }
 
+// MoveTicketRankResponse200Headers the declared response headers of an HTTP 200 response for MoveTicketRank
+type MoveTicketRankResponse200Headers struct {
+	ETag *string
+}
+
+// MoveTicketRankResponseDefaultHeaders the declared response headers of an HTTP default response for MoveTicketRank
+type MoveTicketRankResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type MoveTicketRankResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Ticket
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *MoveTicketRankResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *MoveTicketRankResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MoveTicketRankResponse) GetJSON200() *Ticket {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r MoveTicketRankResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r MoveTicketRankResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MoveTicketRankResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MoveTicketRankResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MoveTicketRankResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListTicketTimeResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketTime
 type ListTicketTimeResponseDefaultHeaders struct {
 	XRequestId *string
@@ -16067,9 +16633,11 @@ func (c *ClientWithResponses) GetProjectWithResponse(ctx context.Context, tenant
 	return ParseGetProjectResponse(rsp)
 }
 
-// UpdateProjectWithBodyWithResponse Change a project's name or description
+// UpdateProjectWithBodyWithResponse Change a project's name, description or WIP limits
 //
-// An administrator's act with `admin` scope; `If-Match` is required.
+// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+// (docs/adr/0019 D3).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16082,9 +16650,11 @@ func (c *ClientWithResponses) UpdateProjectWithBodyWithResponse(ctx context.Cont
 	return ParseUpdateProjectResponse(rsp)
 }
 
-// UpdateProjectWithResponse Change a project's name or description
+// UpdateProjectWithResponse Change a project's name, description or WIP limits
 //
-// An administrator's act with `admin` scope; `If-Match` is required.
+// A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+// `If-Match` is required. The WIP limits are advisory, per state, `review` included
+// (docs/adr/0019 D3).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16115,7 +16685,14 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 	return ParseArchiveProjectResponse(rsp)
 }
 
-// ListProjectTicketsWithResponse The project's tickets, in the order they were filed
+// ListProjectTicketsWithResponse The project's tickets, in the project's rank
+//
+// The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+// a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+// and the number sealed, since a key is computed over tickets the caller may not see, and is
+// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+// D5). `state=done&done_after=<time>` counts what the board shows for done
+// (docs/adr/0018 D1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16131,8 +16708,9 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // CreateTicketWithBodyWithResponse File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+// (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16148,8 +16726,9 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // CreateTicketWithResponse File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-// class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+// (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16180,6 +16759,21 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, tenant 
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9).
 //
+// The three progress stages — `progress_refinement`, `progress` (implementation),
+// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+// A change that brings the last of the three to 100 on a ticket without children is the done act
+// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+// verification (400 at `/note` otherwise); over open prerequisites it is 409
+// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+// on a change that moves no state are 400. The version rises once.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `UpdateTicket` operationId).
@@ -16195,6 +16789,21 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9).
+//
+// The three progress stages — `progress_refinement`, `progress` (implementation),
+// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+// ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+// A change that brings the last of the three to 100 on a ticket without children is the done act
+// in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+// verification (400 at `/note` otherwise); over open prerequisites it is 409
+// `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+// needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+// overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+// it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+// A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+// `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+// hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+// on a change that moves no state are 400. The version rises once.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16740,6 +17349,54 @@ func (c *ClientWithResponses) WithdrawQuestionWithResponse(ctx context.Context, 
 	return ParseWithdrawQuestionResponse(rsp)
 }
 
+// MoveTicketRankWithBodyWithResponse Place the ticket directly after or before another ticket of its project
+//
+// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+// the neighbour's and the next key on that side — every ticket of the project counts, those
+// the caller cannot see included — so one row is written and the list is never renumbered.
+// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+// does not exist.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+func (c *ClientWithResponses) MoveTicketRankWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveTicketRankResponse, error) {
+	rsp, err := c.MoveTicketRankWithBody(ctx, tenant, project, number, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveTicketRankResponse(rsp)
+}
+
+// MoveTicketRankWithResponse Place the ticket directly after or before another ticket of its project
+//
+// A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+// the neighbour's and the next key on that side — every ticket of the project counts, those
+// the caller cannot see included — so one row is written and the list is never renumbered.
+// The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+// A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+// and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+// (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+// (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+// neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+// does not exist.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
+func (c *ClientWithResponses) MoveTicketRankWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveTicketRankResponse, error) {
+	rsp, err := c.MoveTicketRank(ctx, tenant, project, number, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveTicketRankResponse(rsp)
+}
+
 // ListTicketTimeWithResponse The ticket's time entries the caller may see, and their sum
 //
 // Returns a wrapper object for the known response body format(s).
@@ -16858,14 +17515,25 @@ func (c *ClientWithResponses) VoidTimeEntryWithResponse(ctx context.Context, ten
 
 // TransitionTicketWithBodyWithResponse Move the ticket to another state
 //
-// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-// blocked from any open state with a block and out of it only to where it came from,
-// dropped from any open state with a reason, done from in-progress with a verification
-// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-// not required (docs/adr/0045 D3, D7).
+// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+// review → in-progress), into blocked from any open state with a block and out of it only to
+// where it came from, dropped from any open state with a reason, and dropped → filed, the
+// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+// (docs/adr/0045 D2).
+//
+// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+// act, not required (docs/adr/0045 D3, D7).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16880,14 +17548,25 @@ func (c *ClientWithResponses) TransitionTicketWithBodyWithResponse(ctx context.C
 
 // TransitionTicketWithResponse Move the ticket to another state
 //
-// The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
-// blocked from any open state with a block and out of it only to where it came from,
-// dropped from any open state with a reason, done from in-progress with a verification
-// note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
-// D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
-// with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-// for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-// not required (docs/adr/0045 D3, D7).
+// The matrix of docs/adr/0009: forward one step (filed → analysed → decided → in-progress →
+// review), backward with a reason (in-progress → decided or analysed, decided → analysed,
+// review → in-progress), into blocked from any open state with a block and out of it only to
+// where it came from, dropped from any open state with a reason, and dropped → filed, the
+// reopen, with a reason. `from` must be the current state, else 409 `state_conflict` names it
+// (docs/adr/0045 D2).
+//
+// To done is done by hand (docs/adr/0009 D5): from any open state for a person, from
+// in-progress or review for an agent with `close` (else 403 `agent_forbidden`), with a
+// verification note; it leaves the progress stages as they are and sets `done_by_hand` and
+// `done_from`. Over open prerequisites it is 409 `open_prerequisites` unless a person overrides
+// with a reason (docs/adr/0012 D7). Done → `done_from`, with a reason, withdraws a done by hand:
+// the ticket returns there, ranked at the bottom of its project — unless it has no children and
+// its three stages are full, when it stays done by them (recorded as `updated`). A ticket done
+// by its stages leaves done only by a lower stage (`PATCH`): any transition out of it is 409
+// `state_conflict`. An agent needs `decide` for analysed → decided, `close` for done, `drop`
+// for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away, a reopen ranks
+// it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is recorded on the
+// act, not required (docs/adr/0045 D3, D7).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16902,6 +17581,8 @@ func (c *ClientWithResponses) TransitionTicketWithResponse(ctx context.Context, 
 
 // WithdrawUrgencyOverrideWithResponse Withdraw the urgency override
 //
+// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
@@ -16913,10 +17594,13 @@ func (c *ClientWithResponses) WithdrawUrgencyOverrideWithResponse(ctx context.Co
 	return ParseWithdrawUrgencyOverrideResponse(rsp)
 }
 
-// OverrideUrgencyWithBodyWithResponse Override the derived urgency with a reason
+// OverrideUrgencyWithBodyWithResponse Override the derived urgency
 //
-// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-// needs the override-urgency capability (docs/adr/0043 D4).
+// The override holds until a person or an agent withdraws it or sets another; when an input of
+// the derivation changes, the derived value and its rule change beside it and the override stays
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// (docs/adr/0043 D4).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16929,10 +17613,13 @@ func (c *ClientWithResponses) OverrideUrgencyWithBodyWithResponse(ctx context.Co
 	return ParseOverrideUrgencyResponse(rsp)
 }
 
-// OverrideUrgencyWithResponse Override the derived urgency with a reason
+// OverrideUrgencyWithResponse Override the derived urgency
 //
-// The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-// needs the override-urgency capability (docs/adr/0043 D4).
+// The override holds until a person or an agent withdraws it or sets another; when an input of
+// the derivation changes, the derived value and its rule change beside it and the override stays
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// (docs/adr/0043 D4).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16949,7 +17636,8 @@ func (c *ClientWithResponses) OverrideUrgencyWithResponse(ctx context.Context, t
 //
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 // value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
-// show only with include_terminal or when state names them.
+// show only with include_terminal or when state names them; done_after keeps those done
+// after a time.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19826,6 +20514,62 @@ func ParseWithdrawQuestionResponse(rsp *http.Response) (*WithdrawQuestionRespons
 	return response, nil
 }
 
+// ParseMoveTicketRankResponse parses an HTTP response from a MoveTicketRankWithResponse call
+func ParseMoveTicketRankResponse(rsp *http.Response) (*MoveTicketRankResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MoveTicketRankResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers MoveTicketRankResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers MoveTicketRankResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListTicketTimeResponse parses an HTTP response from a ListTicketTimeWithResponse call
 func ParseListTicketTimeResponse(rsp *http.Response) (*ListTicketTimeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20802,13 +21546,13 @@ type ServerInterface interface {
 	// GetProject One project
 	// (GET /api/v1/tenants/{tenant}/projects/{project})
 	GetProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
-	// UpdateProject Change a project's name or description
+	// UpdateProject Change a project's name, description or WIP limits
 	// (PATCH /api/v1/tenants/{tenant}/projects/{project})
 	UpdateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params UpdateProjectParams)
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
-	// ListProjectTickets The project's tickets, in the order they were filed
+	// ListProjectTickets The project's tickets, in the project's rank
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	ListProjectTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListProjectTicketsParams)
 	// CreateTicket File a ticket
@@ -20898,6 +21642,9 @@ type ServerInterface interface {
 	// WithdrawQuestion Withdraw an open question
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal)
 	WithdrawQuestion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, question QuestionNumber)
+	// MoveTicketRank Place the ticket directly after or before another ticket of its project
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank)
+	MoveTicketRank(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries)
 	ListTicketTime(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListTicketTimeParams)
@@ -20922,7 +21669,7 @@ type ServerInterface interface {
 	// WithdrawUrgencyOverride Withdraw the urgency override
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	WithdrawUrgencyOverride(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params WithdrawUrgencyOverrideParams)
-	// OverrideUrgency Override the derived urgency with a reason
+	// OverrideUrgency Override the derived urgency
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
@@ -22130,6 +22877,19 @@ func (siw *ServerInterfaceWrapper) ListProjectTickets(w http.ResponseWriter, r *
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "updated_before"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "updated_before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "done_after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "done_after", r.URL.Query(), &params.DoneAfter, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "done_after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "done_after", Err: err})
 		}
 		return
 	}
@@ -24169,6 +24929,50 @@ func (siw *ServerInterfaceWrapper) WithdrawQuestion(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// MoveTicketRank operation middleware
+func (siw *ServerInterfaceWrapper) MoveTicketRank(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveTicketRank(w, r, tenant, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTicketTime operation middleware
 func (siw *ServerInterfaceWrapper) ListTicketTime(w http.ResponseWriter, r *http.Request) {
 
@@ -25005,6 +25809,19 @@ func (siw *ServerInterfaceWrapper) ListTenantTickets(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "done_after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "done_after", r.URL.Query(), &params.DoneAfter, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "done_after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "done_after", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "q" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -25670,6 +26487,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}", wrapper.UpdateQuestion)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/answer", wrapper.AnswerQuestion)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal", wrapper.WithdrawQuestion)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank", wrapper.MoveTicketRank)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries", wrapper.ListTicketTime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries", wrapper.BookTime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}", wrapper.GetTimeEntry)
@@ -28381,6 +29199,62 @@ func (response WithdrawQuestiondefaultApplicationProblemPlusJSONResponse) VisitW
 	return err
 }
 
+type MoveTicketRankRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Body    *MoveTicketRankJSONRequestBody
+}
+
+type MoveTicketRankResponseObject interface {
+	VisitMoveTicketRankResponse(w http.ResponseWriter) error
+}
+
+type MoveTicketRank200ResponseHeaders struct {
+	ETag *string
+}
+
+type MoveTicketRank200JSONResponse struct {
+	Body    Ticket
+	Headers MoveTicketRank200ResponseHeaders
+}
+
+func (response MoveTicketRank200JSONResponse) VisitMoveTicketRankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveTicketRankdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response MoveTicketRankdefaultApplicationProblemPlusJSONResponse) VisitMoveTicketRankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTicketTimeRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -29370,13 +30244,13 @@ type StrictServerInterface interface {
 	// GetProject One project
 	// (GET /api/v1/tenants/{tenant}/projects/{project})
 	GetProject(ctx context.Context, request GetProjectRequestObject) (GetProjectResponseObject, error)
-	// UpdateProject Change a project's name or description
+	// UpdateProject Change a project's name, description or WIP limits
 	// (PATCH /api/v1/tenants/{tenant}/projects/{project})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
-	// ListProjectTickets The project's tickets, in the order they were filed
+	// ListProjectTickets The project's tickets, in the project's rank
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	ListProjectTickets(ctx context.Context, request ListProjectTicketsRequestObject) (ListProjectTicketsResponseObject, error)
 	// CreateTicket File a ticket
@@ -29466,6 +30340,9 @@ type StrictServerInterface interface {
 	// WithdrawQuestion Withdraw an open question
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal)
 	WithdrawQuestion(ctx context.Context, request WithdrawQuestionRequestObject) (WithdrawQuestionResponseObject, error)
+	// MoveTicketRank Place the ticket directly after or before another ticket of its project
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank)
+	MoveTicketRank(ctx context.Context, request MoveTicketRankRequestObject) (MoveTicketRankResponseObject, error)
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries)
 	ListTicketTime(ctx context.Context, request ListTicketTimeRequestObject) (ListTicketTimeResponseObject, error)
@@ -29490,7 +30367,7 @@ type StrictServerInterface interface {
 	// WithdrawUrgencyOverride Withdraw the urgency override
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	WithdrawUrgencyOverride(ctx context.Context, request WithdrawUrgencyOverrideRequestObject) (WithdrawUrgencyOverrideResponseObject, error)
-	// OverrideUrgency Override the derived urgency with a reason
+	// OverrideUrgency Override the derived urgency
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(ctx context.Context, request OverrideUrgencyRequestObject) (OverrideUrgencyResponseObject, error)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
@@ -31136,6 +32013,41 @@ func (sh *strictHandler) WithdrawQuestion(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(WithdrawQuestionResponseObject); ok {
 		if err := validResponse.VisitWithdrawQuestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveTicketRank operation middleware
+func (sh *strictHandler) MoveTicketRank(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
+	var request MoveTicketRankRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+
+	var body MoveTicketRankJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveTicketRank(ctx, request.(MoveTicketRankRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveTicketRank")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveTicketRankResponseObject); ok {
+		if err := validResponse.VisitMoveTicketRankResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

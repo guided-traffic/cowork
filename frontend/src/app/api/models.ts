@@ -65,6 +65,7 @@ export type { TicketBodyReplace } from './models/ticket-body-replace';
 export type { TicketCreate } from './models/ticket-create';
 export type { TicketList } from './models/ticket-list';
 export type { TicketPatch } from './models/ticket-patch';
+export type { TicketRankSet } from './models/ticket-rank-set';
 export type { TicketRef } from './models/ticket-ref';
 export type { TicketState } from './models/ticket-state';
 export type { TicketType } from './models/ticket-type';

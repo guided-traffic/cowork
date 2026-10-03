@@ -165,7 +165,7 @@ func (s *Server) LinkTickets(ctx context.Context, req apigen.LinkTicketsRequestO
 		}
 		var before domain.UrgencyInputs
 		if e.typ == domain.LinkBlocks {
-			if before, _, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
+			if before, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
 				return err
 			}
 		}
@@ -175,7 +175,7 @@ func (s *Server) LinkTickets(ctx context.Context, req apigen.LinkTicketsRequestO
 			return err
 		}
 		if e.typ == domain.LinkBlocks {
-			if err := rederive(ctx, w, t, e.target.ID, ticketKey(t, e.target), before); err != nil {
+			if err := rederive(ctx, w, t, e.target.ID, before); err != nil {
 				return err
 			}
 		}
@@ -240,7 +240,7 @@ func (s *Server) UnlinkTickets(ctx context.Context, req apigen.UnlinkTicketsRequ
 		}
 		var before domain.UrgencyInputs
 		if e.typ == domain.LinkBlocks {
-			if before, _, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
+			if before, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
 				return err
 			}
 		}
@@ -249,7 +249,7 @@ func (s *Server) UnlinkTickets(ctx context.Context, req apigen.UnlinkTicketsRequ
 		}
 		e.record(w, t, actionUnlinked, existing.ID)
 		if e.typ == domain.LinkBlocks {
-			return rederive(ctx, w, t, e.target.ID, ticketKey(t, e.target), before)
+			return rederive(ctx, w, t, e.target.ID, before)
 		}
 		return nil
 	})
@@ -259,25 +259,26 @@ func (s *Server) UnlinkTickets(ctx context.Context, req apigen.UnlinkTicketsRequ
 	return apigen.UnlinkTickets204Response{}, nil
 }
 
-// urgencyInputs reads the facts rule set v1 derives from, and whether an
-// override stands.
-func urgencyInputs(ctx context.Context, r *store.Reader, t tenantScope, id uuid.UUID) (domain.UrgencyInputs, bool, error) {
+// urgencyInputs reads the facts rule set v1 derives from.
+func urgencyInputs(ctx context.Context, r *store.Reader, t tenantScope, id uuid.UUID) (domain.UrgencyInputs, error) {
 	row, err := r.GetUrgencyInputs(ctx, readq.GetUrgencyInputsParams{TenantID: t.ID, ID: id})
 	if err != nil {
-		return domain.UrgencyInputs{}, false, fmt.Errorf("read the urgency inputs: %w", err)
+		return domain.UrgencyInputs{}, fmt.Errorf("read the urgency inputs: %w", err)
 	}
 	in := domain.UrgencyInputs{State: row.State, OpenDecisionBlocker: row.OpenDecisionBlocker}
 	if row.BlockKind != nil {
 		in.BlockKind = *row.BlockKind
 	}
-	return in, row.Overridden, nil
+	return in, nil
 }
 
-// rederive applies rule set v1 again when one of its inputs changed, and ends
-// a standing override with a row on that ticket's timeline, attributed to the
-// act that changed the input (docs/adr/0010 D3).
-func rederive(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID, key string, before domain.UrgencyInputs) error {
-	after, overridden, err := urgencyInputs(ctx, w.Reader, t, id)
+// rederive applies rule set v1 again when one of its inputs changed. A
+// standing override stays — it holds until a person or an agent withdraws it
+// or sets another — and the new derived value and its rule show beside it
+// (docs/adr/0010 D3). The derivation is no act of its own: the act that
+// changed the input is recorded.
+func rederive(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID, before domain.UrgencyInputs) error {
+	after, err := urgencyInputs(ctx, w.Reader, t, id)
 	if err != nil {
 		return err
 	}
@@ -288,10 +289,6 @@ func rederive(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID,
 	if err := w.RederiveUrgency(ctx, writeq.RederiveUrgencyParams{TenantID: t.ID, ID: id, UrgencyDerived: u, UrgencyRule: rule}); err != nil {
 		return fmt.Errorf("derive the urgency again: %w", err)
 	}
-	if overridden {
-		w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key, Action: actionOverridden,
-			Reason: "an input of the urgency derivation changed", After: map[string]any{fieldUrgencyOverride: nil, "urgency": u}})
-	}
 	return nil
 }
 
@@ -299,7 +296,6 @@ func rederive(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID,
 // its inputs before a change of that ticket.
 type dependent struct {
 	id     uuid.UUID
-	key    string
 	before domain.UrgencyInputs
 }
 
@@ -312,12 +308,12 @@ func dependentsOf(ctx context.Context, w *store.Writer, t tenantScope, id uuid.U
 		return nil, fmt.Errorf("list the blocked tickets: %w", err)
 	}
 	out := make([]dependent, 0, len(rows))
-	for _, r := range rows {
-		in, _, err := urgencyInputs(ctx, w.Reader, t, r.ID)
+	for _, id := range rows {
+		in, err := urgencyInputs(ctx, w.Reader, t, id)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, dependent{id: r.ID, key: domain.FullKey(t.Slug, r.ProjectKey, r.Number), before: in})
+		out = append(out, dependent{id: id, before: in})
 	}
 	return out, nil
 }
@@ -325,7 +321,7 @@ func dependentsOf(ctx context.Context, w *store.Writer, t tenantScope, id uuid.U
 // rederiveAll derives the dependents' urgency again after the change.
 func rederiveAll(ctx context.Context, w *store.Writer, t tenantScope, deps []dependent) error {
 	for _, d := range deps {
-		if err := rederive(ctx, w, t, d.id, d.key, d.before); err != nil {
+		if err := rederive(ctx, w, t, d.id, d.before); err != nil {
 			return err
 		}
 	}

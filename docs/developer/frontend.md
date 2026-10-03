@@ -14,7 +14,7 @@ frontend/src/app/
 ├── core/         # services: session, projects, tickets, event stream, problems, entity cache, http
 ├── layout/       # the shell (top bar, navigation), the tenant scope, the live indicator
 ├── features/     # one folder per page family: home, tenant, project, ticket
-├── shared/       # badges, vocabulary meanings, time formatting
+├── shared/       # badges, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, time formatting
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -51,7 +51,9 @@ component or its `loading` input; several choices are `<p-select [multiple]="tru
 components no longer take `styleClass`; put `class` on the host (`<p-table class="tickets">`), and
 reach inner parts with `:host ::ng-deep`. `p-inputicon` takes its icon as `class`. A `p-select`
 is named with `ariaLabelledBy` or `ariaLabel`, because its focusable element is a combobox span a
-wrapping `<label>` cannot name. Without the license key PrimeNG logs `[PrimeUI] PrimeUI license
+wrapping `<label>` cannot name. A `<form>` that holds a `p-selectbutton` is `ngNoForm` and handles
+`(submit)` itself: the select button keeps an `ngModel` per option in its own template, which
+cannot register with an `NgForm` of the page and warns (NG01354) in development builds. Without the license key PrimeNG logs `[PrimeUI] PrimeUI license
 is not configured` and shows a notice — see [the key](#the-primeui-license-key).
 
 ## Where state lives
@@ -63,14 +65,14 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 |---|---|
 | `SessionService` | `GET /api/v1/me` (the person and memberships), the current tenant from the route (`enter(slug)`), the membership's role |
 | `ProjectsService` | The current tenant's projects, every page of them |
-| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources (`projectTickets`, `tenantTickets`) that return keys; `ticket(key)` for a detail view |
+| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view |
 | `EventStreamService` | The tenant's `EventSource`, its status, and the events as an Observable |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
 | `ThemeService` | The colour scheme |
 | `MembersService` | The current tenant's members, every page of them, for pickers and the member list |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`) and time entries |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state; every answer goes into the cache |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the urgency override and its withdrawal (a `412` is written over once while the urgency is unchanged); every answer goes into the cache |
 | `Conversation` | Comments, questions and answers, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout`, the password change — the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
@@ -140,7 +142,9 @@ TicketRelations (detail page): comment/question/link of its key ─► that part
 ```
 
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
-overview and the detail page at once. `comment.changed` and `interest.changed` do not refetch the
+board, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
+moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); the board holds
+itself while a card is dragged ([the board](#the-board)). `comment.changed` and `interest.changed` do not refetch the
 ticket — its version counts its own fields only ([ADR 0050] D1) — while `question.changed` and
 `link.changed` do, because they re-derive its urgency. `resync` (the stream could not replay a
 gap) and the fallback's `poll` reload every open list and refetch the tickets a detail view
@@ -150,6 +154,199 @@ shows. While the tab is hidden, events wait and arrive merged when it is visible
 `event: unavailable` switch to polling — a `poll` every 15 s and a new stream every 60 s; the
 first `open` ends it. The live indicator in the top bar shows `Live`, `Connecting` or `Polling`.
 A poll reloads the lists in full; the `If-None-Match` of D7 is outstanding.
+
+## The backlog
+
+A project has two views under one header, [`ProjectHeader`](../../frontend/src/app/features/project/project-header.ts):
+the key, the name and the description, the settings, *New ticket*, and the tabs *Backlog* and
+*Board*, router links to `/t/:tenant/p/:project/backlog` and `…/board`; the project's address
+without a view redirects to the backlog ([`app.routes.ts`](../../frontend/src/app/app.routes.ts)).
+The board is [its own section](#the-board).
+
+The backlog ([`backlog.ts`](../../frontend/src/app/features/project/backlog.ts), [ADR 0018] D1) is
+one `<table>` with a `<tbody cdkDropList>` per urgency group, in the order `now`, `release`, `next`,
+`later`, `icebox`. Each group starts with a header row — its name, its count, and the meaning of
+[`vocabulary.ts`](../../frontend/src/app/shared/vocabulary.ts) as a tooltip — and lists its rows in
+the order the list answered, which is the project's rank; the page never sees a rank key.
+`release` and `icebox` are in the table while they hold a ticket. The columns are the drag handle,
+the key (on one line; a key longer than its column ends in an ellipsis), the title (type, title,
+security badge, and a chip with the parent's key where the parent
+is in another group or not in the list), the size, the state, the severity, the assignee, the bar of
+the stage the ticket works on ([the progress stages](#the-progress-stages-and-the-done-dialog); a
+dash for `decided`, which waits, and for a closed ticket), the last update and the row's menu. The decisions are pure functions in
+[`backlog-model.ts`](../../frontend/src/app/features/project/backlog-model.ts):
+
+| Function | Decides |
+|---|---|
+| `arrange` | The five groups; a child whose parent is in its group stands indented under it, the children in their rank |
+| `planDrop` | What a drop asks for, from the group it came from, the group it ended in and the index there |
+| `planStep`, `planGroup` | What the row's menu asks for: a place among the siblings, or the end of another group |
+| `movedKeys`, `unanswered`, `withMoves` | The order the page shows while its own moves are not in the list yet |
+
+The page scrolls in the shell's `<main class="content">`, which is a `cdkScrollable`
+([`shell.html`](../../frontend/src/app/layout/shell.html)): the CDK takes its drop lists' scroll
+containers from the `ScrollDispatcher`, so it scrolls that area while a row is held at its top or
+bottom edge, and keeps its measures of the lists when the area scrolls during a drag.
+
+A row is dragged by its handle (the CDK, `cdkDropListGroup` connecting the groups); a place is
+always one among the row's siblings — a root among the roots of the group, so that a drop inside a
+family puts it behind the family, a child among its parent's children — and a filtered list places
+it next to the rows it shows, which the rank route takes:
+
+| Where the row lands | Calls |
+|---|---|
+| Its group, at the top | `PUT …/tickets/{number}/rank` with `{before}` the first sibling |
+| Its group, elsewhere | `PUT …/rank` with `{after}` the sibling above |
+| Its group where it was, a child outside its parent's family, beside the table | Nothing; the row goes back |
+| Another group, which is the ticket's `urgency_derived` | `DELETE …/urgency-override` with `If-Match`, then the rank as above |
+| Another group | `PUT …/urgency-override` `{value}` with `If-Match`, then the rank as above, then the reason field |
+| Another group that is empty, or a child outside its parent's family there | The urgency write only (and the reason field after an override) |
+
+The menu of a row — *Move up*, *Move down*, *Move to top*, *Move to bottom*, *Move to* each other
+group, at its end — makes the same calls for the keyboard and screen readers, which the CDK drag
+does not serve; the focus goes back to the row's menu button and a live region says where the
+ticket went.
+
+**The writes** of the moves run one after the other through `TicketActions` (`rank`,
+`overrideUrgency`, `withdrawUrgency`), and a move shows before them: its group from a map of the
+urgencies on their way, its place as a `Move` on top of the list's order. A failure takes back what
+was not written — the row is where the list and the cache have it —, shows the problem and reloads
+the list. A `412` on the urgency refetches the ticket and writes once more while its urgency is
+still the one the cache held; otherwise somebody else decided it, and the person is told. After an
+override a field in the row offers the reason, which a person may leave out ([ADR 0010] D3): Enter
+sends the override again with the same value, the reason and the newer `ETag`; Escape, an empty
+Enter or leaving the field drops it. A request carries a reason only when one was typed.
+
+**Live.** While a row is dragged, the table shows the groups as they were when it was picked up,
+and the list and the cache go on underneath; the drop applies what changed with the move on top.
+The empty `release` and `icebox` groups are drop zones in a bar docked at the bottom of the window
+meanwhile: in the table, `release` would push the rows below it from under the pointer, and either
+could be out of view. The CDK measures its lists as the drag starts, so the page renders the bar in
+the drag's start event. A `Move` stays on top of every answer of the list until one has the ticket
+at the version the rank write returned, or a later one (`TicketPage.versions`), or no longer has
+the ticket: an answer the server gave before the move cannot take the row back, and the answer that
+follows the move's own event changes nothing.
+
+**Loading.** `projectTicketPages` follows the cursor at `pageSize`, 200 — the default of
+`COWORK_MAX_PAGE_SIZE` — for as many pages as the page holds: *Load more* adds one, a reload asks
+for all of them again, and the search (250 ms after the last keystroke) and the state filter start
+at one page again ([ADR 0048] D4). Closed tickets, `done` and `dropped`, are a second list, asked
+for only while *Show closed* is on, below the groups and not draggable; the address
+`…/backlog?closed=true` starts with it on. With `&done_after=` and a time, as the board's count of
+done tickets links it, the section is the tickets done after that time (`state=done` and
+`done_after`), headed *done since* that time, until *Show all closed* goes back to every closed
+ticket; a `done_after` that is no time is left out.
+
+**The size.** [`SizeIcon`](../../frontend/src/app/shared/size.ts), `<app-size [value]="ticket.effort" />`,
+draws the effort as a T-shirt outline in inline SVG in the muted text colour with the letter on it,
+names itself `Effort M` as an image, and says so in its tooltip. The board's cards carry it as
+well (ADR 0018 D1).
+
+## The board
+
+The board ([`board.ts`](../../frontend/src/app/features/project/board.ts), [ADR 0018] D1) shows the
+current work under the project header: on the left the column *Next*, then *Refinement*, *Ready*,
+*In Progress*, *Blocked* and *Review*, a view over the states of [ADR 0009] D1. Its list is the
+project's open tickets of urgency `now`, `release` and `next`, every page of it
+(`projectTicketPages` with `urgency` and no page limit), in the project's rank; the cards read the
+tickets through the cache. A parent is never on it — `progress_derived` is true exactly for a ticket
+with children — and neither are `later`, `icebox`, `done` and `dropped`. The decisions are pure
+functions in [`board-model.ts`](../../frontend/src/app/features/project/board-model.ts):
+
+| Function | Decides |
+|---|---|
+| `columnSpecs`, `columnOf` | The five state columns, the states each holds (Refinement `filed` and `analysed`) and the WIP limit each counts against (Refinement the `analysed` one) |
+| `placeOf` | Where a ticket stands: an open leaf of urgency `now` or `release` in the column of its state, one of urgency `next` in *Next* whatever its state, anything else nowhere |
+| `arrange` | The columns in the order of the list, each with its count, its limit and whether it is over the limit |
+| `dropMove`, `dropTargets` | The transition a drop on a column is — the move of [`transitions.ts`](../../frontend/src/app/shared/transitions.ts) to a state of that column, forward, back, into `blocked` or out of it — or none |
+| `cardAction`, `menuMoves` | The move inside the card's own column (`filed → analysed`), and the card's menu: that action, then a move to each column that takes the card |
+
+**The columns.** Each state column shows its count against the project's WIP limit as `2 / 3` and
+is marked where it holds more ([ADR 0019] D3), the limit never refusing a card; *Next* counts its
+cards. The project's settings
+([`project-settings.ts`](../../frontend/src/app/features/project/project-settings.ts)) name the
+five limits as the board names its columns, each with the states it counts. Above the columns, the
+number of tickets done in the last fourteen days — the project list with `state=done`, `done_after`
+fourteen days back rounded down to the hour, and a numbered page for its `total` — links to these
+tickets in the backlog, `…/backlog?closed=true&done_after=` with the same time. There is no column
+for `done` or `dropped`.
+
+**The cards** ([`board-card.ts`](../../frontend/src/app/features/project/board-card.ts)) carry the
+type and the key (a link to the ticket), the title, `release` where that is the urgency, the state
+in Refinement, which holds two, severity and security, the bar of the stage its state works on
+([the progress stages](#the-progress-stages-and-the-done-dialog): none in Ready, in Blocked the
+stage of the state the block came from), the block's kind and reason on a
+blocked card, the count of open prerequisites (`open_prerequisites`) when there are any, the size
+and the assignee. A filed card has a button to `analysed`, its card action; every card with a move
+has a menu. A click on a card opens the ticket — except the click that ends a drag. The cards of
+*Next* are compact — key, size, title, state — with a button *Now*.
+
+A card is dragged with the CDK between the state columns (`cdkDropListGroup`); *Next* takes no drop
+and its cards are not dragged. A column takes a card only where `dropMove` has a move
+(`cdkDropListEnterPredicate`), its own column too, so that a card can go back; while a card is
+dragged the columns it may go to are marked and the others step back. No list sorts
+(`cdkDropListSortingDisabled`): no drop changes the rank, and a card stands where the rank puts it.
+The board scrolls sideways where the window is narrow; like the shell's content area it is a
+`cdkScrollable`, so a card held at its edge scrolls it to the columns out of view.
+
+| What happens | Calls |
+|---|---|
+| A drop on a column whose move needs nothing: `analysed → decided`, `decided → in-progress`, `in-progress → review`, the unblock to where the block came from | `POST …/transitions` `{to}` at once |
+| A drop whose move needs input: back (`decided → analysed`, `in-progress → decided` or `analysed`, `review → in-progress`) or into `blocked` | The move's dialog first (the reason, or the block's kind and text), then the same call |
+| A drop on its own column, beside the board, or where the card is not taken | Nothing; the card goes back |
+| The card action | `POST …/transitions` `{to: analysed}` |
+| *Now* on a card of *Next* | `PUT …/urgency-override` `{value: now}` without a reason ([ADR 0010] D3), or `DELETE` where the ticket derives `now` |
+
+A move shows at once: the card stands in its new column with the state it goes to — while its
+dialog is open, too — and goes back when the dialog is cancelled or a write without a dialog fails,
+which is toasted (a failed transition reloads the list as well); a refusal inside the dialog stays
+in its form. The card's menu makes the same moves for the keyboard. After a move from the menu, the
+card action or *Now* — the button the move started from may be gone with the card — the focus goes
+to the card's menu button where the card went, or to its *Now* where a refused *Now* put it back in
+*Next*; in WebKit the refusal's toast takes the focus instead, its close button being marked
+`autofocus` by PrimeNG. A live region says where the card went.
+
+**Live.** The board's lists are the service's, so an event reloads them and refetches a cached
+ticket, and a card moves where another person moved it. While a card is dragged the board shows the
+columns as they were when it was picked up — the CDK measures its lists as the drag starts, and the
+card must not be moved from under the pointer — and applies what changed once it is put down.
+
+## The progress stages and the done dialog
+
+A ticket has three progress stages ([ADR 0017] D2): refinement (`progress_refinement`), implementation
+(`progress`) and review (`progress_review`). [`stages.ts`](../../frontend/src/app/shared/stages.ts)
+names them and decides what a write of them does, as `EffectOfStages` in
+[`progress.go`](../../backend/internal/domain/progress.go) does ([ADR 0009] D5): bringing the last of
+an open ticket's stages to 100 is the done act; lowering one of a ticket done by its stages
+(`state` `done` and not `done_by_hand`) reopens it; anything else — a ticket done by hand, a dropped
+ticket, a parent, whose stages its children make — changes the stages only. `currentStage` is the
+stage a ticket works on: refinement for `filed` and `analysed`, implementation for `in-progress`,
+review for `review`, for `blocked` the stage of the state it came from, and none for `decided` and the
+closed states.
+
+[`StageBar`](../../frontend/src/app/shared/stage-bar.ts), `<app-stage-bar [stage] [value] [derived]>`,
+draws one stage as a filled track, a progress bar named `Implementation 40%` (`, from its children`
+for a parent). The backlog's progress column and the board's cards show the current stage with it.
+
+**The detail page** ([`ticket-fields.ts`](../../frontend/src/app/features/ticket/ticket-fields.ts))
+shows the three stages, each with a slider in steps of five, the current one named in full colour;
+a parent shows its three as bars. A moved slider shows its value at once and is written once the sliders rest for
+400 ms, every stage moved in one `PATCH` with the cached `ETag`. A write that would close the ticket
+opens the done dialog first, and one that would reopen it asks for the reason first; the sliders
+show the moved value meanwhile, and go back to the ticket's when the dialog is cancelled. A move made
+just before the page goes away is written then, unless it needs the dialog.
+
+**The dialog** ([`move-dialog.ts`](../../frontend/src/app/features/ticket/move-dialog.ts)) asks for
+what a request needs and sends it: a transition with its reason, the block's kind and text, or the
+verification note of done by hand (`POST …/transitions`); the stage write that closes the ticket with
+the note, or the one that reopens it with the reason (`PATCH` with the stages and `note` or `reason`).
+For done, by hand or by the stages, it offers the override of open prerequisites with its own reason
+([ADR 0012] D7) where the ticket counts open prerequisites, or once the server refused over them. It
+stays open while its request runs ([`keepOpenWhile`](../../frontend/src/app/shared/keep-open.ts)),
+shows a refusal in the form, and says `true` on `closed` once the write went through, whose answer is
+in the cache then. The detail page's moves
+([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts)) and the board use it
+too.
 
 ## The generated client
 
@@ -168,9 +365,13 @@ login page only goes back to a path of this application, never to another site
 ([`login.ts`](../../frontend/src/app/features/auth/login.ts) `safeReturn`).
 
 **Transitions** mirror the server's matrix ([`transitions.ts`](../../frontend/src/app/shared/transitions.ts)
-against `backend/internal/domain/transition.go`): the page offers only moves the server accepts,
-and the server still decides. A write's own event refetches nothing, because the write put that
-version into the cache already.
+against `backend/internal/domain/transition.go`): forward one step up to `review`, back with a
+reason, into `blocked` with a block and out of it to where it came from, done by hand from every open
+state with the verification note — the page is a person's; an agent may close only from
+`in-progress` and `review` —, its withdrawal to `done_from` with a reason, `dropped` with a reason
+and the reopen of a dropped ticket. A ticket done by its stages has no move; a lower stage is its
+way out. The page offers only moves the server accepts, and the server still decides. A write's own
+event refetches nothing, because the write put that version into the cache already.
 
 ## The development loop
 
@@ -179,8 +380,8 @@ MinIO containers, the migration, the backend built from source on `:8080` (log i
 `.dev/backend.log`) with the local administrator `dev`, the person `dev` with the tenant `dev`
 and a second person (`sam`) from `make dev-seed`, demo data in the tenant `dev` when it has no
 project ([`dev_demo.py`](../../hack/dev_demo.py): three projects, twenty-one tickets in every
-state, questions, comments, links, agent acts — written with a seeded token straight to the
-backend), and `ng serve --ssl` on <https://localhost:4200>. A saved file reloads the page —
+state but `review`, of the three progress stages only implementation set, questions, comments,
+links, agent acts — written with a seeded token straight to the backend), and `ng serve --ssl` on <https://localhost:4200>. A saved file reloads the page —
 styles without a reload. Ctrl-C stops the backend and the dev server; `make dev-reset` empties
 the database for a fresh seed. The design preview is at `/dev/design`, in development builds only
 (`fileReplacements` swap [`dev.routes.ts`](../../frontend/src/app/dev/dev.routes.ts) for an empty
@@ -211,10 +412,17 @@ against the generated client with `HttpTestingController`, components against mo
 (ADR 0053 D7). The generated client, `main.ts` and the production route stub are excluded from
 coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
 
+[ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
+[ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
+[ADR 0012]: ../adr/0012-four-typed-directed-links-within-a-tenant.md
+[ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
+[ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
+[ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md
 [ADR 0038]: ../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
+[ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0052]: ../adr/0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md
 [ADR 0053]: ../adr/0053-signals-and-services-no-store-framework.md

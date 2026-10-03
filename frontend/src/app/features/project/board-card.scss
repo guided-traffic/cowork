@@ -1,0 +1,164 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem 0.75rem;
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-lg);
+  background: var(--p-app-raised);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--p-text-color) 8%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--p-primary-color) 45%, var(--p-app-border));
+  }
+}
+
+:host(.compact) {
+  gap: 0.375rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+}
+
+.top,
+.foot,
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+// The button of a compact card goes below the state where the column is too narrow for both.
+:host(.compact) .foot {
+  flex-wrap: wrap;
+  row-gap: 0.375rem;
+
+  .now {
+    margin-left: auto;
+  }
+}
+
+.badges {
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.key {
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--p-text-muted-color);
+
+  &:hover {
+    color: var(--p-text-color);
+  }
+}
+
+.release {
+  --accent: var(--p-severity-medium);
+}
+
+.menu-button {
+  margin: -0.25rem -0.375rem -0.25rem 0;
+}
+
+// Two lines of the title, then an ellipsis; the detail has the rest.
+.title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+:host(.compact) .title {
+  font-size: 0.875rem;
+}
+
+.stage {
+  margin: 0.125rem 0;
+}
+
+.block,
+.prerequisites {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.8125rem;
+
+  .pi {
+    margin-top: 0.1875rem;
+    font-size: 0.75rem;
+  }
+}
+
+.block {
+  color: var(--p-state-blocked);
+
+  span {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    color: var(--p-text-color);
+    overflow-wrap: anywhere;
+  }
+
+  strong {
+    font-weight: 600;
+    color: var(--p-state-blocked);
+  }
+}
+
+.prerequisites {
+  color: var(--p-text-muted-color);
+}
+
+.assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--p-text-muted-color);
+
+  .pi {
+    font-size: 0.75rem;
+  }
+}
+
+.action,
+.now {
+  flex: none;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+
+  .pi {
+    font-size: 0.6875rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host {
+    transition: none;
+  }
+}

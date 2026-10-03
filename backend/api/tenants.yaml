@@ -240,8 +240,11 @@ project:
   patch:
     operationId: updateProject
     tags: [projects]
-    summary: Change a project's name or description
-    description: An administrator's act with `admin` scope; `If-Match` is required.
+    summary: Change a project's name, description or WIP limits
+    description: |
+      A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+      `If-Match` is required. The WIP limits are advisory, per state, `review` included
+      (docs/adr/0019 D3).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:
@@ -297,7 +300,8 @@ tenantTickets:
     description: |
       The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
       value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
-      show only with include_terminal or when state names them.
+      show only with include_terminal or when state names them; done_after keeps those done
+      after a time.
     parameters:
       - $ref: './components/parameters.yaml#/FilterProject'
       - $ref: './components/parameters.yaml#/FilterState'
@@ -315,6 +319,7 @@ tenantTickets:
       - $ref: './components/parameters.yaml#/OpenedBefore'
       - $ref: './components/parameters.yaml#/UpdatedAfter'
       - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/DoneAfter'
       - $ref: './components/parameters.yaml#/Query'
       - $ref: './components/parameters.yaml#/IncludeTerminal'
       - $ref: './components/parameters.yaml#/FilterBlocked'
@@ -351,7 +356,14 @@ projectTickets:
   get:
     operationId: listProjectTickets
     tags: [tickets]
-    summary: The project's tickets, in the order they were filed
+    summary: The project's tickets, in the project's rank
+    description: |
+      The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+      a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+      and the number sealed, since a key is computed over tickets the caller may not see, and is
+      bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+      D5). `state=done&done_after=<time>` counts what the board shows for done
+      (docs/adr/0018 D1).
     parameters:
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
@@ -368,6 +380,7 @@ projectTickets:
       - $ref: './components/parameters.yaml#/OpenedBefore'
       - $ref: './components/parameters.yaml#/UpdatedAfter'
       - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/DoneAfter'
       - $ref: './components/parameters.yaml#/Query'
       - $ref: './components/parameters.yaml#/IncludeTerminal'
       - $ref: './components/parameters.yaml#/FilterBlocked'
@@ -403,8 +416,9 @@ projectTickets:
     summary: File a ticket
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-      the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-      class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+      the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+      (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+      (docs/adr/0065 D2). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -461,6 +475,21 @@ ticket:
     description: |
       `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
       assignee (docs/adr/0065 D9).
+
+      The three progress stages — `progress_refinement`, `progress` (implementation),
+      `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+      ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+      A change that brings the last of the three to 100 on a ticket without children is the done act
+      in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+      verification (400 at `/note` otherwise); over open prerequisites it is 409
+      `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+      needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+      overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+      it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+      A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+      `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+      hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+      on a change that moves no state are 400. The version rises once.
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:
@@ -519,10 +548,13 @@ ticketUrgencyOverride:
   put:
     operationId: overrideUrgency
     tags: [tickets]
-    summary: Override the derived urgency with a reason
+    summary: Override the derived urgency
     description: |
-      The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
-      needs the override-urgency capability (docs/adr/0043 D4).
+      The override holds until a person or an agent withdraws it or sets another; when an input of
+      the derivation changes, the derived value and its rule change beside it and the override stays
+      (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
+      without one is 400 at `/reason`. An agent needs the override-urgency capability
+      (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:
@@ -547,6 +579,7 @@ ticketUrgencyOverride:
     operationId: withdrawUrgencyOverride
     tags: [tickets]
     summary: Withdraw the urgency override
+    description: The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     responses:

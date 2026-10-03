@@ -147,7 +147,8 @@
     </div>
   </nav>
 
-  <main class="content">
+  <!-- The page scrolls here, not in the window: a drag scrolls it at its edges and follows its scroll. -->
+  <main class="content" cdkScrollable>
     <router-outlet />
   </main>
 </div>

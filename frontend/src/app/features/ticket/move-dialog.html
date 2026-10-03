@@ -1,0 +1,107 @@
+<p-dialog
+  [visible]="request() !== null"
+  (visibleChange)="$event || cancel()"
+  [modal]="true"
+  [draggable]="false"
+  [closable]="!busy()"
+  [style]="{ width: '32rem' }"
+  [header]="title()"
+  data-testid="move-dialog"
+>
+  @if (request()) {
+    <form class="form" (ngSubmit)="send()">
+      @if (explanation(); as text) {
+        <p class="explanation muted" data-testid="move-explanation">{{ text }}</p>
+      }
+      @if (input() === 'block') {
+        <div class="field">
+          <span id="block-kind-label">Waits on</span>
+          <p-select
+            [options]="blockKinds"
+            [ngModel]="blockKind()"
+            (ngModelChange)="blockKind.set($event)"
+            name="kind"
+            size="small"
+            ariaLabelledBy="block-kind-label"
+            data-testid="block-kind"
+          />
+        </div>
+        @if (blockKind() === 'ticket') {
+          <label class="field">
+            <span>The ticket it waits on</span>
+            <input
+              pInputText
+              name="blockTicket"
+              [ngModel]="blockTicket()"
+              (ngModelChange)="blockTicket.set($event)"
+              placeholder="COW-12"
+              data-testid="block-ticket"
+            />
+          </label>
+        }
+      }
+      @if (input() !== 'none') {
+        <label class="field">
+          <span>{{ input() === 'note' ? 'Verification note' : 'Reason' }}</span>
+          <textarea
+            pTextarea
+            name="text"
+            rows="4"
+            [ngModel]="text()"
+            (ngModelChange)="text.set($event)"
+            [placeholder]="
+              input() === 'note' ? 'What was run, against what, with what result' : 'Why'
+            "
+            data-testid="move-text"
+          ></textarea>
+        </label>
+      }
+      @if (offersOverride()) {
+        <label class="override">
+          <p-checkbox
+            [binary]="true"
+            [ngModel]="override()"
+            (ngModelChange)="override.set($event)"
+            name="override"
+          />
+          <span data-testid="override-label">{{ overrideLabel() }}</span>
+        </label>
+        @if (override()) {
+          <label class="field">
+            <span>Why it may close before them</span>
+            <textarea
+              pTextarea
+              name="overrideReason"
+              rows="2"
+              [ngModel]="overrideReason()"
+              (ngModelChange)="overrideReason.set($event)"
+              data-testid="override-reason"
+            ></textarea>
+          </label>
+        }
+      }
+      @if (error(); as message) {
+        <small class="error" role="alert" data-testid="move-error">{{ message }}</small>
+      }
+      <div class="actions">
+        <button
+          pButton
+          type="button"
+          [text]="true"
+          severity="secondary"
+          [disabled]="busy()"
+          (click)="cancel()"
+          data-testid="move-cancel"
+        >
+          Cancel
+        </button>
+        <button pButton type="submit" data-testid="move-send" [disabled]="!canSend()">
+          @if (busy()) {
+            <i class="pi pi-spinner pi-spin"></i>
+          }
+          {{ sendLabel() }}
+        </button>
+      </div>
+    </form>
+  }
+</p-dialog>

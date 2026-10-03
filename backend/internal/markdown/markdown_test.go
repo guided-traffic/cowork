@@ -29,19 +29,19 @@ func TestRender(t *testing.T) {
 		"every-key": {
 			Key: "acme/VKO-12", Title: "Export drops attachments: zip is empty", Type: "bug", State: "in-progress",
 			Severity: "high", Security: "hardening", Threat: "a crafted name could escape the archive",
-			Urgency: "now", Effort: "M", Progress: 40, Assignee: "Ada Lovelace", Parent: "acme/VKO-3",
+			Urgency: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace", Parent: "acme/VKO-3",
 			Opened: *at("2026-09-30T22:30:00-02:00"), Decided: at("2026-10-01T09:00:00Z"),
 			Attachments: []string{"trace.txt", "screen \"1\".png"},
 			Body:        "## Current state\n\nThe zip has no files.\n",
 		},
 		"blocked": {
 			Key: "acme/VKO-13", Title: "Wait for the release", Type: "task", State: "blocked", Severity: "low",
-			Security: "none", Urgency: "release", Effort: "S", Opened: *at("2026-10-01T00:00:00Z"),
-			BlockedBy: "release", BlockedReason: "needs 2.0 out", BlockedFrom: "decided",
+			Security: "none", Urgency: "release", Effort: "S", ProgressRefinement: 100, Opened: *at("2026-10-01T00:00:00Z"),
+			BlockedBy: "release", BlockedReason: "needs 2.0 out", BlockedFrom: "review",
 		},
 		"done": {
 			Key: "acme/VKO-14", Title: "Fix it", Type: "bug", State: "done", Severity: "medium", Security: "none",
-			Urgency: "later", Effort: "XS", Progress: 100, Opened: *at("2026-10-01T00:00:00Z"),
+			Urgency: "later", Effort: "XS", ProgressRefinement: 100, Progress: 100, ProgressReview: 100, Opened: *at("2026-10-01T00:00:00Z"),
 			Decided: at("2026-10-01T10:00:00Z"), Done: at("2026-10-02T10:00:00Z"),
 			Shipped: "make test-integration passed against PostgreSQL 18.6",
 		},

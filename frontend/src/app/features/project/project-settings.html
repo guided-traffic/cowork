@@ -32,27 +32,30 @@
       <div class="field">
         <span id="wip-label">Work-in-progress limits</span>
         <div class="limits" aria-labelledby="wip-label">
-          @for (column of columns; track column) {
+          @for (column of columns; track column.key) {
             <div class="limit">
-              <span class="muted" [id]="'wip-' + column">{{ column }}</span>
+              <span class="column" [id]="'wip-' + column.key">{{ column.column }}</span>
+              <span class="muted counts" [id]="'wip-counts-' + column.key">{{
+                column.counts
+              }}</span>
               <p-inputnumber
-                [ngModel]="limits()[column] ?? null"
-                (ngModelChange)="setLimit(column, $event)"
-                [name]="'wip-' + column"
+                [ngModel]="limits()[column.key] ?? null"
+                (ngModelChange)="setLimit(column.key, $event)"
+                [name]="'wip-' + column.key"
                 [min]="1"
                 [max]="999"
                 [showButtons]="false"
                 placeholder="none"
                 size="small"
-                [ariaLabelledBy]="'wip-' + column"
-                [attr.data-testid]="'wip-' + column"
+                [ariaLabelledBy]="'wip-' + column.key + ' wip-counts-' + column.key"
+                [attr.data-testid]="'wip-' + column.key"
               />
             </div>
           }
         </div>
         <small class="muted"
-          >Empty means no limit; a full column still takes a ticket and is marked
-          (docs/adr/0019).</small
+          >One per column of the board. Empty means no limit; a full column still takes a ticket and
+          is marked (docs/adr/0019).</small
         >
       </div>
       <div class="actions">

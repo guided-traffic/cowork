@@ -6,6 +6,10 @@ import { Urgency } from '../models/urgency';
 export interface UrgencyOverride {
   at: string;
   by?: (Person | null);
-  reason: string;
+
+  /**
+   * Null when a person set the override without one (docs/adr/0010 D3)
+   */
+  reason: (string | null);
   value: Urgency;
 }

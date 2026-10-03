@@ -1,23 +1,26 @@
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, UrlTree } from '@angular/router';
-import { MessageService } from 'primeng/api';
+import { MenuItem, MessageService } from 'primeng/api';
+import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
-import { Table, TableLazyLoadEvent } from 'primeng/table';
+import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
-import type { MockInstance } from 'vitest';
-import { Problem, Project, Ticket, TicketState } from '../../api/models';
+import type { Mock, MockInstance } from 'vitest';
+import { Problem, Project, Ticket, TicketState, Urgency } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
-import { TicketActions } from '../../core/ticket-actions.service';
-import { TicketPage, TicketsService } from '../../core/tickets.service';
-import { Clock } from '../../shared/time';
-import { NewTicketDialog } from '../ticket/new-ticket-dialog';
+import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
+import { ProjectTicketPagesParams, TicketPage, TicketsService } from '../../core/tickets.service';
+import { Clock, dateTime } from '../../shared/time';
 import { Backlog } from './backlog';
+import { Group } from './backlog-model';
+import { ProjectHeader } from './project-header';
 
 const now = Date.parse('2026-10-03T12:00:00Z');
 const ada = { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' };
@@ -43,6 +46,8 @@ function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
     parent: null,
     effort: 'M',
     progress: 0,
+    progress_refinement: 0,
+    progress_review: 0,
     progress_derived: false,
     urgency: 'later',
     urgency_derived: 'later',
@@ -53,9 +58,12 @@ function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
     updated_at: '2026-10-03T11:55:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version: 1,
     ...overrides,
-  };
+  } as Ticket;
 }
 
 const cowork: Project = {
@@ -70,57 +78,105 @@ const cowork: Project = {
   updated_at: '2026-10-01T09:00:00Z',
 };
 
-interface ListParams {
-  tenant: string;
-  project: string;
-  page: number;
-  per_page: number;
-  include_terminal?: boolean;
-  state?: TicketState[];
-  q?: string;
+/** What a list of the service is as the page sees it, made of signals the test sets. */
+interface FakeList {
+  value: WritableSignal<TicketPage | undefined>;
+  hasValue: () => boolean;
+  isLoading: WritableSignal<boolean>;
+  error: WritableSignal<unknown>;
+  reload: Mock<() => boolean>;
 }
+
+function fakeList(): FakeList {
+  const value = signal<TicketPage | undefined>(undefined);
+  return {
+    value,
+    hasValue: () => value() !== undefined,
+    isLoading: signal(false),
+    error: signal<unknown>(undefined),
+    reload: vi.fn<() => boolean>(() => true),
+  };
+}
+
+/** A promise that the test answers when it is ready to. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
+/** One turn of the event loop, in which what a click or a drop started runs on. */
+const tick = () => new Promise((resolve) => setTimeout(resolve));
+
+const refusal = (status: number, code: Problem['code'], title: string, detail?: string) => {
+  const body: Problem = { type: 'about:blank', title, status, code, ...(detail ? { detail } : {}) };
+  return new HttpErrorResponse({ status, statusText: title, error: body });
+};
 
 describe('Backlog', () => {
   let tenant: WritableSignal<string | null>;
   let projects: WritableSignal<Project[]>;
   let cache: EntityCache<Ticket>;
-  let list: {
-    value: WritableSignal<TicketPage | undefined>;
-    hasValue: () => boolean;
-    isLoading: WritableSignal<boolean>;
-    error: WritableSignal<unknown>;
-    reload: MockInstance<() => boolean>;
-  };
-  let listParams: () => ListParams | undefined;
+  /** The list of the open tickets, and the one of the closed ones: the page asks for them in this order. */
+  let open: FakeList;
+  let closed: FakeList;
+  let openParams: () => ProjectTicketPagesParams | undefined;
+  let closedParams: () => ProjectTicketPagesParams | undefined;
+  let rank: Mock<TicketActions['rank']>;
+  let overrideUrgency: Mock<TicketActions['overrideUrgency']>;
+  let withdrawUrgency: Mock<TicketActions['withdrawUrgency']>;
   let navigate: MockInstance<Router['navigate']>;
   let navigateByUrl: MockInstance<Router['navigateByUrl']>;
+  let toast: MockInstance<MessageService['add']>;
   let warn: MockInstance<typeof console.warn>;
+  /** How many lists the pages of this test have asked for. */
+  let created: number;
 
   beforeEach(() => {
-    // The dialog for a new ticket is part of the page, and the select buttons of PrimeNG in its
-    // form keep an `ngModel` each, which Angular warns about in development builds (NG01354).
-    const original = console.warn.bind(console);
-    warn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
-      if (!String(args[0]).includes('NG01354')) {
-        original(...args);
-      }
-    });
+    created = 0;
+    warn = vi.spyOn(console, 'warn');
     tenant = signal<string | null>('acme');
     projects = signal<Project[]>([cowork]);
     cache = new EntityCache<Ticket>();
-    const value = signal<TicketPage | undefined>(undefined);
-    list = {
-      value,
-      hasValue: () => value() !== undefined,
-      isLoading: signal(false),
-      error: signal<unknown>(undefined),
-      reload: vi.fn<() => boolean>(() => true),
-    };
+    open = fakeList();
+    closed = fakeList();
+    // The writes put their answers into the cache, as the real ones do; a move raises the version.
+    rank = vi.fn<TicketActions['rank']>(async (key) => {
+      const held = cache.value(key) as Ticket;
+      const answer = { ...held, version: held.version + 1 } as Ticket;
+      cache.put(key, answer);
+      return answer;
+    });
+    overrideUrgency = vi.fn<TicketActions['overrideUrgency']>(async (key, value) => {
+      const held = cache.value(key) as Ticket;
+      const answer = {
+        ...held,
+        urgency: value,
+        urgency_override: { value, at: 'then', reason: 'because' },
+        version: held.version + 1,
+      } as Ticket;
+      cache.put(key, answer);
+      return answer;
+    });
+    withdrawUrgency = vi.fn<TicketActions['withdrawUrgency']>(async (key) => {
+      const held = cache.value(key) as Ticket;
+      const answer = {
+        ...held,
+        urgency: held.urgency_derived,
+        urgency_override: null,
+        version: held.version + 1,
+      } as Ticket;
+      cache.put(key, answer);
+      return answer;
+    });
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         MessageService,
-        { provide: TicketActions, useValue: { create: vi.fn() } },
+        {
+          provide: TicketActions,
+          useValue: { create: vi.fn(), rank, overrideUrgency, withdrawUrgency },
+        },
         { provide: MembersService, useValue: { list: signal([]) } },
         { provide: SessionService, useValue: { tenant } },
         {
@@ -131,9 +187,14 @@ describe('Backlog', () => {
           provide: TicketsService,
           useValue: {
             cache,
-            projectTickets: (params: () => ListParams | undefined) => {
-              listParams = params;
-              return list;
+            // Each page asks for its open list first and its closed list second.
+            projectTicketPages: (params: () => ProjectTicketPagesParams | undefined) => {
+              if (created++ % 2 === 0) {
+                openParams = params;
+                return open;
+              }
+              closedParams = params;
+              return closed;
             },
           },
         },
@@ -143,16 +204,29 @@ describe('Backlog', () => {
     const router = TestBed.inject(Router);
     navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
     navigateByUrl = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    toast = vi.spyOn(TestBed.inject(MessageService), 'add');
   });
 
-  afterEach(() => warn.mockRestore());
+  afterEach(() => {
+    // The dialog for a new ticket is part of the page; it must not warn (NG01354).
+    const warnings = warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'));
+    warn.mockRestore();
+    expect(warnings).toEqual([]);
+  });
 
-  /** Puts the tickets into the cache and shows their keys as the one page the list answered. */
-  function load(tickets: Ticket[], total = tickets.length) {
+  /**
+   * Puts the tickets into the cache and shows their keys, in this rank, as the list the server
+   * answered, with the version each had in the answer.
+   */
+  function load(tickets: Ticket[], nextCursor: string | null = null, list = open) {
     for (const each of tickets) {
       cache.put(each.key, each);
     }
-    list.value.set({ keys: tickets.map((each) => each.key), total, nextCursor: null });
+    list.value.set({
+      keys: tickets.map((each) => each.key),
+      nextCursor,
+      versions: new Map(tickets.map((each) => [each.key, each.version])),
+    });
   }
 
   async function render(project = 'COW') {
@@ -162,17 +236,29 @@ describe('Backlog', () => {
     return { fixture, page: fixture.nativeElement as HTMLElement };
   }
 
+  /** Lets what a drop or a click started finish, and shows it. */
+  async function settle(fixture: ComponentFixture<Backlog>) {
+    for (let round = 0; round < 3; round++) {
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+    }
+    await fixture.whenStable();
+  }
+
   const text = (page: HTMLElement, selector: string) =>
     page.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim();
 
-  const lazyLoad = (fixture: ComponentFixture<Backlog>, event: TableLazyLoadEvent) =>
-    fixture.debugElement.query(By.directive(Table)).triggerEventHandler('onLazyLoad', event);
+  const numberOf = (row: Element) => Number(row.getAttribute('data-testid')?.split('-').pop());
 
-  /** What choosing states in the filter, or clearing it (which gives null), tells its model. */
-  const chooseStates = (fixture: ComponentFixture<Backlog>, states: TicketState[] | null) =>
-    fixture.debugElement
-      .query(By.css('[data-testid="state-filter"]'))
-      .triggerEventHandler('ngModelChange', states);
+  /** The numbers of the tickets in the rows of a group, in the order shown. */
+  const rowsIn = (page: HTMLElement, urgency: string) =>
+    [...page.querySelectorAll(`[data-testid="group-${urgency}"] tr.row`)].map(numberOf);
+
+  const groupsShown = (page: HTMLElement) =>
+    [...page.querySelectorAll('tbody.group')].map((group) => group.getAttribute('data-urgency'));
+
+  const rowOf = (page: HTMLElement, number: number) =>
+    page.querySelector<HTMLElement>(`[data-testid="row-acme/COW-${number}"]`);
 
   function type(page: HTMLElement, value: string) {
     const input = page.querySelector<HTMLInputElement>('[data-testid="search"]');
@@ -183,57 +269,365 @@ describe('Backlog', () => {
     input.dispatchEvent(new Event('input'));
   }
 
-  describe('the header', () => {
-    it('shows the key, the name and the description of the project', async () => {
-      const { page } = await render();
+  /** What choosing states in the filter, or clearing it (which gives null), tells its model. */
+  const chooseStates = (fixture: ComponentFixture<Backlog>, states: TicketState[] | null) =>
+    fixture.debugElement
+      .query(By.css('[data-testid="state-filter"]'))
+      .triggerEventHandler('ngModelChange', states);
 
-      expect(text(page, '.head .key')).toBe('COW');
-      expect(text(page, 'h1')).toBe('Cowork');
-      expect(text(page, '.head p.muted')).toBe('The tool itself');
-    });
-
-    it('shows the key in place of the name and no description while the project is not known', async () => {
-      projects.set([]);
+  describe('the groups', () => {
+    it('are a section of one table each, now, next and later, even while empty', async () => {
+      load([]);
 
       const { page } = await render();
 
-      expect(text(page, 'h1')).toBe('COW');
-      expect(page.querySelector('.head p.muted')).toBeNull();
+      expect(page.querySelectorAll('table')).toHaveLength(1);
+      expect(groupsShown(page)).toEqual(['now', 'next', 'later']);
     });
 
-    it('shows no description for a project that has none', async () => {
-      projects.set([{ ...cowork, description: '' }]);
+    it('put each ticket into the group of its urgency, in the order of the list', async () => {
+      load([
+        ticket(1, { urgency: 'later' }),
+        ticket(2, { urgency: 'now' }),
+        ticket(3, { urgency: 'later' }),
+        ticket(4, { urgency: 'next' }),
+        ticket(5, { urgency: 'now' }),
+      ]);
 
       const { page } = await render();
 
-      expect(page.querySelector('.head p.muted')).toBeNull();
+      expect(rowsIn(page, 'now')).toEqual([2, 5]);
+      expect(rowsIn(page, 'next')).toEqual([4]);
+      expect(rowsIn(page, 'later')).toEqual([1, 3]);
     });
 
-    it('follows the project of the path', async () => {
+    it('show release and icebox only while they hold a ticket, in the order now, release, next, later, icebox', async () => {
+      load([
+        ticket(1, { urgency: 'icebox' }),
+        ticket(2, { urgency: 'later' }),
+        ticket(3, { urgency: 'release' }),
+        ticket(4, { urgency: 'now' }),
+        ticket(5, { urgency: 'next' }),
+      ]);
+
+      const { page } = await render();
+
+      expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later', 'icebox']);
+    });
+
+    it('leave out release when only icebox holds a ticket, and the other way round', async () => {
+      load([ticket(1, { urgency: 'icebox' })]);
+      const first = await render();
+      expect(groupsShown(first.page)).toEqual(['now', 'next', 'later', 'icebox']);
+      first.fixture.destroy();
+
+      load([ticket(2, { urgency: 'release' })]);
+      const second = await render();
+      expect(groupsShown(second.page)).toEqual(['now', 'release', 'next', 'later']);
+    });
+
+    it('have a header row with the name, the count and the meaning as a tooltip', async () => {
+      load([ticket(1, { urgency: 'now' }), ticket(2, { urgency: 'now' }), ticket(3)]);
+
       const { fixture, page } = await render();
 
-      fixture.componentRef.setInput('project', 'OPS');
-      await fixture.whenStable();
+      expect(text(page, '[data-testid="group-now"] .group-head .group-name')).toBe('now');
+      expect(text(page, '[data-testid="count-now"]')).toBe('2');
+      expect(text(page, '[data-testid="count-next"]')).toBe('0');
+      expect(text(page, '[data-testid="count-later"]')).toBe('1');
+      const tooltip = (urgency: string) =>
+        fixture.debugElement
+          .query(By.css(`[data-testid="group-${urgency}"] .group-name`))
+          .injector.get(Tooltip)
+          .content();
+      expect(tooltip('now')).toBe(
+        'Now: a defect in unreleased work, or a statement measured false',
+      );
+      expect(tooltip('later')).toBe('A decided or cheap known fix');
+    });
 
-      expect(text(page, '.head .key')).toBe('OPS');
-      expect(text(page, 'h1')).toBe('OPS');
+    it('count the children among the rows of the group', async () => {
+      load([ticket(1), ticket(2, { parent: 'acme/COW-1' })]);
+
+      const { page } = await render();
+
+      expect(text(page, '[data-testid="count-later"]')).toBe('2');
+    });
+
+    it('say that they have no ticket while they have none', async () => {
+      load([ticket(1, { urgency: 'later' })]);
+
+      const { page } = await render();
+
+      expect(text(page, '[data-testid="empty-now"]')).toBe('No tickets');
+      expect(text(page, '[data-testid="empty-next"]')).toBe('No tickets');
+      expect(page.querySelector('[data-testid="empty-later"]')).toBeNull();
+    });
+
+    it('name the key and the title in the header row of each section, which is a header for the rows that follow', async () => {
+      load([]);
+
+      const { page } = await render();
+
+      expect(
+        page.querySelector('[data-testid="group-now"] .group-head th')?.getAttribute('scope'),
+      ).toBe('rowgroup');
     });
   });
 
-  describe('the list request', () => {
-    it('asks for every ticket of the project, finished ones included, on the first page of 25', async () => {
+  describe('a row', () => {
+    it('shows the key, the type, the title, the size, the state, the severity, the assignee, the progress and the age', async () => {
+      load([
+        ticket(1, {
+          type: 'bug',
+          title: 'The board flickers',
+          state: 'blocked',
+          severity: 'high',
+          security: 'boundary',
+          effort: 'L',
+          progress: 60,
+          block: { kind: 'external', from: 'in-progress', reason: 'The provider' },
+          assignee: sam,
+        }),
+      ]);
+
+      const { page } = await render();
+
+      const row = rowOf(page, 1);
+      expect(row?.querySelector('.col-key a')?.textContent).toBe('COW-1');
+      expect(row?.querySelector('.col-key a')?.getAttribute('href')).toBe('/t/acme/tickets/COW-1');
+      expect(row?.querySelector('app-type')?.getAttribute('title')).toContain('bug');
+      expect(row?.querySelector('.col-title .text')?.textContent).toBe('The board flickers');
+      expect(row?.querySelector('[data-security]')?.getAttribute('data-security')).toBe('boundary');
+      expect(row?.querySelector('app-size')?.getAttribute('aria-label')).toBe('Effort L');
+      expect(row?.querySelector('[data-state]')?.getAttribute('data-state')).toBe('blocked');
+      expect(row?.querySelector('[data-severity]')?.getAttribute('data-severity')).toBe('high');
+      expect(row?.querySelector('.col-assignee')?.textContent?.trim()).toBe('Sam Rivera');
+      expect(row?.querySelector('.col-progress app-stage-bar')?.getAttribute('aria-label')).toBe(
+        'Implementation 60%',
+      );
+      expect(row?.querySelector('.col-when')?.textContent).toBe('5 minutes ago');
+    });
+
+    it('has the columns Key, Title, Size, State, Severity, Assignee, Progress and Updated, and no Urgency, which the group says', async () => {
+      load([]);
+
+      const { page } = await render();
+
+      const headers = [...page.querySelectorAll('thead th')].map((th) => th.textContent?.trim());
+      expect(headers).toEqual([
+        'Drag',
+        'Key',
+        'Title',
+        'Size',
+        'State',
+        'Severity',
+        'Assignee',
+        'Progress',
+        'Updated',
+        'Move',
+      ]);
+    });
+
+    it('shows the bar of the stage the ticket works on, and says where a parent has it from', async () => {
+      load([
+        ticket(1, { state: 'in-progress', progress: 60, progress_derived: true }),
+        ticket(2, { state: 'analysed', progress_refinement: 40 }),
+        ticket(3, { state: 'review', progress_review: 25 }),
+        ticket(4, {
+          state: 'blocked',
+          progress_refinement: 75,
+          block: { kind: 'human', from: 'filed', reason: 'Waiting' },
+        }),
+      ]);
+
+      const { page } = await render();
+
+      const bar = (number: number) =>
+        rowOf(page, number)
+          ?.querySelector('.col-progress app-stage-bar')
+          ?.getAttribute('aria-label');
+      expect(bar(1)).toBe('Implementation 60%, from its children');
+      expect(bar(2)).toBe('Refinement 40%');
+      expect(bar(3)).toBe('Review 25%');
+      expect(bar(4)).toBe('Refinement 75%');
+    });
+
+    it('shows a dash for a decided ticket, which waits and has no stage of its own', async () => {
+      load([ticket(1, { state: 'decided', progress: 30 })]);
+
+      const { page } = await render();
+
+      expect(rowOf(page, 1)?.querySelector('.col-progress app-stage-bar')).toBeNull();
+      expect(text(page, '[data-testid="row-acme/COW-1"] .col-progress')).toBe('—');
+    });
+
+    it('shows a dash for a ticket nobody is assigned to and no security badge for none', async () => {
+      load([ticket(1, { assignee: null, security: 'none' })]);
+
+      const { page } = await render();
+
+      expect(rowOf(page, 1)?.querySelector('.col-assignee')?.textContent?.trim()).toBe('—');
+      expect(rowOf(page, 1)?.querySelector('[data-security]')).toBeNull();
+    });
+
+    it('shows what a refetch of a ticket put into the cache', async () => {
+      load([ticket(1, { title: 'Before' })]);
+      const { fixture, page } = await render();
+
+      cache.put('acme/COW-1', ticket(1, { title: 'After', version: 2 }));
+      await fixture.whenStable();
+
+      expect(text(page, '[data-testid="row-acme/COW-1"] .text')).toBe('After');
+    });
+
+    it('moves to the group that a refetched ticket belongs to now', async () => {
+      load([ticket(1, { urgency: 'later' }), ticket(2, { urgency: 'later' })]);
+      const { fixture, page } = await render();
+
+      cache.put('acme/COW-1', ticket(1, { urgency: 'now', version: 2 }));
+      await fixture.whenStable();
+
+      expect(rowsIn(page, 'now')).toEqual([1]);
+      expect(rowsIn(page, 'later')).toEqual([2]);
+    });
+
+    it('leaves out a ticket that the cache no longer holds', async () => {
+      load([ticket(1), ticket(2)]);
+      const { fixture, page } = await render();
+
+      cache.delete('acme/COW-1');
+      await fixture.whenStable();
+
+      expect(rowOf(page, 1)).toBeNull();
+      expect(rowOf(page, 2)).not.toBeNull();
+    });
+
+    it('goes to the page of the ticket under the tenant when it is clicked', async () => {
+      load([ticket(1), ticket(2)]);
+      const { page } = await render();
+
+      rowOf(page, 2)?.click();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'tickets', 'COW-2']);
+    });
+
+    it('opens nothing when the handle is clicked, which is a drag that did not happen', async () => {
+      load([ticket(1)]);
+      const { page } = await render();
+
+      rowOf(page, 1)?.querySelector<HTMLElement>('[data-testid="grip"]')?.click();
+      rowOf(page, 1)?.querySelector<HTMLElement>('.col-handle')?.click();
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('leaves the navigation to the link when the key itself is clicked', async () => {
+      load([ticket(1)]);
+      const { page } = await render();
+
+      rowOf(page, 1)?.querySelector<HTMLElement>('.col-key a')?.click();
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateByUrl).toHaveBeenCalledOnce();
+      const target = navigateByUrl.mock.calls[0][0] as UrlTree;
+      expect(TestBed.inject(Router).serializeUrl(target)).toBe('/t/acme/tickets/COW-1');
+    });
+
+    it('keeps its key on one line, and ends a key longer than the column in an ellipsis', async () => {
+      load([ticket(1234)]);
+      const { page } = await render();
+
+      const cell = getComputedStyle(rowOf(page, 1234)!.querySelector('td.col-key')!);
+      expect(cell.whiteSpace).toBe('nowrap');
+      expect(cell.overflow).toBe('hidden');
+      expect(cell.textOverflow).toBe('ellipsis');
+    });
+  });
+
+  describe('a family', () => {
+    it('shows a child under its parent where both are in the group, indented', async () => {
+      load([
+        ticket(1),
+        ticket(2, { parent: 'acme/COW-3' }),
+        ticket(3),
+        ticket(4, { parent: 'acme/COW-3' }),
+      ]);
+
+      const { page } = await render();
+
+      expect(rowsIn(page, 'later')).toEqual([1, 3, 2, 4]);
+      const indent = (number: number) =>
+        rowOf(page, number)?.querySelector<HTMLElement>('.cell-title')?.style.paddingLeft;
+      expect(indent(3)).toBe('0rem');
+      expect(indent(2)).toBe('1.75rem');
+      expect(indent(4)).toBe('1.75rem');
+      expect(rowOf(page, 2)?.querySelector('.chip')).toBeNull();
+    });
+
+    it('indents a grandchild twice', async () => {
+      load([ticket(1), ticket(2, { parent: 'acme/COW-1' }), ticket(3, { parent: 'acme/COW-2' })]);
+
+      const { page } = await render();
+
+      expect(rowOf(page, 3)?.querySelector<HTMLElement>('.cell-title')?.style.paddingLeft).toBe(
+        '3.5rem',
+      );
+    });
+
+    it('names the parent in a small chip where the parent is in another group, and indents nothing', async () => {
+      load([ticket(1, { urgency: 'now' }), ticket(2, { urgency: 'later', parent: 'acme/COW-1' })]);
+
+      const { page } = await render();
+
+      const row = rowOf(page, 2);
+      expect(row?.querySelector<HTMLElement>('.cell-title')?.style.paddingLeft).toBe('0rem');
+      const chip = row?.querySelector('.chip');
+      expect(chip?.textContent?.trim()).toBe('COW-1');
+      expect(chip?.getAttribute('href')).toBe('/t/acme/tickets/COW-1');
+      expect(chip?.getAttribute('aria-label')).toBe('Parent COW-1');
+    });
+
+    it('names the parent that a filter leaves out as well', async () => {
+      load([ticket(2, { parent: 'acme/COW-1' })]);
+
+      const { page } = await render();
+
+      expect(rowOf(page, 2)?.querySelector('.chip')?.textContent?.trim()).toBe('COW-1');
+    });
+
+    it('leaves the navigation to the chip, which is a link to the parent', async () => {
+      load([ticket(2, { parent: 'acme/COW-1' })]);
+      const { page } = await render();
+
+      rowOf(page, 2)?.querySelector<HTMLElement>('.chip')?.click();
+
+      expect(navigate).not.toHaveBeenCalled();
+      const target = navigateByUrl.mock.calls[0][0] as UrlTree;
+      expect(TestBed.inject(Router).serializeUrl(target)).toBe('/t/acme/tickets/COW-1');
+    });
+
+    it('has no chip for a ticket without a parent', async () => {
+      load([ticket(1)]);
+
+      const { page } = await render();
+
+      expect(rowOf(page, 1)?.querySelector('.chip')).toBeNull();
+    });
+  });
+
+  describe('loading the open tickets', () => {
+    it('asks for the first page of the open tickets of the project, whatever their state, and for no text', async () => {
       await render();
 
-      const params = listParams();
-      expect(params).toMatchObject({
+      expect(openParams()).toEqual({
         tenant: 'acme',
         project: 'COW',
-        page: 1,
-        per_page: 25,
-        include_terminal: true,
+        pages: 1,
+        state: undefined,
+        q: undefined,
       });
-      expect(params?.state).toBeUndefined();
-      expect(params?.q).toBeUndefined();
     });
 
     it('asks for nothing outside a tenant', async () => {
@@ -241,7 +635,8 @@ describe('Backlog', () => {
 
       await render();
 
-      expect(listParams()).toBeUndefined();
+      expect(openParams()).toBeUndefined();
+      expect(closedParams()).toBeUndefined();
     });
 
     it('asks for the project of the path', async () => {
@@ -250,139 +645,68 @@ describe('Backlog', () => {
       fixture.componentRef.setInput('project', 'OPS');
       await fixture.whenStable();
 
-      expect(listParams()?.project).toBe('OPS');
+      expect(openParams()?.project).toBe('OPS');
     });
 
-    // The router reuses the page when only `:project` changes (see app.routes.spec.ts), so the page
-    // number the person was on in one project must not be asked for in the next.
-    it('goes back to the first page when the project changes', async () => {
-      const { fixture } = await render();
-      lazyLoad(fixture, { first: 50, rows: 25 });
-      expect(listParams()?.page).toBe(3);
+    it('goes back to the first page when the project changes: the router keeps this page alive', async () => {
+      load([ticket(1)], 'c1');
+      const { fixture, page } = await render();
+      page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.click();
+      expect(openParams()?.pages).toBe(2);
 
       fixture.componentRef.setInput('project', 'OPS');
       await fixture.whenStable();
 
-      expect(listParams()).toMatchObject({ project: 'OPS', page: 1 });
+      expect(openParams()).toMatchObject({ project: 'OPS', pages: 1 });
     });
 
-    it('asks for the chosen states only and no longer for finished tickets as such', async () => {
-      const { fixture } = await render();
+    describe('the filter of the state', () => {
+      it('offers the open states only, in the order of the vocabulary, each with its meaning', async () => {
+        const { fixture } = await render();
 
-      chooseStates(fixture, ['blocked', 'in-progress']);
+        const select = fixture.debugElement.query(By.css('[data-testid="state-filter"]'))
+          .componentInstance as Select;
+        expect(select.multiple()).toBe(true);
+        expect(select.options()?.map((option) => option.state)).toEqual([
+          'filed',
+          'analysed',
+          'decided',
+          'in-progress',
+          'review',
+          'blocked',
+        ]);
+        expect(select.options()?.[0].meaning).toBe('Recorded, not analysed yet');
+      });
 
-      const params = listParams();
-      expect(params?.state).toEqual(['blocked', 'in-progress']);
-      expect(params?.include_terminal).toBeUndefined();
-    });
+      it('asks for the chosen states only', async () => {
+        const { fixture } = await render();
 
-    it('goes back to the first page when the states change', async () => {
-      const { fixture } = await render();
-      lazyLoad(fixture, { first: 50, rows: 25 });
-      expect(listParams()?.page).toBe(3);
+        chooseStates(fixture, ['blocked', 'in-progress']);
 
-      chooseStates(fixture, ['done']);
+        expect(openParams()?.state).toEqual(['blocked', 'in-progress']);
+      });
 
-      expect(listParams()?.page).toBe(1);
-    });
+      it('goes back to the first page when the states change', async () => {
+        load([ticket(1)], 'c1');
+        const { fixture, page } = await render();
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.click();
+        expect(openParams()?.pages).toBe(2);
 
-    it('asks for every state again when the filter is cleared, which hands on null', async () => {
-      const { fixture } = await render();
-      chooseStates(fixture, ['done']);
+        chooseStates(fixture, ['filed']);
 
-      chooseStates(fixture, null);
+        expect(openParams()?.pages).toBe(1);
+      });
 
-      const params = listParams();
-      expect(params?.state).toBeUndefined();
-      expect(params?.include_terminal).toBe(true);
-    });
-
-    it('asks for every state again when the choice is emptied', async () => {
-      const { fixture } = await render();
-      chooseStates(fixture, ['done']);
-
-      chooseStates(fixture, []);
-
-      const params = listParams();
-      expect(params?.state).toBeUndefined();
-      expect(params?.include_terminal).toBe(true);
-    });
-
-    it('offers the seven states in board order, each with its meaning', async () => {
-      const { fixture } = await render();
-
-      const options = fixture.debugElement.query(By.css('[data-testid="state-filter"]'))
-        .componentInstance as Select;
-      expect(options.multiple()).toBe(true);
-      expect(options.options()?.map((option) => option.state)).toEqual([
-        'filed',
-        'analysed',
-        'decided',
-        'in-progress',
-        'blocked',
-        'done',
-        'dropped',
-      ]);
-      expect(options.options()?.[0].meaning).toBe('Recorded, not analysed yet');
-    });
-
-    describe('paging', () => {
       it.each([
-        [{ first: 0, rows: 25 }, 1, 25],
-        [{ first: 50, rows: 25 }, 3, 25],
-        [{ first: 100, rows: 50 }, 3, 50],
-        [{ first: 100, rows: 100 }, 2, 100],
-      ])('turns %j into page %i of %i rows', async (event, page, perPage) => {
+        ['cleared, which hands on null', null],
+        ['emptied', []],
+      ])('asks for every open state again when the filter is %s', async (_, value) => {
         const { fixture } = await render();
+        chooseStates(fixture, ['blocked']);
 
-        lazyLoad(fixture, event);
+        chooseStates(fixture, value);
 
-        expect(listParams()).toMatchObject({ page, per_page: perPage });
-      });
-
-      it('falls back to 25 rows for a row count that is not offered', async () => {
-        const { fixture } = await render();
-
-        lazyLoad(fixture, { first: 50, rows: 10 });
-
-        expect(listParams()).toMatchObject({ page: 3, per_page: 25 });
-      });
-
-      it('keeps the page size when the event names no row count', async () => {
-        const { fixture } = await render();
-        lazyLoad(fixture, { first: 0, rows: 50 });
-
-        lazyLoad(fixture, { first: 100 });
-
-        expect(listParams()).toMatchObject({ page: 3, per_page: 50 });
-      });
-
-      it('starts at the first page when the event names no offset', async () => {
-        const { fixture } = await render();
-        lazyLoad(fixture, { first: 75, rows: 25 });
-
-        lazyLoad(fixture, { rows: 25 });
-
-        expect(listParams()).toMatchObject({ page: 1, per_page: 25 });
-      });
-
-      it('starts on the first page of 25 rows', async () => {
-        const { fixture } = await render();
-
-        const table = fixture.debugElement.query(By.directive(Table)).componentInstance as Table;
-        expect(table.first()).toBe(0);
-        expect(table.rows()).toBe(25);
-      });
-
-      it('shows the page that the list is on', async () => {
-        const { fixture } = await render();
-
-        lazyLoad(fixture, { first: 100, rows: 50 });
-        await fixture.whenStable();
-
-        const table = fixture.debugElement.query(By.directive(Table)).componentInstance as Table;
-        expect(table.first()).toBe(100);
-        expect(table.rows()).toBe(50);
+        expect(openParams()?.state).toBeUndefined();
       });
     });
 
@@ -409,10 +733,10 @@ describe('Backlog', () => {
         type(page, 'flicker');
         fixture.detectChanges();
         vi.advanceTimersByTime(249);
-        expect(listParams()?.q).toBeUndefined();
+        expect(openParams()?.q).toBeUndefined();
 
         vi.advanceTimersByTime(1);
-        expect(listParams()?.q).toBe('flicker');
+        expect(openParams()?.q).toBe('flicker');
       });
 
       it('starts the wait again with every keystroke', () => {
@@ -424,41 +748,30 @@ describe('Backlog', () => {
         type(page, 'flicker');
         fixture.detectChanges();
         vi.advanceTimersByTime(200);
-        expect(listParams()?.q).toBeUndefined();
+        expect(openParams()?.q).toBeUndefined();
 
         vi.advanceTimersByTime(50);
-        expect(listParams()?.q).toBe('flicker');
+        expect(openParams()?.q).toBe('flicker');
       });
 
-      it('goes back to the first page once the text is asked for', () => {
+      it('goes back to the first page once the text is asked for, for the open and the closed tickets', () => {
+        load([ticket(1)], 'c1');
         const { fixture, page } = renderNow();
-        lazyLoad(fixture, { first: 50, rows: 25 });
-        expect(listParams()?.page).toBe(3);
+        fixture.detectChanges();
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.click();
+        fixture.detectChanges();
+        expect(openParams()?.pages).toBe(2);
 
         type(page, 'flicker');
         fixture.detectChanges();
-        expect(listParams()?.page).toBe(3);
+        expect(openParams()?.pages).toBe(2);
         vi.advanceTimersByTime(250);
 
-        expect(listParams()).toMatchObject({ page: 1, q: 'flicker' });
-      });
-
-      it('keeps a page chosen right after opening, while the text stays the same', () => {
-        const { fixture } = renderNow();
-
-        lazyLoad(fixture, { first: 100, rows: 50 });
-        fixture.detectChanges();
-        vi.advanceTimersByTime(300);
-        fixture.detectChanges();
-
-        expect(listParams()).toMatchObject({ page: 3, per_page: 50 });
-        const table = fixture.debugElement.query(By.directive(Table)).componentInstance as Table;
-        expect(table.first()).toBe(100);
+        expect(openParams()).toMatchObject({ pages: 1, q: 'flicker' });
       });
 
       it('lets a text typed and taken back within the wait change nothing', () => {
         const { fixture, page } = renderNow();
-        lazyLoad(fixture, { first: 50, rows: 25 });
 
         type(page, 'flicker');
         fixture.detectChanges();
@@ -467,8 +780,7 @@ describe('Backlog', () => {
         fixture.detectChanges();
         vi.advanceTimersByTime(300);
 
-        expect(listParams()?.page).toBe(3);
-        expect(listParams()?.q).toBeUndefined();
+        expect(openParams()?.q).toBeUndefined();
       });
 
       it('leaves out spaces around the text and asks for no text that is only spaces', () => {
@@ -477,12 +789,12 @@ describe('Backlog', () => {
         type(page, '  flicker  ');
         fixture.detectChanges();
         vi.advanceTimersByTime(250);
-        expect(listParams()?.q).toBe('flicker');
+        expect(openParams()?.q).toBe('flicker');
 
         type(page, '   ');
         fixture.detectChanges();
         vi.advanceTimersByTime(250);
-        expect(listParams()?.q).toBeUndefined();
+        expect(openParams()?.q).toBeUndefined();
       });
 
       it('combines the text with the chosen states', () => {
@@ -493,327 +805,1668 @@ describe('Backlog', () => {
         fixture.detectChanges();
         vi.advanceTimersByTime(250);
 
-        expect(listParams()).toMatchObject({ state: ['blocked'], q: 'flicker' });
+        expect(openParams()).toMatchObject({ state: ['blocked'], q: 'flicker' });
       });
-    });
-  });
 
-  describe('the table', () => {
-    it('shows the tickets of the page, read from the cache', async () => {
-      load([ticket(1, { title: 'The board flickers' }), ticket(2, { title: 'The login hangs' })]);
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="row-acme/COW-1"] .text')).toBe('The board flickers');
-      expect(text(page, '[data-testid="row-acme/COW-2"] .text')).toBe('The login hangs');
-      expect(page.querySelectorAll('tbody tr.row')).toHaveLength(2);
-    });
-
-    it('shows what each ticket is: key, type, state, severity, security, progress, urgency and age', async () => {
-      load([
-        ticket(1, {
-          type: 'bug',
-          state: 'blocked',
-          severity: 'high',
-          security: 'boundary',
-          progress: 60,
-          urgency: 'now',
-          assignee: sam,
-        }),
-      ]);
-
-      const { page } = await render();
-
-      const row = page.querySelector('[data-testid="row-acme/COW-1"]');
-      expect(row?.querySelector('.col-key a')?.textContent).toBe('COW-1');
-      expect(row?.querySelector('.col-key a')?.getAttribute('href')).toBe('/t/acme/tickets/COW-1');
-      expect(row?.querySelector('app-type')?.getAttribute('title')).toContain('bug');
-      expect(row?.querySelector('[data-state]')?.getAttribute('data-state')).toBe('blocked');
-      expect(row?.querySelector('[data-severity]')?.getAttribute('data-severity')).toBe('high');
-      expect(row?.querySelector('[data-security]')?.getAttribute('data-security')).toBe('boundary');
-      expect(row?.querySelector('.col-assignee')?.textContent?.trim()).toBe('Sam Rivera');
-      expect(row?.querySelector<HTMLElement>('.col-progress span')?.style.width).toBe('60%');
-      expect(row?.querySelector('.col-urgency')?.textContent?.trim()).toBe('now');
-      expect(row?.querySelector('.col-when')?.textContent).toBe('5 minutes ago');
-    });
-
-    it('explains the progress and the urgency of a ticket in tooltips', async () => {
-      load([
-        ticket(1, { progress: 60, progress_derived: true, urgency: 'now' }),
-        ticket(2, { progress: 40, progress_derived: false, urgency: 'icebox' }),
-      ]);
-
-      const { fixture } = await render();
-
-      const tooltip = (number: number, selector: string) =>
+      it('asks for the closed tickets with the same text', () => {
+        const { fixture, page } = renderNow();
         fixture.debugElement
-          .query(By.css(`[data-testid="row-acme/COW-${number}"] ${selector}`))
-          .injector.get(Tooltip)
-          .content();
-      expect(tooltip(1, '.progress')).toBe('60%, from its children');
-      expect(tooltip(2, '.progress')).toBe('40%');
-      expect(tooltip(1, '.col-urgency span')).toBe(
-        'Now: a defect in unreleased work, or a statement measured false',
-      );
-      expect(tooltip(2, '.col-urgency span')).toBe(
-        'Needs a product call, a decision or an escalation first',
-      );
-    });
+          .query(By.css('[data-testid="show-closed"]'))
+          .triggerEventHandler('ngModelChange', true);
+        fixture.detectChanges();
 
-    it('shows a dash for a ticket nobody is assigned to and no security badge for none', async () => {
-      load([ticket(1, { assignee: null, security: 'none' })]);
+        type(page, 'flicker');
+        fixture.detectChanges();
+        vi.advanceTimersByTime(250);
 
-      const { page } = await render();
-
-      const row = page.querySelector('[data-testid="row-acme/COW-1"]');
-      expect(row?.querySelector('.col-assignee')?.textContent?.trim()).toBe('—');
-      expect(row?.querySelector('[data-security]')).toBeNull();
-    });
-
-    it('shows what a refetch of a ticket put into the cache', async () => {
-      load([ticket(1, { title: 'Before' })]);
-      const { fixture, page } = await render();
-
-      cache.put('acme/COW-1', ticket(1, { title: 'After', version: 2 }));
-      await fixture.whenStable();
-
-      expect(text(page, '[data-testid="row-acme/COW-1"] .text')).toBe('After');
-    });
-
-    it('leaves out a ticket that the cache no longer holds', async () => {
-      load([ticket(1), ticket(2)]);
-      const { fixture, page } = await render();
-
-      cache.delete('acme/COW-1');
-      await fixture.whenStable();
-
-      expect(page.querySelector('[data-testid="row-acme/COW-1"]')).toBeNull();
-      expect(page.querySelector('[data-testid="row-acme/COW-2"]')).not.toBeNull();
-    });
-
-    it('shows the total that the server counted, not the rows of the page', async () => {
-      load([ticket(1), ticket(2)], 130);
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="total"]')).toBe('130 tickets');
-    });
-
-    it('counts zero tickets when the answer carries no total', async () => {
-      cache.put('acme/COW-1', ticket(1));
-      list.value.set({ keys: ['acme/COW-1'], nextCursor: null });
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="total"]')).toBe('0 tickets');
-      expect(page.querySelectorAll('tbody tr.row')).toHaveLength(1);
-    });
-
-    it('counts zero tickets before the list is loaded', async () => {
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="total"]')).toBe('0 tickets');
-    });
-
-    it('says no ticket matches when the list is empty', async () => {
-      load([]);
-
-      const { page } = await render();
-
-      expect(text(page, 'td.empty')).toBe('No tickets match.');
-    });
-
-    it('does not claim that no ticket matches while the list loads', async () => {
-      list.isLoading.set(true);
-
-      const { fixture, page } = await render();
-      expect(page.querySelector('[data-testid="empty"]')).toBeNull();
-
-      load([]);
-      list.isLoading.set(false);
-      await fixture.whenStable();
-
-      expect(text(page, '[data-testid="empty"]')).toBe('No tickets match.');
-    });
-
-    it('says why the tickets could not be loaded, with the detail of the problem', async () => {
-      const body: Problem = {
-        type: 'about:blank',
-        title: 'The service is not ready',
-        status: 503,
-        detail: 'The database is starting.',
-        code: 'not_ready',
-      };
-      list.error.set(new HttpErrorResponse({ status: 503, statusText: body.title, error: body }));
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="empty"]')).toBe(
-        'The tickets could not be loaded: The database is starting.',
-      );
-    });
-
-    it('says why with the title when the problem has no detail', async () => {
-      const body: Problem = {
-        type: 'about:blank',
-        title: 'Forbidden',
-        status: 403,
-        code: 'forbidden',
-      };
-      list.error.set(new HttpErrorResponse({ status: 403, statusText: 'Forbidden', error: body }));
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="empty"]')).toBe(
-        'The tickets could not be loaded: Forbidden',
-      );
-    });
-
-    it('says why when the backend cannot be reached', async () => {
-      list.error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
-
-      const { page } = await render();
-
-      expect(text(page, '[data-testid="empty"]')).toBe(
-        'The tickets could not be loaded: The connection failed; cowork tries again on its own.',
-      );
-    });
-
-    it('shows the tickets it has instead of the failure when there are some', async () => {
-      load([ticket(1)]);
-      list.error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
-
-      const { page } = await render();
-
-      expect(page.querySelector('[data-testid="row-acme/COW-1"]')).not.toBeNull();
-      expect(page.querySelector('[data-testid="empty"]')).toBeNull();
-    });
-
-    it('hands the total to the paginator', async () => {
-      load([ticket(1)], 130);
-
-      const { fixture } = await render();
-
-      const table = fixture.debugElement.query(By.directive(Table)).componentInstance as Table;
-      expect(table.totalRecords()).toBe(130);
-    });
-  });
-
-  describe('the settings of the project', () => {
-    const gear = (page: HTMLElement) =>
-      page.querySelector<HTMLAnchorElement>('[data-testid="project-settings"]');
-
-    it('links the settings of the project from the header', async () => {
-      const { page } = await render();
-
-      expect(gear(page)?.getAttribute('href')).toBe('/t/acme/p/COW/settings');
-      expect(gear(page)?.getAttribute('aria-label')).toBe('Project settings');
-      expect(gear(page)?.querySelector('i')?.classList).toContain('pi-cog');
-    });
-
-    it('follows the project of the path', async () => {
-      const { fixture, page } = await render();
-
-      fixture.componentRef.setInput('project', 'OPS');
-      await fixture.whenStable();
-
-      expect(gear(page)?.getAttribute('href')).toBe('/t/acme/p/OPS/settings');
-    });
-
-    it('offers nothing outside a tenant', async () => {
-      tenant.set(null);
-
-      const { page } = await render();
-
-      expect(gear(page)).toBeNull();
-    });
-  });
-
-  describe('filing a ticket', () => {
-    const dialog = (fixture: ComponentFixture<Backlog>) =>
-      fixture.debugElement.query(By.directive(NewTicketDialog));
-
-    it('offers a button that opens the dialog for the project', async () => {
-      const { fixture, page } = await render();
-      const filing = dialog(fixture).componentInstance as NewTicketDialog;
-      expect(filing.visible()).toBe(false);
-      expect(filing.tenant()).toBe('acme');
-      expect(filing.project()).toBe('COW');
-
-      page.querySelector<HTMLButtonElement>('[data-testid="new-ticket"]')?.click();
-      await fixture.whenStable();
-
-      expect(filing.visible()).toBe(true);
-    });
-
-    it('closes the dialog when it asks to be closed', async () => {
-      const { fixture, page } = await render();
-      page.querySelector<HTMLButtonElement>('[data-testid="new-ticket"]')?.click();
-      await fixture.whenStable();
-      const filing = dialog(fixture).componentInstance as NewTicketDialog;
-      expect(filing.visible()).toBe(true);
-
-      dialog(fixture).triggerEventHandler('visibleChange', false);
-      await fixture.whenStable();
-
-      expect(filing.visible()).toBe(false);
-    });
-
-    it('follows the project of the path', async () => {
-      const { fixture } = await render();
-
-      fixture.componentRef.setInput('project', 'OPS');
-      await fixture.whenStable();
-
-      expect((dialog(fixture).componentInstance as NewTicketDialog).project()).toBe('OPS');
-    });
-
-    it('thanks the person with a toast and loads the list again when a ticket was filed', async () => {
-      const { fixture } = await render();
-      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
-      expect(list.reload).not.toHaveBeenCalled();
-
-      dialog(fixture).triggerEventHandler('filed', ticket(7, { title: 'The board flickers' }));
-
-      expect(add).toHaveBeenCalledExactlyOnceWith({
-        severity: 'success',
-        summary: 'COW-7 filed',
-        detail: 'The board flickers',
-        life: 4000,
+        expect(closedParams()).toMatchObject({ q: 'flicker', pages: 1 });
       });
-      expect(list.reload).toHaveBeenCalledOnce();
     });
 
-    it('offers nothing outside a tenant', async () => {
-      tenant.set(null);
+    describe('more than one page', () => {
+      it('offers to load more at the end when the list has a next page, and nothing otherwise', async () => {
+        load([ticket(1)], null);
+        const first = await render();
+        expect(first.page.querySelector('[data-testid="load-more"]')).toBeNull();
+        first.fixture.destroy();
 
-      const { fixture, page } = await render();
+        load([ticket(1)], 'c1');
+        const second = await render();
+        expect(second.page.querySelector('[data-testid="load-more"]')?.textContent?.trim()).toBe(
+          'Load more',
+        );
+      });
 
-      expect(page.querySelector('[data-testid="new-ticket"]')).toBeNull();
-      expect(dialog(fixture)).toBeNull();
+      it('asks for one page more each time it is clicked', async () => {
+        load([ticket(1)], 'c1');
+        const { page } = await render();
+
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.click();
+        expect(openParams()?.pages).toBe(2);
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.click();
+        expect(openParams()?.pages).toBe(3);
+      });
+
+      it('is disabled while the list loads', async () => {
+        load([ticket(1)], 'c1');
+        open.isLoading.set(true);
+
+        const { page } = await render();
+
+        expect(page.querySelector<HTMLButtonElement>('[data-testid="load-more"]')?.disabled).toBe(
+          true,
+        );
+      });
+
+      it('says that the tickets shown are those loaded so far', async () => {
+        load([ticket(1), ticket(2)], 'c1');
+
+        const { page } = await render();
+
+        expect(text(page, '[data-testid="total"]')).toBe('2 open tickets loaded');
+      });
+    });
+
+    describe('while it loads, and when it fails', () => {
+      it('counts the open tickets in the list', async () => {
+        load([ticket(1), ticket(2), ticket(3)]);
+
+        const { page } = await render();
+
+        expect(text(page, '[data-testid="total"]')).toBe('3 open tickets');
+      });
+
+      it('counts one open ticket in the singular, and none before the list is loaded', async () => {
+        const { fixture, page } = await render();
+        expect(text(page, '[data-testid="total"]')).toBe('0 open tickets');
+
+        load([ticket(1)]);
+        await fixture.whenStable();
+
+        expect(text(page, '[data-testid="total"]')).toBe('1 open ticket');
+      });
+
+      it('keeps the rows it has while the list loads again, and shows the table as busy', async () => {
+        load([ticket(1), ticket(2)]);
+        const { fixture, page } = await render();
+
+        open.value.set(undefined);
+        open.isLoading.set(true);
+        await fixture.whenStable();
+
+        expect(rowsIn(page, 'later')).toEqual([1, 2]);
+        expect(page.querySelector('.panel')?.classList).toContain('loading');
+        expect(page.querySelector('.panel')?.getAttribute('aria-busy')).toBe('true');
+      });
+
+      it('does not show the rows of one project in the next one while it loads', async () => {
+        load([ticket(1), ticket(2)]);
+        const { fixture, page } = await render();
+
+        open.value.set(undefined);
+        fixture.componentRef.setInput('project', 'OPS');
+        await fixture.whenStable();
+
+        expect(rowsIn(page, 'later')).toEqual([]);
+      });
+
+      it('says why the tickets could not be loaded, with the detail of the problem', async () => {
+        open.error.set(
+          refusal(503, 'not_ready', 'The service is not ready', 'The database is starting.'),
+        );
+
+        const { page } = await render();
+
+        expect(text(page, '[data-testid="failure"]')).toBe(
+          'The tickets could not be loaded: The database is starting.',
+        );
+      });
+
+      it('says why with the title when the problem has no detail', async () => {
+        open.error.set(refusal(403, 'forbidden', 'Forbidden'));
+
+        const { page } = await render();
+
+        expect(text(page, '[data-testid="failure"]')).toBe(
+          'The tickets could not be loaded: Forbidden',
+        );
+      });
+
+      it('says why when the backend cannot be reached', async () => {
+        open.error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
+
+        const { page } = await render();
+
+        expect(text(page, '[data-testid="failure"]')).toBe(
+          'The tickets could not be loaded: The connection failed; cowork tries again on its own.',
+        );
+      });
+
+      it('shows the tickets it has beside the failure', async () => {
+        load([ticket(1)]);
+        const { fixture, page } = await render();
+
+        open.value.set(undefined);
+        open.error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
+        await fixture.whenStable();
+
+        expect(rowsIn(page, 'later')).toEqual([1]);
+        expect(page.querySelector('[data-testid="failure"]')).not.toBeNull();
+      });
+
+      it('says nothing about a failure while there is none', async () => {
+        const { page } = await render();
+
+        expect(page.querySelector('[data-testid="failure"]')).toBeNull();
+      });
     });
   });
 
-  describe('opening a ticket', () => {
-    it('goes to the page of the ticket under the tenant when its row is clicked', async () => {
-      load([ticket(1), ticket(2)]);
-      const { page } = await render();
+  describe('the closed tickets', () => {
+    const toggle = async (fixture: ComponentFixture<Backlog>, on = true) => {
+      fixture.debugElement
+        .query(By.css('[data-testid="show-closed"]'))
+        .triggerEventHandler('ngModelChange', on);
+      await fixture.whenStable();
+    };
+    const closedRows = (page: HTMLElement) =>
+      [...page.querySelectorAll('[data-testid="group-closed"] tr.row')].map(numberOf);
 
-      page.querySelector<HTMLElement>('[data-testid="row-acme/COW-2"]')?.click();
+    it('are not asked for, and not shown, until the toggle is on', async () => {
+      const { fixture, page } = await render();
 
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'tickets', 'COW-2']);
+      expect(closedParams()).toBeUndefined();
+      expect(page.querySelector('[data-testid="group-closed"]')).toBeNull();
+      const toggleSwitch = fixture.debugElement.query(By.directive(ToggleSwitch));
+      expect(toggleSwitch.nativeElement.getAttribute('data-testid')).toBe('show-closed');
+      expect(text(page, '.closed-toggle')).toBe('Show closed');
     });
 
-    it('leaves the navigation to the link when the key itself is clicked', async () => {
-      load([ticket(1)]);
-      const { page } = await render();
+    it('are shown from the start when the address asks for them, as the board links them', async () => {
+      const fixture = TestBed.createComponent(Backlog);
+      fixture.componentRef.setInput('project', 'COW');
+      fixture.componentRef.setInput('closed', 'true');
+      await fixture.whenStable();
 
-      page.querySelector<HTMLElement>('[data-testid="row-acme/COW-1"] .col-key a')?.click();
+      expect(closedParams()).toMatchObject({ state: ['done', 'dropped'] });
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="group-closed"]'),
+      ).not.toBeNull();
+
+      await toggle(fixture, false);
+      expect(closedParams()).toBeUndefined();
+    });
+
+    it('are not shown for an address that asks for anything else', async () => {
+      const fixture = TestBed.createComponent(Backlog);
+      fixture.componentRef.setInput('project', 'COW');
+      fixture.componentRef.setInput('closed', 'no');
+      await fixture.whenStable();
+
+      expect(closedParams()).toBeUndefined();
+    });
+
+    describe('narrowed to a time, as the board counts the tickets done since then (docs/adr/0018 D1)', () => {
+      const since = '2026-09-19T12:00:00.000Z';
+
+      async function opened(doneAfter: string) {
+        const fixture = TestBed.createComponent(Backlog);
+        fixture.componentRef.setInput('project', 'COW');
+        fixture.componentRef.setInput('closed', 'true');
+        fixture.componentRef.setInput('done_after', doneAfter);
+        await fixture.whenStable();
+        return { fixture, page: fixture.nativeElement as HTMLElement };
+      }
+
+      it('are the tickets done after the time of the address, and say so', async () => {
+        const { fixture, page } = await opened(since);
+
+        expect(closedParams()).toEqual({
+          tenant: 'acme',
+          project: 'COW',
+          pages: 1,
+          state: ['done'],
+          done_after: since,
+          q: undefined,
+        });
+        expect(text(page, '[data-testid="closed-name"]')).toBe('done');
+        expect(text(page, '[data-testid="closed-since"]')).toBe(`since ${dateTime(since)}`);
+
+        load([], null, closed);
+        await fixture.whenStable();
+        expect(text(page, '[data-testid="empty-closed"]')).toBe('No ticket done since then');
+      });
+
+      it('give way to every closed ticket from the button, from the first page again', async () => {
+        const { fixture, page } = await opened(since);
+        load([ticket(8, { state: 'done' })], 'c1', closed);
+        await fixture.whenStable();
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more-closed"]')?.click();
+        expect(closedParams()?.pages).toBe(2);
+
+        page.querySelector<HTMLButtonElement>('[data-testid="all-closed"]')?.click();
+        await fixture.whenStable();
+
+        expect(closedParams()).toEqual({
+          tenant: 'acme',
+          project: 'COW',
+          pages: 1,
+          state: ['done', 'dropped'],
+          q: undefined,
+        });
+        expect(text(page, '[data-testid="closed-name"]')).toBe('closed');
+        expect(page.querySelector('[data-testid="closed-since"]')).toBeNull();
+        expect(page.querySelector('[data-testid="all-closed"]')).toBeNull();
+      });
+
+      it('are every closed ticket where the address gives no time', async () => {
+        await opened('fourteen days ago');
+
+        expect(closedParams()).toMatchObject({ state: ['done', 'dropped'] });
+        expect(closedParams()).not.toHaveProperty('done_after');
+      });
+    });
+
+    it('show no stage bar: a closed ticket works on none', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+
+      load([ticket(8, { state: 'done', progress: 100 })], null, closed);
+      await fixture.whenStable();
+
+      expect(rowOf(page, 8)?.querySelector('app-stage-bar')).toBeNull();
+    });
+
+    it('are asked for, done and dropped, when the toggle is switched on, and for no more once it is off again', async () => {
+      const { fixture } = await render();
+
+      await toggle(fixture);
+      expect(closedParams()).toEqual({
+        tenant: 'acme',
+        project: 'COW',
+        pages: 1,
+        state: ['done', 'dropped'],
+        q: undefined,
+      });
+
+      await toggle(fixture, false);
+      expect(closedParams()).toBeUndefined();
+    });
+
+    it('show below the groups, as rows that cannot be dragged, moved or reordered', async () => {
+      load([ticket(1)]);
+      const { fixture, page } = await render();
+      await toggle(fixture);
+
+      load([ticket(8, { state: 'done' }), ticket(9, { state: 'dropped' })], null, closed);
+      await fixture.whenStable();
+
+      expect(closedRows(page)).toEqual([8, 9]);
+      expect(text(page, '[data-testid="count-closed"]')).toBe('2');
+      const tbodies = [...page.querySelectorAll('tbody')].map((each) =>
+        each.getAttribute('data-testid'),
+      );
+      expect(tbodies.at(-1)).toBe('group-closed');
+      const row = rowOf(page, 8);
+      expect(row?.querySelector('[data-testid="grip"]')).toBeNull();
+      expect(row?.querySelector('.col-menu button')).toBeNull();
+      expect(
+        fixture.debugElement.queryAll(By.directive(CdkDrag)).map((each) => each.nativeElement),
+      ).not.toContain(row);
+      expect(page.querySelector('[data-testid="group-closed"]')?.hasAttribute('cdkdroplist')).toBe(
+        false,
+      );
+    });
+
+    it('open the ticket when they are clicked, and show the same columns', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+      load(
+        [ticket(8, { state: 'done', title: 'Finished work', parent: 'acme/COW-2' })],
+        null,
+        closed,
+      );
+      await fixture.whenStable();
+
+      expect(text(page, '[data-testid="row-acme/COW-8"] .text')).toBe('Finished work');
+      expect(rowOf(page, 8)?.querySelector('[data-state]')?.getAttribute('data-state')).toBe(
+        'done',
+      );
+      expect(rowOf(page, 8)?.querySelector('.chip')?.textContent?.trim()).toBe('COW-2');
+      rowOf(page, 8)?.click();
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'tickets', 'COW-8']);
+    });
+
+    it('say that there are none once the list has answered, and not while it loads', async () => {
+      const { fixture, page } = await render();
+      closed.isLoading.set(true);
+      await toggle(fixture);
+      expect(page.querySelector('[data-testid="empty-closed"]')).toBeNull();
+
+      closed.isLoading.set(false);
+      load([], null, closed);
+      await fixture.whenStable();
+
+      expect(text(page, '[data-testid="empty-closed"]')).toBe('No closed tickets');
+    });
+
+    it('load more when the list has a next page, one page at a time', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+      load([ticket(8, { state: 'done' })], 'c1', closed);
+      await fixture.whenStable();
+
+      const more = page.querySelector<HTMLButtonElement>('[data-testid="load-more-closed"]');
+      expect(more?.textContent?.trim()).toBe('Load more');
+      more?.click();
+      expect(closedParams()?.pages).toBe(2);
+    });
+
+    it('offer no more once the last page is there, and disable the button while loading', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+      load([ticket(8, { state: 'done' })], 'c1', closed);
+      closed.isLoading.set(true);
+      await fixture.whenStable();
+      expect(
+        page.querySelector<HTMLButtonElement>('[data-testid="load-more-closed"]')?.disabled,
+      ).toBe(true);
+
+      load([ticket(8, { state: 'done' })], null, closed);
+      closed.isLoading.set(false);
+      await fixture.whenStable();
+
+      expect(page.querySelector('[data-testid="load-more-closed"]')).toBeNull();
+    });
+
+    it('keep the rows they have while the list loads again', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+      load([ticket(8, { state: 'done' })], null, closed);
+      await fixture.whenStable();
+
+      closed.value.set(undefined);
+      await fixture.whenStable();
+
+      expect(closedRows(page)).toEqual([8]);
+    });
+
+    it('go back to the first page when the project changes', async () => {
+      const { fixture, page } = await render();
+      await toggle(fixture);
+      load([ticket(8, { state: 'done' })], 'c1', closed);
+      await fixture.whenStable();
+      page.querySelector<HTMLButtonElement>('[data-testid="load-more-closed"]')?.click();
+      expect(closedParams()?.pages).toBe(2);
+
+      fixture.componentRef.setInput('project', 'OPS');
+      await fixture.whenStable();
+
+      expect(closedParams()).toMatchObject({ project: 'OPS', pages: 1 });
+    });
+  });
+
+  describe('the header', () => {
+    it('is the header of the project, with its tabs', async () => {
+      const { fixture } = await render();
+
+      const header = fixture.debugElement.query(By.directive(ProjectHeader));
+      expect((header.componentInstance as ProjectHeader).project()).toBe('COW');
+      expect(
+        (fixture.nativeElement as HTMLElement)
+          .querySelector('[data-testid="tab-backlog"]')
+          ?.getAttribute('href'),
+      ).toBe('/t/acme/p/COW/backlog');
+    });
+
+    it('follows the project of the path', async () => {
+      const { fixture } = await render();
+
+      fixture.componentRef.setInput('project', 'OPS');
+      await fixture.whenStable();
+
+      const header = fixture.debugElement.query(By.directive(ProjectHeader));
+      expect((header.componentInstance as ProjectHeader).project()).toBe('OPS');
+    });
+
+    it('loads the list again when a ticket was filed, so that it shows at once', async () => {
+      const { fixture } = await render();
+      expect(open.reload).not.toHaveBeenCalled();
+
+      fixture.debugElement
+        .query(By.directive(ProjectHeader))
+        .triggerEventHandler('filed', ticket(7));
+
+      expect(open.reload).toHaveBeenCalledOnce();
+    });
+  });
+
+  // What a drop asks for. The CDK reports a drop as the list it ended in, the index in it, and the
+  // list the row came from; jsdom has no pointer to drag with, so a test hands the page that event.
+
+  const dropLists = (fixture: ComponentFixture<Backlog>) =>
+    fixture.debugElement.queryAll(By.directive(CdkDropList));
+  const listFor = (fixture: ComponentFixture<Backlog>, urgency: Urgency) =>
+    dropLists(fixture).find(
+      (each) => (each.injector.get(CdkDropList).data as Group).urgency === urgency,
+    );
+
+  /** Drops the row of a ticket at an index of a group, the way the CDK reports it. */
+  function drop(
+    fixture: ComponentFixture<Backlog>,
+    number: number,
+    to: Urgency,
+    at: number,
+    over = true,
+  ) {
+    const key = `acme/COW-${number}`;
+    const source = dropLists(fixture).find((each) =>
+      (each.injector.get(CdkDropList).data as Group).rows.some((row) => row.ticket.key === key),
+    );
+    const target = listFor(fixture, to);
+    // The row carries the ticket as it was rendered, whatever the cache holds by now.
+    const row = (source?.injector.get(CdkDropList).data as Group).rows.find(
+      (each) => each.ticket.key === key,
+    );
+    const event = {
+      item: { data: row?.ticket },
+      previousContainer: source?.injector.get(CdkDropList),
+      container: target?.injector.get(CdkDropList),
+      previousIndex: 0,
+      currentIndex: at,
+      isPointerOverContainer: over,
+      distance: { x: 0, y: 0 },
+      dropPoint: { x: 0, y: 0 },
+      event: new MouseEvent('mouseup'),
+    } as unknown as CdkDragDrop<Group, Group, Ticket>;
+    target?.triggerEventHandler('cdkDropListDropped', event);
+  }
+
+  /** A row picked up: the CDK announces it, and then measures its lists. */
+  function pickUp(fixture: ComponentFixture<Backlog>, number: number) {
+    fixture.debugElement
+      .query(By.css(`[data-testid="row-acme/COW-${number}"]`))
+      .triggerEventHandler('cdkDragStarted', {});
+  }
+
+  function putDown(fixture: ComponentFixture<Backlog>, number: number) {
+    fixture.debugElement
+      .query(By.css(`[data-testid="row-acme/COW-${number}"]`))
+      .triggerEventHandler('cdkDragEnded', {});
+  }
+
+  describe('a drop within a group', () => {
+    beforeEach(() => {
+      load([ticket(1), ticket(2), ticket(3), ticket(4)]);
+    });
+
+    it('places a row that lands at the top of the group before the row below it', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { before: 1 });
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(withdrawUrgency).not.toHaveBeenCalled();
+    });
+
+    it('places a row that lands in the middle after the row above it', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 1, 'later', 2);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-1', { after: 3 });
+    });
+
+    it('places a row that lands at the bottom after the last row', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 1, 'later', 3);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-1', { after: 4 });
+    });
+
+    it('asks for nothing when a row is dropped where it was', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 2, 'later', 1);
+      await settle(fixture);
+
+      expect(rank).not.toHaveBeenCalled();
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 3, 4]);
+    });
+
+    it('shows the move at once, before the write is answered, and keeps it when it is', async () => {
+      const pending = deferred<Ticket>();
+      rank.mockImplementation(() => pending.promise);
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      fixture.detectChanges();
+      await tick();
+
+      expect(rank).toHaveBeenCalledOnce();
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+      pending.resolve(cache.value('acme/COW-3') as Ticket);
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+    });
+
+    it('changes nothing visible when the list answers after the write, with the order that the move made', async () => {
+      const { fixture, page } = await render();
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+      const row = rowOf(page, 3);
+
+      load([ticket(3, { version: 2 }), ticket(1), ticket(2), ticket(4)]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+      expect(rowOf(page, 3)).toBe(row);
+    });
+
+    it('keeps the move when an answer that left the server before it arrives while the write is on its way', async () => {
+      const pending = deferred<Ticket>();
+      rank.mockImplementation(() => pending.promise);
+      const { fixture, page } = await render();
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      load([ticket(1), ticket(2), ticket(3), ticket(4)]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+      pending.resolve(ticket(3, { version: 2 }));
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+    });
+
+    it('keeps the move when such an answer arrives after the write was answered', async () => {
+      const { fixture, page } = await render();
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      load([ticket(1), ticket(2), ticket(3), ticket(4)]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2, 4]);
+    });
+
+    it('shows what an answer has once it has the version the move wrote, or a later one: a later move of somebody else wins', async () => {
+      const { fixture, page } = await render();
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      load([ticket(1), ticket(2), ticket(3, { version: 3 }), ticket(4)]);
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 3, 4]);
+
+      // The move is settled: an older answer after that shows as it is.
+      load([ticket(1), ticket(4), ticket(3, { version: 3 }), ticket(2)]);
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([1, 4, 3, 2]);
+    });
+
+    it('lets a moved ticket go with the answer that no longer has it, closed by somebody else meanwhile', async () => {
+      const pending = deferred<Ticket>();
+      rank.mockImplementation(() => pending.promise);
+      const { fixture, page } = await render();
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      load([ticket(1), ticket(2), ticket(4)]);
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 4]);
+
+      pending.resolve(ticket(3, { version: 2 }));
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 4]);
+    });
+
+    it('puts the row back and says why when the write fails', async () => {
+      rank.mockRejectedValue(
+        refusal(400, 'validation_failed', 'Validation failed', 'No such ticket in the project.'),
+      );
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 3, 4]);
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'warn', summary: 'Validation failed' }),
+      );
+    });
+
+    it('loads the list again after a failure, to show what the server has', async () => {
+      rank.mockRejectedValue(refusal(409, 'state_conflict', 'Conflict'));
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(open.reload).toHaveBeenCalledOnce();
+    });
+
+    it('asks for nothing for a row that is dropped beside the table, and lets it go back', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0, false);
+      await settle(fixture);
+
+      expect(rank).not.toHaveBeenCalled();
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 3, 4]);
+    });
+
+    it('does the writes of two moves one after the other', async () => {
+      const started: string[] = [];
+      const answers: (() => void)[] = [];
+      rank.mockImplementation(
+        (key) =>
+          new Promise<Ticket>((resolve) => {
+            started.push(key);
+            answers.push(() => resolve(cache.value(key) as Ticket));
+          }),
+      );
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      fixture.detectChanges();
+      drop(fixture, 4, 'later', 0);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(started).toEqual(['acme/COW-3']);
+      expect(rowsIn(page, 'later')).toEqual([4, 3, 1, 2]);
+      answers[0]();
+      await settle(fixture);
+      expect(started).toEqual(['acme/COW-3', 'acme/COW-4']);
+      answers[1]();
+      await settle(fixture);
+      expect(rowsIn(page, 'later')).toEqual([4, 3, 1, 2]);
+    });
+
+    it('puts back the row whose write failed and not the one that followed it', async () => {
+      rank.mockRejectedValueOnce(refusal(400, 'validation_failed', 'Validation failed'));
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      fixture.detectChanges();
+      drop(fixture, 4, 'later', 0);
+      await settle(fixture);
+
+      // 3 is back behind 2. 4 went directly before 3, and the server put it there: before 3, where
+      // 3 is.
+      expect(rank).toHaveBeenNthCalledWith(2, 'acme/COW-4', { before: 3 });
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 4, 3]);
+      expect(rank).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('a drop into another group', () => {
+    beforeEach(() => {
+      load([
+        ticket(1, { urgency: 'now' }),
+        ticket(2, { urgency: 'now' }),
+        ticket(3, { urgency: 'later' }),
+        ticket(4, { urgency: 'later' }),
+        ticket(5, { urgency: 'later' }),
+      ]);
+    });
+
+    it('sets the urgency to the value of the group with the override, and no reason', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
+      expect(withdrawUrgency).not.toHaveBeenCalled();
+    });
+
+    it('then places the row after the row above it where it lands in the middle', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 1 });
+    });
+
+    it('places a row that lands at the top of the group before the first row', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'now', 0);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { before: 1 });
+    });
+
+    it('places a row that lands at the bottom after the last row', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'now', 2);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 2 });
+    });
+
+    it('sets the urgency and places nothing where the group was empty', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'next', 0);
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
+      expect(rank).not.toHaveBeenCalled();
+      expect(rowsIn(page, 'next')).toEqual([3]);
+    });
+
+    it('writes the urgency first and the place after it', async () => {
+      const calls: string[] = [];
+      overrideUrgency.mockImplementation(async (key) => {
+        calls.push('override');
+        return cache.value(key) as Ticket;
+      });
+      rank.mockImplementation(async (key) => {
+        calls.push('rank');
+        return cache.value(key) as Ticket;
+      });
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(calls).toEqual(['override', 'rank']);
+    });
+
+    it('shows the row in its new group and place at once, and keeps it there when the writes are answered', async () => {
+      const pending = deferred<Ticket>();
+      overrideUrgency.mockImplementation(() => pending.promise);
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      fixture.detectChanges();
+      await tick();
+
+      expect(overrideUrgency).toHaveBeenCalledOnce();
+      expect(rowsIn(page, 'now')).toEqual([1, 3, 2]);
+      expect(rowsIn(page, 'later')).toEqual([4, 5]);
+      expect(text(page, '[data-testid="count-now"]')).toBe('3');
+      pending.resolve({ ...(cache.value('acme/COW-3') as Ticket), urgency: 'now', version: 2 });
+      cache.put('acme/COW-3', {
+        ...(cache.value('acme/COW-3') as Ticket),
+        urgency: 'now',
+        version: 2,
+      });
+      await settle(fixture);
+      expect(rowsIn(page, 'now')).toEqual([1, 3, 2]);
+      expect(rowsIn(page, 'later')).toEqual([4, 5]);
+    });
+
+    it('keeps the row in its new group and place once the writes are answered', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'now')).toEqual([1, 3, 2]);
+      expect(rowsIn(page, 'later')).toEqual([4, 5]);
+    });
+
+    it('withdraws the override, which needs no reason, where the group is the derived urgency of the ticket', async () => {
+      load([
+        ticket(1, { urgency: 'now' }),
+        ticket(3, {
+          urgency: 'now',
+          urgency_derived: 'later',
+          urgency_override: { value: 'now', at: 'then', reason: 'x' },
+        }),
+        ticket(4, { urgency: 'later' }),
+      ]);
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 1);
+      await settle(fixture);
+
+      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3');
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 4 });
+      expect(rowsIn(page, 'later')).toEqual([4, 3]);
+      expect(page.querySelector('[data-testid="reason"]')).toBeNull();
+    });
+
+    it('decides between the override and its withdrawal by what the cache holds now', async () => {
+      const { fixture } = await render();
+      cache.put('acme/COW-3', ticket(3, { urgency: 'later', urgency_derived: 'next', version: 2 }));
+
+      drop(fixture, 3, 'next', 0);
+      await settle(fixture);
+
+      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3');
+    });
+
+    it('puts the row back, writes no place and says why when the urgency cannot be set', async () => {
+      overrideUrgency.mockRejectedValue(
+        refusal(400, 'validation_failed', 'Validation failed', 'The reason is required.'),
+      );
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'now')).toEqual([1, 2]);
+      expect(rowsIn(page, 'later')).toEqual([3, 4, 5]);
+      expect(rank).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: 'Validation failed',
+          detail: 'The reason is required.',
+        }),
+      );
+      expect(open.reload).toHaveBeenCalledOnce();
+      expect(page.querySelector('[data-testid="reason"]')).toBeNull();
+    });
+
+    it('puts the row back in its place when the place cannot be set, but not out of the group the server has put it in', async () => {
+      rank.mockRejectedValue(refusal(409, 'state_conflict', 'Conflict'));
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 0);
+      await settle(fixture);
+
+      // The override is written, so the cache says now; the place is where the list has it.
+      expect(rowsIn(page, 'now')).toEqual([1, 2, 3]);
+      expect(rowsIn(page, 'later')).toEqual([4, 5]);
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Conflict' }));
+      expect(open.reload).toHaveBeenCalledOnce();
+    });
+
+    it('tells the person that somebody else changed the urgency meanwhile, and puts the row back', async () => {
+      overrideUrgency.mockRejectedValue(
+        new StaleWrite(
+          {
+            status: 412,
+            code: 'precondition_failed',
+            title: 'x',
+            detail: '',
+            fields: {},
+            current: {},
+          },
+          ticket(3, { urgency: 'next', version: 3 }),
+        ),
+      );
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(toast).toHaveBeenCalledWith({
+        severity: 'warn',
+        summary: 'Changed meanwhile',
+        detail: 'COW-3 was changed by someone else: its urgency is next now.',
+        life: 6000,
+      });
+      expect(rowsIn(page, 'now')).toEqual([1, 2]);
+      expect(rowsIn(page, 'later')).toEqual([3, 4, 5]);
+    });
+
+    it('asks for nothing for a row that is dropped beside the table', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'now', 1, false);
+      await settle(fixture);
+
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(rowsIn(page, 'later')).toEqual([3, 4, 5]);
+    });
+
+    it('sets the urgency of a child without placing it where it cannot be shown, outside the family of its parent', async () => {
+      load([
+        ticket(1, { urgency: 'now' }),
+        ticket(2, { urgency: 'now', parent: 'acme/COW-1' }),
+        ticket(3, { urgency: 'now' }),
+        ticket(4, { urgency: 'later', parent: 'acme/COW-1' }),
+      ]);
+      const { fixture, page } = await render();
+
+      drop(fixture, 4, 'now', 3);
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-4', 'now');
+      expect(rank).not.toHaveBeenCalled();
+      // It stands under its parent, behind its sibling, as their rank has it.
+      expect(rowsIn(page, 'now')).toEqual([1, 2, 4, 3]);
+      expect(rowOf(page, 4)?.querySelector('.chip')).toBeNull();
+    });
+  });
+
+  describe('a drop inside a family', () => {
+    beforeEach(() => {
+      load([
+        ticket(1),
+        ticket(2, { parent: 'acme/COW-1' }),
+        ticket(3, { parent: 'acme/COW-1' }),
+        ticket(4),
+        ticket(5),
+      ]);
+    });
+
+    it('places a root that lands between a parent and its children behind the whole family', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 5, 'later', 2);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-5', { after: 1 });
+    });
+
+    it('moves a child among its siblings: above the first one is before it', async () => {
+      const { fixture } = await render();
+
+      drop(fixture, 3, 'later', 1);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { before: 2 });
+    });
+
+    it('refuses a child that lands outside the family of its parent, and lets it go back', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 4);
+      await settle(fixture);
+
+      expect(rank).not.toHaveBeenCalled();
+      expect(rowsIn(page, 'later')).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('shows a parent with its children where it was dropped', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 1, 'later', 3);
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-1', { after: 4 });
+      expect(rowsIn(page, 'later')).toEqual([4, 1, 2, 3, 5]);
+    });
+  });
+
+  describe('the reason of an urgency', () => {
+    beforeEach(() => {
+      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3)]);
+    });
+
+    const field = (page: HTMLElement) =>
+      page.querySelector<HTMLInputElement>('[data-testid="reason"]');
+    const typeReason = (fixture: ComponentFixture<Backlog>, value: string) => {
+      const input = field(fixture.nativeElement as HTMLElement);
+      if (!input) {
+        throw new Error('the reason field is missing');
+      }
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    };
+    const press = (page: HTMLElement, key: string) =>
+      field(page)?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+    /** A drop into the group now, and the reason field it offers. */
+    async function dropIntoNow() {
+      const rendered = await render();
+      drop(rendered.fixture, 2, 'now', 1);
+      await settle(rendered.fixture);
+      return rendered;
+    }
+
+    it('is offered in a small field at the row once an override is written, and has the focus', async () => {
+      const { page } = await dropIntoNow();
+
+      const input = field(page);
+      expect(input).not.toBeNull();
+      expect(rowOf(page, 2)?.contains(input)).toBe(true);
+      expect(document.activeElement).toBe(input);
+      expect(input?.getAttribute('aria-label')).toBe('Why COW-2 is now, optional');
+      expect(input?.getAttribute('placeholder')).toBe('Why now? Enter saves, Esc skips');
+    });
+
+    it('is offered for one row only', async () => {
+      const { page } = await dropIntoNow();
+
+      expect(page.querySelectorAll('[data-testid="reason"]')).toHaveLength(1);
+    });
+
+    it('is not offered before the override is written', async () => {
+      const pending = deferred<Ticket>();
+      overrideUrgency.mockImplementation(() => pending.promise);
+      const { fixture, page } = await render();
+
+      drop(fixture, 2, 'now', 1);
+      fixture.detectChanges();
+      await tick();
+      expect(overrideUrgency).toHaveBeenCalledOnce();
+      expect(field(page)).toBeNull();
+
+      pending.resolve(cache.value('acme/COW-2') as Ticket);
+      await settle(fixture);
+      expect(field(page)).not.toBeNull();
+    });
+
+    it('is not offered within a group, where no override is written', async () => {
+      const { fixture, page } = await render();
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(field(page)).toBeNull();
+    });
+
+    it('sends the override again with the same value, the reason and no other change, when Enter is pressed', async () => {
+      const { fixture, page } = await dropIntoNow();
+      overrideUrgency.mockClear();
+
+      typeReason(fixture, '  The client escalated it  ');
+      press(page, 'Enter');
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith(
+        'acme/COW-2',
+        'now',
+        'The client escalated it',
+      );
+      expect(field(page)).toBeNull();
+    });
+
+    it('keeps the field, read only, while the reason is on its way', async () => {
+      const { fixture, page } = await dropIntoNow();
+      const pending = deferred<Ticket>();
+      overrideUrgency.mockClear();
+      overrideUrgency.mockImplementation(() => pending.promise);
+
+      typeReason(fixture, 'Because');
+      press(page, 'Enter');
+      fixture.detectChanges();
+      expect(field(page)?.readOnly).toBe(true);
+      press(page, 'Enter');
+      expect(overrideUrgency).toHaveBeenCalledTimes(1);
+
+      pending.resolve(cache.value('acme/COW-2') as Ticket);
+      await settle(fixture);
+      expect(field(page)).toBeNull();
+    });
+
+    it('is dismissed by Enter on an empty field, without a write', async () => {
+      const { fixture, page } = await dropIntoNow();
+      overrideUrgency.mockClear();
+
+      typeReason(fixture, '   ');
+      press(page, 'Enter');
+      await settle(fixture);
+
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(field(page)).toBeNull();
+    });
+
+    it('is dismissed by Escape, without a write', async () => {
+      const { fixture, page } = await dropIntoNow();
+      overrideUrgency.mockClear();
+
+      typeReason(fixture, 'Because');
+      press(page, 'Escape');
+      await settle(fixture);
+
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(field(page)).toBeNull();
+    });
+
+    it('is dismissed when the person leaves the field, without a write', async () => {
+      const { fixture, page } = await dropIntoNow();
+      overrideUrgency.mockClear();
+
+      typeReason(fixture, 'Because');
+      field(page)?.dispatchEvent(new Event('blur'));
+      await settle(fixture);
+
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(field(page)).toBeNull();
+    });
+
+    it('does not open the ticket when the field is clicked', async () => {
+      const { page } = await dropIntoNow();
+
+      field(page)?.click();
 
       expect(navigate).not.toHaveBeenCalled();
-      expect(navigateByUrl).toHaveBeenCalledOnce();
-      const target = navigateByUrl.mock.calls[0][0] as UrlTree;
-      expect(TestBed.inject(Router).serializeUrl(target)).toBe('/t/acme/tickets/COW-1');
+    });
+
+    it('says why when the reason cannot be written, and goes away', async () => {
+      const { fixture, page } = await dropIntoNow();
+      overrideUrgency.mockRejectedValue(refusal(403, 'forbidden', 'Forbidden', 'Not allowed.'));
+
+      typeReason(fixture, 'Because');
+      press(page, 'Enter');
+      await settle(fixture);
+
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Forbidden' }));
+      expect(field(page)).toBeNull();
+    });
+
+    it('goes to the next row that is dropped into a group, empty: what was typed for the first is not sent', async () => {
+      const { fixture, page } = await dropIntoNow();
+      typeReason(fixture, 'Half a thought');
+
+      drop(fixture, 3, 'now', 2);
+      await settle(fixture);
+
+      expect(page.querySelectorAll('[data-testid="reason"]')).toHaveLength(1);
+      expect(rowOf(page, 3)?.contains(field(page))).toBe(true);
+      expect(field(page)?.value).toBe('');
+      expect(overrideUrgency).not.toHaveBeenCalledWith('acme/COW-2', 'now', 'Half a thought');
+    });
+
+    it('does not take the field of the next row away when an earlier reason is answered', async () => {
+      const { fixture, page } = await dropIntoNow();
+      const pending = deferred<Ticket>();
+      overrideUrgency.mockImplementationOnce(() => pending.promise);
+      typeReason(fixture, 'Because');
+      press(page, 'Enter');
+      fixture.detectChanges();
+
+      drop(fixture, 3, 'now', 2);
+      await settle(fixture);
+      expect(rowOf(page, 3)?.contains(field(page))).toBe(true);
+      pending.resolve(cache.value('acme/COW-2') as Ticket);
+      await settle(fixture);
+
+      expect(rowOf(page, 3)?.contains(field(page))).toBe(true);
+    });
+  });
+
+  describe('while a row is dragged', () => {
+    beforeEach(() => {
+      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3, { title: 'Before' })]);
+    });
+
+    it('holds back the list: a new order and a new group wait until the row is put down', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      load([ticket(3), ticket(2), ticket(1, { urgency: 'next' })]);
+      await settle(fixture);
+      expect(rowsIn(page, 'now')).toEqual([1]);
+      expect(rowsIn(page, 'later')).toEqual([2, 3]);
+
+      putDown(fixture, 2);
+      await settle(fixture);
+      expect(rowsIn(page, 'now')).toEqual([]);
+      expect(rowsIn(page, 'next')).toEqual([1]);
+      expect(rowsIn(page, 'later')).toEqual([3, 2]);
+    });
+
+    it('holds back a ticket that other people change, and a ticket that goes', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      cache.put('acme/COW-3', ticket(3, { title: 'After', version: 2 }));
+      cache.delete('acme/COW-1');
+      await settle(fixture);
+      expect(text(page, '[data-testid="row-acme/COW-3"] .text')).toBe('Before');
+      expect(rowOf(page, 1)).not.toBeNull();
+
+      putDown(fixture, 2);
+      await settle(fixture);
+      expect(text(page, '[data-testid="row-acme/COW-3"] .text')).toBe('After');
+      expect(rowOf(page, 1)).toBeNull();
+    });
+
+    it('applies what was held back after a drop, with the move on top of it', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 3);
+
+      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3), ticket(4)]);
+      await settle(fixture);
+      expect(rowOf(page, 4)).toBeNull();
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 2, 4]);
+    });
+
+    const zones = (page: HTMLElement) =>
+      [...page.querySelectorAll('[data-testid="zones"] .zone')].map((zone) =>
+        zone.getAttribute('data-testid'),
+      );
+
+    it('offers the groups that are empty and not in the table, release and icebox, as drop zones in a bar of their own', async () => {
+      const { fixture, page } = await render();
+      expect(zones(page)).toEqual([]);
+
+      pickUp(fixture, 2);
+
+      expect(zones(page)).toEqual(['zone-release', 'zone-icebox']);
+      expect(groupsShown(page)).toEqual(['now', 'next', 'later']);
+      expect(page.querySelector('[data-testid="zones"]')?.getAttribute('aria-hidden')).toBe('true');
+      expect(text(page, '[data-testid="zone-release"] .group-name')).toBe('release');
+      expect(text(page, '[data-testid="zone-release"] .muted')).toBe(
+        'Drop here to make a ticket release',
+      );
+    });
+
+    it('says in the table that an empty group takes the row', async () => {
+      const { fixture, page } = await render();
+
+      pickUp(fixture, 2);
+
+      expect(text(page, '[data-testid="empty-next"]')).toBe('Drop here to make a ticket next');
+    });
+
+    it('has the drop zones in the page when the CDK measures its lists, which is right after the announcement', async () => {
+      const { fixture, page } = await render();
+
+      // No change detection of the test between the announcement and the check: the page renders at once.
+      fixture.debugElement
+        .query(By.css('[data-testid="row-acme/COW-2"]'))
+        .triggerEventHandler('cdkDragStarted', {});
+
+      expect(page.querySelector('[data-testid="zone-release"]')).not.toBeNull();
+      expect(listFor(fixture, 'release')).toBeDefined();
+      expect(listFor(fixture, 'icebox')).toBeDefined();
+    });
+
+    it('offers no zone for a group that holds a ticket, which is in the table in its place', async () => {
+      load([ticket(1, { urgency: 'release' }), ticket(2), ticket(3, { urgency: 'next' })]);
+      const { fixture, page } = await render();
+      expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later']);
+
+      pickUp(fixture, 2);
+
+      expect(zones(page)).toEqual(['zone-icebox']);
+      expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later']);
+    });
+
+    it('offers no bar at all when no group is empty and out of the table', async () => {
+      load([ticket(1, { urgency: 'release' }), ticket(2), ticket(3, { urgency: 'icebox' })]);
+      const { fixture, page } = await render();
+
+      pickUp(fixture, 2);
+
+      expect(page.querySelector('[data-testid="zones"]')).toBeNull();
+    });
+
+    it('sets the urgency of a row dropped into a zone, places nothing there and offers the reason', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      drop(fixture, 2, 'release', 0);
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-2', 'release');
+      expect(rank).not.toHaveBeenCalled();
+      expect(zones(page)).toEqual([]);
+      expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later']);
+      expect(rowsIn(page, 'release')).toEqual([2]);
+      expect(rowOf(page, 2)?.contains(page.querySelector('[data-testid="reason"]'))).toBe(true);
+    });
+
+    it('takes the drop zones away again when the row is put down', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      putDown(fixture, 2);
+      await settle(fixture);
+
+      expect(zones(page)).toEqual([]);
+      expect(groupsShown(page)).toEqual(['now', 'next', 'later']);
+    });
+
+    it('lets go of the list after a drop, also where the drop asks for nothing', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      drop(fixture, 2, 'later', 0, false);
+      await settle(fixture);
+      load([ticket(3), ticket(2), ticket(1, { urgency: 'now' })]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 2]);
+      expect(groupsShown(page)).toEqual(['now', 'next', 'later']);
+    });
+
+    it('lets a row that is gone from the list meanwhile be dropped, and says only that it moved', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 3);
+      cache.delete('acme/COW-3');
+      await settle(fixture);
+
+      drop(fixture, 3, 'later', 0);
+      await settle(fixture);
+
+      expect(text(page, '[data-testid="status"]')).toBe('COW-3 moved');
+    });
+
+    it('asks for the override of a row that the cache no longer holds, by what it was dragged as', async () => {
+      const { fixture } = await render();
+      pickUp(fixture, 3);
+      const dragged = cache.value('acme/COW-3') as Ticket;
+      cache.delete('acme/COW-3');
+      overrideUrgency.mockResolvedValue({ ...dragged, urgency: 'now' });
+      await settle(fixture);
+
+      drop(fixture, 3, 'now', 1);
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
+    });
+
+    it('lists the groups with the counts they had when the row was picked up', async () => {
+      const { fixture, page } = await render();
+      pickUp(fixture, 2);
+
+      expect(text(page, '[data-testid="count-later"]')).toBe('2');
+      expect(text(page, '[data-testid="count-now"]')).toBe('1');
+    });
+  });
+
+  describe('the menu of a row', () => {
+    beforeEach(() => {
+      load([
+        ticket(1, { urgency: 'now' }),
+        ticket(2, { urgency: 'later' }),
+        ticket(3, { urgency: 'later' }),
+        ticket(4, { urgency: 'later' }),
+        ticket(5, { urgency: 'next' }),
+      ]);
+    });
+
+    const menuOf = (fixture: ComponentFixture<Backlog>) =>
+      fixture.debugElement.query(By.directive(Menu)).componentInstance as Menu;
+
+    /** Opens the menu of a ticket's row and says what it offers. */
+    async function open$(fixture: ComponentFixture<Backlog>, page: HTMLElement, number: number) {
+      const toggle = vi.spyOn(menuOf(fixture), 'toggle').mockImplementation(() => undefined);
+      page.querySelector<HTMLButtonElement>(`[data-testid="row-menu-acme/COW-${number}"]`)?.click();
+      await fixture.whenStable();
+      return { toggle, items: menuOf(fixture).model() ?? [] };
+    }
+
+    const pick = (items: MenuItem[], label: string) => {
+      const item = items.find((candidate) => candidate.label === label);
+      if (!item?.command) {
+        throw new Error(`no menu item ${label}`);
+      }
+      item.command({ item });
+    };
+    const labels = (items: MenuItem[]) =>
+      items.filter((item) => !item.separator).map((item) => item.label);
+    const disabled = (items: MenuItem[]) =>
+      items.filter((item) => item.disabled).map((item) => item.label);
+
+    it('is a button on every open row, named for its ticket, that opens one menu for it', async () => {
+      const { fixture, page } = await render();
+
+      const { toggle, items } = await open$(fixture, page, 3);
+
+      const button = page.querySelector('[data-testid="row-menu-acme/COW-3"]');
+      expect(button?.getAttribute('aria-label')).toBe('Move COW-3');
+      expect(button?.getAttribute('aria-haspopup')).toBe('menu');
+      expect(toggle).toHaveBeenCalledOnce();
+      expect(page.querySelectorAll('p-menu')).toHaveLength(1);
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('offers Move up, Move down, Move to top, Move to bottom and a move to each other group', async () => {
+      const { fixture, page } = await render();
+
+      const { items } = await open$(fixture, page, 3);
+
+      expect(labels(items)).toEqual([
+        'Move up',
+        'Move down',
+        'Move to top',
+        'Move to bottom',
+        'Move to now',
+        'Move to release',
+        'Move to next',
+        'Move to icebox',
+      ]);
+      expect(disabled(items)).toEqual([]);
+    });
+
+    it('does not open the ticket when the button is clicked', async () => {
+      const { fixture, page } = await render();
+
+      await open$(fixture, page, 3);
+
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('cannot move the first row up or to the top', async () => {
+      const { fixture, page } = await render();
+
+      const { items } = await open$(fixture, page, 2);
+
+      expect(disabled(items)).toEqual(['Move up', 'Move to top']);
+    });
+
+    it('cannot move the last row down or to the bottom', async () => {
+      const { fixture, page } = await render();
+
+      const { items } = await open$(fixture, page, 4);
+
+      expect(disabled(items)).toEqual(['Move down', 'Move to bottom']);
+    });
+
+    it('cannot move a row that is alone in its group', async () => {
+      const { fixture, page } = await render();
+
+      const { items } = await open$(fixture, page, 1);
+
+      expect(disabled(items)).toEqual(['Move up', 'Move down', 'Move to top', 'Move to bottom']);
+    });
+
+    it.each([
+      ['Move up', 3, { before: 2 }, [3, 2, 4]],
+      ['Move down', 3, { after: 4 }, [2, 4, 3]],
+      ['Move to top', 4, { before: 2 }, [4, 2, 3]],
+      ['Move to bottom', 2, { after: 4 }, [3, 4, 2]],
+    ] as const)(
+      '%s on COW-%i makes the call of a drop, %o, and shows the row there',
+      async (label, number, call, order) => {
+        const { fixture, page } = await render();
+        const { items } = await open$(fixture, page, number);
+
+        pick(items, label);
+        await settle(fixture);
+
+        expect(rank).toHaveBeenCalledExactlyOnceWith(`acme/COW-${number}`, call);
+        expect(rowsIn(page, 'later')).toEqual(order);
+        expect(overrideUrgency).not.toHaveBeenCalled();
+      },
+    );
+
+    it('moves the row up by one, directly after the row that is two above it', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 4);
+
+      pick(items, 'Move up');
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-4', { after: 2 });
+    });
+
+    it('moves the row up to the top of its group, before the first row', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 4);
+
+      pick(items, 'Move to top');
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-4', { before: 2 });
+    });
+
+    it('moves the row down by one, and to the bottom, after the row it passes', async () => {
+      const first = await render();
+      const down = await open$(first.fixture, first.page, 2);
+      pick(down.items, 'Move down');
+      await settle(first.fixture);
+      expect(rank).toHaveBeenLastCalledWith('acme/COW-2', { after: 3 });
+
+      const bottom = await open$(first.fixture, first.page, 3);
+      pick(bottom.items, 'Move to bottom');
+      await settle(first.fixture);
+      expect(rank).toHaveBeenLastCalledWith('acme/COW-3', { after: 4 });
+    });
+
+    it('moves a row to another group like a drop does: the urgency, then the end of that group', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 3);
+
+      pick(items, 'Move to next');
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 5 });
+      expect(rowsIn(page, 'next')).toEqual([5, 3]);
+      expect(rowsIn(page, 'later')).toEqual([2, 4]);
+    });
+
+    it('sets the urgency and places nothing in a group that is empty', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 3);
+
+      pick(items, 'Move to release');
+      await settle(fixture);
+
+      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'release');
+      expect(rank).not.toHaveBeenCalled();
+      expect(groupsShown(page)).toContain('release');
+      expect(rowsIn(page, 'release')).toEqual([3]);
+    });
+
+    it('withdraws the override where the group is the derived urgency', async () => {
+      load([
+        ticket(1, {
+          urgency: 'now',
+          urgency_derived: 'later',
+          urgency_override: { value: 'now', at: 'then', reason: 'x' },
+        }),
+        ticket(2, { urgency: 'later' }),
+      ]);
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 1);
+
+      pick(items, 'Move to later');
+      await settle(fixture);
+
+      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-1');
+      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-1', { after: 2 });
+    });
+
+    it('offers the reason of an urgency it has set, like a drop does', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 3);
+
+      pick(items, 'Move to now');
+      await settle(fixture);
+
+      expect(rowOf(page, 3)?.contains(page.querySelector('[data-testid="reason"]'))).toBe(true);
+    });
+
+    it('moves a child among its siblings only', async () => {
+      load([
+        ticket(1),
+        ticket(2, { parent: 'acme/COW-1' }),
+        ticket(3, { parent: 'acme/COW-1' }),
+        ticket(4),
+      ]);
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 3);
+      expect(disabled(items)).toEqual(['Move down', 'Move to bottom']);
+
+      pick(items, 'Move up');
+      await settle(fixture);
+
+      expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { before: 2 });
+      expect(rowsIn(page, 'later')).toEqual([1, 3, 2, 4]);
+    });
+
+    it('puts the keyboard back on the menu button of the row, where the row went', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 4);
+
+      pick(items, 'Move to top');
+      await settle(fixture);
+
+      expect(document.activeElement).toBe(
+        page.querySelector('[data-testid="row-menu-acme/COW-4"]'),
+      );
+    });
+
+    it('puts the keyboard in the field of the reason when the move set an urgency, and on the button once that is done', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 3);
+
+      pick(items, 'Move to next');
+      await settle(fixture);
+      const field = page.querySelector<HTMLInputElement>('[data-testid="reason"]');
+      expect(document.activeElement).toBe(field);
+
+      field?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settle(fixture);
+      expect(document.activeElement).toBe(
+        page.querySelector('[data-testid="row-menu-acme/COW-3"]'),
+      );
+    });
+
+    it('tells a screen reader where the ticket went', async () => {
+      const { fixture, page } = await render();
+      const first = await open$(fixture, page, 3);
+
+      pick(first.items, 'Move to next');
+      await settle(fixture);
+      expect(text(page, '[data-testid="status"]')).toBe('COW-3 moved to next, place 2 of 2');
+      expect(page.querySelector('[data-testid="status"]')?.getAttribute('role')).toBe('status');
+
+      const second = await open$(fixture, page, 4);
+      pick(second.items, 'Move to top');
+      await settle(fixture);
+      expect(text(page, '[data-testid="status"]')).toBe('COW-4 moved to later, place 1 of 2');
+    });
+
+    it('does nothing for a choice that is not a move, such as a row that is alone moving up', async () => {
+      const { fixture, page } = await render();
+      const { items } = await open$(fixture, page, 1);
+
+      pick(items, 'Move up');
+      await settle(fixture);
+
+      expect(rank).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the other people', () => {
+    it('re-sort the rows when the list answers with a new order', async () => {
+      load([ticket(1), ticket(2), ticket(3)]);
+      const { fixture, page } = await render();
+
+      load([ticket(3), ticket(1), ticket(2)]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([3, 1, 2]);
+    });
+
+    it('add a ticket that is new, and take one away that is closed', async () => {
+      load([ticket(1), ticket(2)]);
+      const { fixture, page } = await render();
+
+      load([ticket(2), ticket(3)]);
+      await settle(fixture);
+
+      expect(rowsIn(page, 'later')).toEqual([2, 3]);
     });
   });
 });

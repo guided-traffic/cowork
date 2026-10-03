@@ -21,8 +21,18 @@ import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 
-/** The columns a WIP limit can hold (docs/adr/0019). */
-const limited: (keyof WipLimits)[] = ['analysed', 'decided', 'in-progress', 'blocked'];
+/**
+ * The limits a project can set (docs/adr/0019 D3), in the order of the board's columns and named
+ * as the board names them (docs/adr/0018 D1), with the states each counts: the Refinement column
+ * holds `filed` and `analysed` and counts against the `analysed` limit.
+ */
+const limited: { key: keyof WipLimits; column: string; counts: string }[] = [
+  { key: 'analysed', column: 'Refinement', counts: 'filed and analysed' },
+  { key: 'decided', column: 'Ready', counts: 'decided' },
+  { key: 'in-progress', column: 'In Progress', counts: 'in-progress' },
+  { key: 'blocked', column: 'Blocked', counts: 'blocked' },
+  { key: 'review', column: 'Review', counts: 'review' },
+];
 
 /**
  * A project's settings: its name, description and WIP limits (docs/adr/0019), written with the

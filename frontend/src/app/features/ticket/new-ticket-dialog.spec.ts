@@ -47,14 +47,7 @@ describe('NewTicketDialog', () => {
   beforeEach(() => {
     create = vi.fn<TicketActions['create']>().mockResolvedValue(filedTicket);
     people = signal<Member[]>([ada, sam]);
-    // The select buttons of PrimeNG keep an `ngModel` each inside the dialog's form, which Angular
-    // warns about in development builds (NG01354); it is no concern of what is tested here.
-    const original = console.warn.bind(console);
-    warn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
-      if (!String(args[0]).includes('NG01354')) {
-        original(...args);
-      }
-    });
+    warn = vi.spyOn(console, 'warn');
     TestBed.configureTestingModule({
       providers: [
         MessageService,
@@ -64,7 +57,14 @@ describe('NewTicketDialog', () => {
     });
   });
 
-  afterEach(() => warn.mockRestore());
+  afterEach(() => {
+    // Restore first, so that an assertion that fails does not leave the spy behind. The select
+    // buttons of PrimeNG keep an `ngModel` each; inside an `NgForm` of the dialog they would warn
+    // that they cannot register with it (NG01354), so the form is none (`ngNoForm`).
+    const warnings = warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'));
+    warn.mockRestore();
+    expect(warnings).toEqual([]);
+  });
 
   async function render(visible = true) {
     const fixture = TestBed.createComponent(NewTicketDialog);

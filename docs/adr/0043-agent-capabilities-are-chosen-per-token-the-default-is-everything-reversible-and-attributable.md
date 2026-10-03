@@ -7,7 +7,11 @@ D7 and D8 (`create-project` and `record-answer` become selectable capabilities; 
 project and recording a person's answer leave the hard-off list), amended 2026-10-02 (D4:
 `create-project` follows the tenant setting of
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D9 instead of the `admin` role). Decided by the owner as the
+D9 instead of the `admin` role), amended 2026-10-03 (D4: `close` covers both ways to `done`
+of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
+that fills the last progress stage and done by hand — an agent's only from `in-progress` or
+`review`; the owner's answer when the progress stages were made to close a ticket, since an
+agent may otherwise set progress). Decided by the owner as the
 answer to the catalog question "what may an agent do without a human?": not a fixed list of agent limits but a set of capabilities
 the person chooses when creating an agent token, with every selectable capability switched on
 by default — over fixed server-side limits (the recommendation had been "no `decided`, no
@@ -18,11 +22,16 @@ to.
 **Built** (phase 2, 2026-10-02) for the acts that exist: D1, D2, D3, D4 and D5 — the capability
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
-with the rank, `create-project`'s repository binding with that binding — the set recorded on
-each act. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
+on a move in the rank since 2026-10-03 and on adopting the score with the score,
+`create-project`'s repository binding with that binding — the set recorded on
+each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
+`PATCH` that fills the last progress stage, refused with `agent_forbidden` outside `in-progress`
+and `review` ([`mayClose`](../../backend/internal/api/transitions.go)); without `close` that
+`PATCH` is refused whole and the stage keeps its value. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
 the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
-— reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens,
+— reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
+(since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
 removing a stake, editing a question, editing a project — until a review after experience.
 
 ## Context
@@ -65,7 +74,7 @@ these is an amendment of the record that closed it, not of this one.
 | Capability | Grants |
 |---|---|
 | `decide` | the transition `analysed → decided` |
-| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override) |
+| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value |
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)) |
 | `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3) |

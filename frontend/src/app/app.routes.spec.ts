@@ -16,6 +16,7 @@ import { Home } from './features/home/home';
 import { NotFound } from './features/home/not-found';
 import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
+import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
 import { Accounts } from './features/tenant/accounts';
 import { Members } from './features/tenant/members';
@@ -47,6 +48,7 @@ const pages: [string, Type<unknown>][] = [
   ['me/tokens', Tokens],
   ['t/:tenant', TenantOverview],
   ['t/:tenant/p/:project/backlog', Backlog],
+  ['t/:tenant/p/:project/board', Board],
   ['t/:tenant/p/:project/settings', ProjectSettings],
   ['t/:tenant/settings', TenantSettings],
   ['t/:tenant/tickets/:key', TicketDetail],
@@ -87,7 +89,10 @@ describe('the routes', () => {
 
       expect(scope?.path).toBe('t/:tenant');
       expect(scope?.route.children?.length).toBeGreaterThan(0);
-      expect(scope?.route.children?.every((child) => child.loadComponent)).toBe(true);
+      // Every child is a page that loads on demand, or the redirect of a project to its backlog.
+      expect(scope?.route.children?.every((child) => child.loadComponent || child.redirectTo)).toBe(
+        true,
+      );
     });
 
     it('puts the pages of the person, which name no tenant, in the shell beside the tenant scope', () => {
@@ -139,11 +144,12 @@ describe('the routes', () => {
       named('/t/acme/time', Shell, TenantScope, TimeReport),
       named('/t/acme/settings', Shell, TenantScope, TenantSettings),
       named('/t/acme/p/COW/backlog', Shell, TenantScope, Backlog),
+      named('/t/acme/p/COW/board', Shell, TenantScope, Board),
       named('/t/acme/p/COW/settings', Shell, TenantScope, ProjectSettings),
       named('/t/acme/tickets/COW-12', Shell, TenantScope, TicketDetail),
       named('/dev/design', Shell, DesignPreview),
       named('/t', Shell, NotFound),
-      named('/t/acme/p/COW', Shell, NotFound),
+      named('/t/acme/p/COW', Shell, TenantScope, Backlog),
       named('/t/acme/unknown', Shell, NotFound),
       named('/nothing/here', Shell, NotFound),
     ])('takes %s to %s', async (url, _, components) => {
@@ -153,8 +159,24 @@ describe('the routes', () => {
     });
 
     it.each([
+      ['/t/acme/p/COW', '/t/acme/p/COW/backlog'],
+      ['/t/acme/p/OPS', '/t/acme/p/OPS/backlog'],
+      ['/t/globex/p/COW?q=flicker', '/t/globex/p/COW/backlog?q=flicker'],
+    ])('sends the project without a view, %s, on to its backlog, %s', async (url, target) => {
+      TestBed.configureTestingModule({
+        providers: [provideRouter(routes, withComponentInputBinding()), provideLocationMocks()],
+      });
+      const router = TestBed.inject(Router);
+
+      await router.navigateByUrl(url);
+
+      expect(router.url).toBe(target);
+    });
+
+    it.each([
       ['/t/acme', 1, { tenant: 'acme' }],
       ['/t/acme/p/COW/backlog', 2, { project: 'COW' }],
+      ['/t/acme/p/COW/board', 2, { project: 'COW' }],
       ['/t/acme/p/COW/settings', 2, { project: 'COW' }],
       ['/t/acme/tickets/COW-12', 2, { key: 'COW-12' }],
     ] as [string, number, Record<string, string>][])(
@@ -169,6 +191,7 @@ describe('the routes', () => {
     it.each([
       '/t/acme',
       '/t/acme/p/COW/backlog',
+      '/t/acme/p/COW/board',
       '/t/acme/p/COW/settings',
       '/t/acme/tickets/COW-12',
     ])('has an input for each parameter of the path of every page of %s', async (url) => {
@@ -196,6 +219,7 @@ describe('the routes', () => {
 
     it.each([
       ['/t/acme/p/COW/backlog', '/t/acme/p/OPS/backlog'],
+      ['/t/acme/p/COW/board', '/t/acme/p/OPS/board'],
       ['/t/acme/p/COW/settings', '/t/acme/p/OPS/settings'],
       ['/t/acme/tickets/COW-12', '/t/acme/tickets/COW-13'],
       ['/t/acme/members', '/t/globex/members'],

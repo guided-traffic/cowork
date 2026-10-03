@@ -81,7 +81,7 @@ def patch(t, **fields):
     call("PATCH", path(t), fields, etag=headers["ETag"])
 
 
-FORWARD = ["filed", "analysed", "decided", "in-progress", "done"]
+FORWARD = ["filed", "analysed", "decided", "in-progress", "review", "done"]
 
 
 def advance(t, to, note="Verified with make test and by hand in the UI.", agent=False):
@@ -93,6 +93,15 @@ def advance(t, to, note="Verified with make test and by hand in the UI.", agent=
             body["note"] = note
         call("POST", f"{path(t)}/transitions", body, agent=agent)
         state = nxt
+
+
+def urgency(t, value, reason=None):
+    """An urgency override (docs/adr/0010 D3): the board shows now and release by state, next beside them."""
+    _, headers = call("GET", path(t))
+    body = {"value": value}
+    if reason:
+        body["reason"] = reason
+    call("PUT", f"{path(t)}/urgency-override", body, etag=headers["ETag"])
 
 
 def block(t, kind, reason, on=None):
@@ -160,16 +169,24 @@ gantt = ticket(cow, "A Gantt view of the plan", "feature", "cosmetic", effort="L
 advance(shell, "in-progress", agent=True)
 advance(theme, "done")
 advance(toasts, "in-progress")
-patch(toasts, progress=25)
+patch(toasts, progress_refinement=100, progress=25)
 advance(login, "decided")
+patch(login, progress_refinement=100)
 advance(backlog, "analysed")
-advance(inbox, "in-progress")
-patch(inbox, progress=75)
+patch(backlog, progress_refinement=60)
+advance(inbox, "review")
+patch(inbox, progress_refinement=100, progress=100, progress_review=40)
 advance(board, "decided")
+patch(board, progress_refinement=100)
 block(board, "ticket", "The board needs the rank of the backlog first.", on=f"{backlog[0]}-{backlog[1]}")
 advance(flicker, "analysed")
 drop(gantt, "Not in the first release (docs/adr/0018 D8).")
 advance(search, "done", note="Searched three tenants for a word in a comment; every hit named its tenant.")
+for t in (login, shell, toasts, inbox, board):
+    urgency(t, "now")
+urgency(backlog, "next", "The board needs it first.")
+urgency(flicker, "next")
+urgency(preset, "next")
 
 link(login, "blocks", backlog)
 link(flicker, "found-in", board)
@@ -200,8 +217,11 @@ quota = ticket(ops, "A tenant can fill the bucket", "bug", "medium", "boundary",
 backup = ticket(ops, "Document the restore of a backup", "task", "low", effort="S", assignee=sam)
 upgrade = ticket(ops, "Upgrade PostgreSQL to 18.1", "task", "low", effort="XS")
 advance(secrets, "in-progress")
-patch(secrets, progress=50)
+patch(secrets, progress_refinement=100, progress=50)
+urgency(secrets, "now", "A live finding.")
 advance(quota, "decided")
+patch(quota, progress_refinement=100)
+urgency(quota, "next")
 advance(upgrade, "done", note="Ran the integration tier against 18.1: green.")
 block(backup, "human", "Waiting for the operations team to name the backup tool.")
 question(rotate, "Two keys at once, or a maintenance window?",
@@ -213,6 +233,7 @@ hero = ticket(web, "The landing page explains cowork in one screen", "feature", 
 docs_portal = ticket(web, "Publish the documentation as a portal", "feature", "low", effort="L")
 typo = ticket(web, "Typo on the pricing page", "bug", "cosmetic", effort="XS")
 advance(hero, "analysed")
+urgency(hero, "next")
 advance(typo, "done", note="Checked the page in two browsers.")
 link(docs_portal, "relates-to", hero)
 

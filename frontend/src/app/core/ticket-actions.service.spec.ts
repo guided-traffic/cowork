@@ -35,12 +35,17 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     parent: null,
     progress: 0,
     progress_derived: false,
+    progress_refinement: 0,
+    progress_review: 0,
     threat: null,
     created_at: '2026-10-01T10:00:00Z',
     updated_at: '2026-10-01T10:00:00Z',
     opened_at: '2026-10-01T10:00:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version,
     ...overrides,
   };
@@ -50,6 +55,8 @@ const key = 'acme/VKO-12';
 const createUrl = '/api/v1/tenants/acme/projects/VKO/tickets';
 const route = '/api/v1/tenants/acme/projects/VKO/tickets/12';
 const transitionUrl = `${route}/transitions`;
+const rankUrl = `${route}/rank`;
+const overrideUrl = `${route}/urgency-override`;
 const readUrl = '/api/v1/tickets/acme/VKO-12';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -462,6 +469,327 @@ describe('TicketActions', () => {
 
       stream.next({ name: 'ticket.changed', id: 'e1', key, version: 6, kind: 'transitioned' });
 
+      none(readUrl);
+    });
+  });
+  describe('rank', () => {
+    it('places the ticket directly after another, with no If-Match and no Idempotency-Key (docs/adr/0050 D4)', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+
+      const done = actions.rank(key, { after: 3 });
+
+      const sent = request(rankUrl);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.body).toEqual({ after: 3 });
+      expect(sent.request.headers.has('If-Match')).toBe(false);
+      expect(sent.request.headers.has('Idempotency-Key')).toBe(false);
+      sent.flush(ticket(key, 6));
+
+      expect((await done).version).toBe(6);
+      expect(tickets.cache.value(key)?.version).toBe(6);
+      expect(tickets.cache.etag(key)).toBe('"6"');
+    });
+
+    it('places the ticket directly before another', async () => {
+      const done = actions.rank(key, { before: 4 });
+
+      const sent = request(rankUrl);
+      expect(sent.request.body).toEqual({ before: 4 });
+      sent.flush(ticket(key, 6));
+      await done;
+    });
+
+    it('needs no read of the ticket first: a move does not overwrite', async () => {
+      const done = actions.rank(key, { after: 3 });
+
+      none(readUrl);
+      request(rankUrl).flush(ticket(key, 2));
+      await done;
+    });
+
+    it('shows the answer of a move that changed nothing, with the version it had', async () => {
+      tickets.cache.put(key, ticket(key, 5, { title: 'Held' }));
+
+      const done = actions.rank(key, { after: 3 });
+      request(rankUrl).flush(ticket(key, 5, { title: 'Held' }));
+
+      expect((await done).version).toBe(5);
+    });
+
+    it.each([
+      [400, 'validation_failed', 'Bad Request'],
+      [409, 'state_conflict', 'Conflict'],
+      [403, 'forbidden', 'Forbidden'],
+    ])(
+      'rejects with the HTTP error of a %i and leaves the cache as it was',
+      async (status, code, text) => {
+        tickets.cache.put(key, ticket(key, 5));
+        const outcome = rejection(actions.rank(key, { after: 3 }));
+
+        request(rankUrl).flush(problem(status, { code }), failed(status, text));
+        const error = await outcome;
+
+        expect((error as HttpErrorResponse).status).toBe(status);
+        expect(tickets.cache.value(key)?.version).toBe(5);
+        none(readUrl);
+      },
+    );
+
+    it('is not followed by a refetch when its own event arrives', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = actions.rank(key, { after: 3 });
+      request(rankUrl).flush(ticket(key, 6));
+      await done;
+
+      stream.next({ name: 'ticket.changed', id: 'e1', key, version: 6, kind: 'ranked' });
+
+      none(readUrl);
+    });
+  });
+
+  describe('overrideUrgency', () => {
+    it('sets the value with the cached version as If-Match, and shows the answer at once', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+
+      const done = actions.overrideUrgency(key, 'next');
+
+      const sent = request(overrideUrl);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.headers.get('If-Match')).toBe('"5"');
+      sent.flush(ticket(key, 6, { urgency: 'next' }));
+
+      expect((await done).urgency).toBe('next');
+      expect(tickets.cache.value(key)?.urgency).toBe('next');
+      expect(tickets.cache.etag(key)).toBe('"6"');
+    });
+
+    it('sends no reason when the person gave none, and does not make one up (docs/adr/0010 D3)', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+
+      const done = actions.overrideUrgency(key, 'next');
+
+      const sent = request(overrideUrl);
+      expect(sent.request.body).toEqual({ value: 'next' });
+      expect(Object.keys(sent.request.body as object)).toEqual(['value']);
+      sent.flush(ticket(key, 6));
+      await done;
+    });
+
+    it('sends no reason for an empty one', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+
+      const done = actions.overrideUrgency(key, 'next', '');
+
+      const sent = request(overrideUrl);
+      expect(sent.request.body).toEqual({ value: 'next' });
+      sent.flush(ticket(key, 6));
+      await done;
+    });
+
+    it('sends the reason the person typed', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+
+      const done = actions.overrideUrgency(key, 'now', 'The client escalated it');
+
+      const sent = request(overrideUrl);
+      expect(sent.request.body).toEqual({ value: 'now', reason: 'The client escalated it' });
+      sent.flush(ticket(key, 6, { urgency: 'now' }));
+      await done;
+    });
+
+    it('sends the ETag that the cache holds rather than building one', async () => {
+      tickets.cache.put(key, ticket(key, 5), '"held"');
+
+      const done = actions.overrideUrgency(key, 'next');
+
+      const sent = request(overrideUrl);
+      expect(sent.request.headers.get('If-Match')).toBe('"held"');
+      sent.flush(ticket(key, 6));
+      await done;
+    });
+
+    it('reads the ticket first when no view has it cached, and writes over the version it read', async () => {
+      const done = actions.overrideUrgency(key, 'next');
+
+      request(readUrl).flush(ticket(key, 3));
+      await settle();
+      const sent = request(overrideUrl);
+      expect(sent.request.headers.get('If-Match')).toBe('"3"');
+      sent.flush(ticket(key, 4, { urgency: 'next' }));
+
+      expect((await done).version).toBe(4);
+    });
+
+    describe('on a 412', () => {
+      beforeEach(() => tickets.cache.put(key, ticket(key, 5)));
+
+      it('reads the ticket again and writes once more over the new version while its urgency is what it was', async () => {
+        const done = actions.overrideUrgency(key, 'next', 'Because');
+
+        request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+        await settle();
+        request(readUrl).flush(ticket(key, 7, { title: 'Renamed by someone' }));
+        await settle();
+        const again = request(overrideUrl);
+        expect(again.request.headers.get('If-Match')).toBe('"7"');
+        expect(again.request.body).toEqual({ value: 'next', reason: 'Because' });
+        again.flush(ticket(key, 8, { urgency: 'next', title: 'Renamed by someone' }));
+
+        expect((await done).version).toBe(8);
+        expect(tickets.cache.value(key)?.urgency).toBe('next');
+        expect(tickets.cache.etag(key)).toBe('"8"');
+      });
+
+      it('rejects with a StaleWrite and writes nothing more when the urgency changed meanwhile', async () => {
+        const outcome = rejection(actions.overrideUrgency(key, 'next'));
+
+        request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+        await settle();
+        request(readUrl).flush(ticket(key, 7, { urgency: 'now' }));
+        const error = await outcome;
+        await settle();
+
+        expect(error).toBeInstanceOf(StaleWrite);
+        expect((error as StaleWrite).current.urgency).toBe('now');
+        expect((error as StaleWrite).problem.code).toBe('precondition_failed');
+        none(overrideUrl);
+        expect(tickets.cache.value(key)?.version).toBe(7);
+      });
+
+      it("writes once more only once: a second 412 is the person's to settle", async () => {
+        const outcome = rejection(actions.overrideUrgency(key, 'next'));
+
+        request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+        await settle();
+        request(readUrl).flush(ticket(key, 7));
+        await settle();
+        request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+        await settle();
+        request(readUrl).flush(ticket(key, 9));
+        const error = await outcome;
+        await settle();
+
+        expect(error).toBeInstanceOf(StaleWrite);
+        expect((error as StaleWrite).current.version).toBe(9);
+        none(overrideUrl);
+      });
+
+      it('rejects with the error of the refetch when the ticket cannot be read again', async () => {
+        const outcome = rejection(actions.overrideUrgency(key, 'next'));
+
+        request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+        await settle();
+        request(readUrl).flush(problem(404, { code: 'not_found' }), failed(404, 'Not Found'));
+        const error = await outcome;
+
+        expect(error).not.toBeInstanceOf(StaleWrite);
+        expect((error as HttpErrorResponse).status).toBe(404);
+      });
+    });
+
+    it.each([
+      [400, 'validation_failed', 'Bad Request'],
+      [403, 'forbidden', 'Forbidden'],
+      [428, 'precondition_required', 'Precondition Required'],
+      [500, 'internal', 'Internal Server Error'],
+    ])('rethrows a %i as it is and does not read the ticket again', async (status, code, text) => {
+      tickets.cache.put(key, ticket(key, 5));
+      const outcome = rejection(actions.overrideUrgency(key, 'next'));
+
+      request(overrideUrl).flush(problem(status, { code }), failed(status, text));
+      const error = await outcome;
+      await settle();
+
+      expect(error).toBeInstanceOf(HttpErrorResponse);
+      expect(error).not.toBeInstanceOf(StaleWrite);
+      expect((error as HttpErrorResponse).status).toBe(status);
+      none(readUrl);
+      expect(tickets.cache.value(key)?.version).toBe(5);
+    });
+
+    it('is not followed by a refetch when its own event arrives', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = actions.overrideUrgency(key, 'next');
+      request(overrideUrl).flush(ticket(key, 6, { urgency: 'next' }));
+      await done;
+
+      stream.next({ name: 'ticket.changed', id: 'e1', key, version: 6, kind: 'overridden' });
+
+      none(readUrl);
+    });
+  });
+
+  describe('withdrawUrgency', () => {
+    it('deletes the override with the cached version as If-Match and no body, and shows the answer', async () => {
+      tickets.cache.put(
+        key,
+        ticket(key, 5, {
+          urgency: 'now',
+          urgency_override: { value: 'now', reason: 'x', at: 't' },
+        }),
+      );
+
+      const done = actions.withdrawUrgency(key);
+
+      const sent = request(overrideUrl);
+      expect(sent.request.method).toBe('DELETE');
+      expect(sent.request.headers.get('If-Match')).toBe('"5"');
+      expect(sent.request.body).toBeNull();
+      sent.flush(ticket(key, 6, { urgency: 'later' }));
+
+      expect((await done).urgency).toBe('later');
+      expect(tickets.cache.value(key)?.urgency).toBe('later');
+      expect(tickets.cache.etag(key)).toBe('"6"');
+    });
+
+    it('reads the ticket first when no view has it cached', async () => {
+      const done = actions.withdrawUrgency(key);
+
+      request(readUrl).flush(ticket(key, 3));
+      await settle();
+      const sent = request(overrideUrl);
+      expect(sent.request.headers.get('If-Match')).toBe('"3"');
+      sent.flush(ticket(key, 4));
+
+      expect((await done).version).toBe(4);
+    });
+
+    it('writes once more over the new version when only another field changed', async () => {
+      tickets.cache.put(key, ticket(key, 5, { urgency: 'now' }));
+      const done = actions.withdrawUrgency(key);
+
+      request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 7, { urgency: 'now' }));
+      await settle();
+      const again = request(overrideUrl);
+      expect(again.request.headers.get('If-Match')).toBe('"7"');
+      again.flush(ticket(key, 8, { urgency: 'later' }));
+
+      expect((await done).urgency).toBe('later');
+    });
+
+    it('rejects with a StaleWrite when somebody else set another urgency meanwhile', async () => {
+      tickets.cache.put(key, ticket(key, 5, { urgency: 'now' }));
+      const outcome = rejection(actions.withdrawUrgency(key));
+
+      request(overrideUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 7, { urgency: 'next' }));
+      const error = await outcome;
+
+      expect(error).toBeInstanceOf(StaleWrite);
+      expect((error as StaleWrite).current.urgency).toBe('next');
+    });
+
+    it('rethrows other failures as they are', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const outcome = rejection(actions.withdrawUrgency(key));
+
+      request(overrideUrl).flush(problem(403, { code: 'forbidden' }), failed(403, 'Forbidden'));
+      const error = await outcome;
+
+      expect((error as HttpErrorResponse).status).toBe(403);
       none(readUrl);
     });
   });

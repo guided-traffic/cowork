@@ -7,7 +7,9 @@ severity: medium
 security: none
 urgency: icebox
 effort: S
+progress-refinement: 0
 progress: 0
+progress-review: 0
 opened: 2026-10-01
 ---
 

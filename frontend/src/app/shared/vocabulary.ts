@@ -10,6 +10,7 @@ export const meanings = {
     analysed: 'Understood: cause and scope are known',
     decided: 'The way forward is decided',
     'in-progress': 'Someone is working on it',
+    review: 'The work is checked before it ends: the code read, the result tried',
     blocked: 'Waits on something named in its block reason',
     done: 'Finished, with a verification note',
     dropped: 'Closed without doing it, with a reason',

@@ -71,7 +71,8 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 	doc := markdown.Ticket{
 		Key: v.Key, Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
 		Security: string(row.Security), Threat: deref(row.Threat), Urgency: string(v.Urgency), Effort: string(row.Effort),
-		Progress: v.Progress, Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
+		ProgressRefinement: v.ProgressRefinement, Progress: v.Progress, ProgressReview: v.ProgressReview,
+		Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
 	}
 	if row.AssigneeName != nil {
 		doc.Assignee = *row.AssigneeName

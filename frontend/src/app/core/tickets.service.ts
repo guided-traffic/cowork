@@ -29,6 +29,12 @@ export interface TicketPage {
   keys: string[];
   total?: number;
   nextCursor: string | null;
+  /**
+   * The version each ticket had in this answer, which the cache does not keep where it holds a
+   * newer one: a page tells by it whether an answer shows a write of its own yet. Only
+   * {@link TicketsService.projectTicketPages} says.
+   */
+  versions?: ReadonlyMap<string, number>;
 }
 
 /** `acme/VKO-12` → `{ tenant: 'acme', key: 'VKO-12' }`. */
@@ -39,6 +45,22 @@ export function splitKey(key: string): { tenant: string; key: string } {
 
 /** How long list reloads wait for more events of the same burst. */
 export const listReloadDelay = 150;
+
+/**
+ * The page size of a list that is followed cursor by cursor. The server clamps what it is asked
+ * for to `COWORK_MAX_PAGE_SIZE`, 200 unless an operator changed it (docs/adr/0039 D2), and the
+ * projects list asks for 200 as well; a longer list takes more pages.
+ */
+export const pageSize = 200;
+
+/**
+ * The request of {@link TicketsService.projectTicketPages}: the filters of a project's list and how
+ * many pages of it to hold. Cursor, limit and the numbered pages are the service's business.
+ */
+export type ProjectTicketPagesParams = Omit<
+  ListProjectTickets$Params,
+  'cursor' | 'limit' | 'page' | 'per_page' | 'If-None-Match'
+> & { pages: number };
 
 /**
  * The tickets of the tenant the pages show (docs/adr/0053 D1, D2). Lists hold keys and read the
@@ -79,6 +101,27 @@ export class TicketsService {
         params,
         loader: ({ params }) =>
           this.api.invoke(listProjectTickets, params).then((list) => this.keep(list)),
+        injector,
+      }),
+      injector,
+    );
+  }
+
+  /**
+   * A project's tickets in the server's order, followed cursor by cursor (docs/adr/0048 D4): the
+   * first `pages` pages, each as large as the server allows, and `nextCursor` says whether there
+   * is more. A reload asks for the same number of pages again, so that what a person loaded stays
+   * and the order is the current one; a ticket that moved between two answers shows once, where
+   * the later answer has it.
+   */
+  projectTicketPages(
+    params: () => ProjectTicketPagesParams | undefined,
+    injector = inject(Injector),
+  ): ResourceRef<TicketPage | undefined> {
+    return this.track(
+      resource({
+        params,
+        loader: ({ params }) => this.followPages(params),
         injector,
       }),
       injector,
@@ -138,6 +181,26 @@ export class TicketsService {
     const ticket = await this.api.invoke(resolveTicket, splitKey(key));
     this.cache.put(ticket.key, ticket);
     return ticket;
+  }
+
+  private async followPages({ pages, ...query }: ProjectTicketPagesParams): Promise<TicketPage> {
+    // The version of each key; a ticket seen twice keeps the place and the version of the later
+    // answer, so it is deleted first.
+    const versions = new Map<string, number>();
+    let cursor: string | undefined;
+    for (let page = 0; page < pages; page++) {
+      const list = await this.api.invoke(listProjectTickets, { ...query, cursor, limit: pageSize });
+      this.keep(list);
+      for (const ticket of list.items) {
+        versions.delete(ticket.key);
+        versions.set(ticket.key, ticket.version);
+      }
+      if (list.next_cursor === null) {
+        return { keys: [...versions.keys()], nextCursor: null, versions };
+      }
+      cursor = list.next_cursor;
+    }
+    return { keys: [...versions.keys()], nextCursor: cursor ?? null, versions };
   }
 
   private keep(list: TicketList): TicketPage {

@@ -36,6 +36,7 @@ type ticketQuery struct {
 	assignee, reporter, parent, interest                     *[]string
 	progressMin, progressMax                                 *int
 	openedAfter, openedBefore, updatedAfter, updatedBefore   *time.Time
+	doneAfter                                                *time.Time
 	q                                                        *string
 	includeTerminal, blocked, hasOpenQuestions               *bool
 	cursor                                                   *string
@@ -57,7 +58,7 @@ type parentRef struct {
 	negated bool
 }
 
-// ListProjectTickets lists a project's tickets in the order they were filed.
+// ListProjectTickets lists a project's tickets in its rank (docs/adr/0014 D1).
 func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectTicketsRequestObject) (apigen.ListProjectTicketsResponseObject, error) {
 	p := req.Params
 	q := ticketQuery{
@@ -65,10 +66,10 @@ func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectT
 		assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax,
 		openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter, updatedBefore: p.UpdatedBefore,
-		q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor, limit: p.Limit, page: p.Page,
-		perPage: (*int)(p.PerPage),
+		doneAfter: p.DoneAfter, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions,
+		cursor: p.Cursor, limit: p.Limit, page: p.Page, perPage: (*int)(p.PerPage),
 	}
-	list, tag, err := s.listTickets(ctx, "listProjectTickets", req.Project, q, store.ByNumber)
+	list, tag, err := s.listTickets(ctx, "listProjectTickets", req.Project, q, store.ByRank)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +87,8 @@ func (s *Server) ListTenantTickets(ctx context.Context, req apigen.ListTenantTic
 		project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, urgency: p.Urgency,
 		effort: p.Effort, assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax, openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter,
-		updatedBefore: p.UpdatedBefore, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
+		updatedBefore: p.UpdatedBefore, doneAfter: p.DoneAfter, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked,
+		hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
 		limit: p.Limit, page: p.Page, perPage: (*int)(p.PerPage),
 	}
 	list, tag, err := s.listTickets(ctx, "listTenantTickets", "", q, store.NewestFirst)
@@ -106,7 +108,7 @@ func (s *Server) listTickets(ctx context.Context, op, projectKey string, q ticke
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return apigen.TicketList{}, "", perr
 	}
-	scope := t.ID.String() + "/" + projectKey
+	scope := ticketListScope(t, projectKey, order)
 	l, perr := s.parseTicketQuery(ctx, q, op, scope, order)
 	if perr != nil {
 		return apigen.TicketList{}, "", perr
@@ -138,18 +140,35 @@ func (s *Server) listTickets(ctx context.Context, op, projectKey string, q ticke
 		out.NextCursor = nullableString(nil)
 	} else {
 		var next *string
-		rows, next = page(s.h, rows, l.size, op, scope, func(r store.TicketRow) string {
-			if order == store.NewestFirst {
-				return r.ID.String()
-			}
-			return strconv.Itoa(int(r.Number))
-		})
+		rows, next = page(s.h, rows, l.size, op, scope, s.position(order))
 		out.NextCursor = nullableString(next)
 	}
 	for _, r := range rows {
 		out.Items = append(out.Items, ticketView(t, r))
 	}
 	return out, weakETag(out), nil
+}
+
+// position writes a row's cursor position. The rank order's is sealed: a key
+// is computed over tickets the caller may not see (docs/adr/0014 D2,
+// docs/adr/0048 D1), and a readable cursor would show it.
+func (s *Server) position(order store.TicketOrder) func(store.TicketRow) string {
+	if order != store.ByRank {
+		return order.Position
+	}
+	return func(r store.TicketRow) string { return s.cursors.sealPosition(order.Position(r)) }
+}
+
+// ticketListScope is what a ticket list's cursor is bound to besides its
+// operation: the tenant, the project, and the rank order of a project's list,
+// so a cursor of the number order it had before the rank is invalid_cursor
+// rather than a position read in another order (docs/adr/0048 D5).
+func ticketListScope(t tenantScope, projectKey string, order store.TicketOrder) string {
+	scope := t.ID.String() + "/" + projectKey
+	if order == store.ByRank {
+		scope += "/rank"
+	}
+	return scope
 }
 
 // parseTicketQuery checks the filters and the paging; every refused
@@ -186,6 +205,7 @@ func (s *Server) parseTicketQuery(ctx context.Context, q ticketQuery, op, scope 
 	errs = append(errs, interestFilter(q.interest, me, &f.Interest)...)
 	f.ProgressMin, f.ProgressMax = q.progressMin, q.progressMax
 	f.OpenedAfter, f.OpenedBefore, f.UpdatedAfter, f.UpdatedBefore = q.openedAfter, q.openedBefore, q.updatedAfter, q.updatedBefore
+	f.DoneAfter = q.doneAfter
 	f.IncludeTerminal = q.includeTerminal != nil && *q.includeTerminal
 	f.Blocked, f.HasOpenQuestions = q.blocked, q.hasOpenQuestions
 	if q.q != nil {
@@ -357,6 +377,12 @@ func (s *Server) paging(q ticketQuery, op, scope string, l *ticketListing) *prob
 		after, perr := s.cursors.decode(op, scope, *q.cursor)
 		if perr != nil {
 			return perr
+		}
+		if l.page.Order == store.ByRank {
+			var ok bool
+			if after, ok = s.cursors.openPosition(after); !ok {
+				return invalidCursor()
+			}
 		}
 		l.page.After = after
 	}

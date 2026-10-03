@@ -5,7 +5,8 @@
 Accepted, amended 2026-10-02 (D2: a separate owner role is mandatory; D1, D3, D6 made
 concrete by the first implementation: the guarded setting functions, the settings besides the
 tenant, the policy of every named table) and 2026-10-03 (D3, D6: the settings and the policies
-of the sessions and of the local login). Date: 2026-09-30.
+of the sessions and of the local login; D1: a migration that rewrites rows lifts the force for
+its own transaction only, written when the rank's migration needed it). Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -35,7 +36,9 @@ table that an unfiltered query under one tenant sees nothing of another. D5's un
 with the person-level lists; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
 add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_locks`, widen those
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
-them.
+them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force
+on `tickets` for its backfill, a unit test holds every lifted force to its restore in the same
+file, and the integration tier reads the force back after the run.
 
 ## Context
 
@@ -69,7 +72,12 @@ CREATE POLICY tenant_isolation ON <table>
 ```
 
 `FORCE` makes the policy apply to the table's owner as well; only a superuser or a role with
-`BYPASSRLS` sees past it.
+`BYPASSRLS` sees past it. *(Added 2026-10-03:)* A migration that rewrites the rows of a forced
+table — no tenant is set in a migration, so the policy hides every row from the owner — lifts
+the force for itself and restores it before the file ends: the file runs as one transaction,
+which holds the table exclusively from its first `ALTER` on, so no committed state and no other
+transaction sees the table unforced. The runtime role is held by the policy either way; the
+force concerns the owner alone.
 
 **D2 — The application connects as a role that is neither a superuser nor `BYPASSRLS`.**
 ~~The migrations may run under the same role (it may own the tables; D1's `FORCE` covers that)

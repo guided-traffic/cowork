@@ -68,6 +68,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     effort: 'M',
     progress: 40,
     progress_derived: false,
+    progress_refinement: 0,
+    progress_review: 0,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -77,6 +79,9 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     updated_at: '2026-10-03T11:55:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version: 3,
     ...overrides,
   };
