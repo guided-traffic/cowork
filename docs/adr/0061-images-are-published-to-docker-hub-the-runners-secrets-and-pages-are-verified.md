@@ -10,8 +10,10 @@ runner and secrets questions without a decision.
 
 **Partly built.** The workflows push to `guidedtraffic/cowork-backend` and
 `guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`; the secret does not exist on
-this repository yet (D1); the runner-image gaps of D5 are open. Amended 2026-10-02 (D5): the
-runner has a Docker socket after all, verified from the logs of run 36909513652.
+this repository yet (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
+verified from the logs of run 36909513652. Amended 2026-10-03 (D5): the owner chose install
+steps in the jobs for the runner-image gaps, over a runner image and over another container
+mode; the integration job passed with them on the first run of the phase-2 code.
 
 ## Context
 
@@ -55,7 +57,11 @@ Node binary fails to load `libatomic.so.1`. The Go jobs pass because `setup-go` 
 toolchain and `make` is only missing where no `apt-get` step installed `build-essential`.
 This is pipeline work — a ticket, the first one when the catalog is done — and either a
 runner image with those tools or install steps in the affected jobs; the choice is made in
-that ticket, not in this record.
+that ticket, not in this record. *(Amended 2026-10-03: chosen — install steps. A job that runs
+a `make` target installs `make` first with `sudo apt-get`, as the Go jobs install
+`build-essential`, and the frontend job installs `libatomic1` before `setup-node`. The
+repository owns those lines; the shared runner scale set and the sibling project's jobs stay
+as they are, and each run pays the `apt-get` time.)*
 
 **D6 — The repository is public.** Verified; the embargo rules of [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
 D7 apply from the first security ticket, and the README's coverage and Go Report Card badges

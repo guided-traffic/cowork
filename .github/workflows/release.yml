@@ -281,6 +281,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The runner image has neither make nor libatomic1, which the Node 26
+      # binary loads; both are installed before setup-node (docs/adr/0061 D5).
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make libatomic1
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
@@ -331,6 +336,9 @@ jobs:
         uses: azure/setup-helm@v5
         with:
           version: v4.3.0
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Lint the chart with every ci values file
         run: make helm-lint
@@ -689,6 +697,9 @@ jobs:
 
       - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
         run: npm audit signatures
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Verify release tooling renders release notes
         run: make test-release-tooling
