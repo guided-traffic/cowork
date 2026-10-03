@@ -64,23 +64,33 @@ read it.
 
 **Effort:** M.
 
-## Phase 5 — The LLM interface and the VS Code workflow
+## Phase 5 — The LLM interface, the VS Code workflow and the chat in the UI
 
 **Goal:** a Claude Code session in any bound repository starts with its ticket context and
-ends with the ticket updated by Claude.
+ends with the ticket updated by Claude; and in the UI, a chat panel at the right edge lets an
+agent operate cowork for the person, through a model the installation names — a local LM
+Studio first.
 
-**Needs:** D1–D3, D6, I1–I5; [vscode-workflow.md](vscode-workflow.md).
+**Needs:** D1–D3, D6, I1–I5; [vscode-workflow.md](vscode-workflow.md); the chat's open
+questions — where its loop runs, who acts when it acts, what may leave the installation,
+which writes the person confirms.
 
 **Delivers:** the MCP server (`cmd/cowork-mcp`, stdio) with the workflow tools; the
 `.cowork.yaml` convention; the `SessionStart` hook and the skills; a `docs/operations/` page
 for configuring Claude Code against an installation; the agent permission rules of Q-D5
-enforced server-side.
+enforced server-side. For the chat: one tool catalogue the MCP server and the chat share; a
+provider gateway in the backend — every model call goes through it, never from the browser —
+with an adapter for OpenAI Chat Completions with tool calling (LM Studio, OpenAI, Ollama and
+the rest) and one for the Anthropic Messages API; the panel in the shell; a
+`Content-Security-Policy` for the shell.
 
 **Verified when:** in this repository, `claude` starts, names the active ticket, Claude works,
 records its state, opens a question, and finishes the ticket with a verification note, all
-visible in the UI timeline with agent attribution.
+visible in the UI timeline with agent attribution; and in the UI's chat, against LM Studio,
+the agent files a ticket, ranks it to `now` and moves it on the board, each act attributed to
+the chat.
 
-**Effort:** M.
+**Effort:** L.
 
 ## Phase 6 — Import and cut-over
 
@@ -124,6 +134,7 @@ upgrade from the previous release has run in a cluster, and every `H-<n>` in
 ## What is deliberately not planned
 
 - Replacing git for ADRs and documentation; those stay in each repository (Q-I4).
-- Running an LLM; cowork is what the LLM talks to.
+- Running an LLM. cowork is what an LLM talks to, and its chat connects to a model the
+  operator names; it never hosts one.
 - Replacing GitHub pull requests or CI.
 - Mobile clients, e-mail, calendars, time sheets.

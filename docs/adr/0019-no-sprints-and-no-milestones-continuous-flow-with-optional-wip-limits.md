@@ -2,13 +2,15 @@
 
 ## Status
 
-Accepted. Date: 2026-09-29. Decided by the owner as the answer to the catalog question
-"iterations or sprints?": continuous flow, over sprints, over milestones (the
-recommendation), and over deferring milestones.
+Accepted, amended 2026-10-03 (D3: a limit for `review`, and the board's Refinement column
+counted against the `analysed` limit — the consequence of the state `review` and the board's
+columns of [ADR 0018](0018-the-views-of-the-first-release.md) D1). Date: 2026-09-29. Decided
+by the owner as the answer to the catalog question "iterations or sprints?": continuous flow,
+over sprints, over milestones (the recommendation), and over deferring milestones.
 
 **Partly built** (phase 2, 2026-10-02): D1 (no time box exists) and D3 — WIP limits per state
 stored on the project, advisory, refusing nothing. D2's dashboard and D4's release ticket
-arrive with the views.
+arrive with the views. The amendment of 2026-10-03 is not built yet.
 
 ## Context
 
@@ -34,7 +36,9 @@ them. No metric is "per sprint".
 **D3 — A project may set a WIP limit per state.** An optional integer per state
 (`analysed`, `decided`, `in-progress`, `blocked`); the board shows the column count against
 the limit and marks an exceeded column. A limit never blocks a transition: it is
-information, not a gate.
+information, not a gate. *(Amended 2026-10-03: `review` takes a limit too; the board's
+Refinement column, which holds `filed` and `analysed`, counts its cards against the
+`analysed` limit, shown as the Refinement limit.)*
 
 **D4 — A release date lives in the ticket that is the release.** A ticket of type `task` or
 `feature` named for the release, with the work that gates it linked by `blocks`
