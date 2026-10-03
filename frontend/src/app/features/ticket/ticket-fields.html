@@ -1,0 +1,131 @@
+<dl class="fields">
+  <dt>Assignee</dt>
+  <dd>
+    <p-select
+      [options]="people()"
+      optionLabel="name"
+      optionValue="id"
+      [ngModel]="ticket().assignee?.id ?? null"
+      (ngModelChange)="write({ assignee: $event ?? null })"
+      placeholder="nobody"
+      [showClear]="true"
+      size="small"
+      variant="filled"
+      ariaLabel="Assignee"
+      data-testid="field-assignee"
+    />
+  </dd>
+
+  <dt>Type</dt>
+  <dd>
+    <p-select
+      [options]="types"
+      [ngModel]="ticket().type"
+      (ngModelChange)="write({ type: $event })"
+      size="small"
+      variant="filled"
+      ariaLabel="Type"
+      data-testid="field-type"
+    />
+  </dd>
+
+  <dt>Severity</dt>
+  <dd>
+    <p-select
+      [options]="severities"
+      [ngModel]="ticket().severity"
+      (ngModelChange)="write({ severity: $event })"
+      size="small"
+      variant="filled"
+      ariaLabel="Severity"
+      data-testid="field-severity"
+    />
+  </dd>
+
+  <dt>Security</dt>
+  <dd>
+    <p-select
+      [options]="securities"
+      [ngModel]="pendingSecurity() ?? ticket().security"
+      (ngModelChange)="setSecurity($event)"
+      size="small"
+      variant="filled"
+      ariaLabel="Security class"
+      data-testid="field-security"
+    />
+    @if (pendingSecurity()) {
+      <div class="threat">
+        <textarea
+          pTextarea
+          rows="3"
+          [ngModel]="threat()"
+          (ngModelChange)="threat.set($event)"
+          placeholder="The threat: principal, verb, target"
+          aria-label="Threat"
+          data-testid="field-threat"
+        ></textarea>
+        <button
+          type="button"
+          class="link"
+          (click)="saveSecurity()"
+          [disabled]="!threat().trim() || savingSecurity()"
+          data-testid="field-threat-save"
+        >
+          Save
+        </button>
+      </div>
+    }
+  </dd>
+
+  <dt>Effort</dt>
+  <dd>
+    <p-selectbutton
+      [options]="efforts"
+      [ngModel]="ticket().effort"
+      (ngModelChange)="write({ effort: $event })"
+      [allowEmpty]="false"
+      size="small"
+      ariaLabel="Effort"
+      data-testid="field-effort"
+    />
+  </dd>
+
+  <dt>Urgency</dt>
+  <dd>
+    <span
+      [pTooltip]="meanings.urgency[ticket().urgency] + ' (rule ' + ticket().urgency_rule + ')'"
+      >{{ ticket().urgency }}</span
+    >
+    @if (ticket().urgency_override) {
+      <span class="muted small"> overridden</span>
+    }
+  </dd>
+
+  <dt>Progress</dt>
+  <dd class="progress-field">
+    <p-slider
+      [ngModel]="progressShown()"
+      (ngModelChange)="moveProgress($event)"
+      [step]="25"
+      [disabled]="ticket().progress_derived || ticket().state === 'done'"
+      ariaLabel="Progress"
+      data-testid="field-progress"
+    />
+    <span class="small muted tabular"
+      >{{ progressShown() }}%{{ ticket().progress_derived ? ' from its children' : '' }}</span
+    >
+  </dd>
+
+  <dt>Reporter</dt>
+  <dd>{{ ticket().reporter.display_name }}</dd>
+
+  @if (ticket().parent) {
+    <dt>Parent</dt>
+    <dd>{{ ticket().parent }}</dd>
+  }
+
+  <dt>Opened</dt>
+  <dd [pTooltip]="dateTime(ticket().opened_at)">{{ ago(ticket().opened_at) }}</dd>
+  <dt>Updated</dt>
+  <dd [pTooltip]="dateTime(ticket().updated_at)">{{ ago(ticket().updated_at) }}</dd>
+</dl>

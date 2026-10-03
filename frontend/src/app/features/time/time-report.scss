@@ -1,0 +1,87 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 64rem;
+  padding: 2rem;
+}
+
+.head h1 {
+  font-size: 1.5rem;
+}
+
+.head p {
+  margin: 0.25rem 0 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.range {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.total {
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 22rem) 1fr 7rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--p-app-border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bar {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--p-app-hover);
+  overflow: hidden;
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--p-primary-color);
+  }
+}
+
+.minutes {
+  text-align: right;
+}
+
+.empty {
+  margin: 0;
+  padding: 1.5rem;
+  text-align: center;
+}

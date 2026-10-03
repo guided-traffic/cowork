@@ -1,0 +1,154 @@
+<p-dialog
+  [visible]="visible()"
+  (visibleChange)="visible.set($event)"
+  [modal]="true"
+  [draggable]="false"
+  [dismissableMask]="true"
+  [style]="{ width: '40rem' }"
+  [header]="'New ticket in ' + project()"
+  data-testid="new-ticket-dialog"
+>
+  <form class="form" (ngSubmit)="save()">
+    <label class="field">
+      <span>Title</span>
+      <input
+        pInputText
+        name="title"
+        [ngModel]="title()"
+        (ngModelChange)="title.set($event)"
+        maxlength="300"
+        placeholder="What is wrong, or what is wanted"
+        autocomplete="off"
+        data-testid="new-title"
+      />
+      @if (errors()['title']; as error) {
+        <small class="error">{{ error }}</small>
+      }
+    </label>
+
+    <div class="field">
+      <span id="new-type-label">Type</span>
+      <p-selectbutton
+        [options]="typeOptions"
+        optionLabel="value"
+        optionValue="value"
+        [ngModel]="type()"
+        (ngModelChange)="type.set($event)"
+        name="type"
+        [allowEmpty]="false"
+        size="small"
+        ariaLabelledBy="new-type-label"
+        data-testid="new-type"
+      >
+        <ng-template #item let-option>
+          <i [class]="option.icon"></i><span>{{ option.value }}</span>
+        </ng-template>
+      </p-selectbutton>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <span id="new-severity-label">Severity</span>
+        <p-select
+          [options]="severities"
+          optionLabel="value"
+          optionValue="value"
+          [ngModel]="severity()"
+          (ngModelChange)="severity.set($event)"
+          name="severity"
+          size="small"
+          ariaLabelledBy="new-severity-label"
+          data-testid="new-severity"
+        />
+      </div>
+      <div class="field">
+        <span id="new-security-label">Security class</span>
+        <p-select
+          [options]="securities"
+          optionLabel="value"
+          optionValue="value"
+          [ngModel]="security()"
+          (ngModelChange)="security.set($event)"
+          name="security"
+          size="small"
+          ariaLabelledBy="new-security-label"
+          data-testid="new-security"
+        />
+      </div>
+      <div class="field">
+        <span id="new-effort-label">Effort</span>
+        <p-selectbutton
+          [options]="efforts"
+          [ngModel]="effort()"
+          (ngModelChange)="effort.set($event)"
+          name="effort"
+          [allowEmpty]="false"
+          size="small"
+          ariaLabelledBy="new-effort-label"
+          data-testid="new-effort"
+        />
+      </div>
+    </div>
+
+    @if (needsThreat()) {
+      <label class="field">
+        <span>Threat</span>
+        <textarea
+          pTextarea
+          name="threat"
+          rows="2"
+          [ngModel]="threat()"
+          (ngModelChange)="threat.set($event)"
+          placeholder="Who could do what to whom — the principal, the verb, the target"
+          data-testid="new-threat"
+        ></textarea>
+        @if (errors()['threat']; as error) {
+          <small class="error">{{ error }}</small>
+        }
+      </label>
+    }
+
+    <div class="field">
+      <span id="new-assignee-label">Assignee</span>
+      <p-select
+        [options]="people()"
+        optionLabel="name"
+        optionValue="id"
+        [ngModel]="assignee()"
+        (ngModelChange)="assignee.set($event)"
+        name="assignee"
+        placeholder="Nobody yet"
+        [showClear]="true"
+        size="small"
+        ariaLabelledBy="new-assignee-label"
+        data-testid="new-assignee"
+      />
+    </div>
+
+    <label class="field">
+      <span>Description <span class="muted">(Markdown)</span></span>
+      <textarea
+        pTextarea
+        name="body"
+        rows="6"
+        [ngModel]="body()"
+        (ngModelChange)="body.set($event)"
+        data-testid="new-body"
+      ></textarea>
+    </label>
+
+    <div class="actions">
+      <button pButton type="button" [text]="true" severity="secondary" (click)="cancel()">
+        Cancel
+      </button>
+      <button pButton type="submit" data-testid="new-save" [disabled]="!canSave() || saving()">
+        @if (saving()) {
+          <i class="pi pi-spinner pi-spin"></i>
+        } @else {
+          <i class="pi pi-plus"></i>
+        }
+        File ticket
+      </button>
+    </div>
+  </form>
+</p-dialog>

@@ -1,0 +1,153 @@
+<p-toast position="bottom-right" />
+<app-new-project-dialog [(visible)]="creatingProject" />
+
+<div class="frame">
+  <header class="topbar">
+    <a class="brand" routerLink="/" aria-label="cowork, home"><app-wordmark [height]="42" /></a>
+
+    @if (tenants().length > 1) {
+      <p-select
+        class="tenant-switch"
+        [options]="tenants()"
+        optionLabel="name"
+        optionValue="slug"
+        [ngModel]="session.tenant()"
+        (ngModelChange)="switchTenant($event)"
+        placeholder="Choose a tenant"
+        size="small"
+        ariaLabel="Tenant"
+        data-testid="tenant-switch"
+      />
+    } @else if (session.membership(); as membership) {
+      <span class="tenant-name" data-testid="tenant-name">{{ membership.tenant.name }}</span>
+    }
+
+    <span class="spacer"></span>
+
+    <app-live-indicator [status]="stream.status()" />
+    <button
+      pButton
+      type="button"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
+      [pTooltip]="themeText().label"
+      tooltipPosition="bottom"
+      data-testid="theme-toggle"
+      [iconOnly]="true"
+      (click)="theme.cycle()"
+      [attr.aria-label]="themeText().label"
+    >
+      <i [class]="themeText().icon"></i>
+    </button>
+    @if (session.person(); as person) {
+      <button
+        type="button"
+        class="me"
+        (click)="menu.toggle($event)"
+        [attr.aria-label]="'Signed in as ' + person.display_name"
+        aria-haspopup="menu"
+        data-testid="me-menu"
+      >
+        <p-avatar [label]="initials()" shape="circle" class="avatar" data-testid="me" />
+      </button>
+      <p-menu #menu [model]="meItems()" [popup]="true" appendTo="body" />
+    }
+  </header>
+
+  <nav class="sidebar" aria-label="Main">
+    @if (session.tenant(); as tenant) {
+      <div class="section">
+        <a
+          class="item"
+          [routerLink]="['/t', tenant]"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          data-testid="nav-overview"
+          ><i class="pi pi-home"></i>Overview</a
+        >
+        <a
+          class="item"
+          [routerLink]="['/t', tenant, 'members']"
+          routerLinkActive="active"
+          data-testid="nav-members"
+          ><i class="pi pi-users"></i>Members</a
+        >
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'accounts']"
+            routerLinkActive="active"
+            data-testid="nav-accounts"
+            ><i class="pi pi-id-card"></i>Accounts</a
+          >
+        }
+        <a
+          class="item"
+          [routerLink]="['/t', tenant, 'time']"
+          routerLinkActive="active"
+          data-testid="nav-time"
+          ><i class="pi pi-clock"></i>Time</a
+        >
+        <a
+          class="item"
+          [routerLink]="['/t', tenant, 'settings']"
+          routerLinkActive="active"
+          data-testid="nav-settings"
+          ><i class="pi pi-cog"></i>Settings</a
+        >
+      </div>
+
+      <div class="section">
+        <div class="heading">
+          Projects
+          @if (tenantInfo.canCreateProjects()) {
+            <button
+              type="button"
+              class="add"
+              (click)="creatingProject.set(true)"
+              aria-label="New project"
+              title="New project"
+              data-testid="nav-new-project"
+            >
+              <i class="pi pi-plus"></i>
+            </button>
+          }
+        </div>
+        @for (project of projects.list(); track project.id) {
+          <a
+            class="item project"
+            [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
+            routerLinkActive="active"
+            [attr.data-testid]="'nav-project-' + project.key"
+            ><span class="key">{{ project.key }}</span
+            ><span class="name">{{ project.name }}</span></a
+          >
+        } @empty {
+          @if (!projects.projects.isLoading()) {
+            <span class="item empty">No projects yet</span>
+          }
+        }
+      </div>
+    }
+
+    <div class="section bottom">
+      @if (dev) {
+        <a class="item" routerLink="/dev/design" routerLinkActive="active" data-testid="nav-design"
+          ><i class="pi pi-palette"></i>Design preview</a
+        >
+      }
+      <div class="version muted">
+        @if (version(); as v) {
+          <span data-testid="version">{{ v.version }} ({{ v.commit }})</span>
+        } @else {
+          <span data-testid="version">backend unreachable</span>
+        }
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <router-outlet />
+  </main>
+</div>

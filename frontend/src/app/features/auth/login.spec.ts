@@ -1,0 +1,449 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
+import { MessageService } from 'primeng/api';
+import type { MockInstance } from 'vitest';
+import { AuthOptions, LocalLoginResult, Problem } from '../../api/models';
+import { AuthService } from '../../core/auth.service';
+import { Login, safeReturn } from './login';
+
+describe('safeReturn', () => {
+  it.each([
+    ['/', '/'],
+    ['/t/acme', '/t/acme'],
+    ['/t/acme/tickets/COW-12', '/t/acme/tickets/COW-12'],
+    ['/t/acme/p/COW/backlog?q=flicker#top', '/t/acme/p/COW/backlog?q=flicker#top'],
+    ['/x', '/x'],
+  ])('lets the path %j of this application stand', (value, expected) => {
+    expect(safeReturn(value)).toBe(expected);
+  });
+
+  it.each<[string | null | undefined, string]>([
+    ['//evil.example', 'a protocol-relative URL'],
+    ['//evil.example/t/acme', 'a protocol-relative URL with a path'],
+    ['/\\evil.example', 'a slash and a backslash, which browsers read as two slashes'],
+    ['\\\\evil.example', 'two backslashes'],
+    ['https://evil.example', 'an absolute URL'],
+    ['http://evil.example/t/acme', 'an absolute URL with a path'],
+    ['javascript:alert(1)', 'a script URL'],
+    ['evil.example/t/acme', 'a host without a scheme'],
+    ['t/acme', 'a path that is not rooted'],
+    ['', 'nothing'],
+    [null, 'null'],
+    [undefined, 'undefined'],
+  ])('sends %j to the start page instead: %s', (value) => {
+    expect(safeReturn(value)).toBe('/');
+  });
+});
+
+describe('Login', () => {
+  let options: {
+    isLoading: WritableSignal<boolean>;
+    error: WritableSignal<unknown>;
+    value: WritableSignal<AuthOptions | undefined>;
+    hasValue: () => boolean;
+  };
+  let login: MockInstance<AuthService['login']>;
+  let navigateByUrl: MockInstance<Router['navigateByUrl']>;
+
+  beforeEach(() => {
+    const value = signal<AuthOptions | undefined>({ local: true, oidc: false });
+    options = {
+      isLoading: signal(false),
+      error: signal<unknown>(undefined),
+      value,
+      hasValue: () => value() !== undefined,
+    };
+    login = vi
+      .fn<AuthService['login']>()
+      .mockResolvedValue({ password_change_required: false } satisfies LocalLoginResult);
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        MessageService,
+        { provide: AuthService, useValue: { options, login } },
+      ],
+    });
+    navigateByUrl = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+  });
+
+  async function render(back?: string) {
+    const fixture = TestBed.createComponent(Login);
+    if (back !== undefined) {
+      fixture.componentRef.setInput('return', back);
+    }
+    await settle(fixture);
+    return fixture;
+  }
+
+  /** Lets what a submit started finish, and shows it; fields register with the form a moment later. */
+  async function settle(fixture: ComponentFixture<Login>) {
+    await new Promise((resolve) => setTimeout(resolve));
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  const host = (fixture: ComponentFixture<Login>) => fixture.nativeElement as HTMLElement;
+
+  const el = (fixture: ComponentFixture<Login>, testId: string) =>
+    host(fixture).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+
+  const username = (fixture: ComponentFixture<Login>) =>
+    el(fixture, 'login-username') as HTMLInputElement;
+
+  const password = (fixture: ComponentFixture<Login>) =>
+    el(fixture, 'login-password') as HTMLInputElement;
+
+  const submitButton = (fixture: ComponentFixture<Login>) =>
+    el(fixture, 'login-submit') as HTMLButtonElement;
+
+  const reveal = (fixture: ComponentFixture<Login>) =>
+    el(fixture, 'login-reveal') as HTMLButtonElement;
+
+  function typeInto(field: HTMLInputElement, value: string, fixture: ComponentFixture<Login>) {
+    field.value = value;
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  function fill(fixture: ComponentFixture<Login>, name = 'ada', secret = 'correct horse') {
+    typeInto(username(fixture), name, fixture);
+    typeInto(password(fixture), secret, fixture);
+  }
+
+  const submit = (fixture: ComponentFixture<Login>) =>
+    host(fixture)
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { cancelable: true }));
+
+  function refusal(status: number, title: string, detail?: string) {
+    const body: Problem = {
+      type: 'about:blank',
+      title,
+      status,
+      code: status === 401 ? 'unauthenticated' : 'internal',
+      ...(detail ? { detail } : {}),
+    };
+    return new HttpErrorResponse({ status, statusText: title, error: body });
+  }
+
+  describe('what the page offers', () => {
+    it('shows the form of the local login with the name of the product above it', async () => {
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('h1')?.textContent).toBe('Sign in');
+      expect(host(fixture).querySelector('app-wordmark')).not.toBeNull();
+      expect(username(fixture)).not.toBeNull();
+      expect(password(fixture)).not.toBeNull();
+      expect(el(fixture, 'login-unavailable')).toBeNull();
+      expect(el(fixture, 'login-error')).toBeNull();
+    });
+
+    it('says that it loads while it asks what to offer', async () => {
+      options.isLoading.set(true);
+
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('.card > p.muted')?.textContent).toBe('Loading…');
+      expect(host(fixture).querySelector('form')).toBeNull();
+    });
+
+    it('offers a notice and no form when the installation has no login at all', async () => {
+      options.value.set({ local: false, oidc: false });
+
+      const fixture = await render();
+
+      expect(el(fixture, 'login-unavailable')?.textContent).toContain(
+        'This installation offers no login yet.',
+      );
+      expect(host(fixture).querySelector('form')).toBeNull();
+    });
+
+    it('offers the same notice when the backend cannot say what it offers', async () => {
+      options.value.set(undefined);
+      options.error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
+
+      const fixture = await render();
+
+      expect(el(fixture, 'login-unavailable')).not.toBeNull();
+      expect(host(fixture).querySelector('form')).toBeNull();
+    });
+
+    it('offers no local form and no notice when only an identity provider is configured', async () => {
+      options.value.set({ local: false, oidc: true });
+
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('form')).toBeNull();
+      expect(el(fixture, 'login-unavailable')).toBeNull();
+    });
+
+    it('offers the form together with an identity provider when the installation has both', async () => {
+      options.value.set({ local: true, oidc: true });
+
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('form')).not.toBeNull();
+      expect(el(fixture, 'login-unavailable')).toBeNull();
+    });
+
+    it('follows what the backend says when the answer arrives', async () => {
+      options.value.set(undefined);
+      options.isLoading.set(true);
+      const fixture = await render();
+      expect(host(fixture).querySelector('form')).toBeNull();
+
+      options.value.set({ local: true, oidc: false });
+      options.isLoading.set(false);
+      await settle(fixture);
+
+      expect(host(fixture).querySelector('form')).not.toBeNull();
+    });
+
+    it('lets the browser and the password managers know which field is which', async () => {
+      const fixture = await render();
+
+      expect(username(fixture).getAttribute('autocomplete')).toBe('username');
+      expect(password(fixture).getAttribute('autocomplete')).toBe('current-password');
+    });
+
+    it('hides the password while it is typed', async () => {
+      const fixture = await render();
+
+      expect(password(fixture).type).toBe('password');
+      expect(reveal(fixture).getAttribute('aria-label')).toBe('Show the password');
+      expect(reveal(fixture).querySelector('i')?.classList).toContain('pi-eye');
+    });
+
+    it('shows the password only while the person has asked for it', async () => {
+      const fixture = await render();
+
+      reveal(fixture).click();
+      await settle(fixture);
+      expect(password(fixture).type).toBe('text');
+      expect(reveal(fixture).getAttribute('aria-label')).toBe('Hide the password');
+      expect(reveal(fixture).querySelector('i')?.classList).toContain('pi-eye-slash');
+
+      reveal(fixture).click();
+      await settle(fixture);
+      expect(password(fixture).type).toBe('password');
+      expect(reveal(fixture).getAttribute('aria-label')).toBe('Show the password');
+    });
+
+    it('does not submit the form when the password is revealed', async () => {
+      const fixture = await render();
+      fill(fixture);
+
+      reveal(fixture).click();
+      await settle(fixture);
+
+      expect(reveal(fixture).type).toBe('button');
+      expect(login).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('what a person needs to sign in', () => {
+    it('cannot sign in without a name and a password, or with a name of spaces only', async () => {
+      const fixture = await render();
+      expect(submitButton(fixture).disabled).toBe(true);
+
+      typeInto(username(fixture), 'ada', fixture);
+      expect(submitButton(fixture).disabled).toBe(true);
+      typeInto(password(fixture), 'correct horse', fixture);
+      expect(submitButton(fixture).disabled).toBe(false);
+      typeInto(username(fixture), '   ', fixture);
+      expect(submitButton(fixture).disabled).toBe(true);
+    });
+
+    it('sends nothing when the form is submitted incomplete', async () => {
+      const fixture = await render();
+      typeInto(username(fixture), 'ada', fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(login).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signing in', () => {
+    it('sends the name without its spaces and the password as typed', async () => {
+      const fixture = await render();
+      fill(fixture, '  ada  ', '  spaces count  ');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(login).toHaveBeenCalledExactlyOnceWith('ada', '  spaces count  ');
+    });
+
+    it('goes to the start page afterwards unless the person came from somewhere', async () => {
+      const fixture = await render();
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+    });
+
+    it('goes back to the page the person came from', async () => {
+      const fixture = await render('/t/acme/tickets/COW-12');
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/t/acme/tickets/COW-12');
+    });
+
+    it.each(['//evil.example', '/\\evil.example', 'https://evil.example', 'javascript:alert(1)'])(
+      'never goes back to %s, which is no page of this application',
+      async (back) => {
+        const fixture = await render(back);
+        fill(fixture);
+
+        submit(fixture);
+        await settle(fixture);
+
+        expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+      },
+    );
+
+    it('empties the password field once the person is signed in', async () => {
+      const fixture = await render();
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(password(fixture).value).toBe('');
+    });
+
+    it('is told to choose a new password first when the account requires it, and goes on from there', async () => {
+      login.mockResolvedValue({ password_change_required: true });
+      const fixture = await render('/t/acme/tickets/COW-12?tab=activity');
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+        `/password?return=${encodeURIComponent('/t/acme/tickets/COW-12?tab=activity')}`,
+      );
+    });
+
+    it('passes on only a safe way back to the password page, too', async () => {
+      login.mockResolvedValue({ password_change_required: true });
+      const fixture = await render('//evil.example');
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+        `/password?return=${encodeURIComponent('/')}`,
+      );
+    });
+
+    it('shows its button as busy, and signs in once, while the backend answers', async () => {
+      let finish: (result: LocalLoginResult) => void = () => undefined;
+      login.mockReturnValue(
+        new Promise<LocalLoginResult>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const fixture = await render();
+      fill(fixture);
+
+      submit(fixture);
+      submit(fixture);
+      await settle(fixture);
+      expect(submitButton(fixture).disabled).toBe(true);
+      expect(submitButton(fixture).querySelector('i.pi-spinner')).not.toBeNull();
+      expect(login).toHaveBeenCalledOnce();
+      finish({ password_change_required: false });
+      await settle(fixture);
+
+      expect(navigateByUrl).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('a sign-in that is refused', () => {
+    async function refused(error: HttpErrorResponse) {
+      login.mockRejectedValue(error);
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      return fixture;
+    }
+
+    it('says that the name or the password is wrong, whichever it was, on a 401', async () => {
+      const fixture = await refused(refusal(401, 'Unauthenticated', 'No such user.'));
+
+      expect(el(fixture, 'login-error')?.textContent).toBe('The name or the password is wrong.');
+      expect(el(fixture, 'login-error')?.getAttribute('role')).toBe('alert');
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('does not repeat what the server said about the account on a 401', async () => {
+      const fixture = await refused(
+        refusal(401, 'Unauthenticated', 'The password of ada is wrong.'),
+      );
+
+      expect(el(fixture, 'login-error')?.textContent).not.toContain('ada');
+    });
+
+    it('asks the person to wait when there were too many attempts, on a 429', async () => {
+      const fixture = await refused(refusal(429, 'Too many requests', 'Slow down.'));
+
+      expect(el(fixture, 'login-error')?.textContent).toBe(
+        'Too many attempts from here. Wait a minute and try again.',
+      );
+    });
+
+    it('says what the problem says for any other refusal', async () => {
+      const fixture = await refused(refusal(500, 'Internal error', 'The session store is down.'));
+
+      expect(el(fixture, 'login-error')?.textContent).toBe('The session store is down.');
+    });
+
+    it('says what the title says when the problem has no detail', async () => {
+      const fixture = await refused(refusal(403, 'Forbidden'));
+
+      expect(el(fixture, 'login-error')?.textContent).toBe('Forbidden');
+    });
+
+    it('says that the backend cannot be reached when it cannot', async () => {
+      const fixture = await refused(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+
+      expect(el(fixture, 'login-error')?.textContent).toBe(
+        'The connection failed; cowork tries again on its own.',
+      );
+    });
+
+    it('keeps the name and the password so that the person can correct them', async () => {
+      const fixture = await refused(refusal(401, 'Unauthenticated'));
+
+      expect(username(fixture).value).toBe('ada');
+      expect(password(fixture).value).toBe('correct horse');
+      expect(submitButton(fixture).disabled).toBe(false);
+    });
+
+    it('shows no old message once the next attempt is on its way, and signs in when it succeeds', async () => {
+      const fixture = await refused(refusal(401, 'Unauthenticated'));
+      expect(el(fixture, 'login-error')).not.toBeNull();
+      login.mockResolvedValue({ password_change_required: false });
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(el(fixture, 'login-error')).toBeNull();
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+    });
+  });
+});

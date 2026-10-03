@@ -1,0 +1,179 @@
+<section class="page">
+  <header>
+    <h1>Design preview</h1>
+    <p class="muted">
+      Development only. Every block is shown twice: on a light and on a dark panel.
+    </p>
+  </header>
+
+  <h2>Logo</h2>
+  <div class="logos">
+    @for (variant of variants; track variant.id) {
+      <article class="logo-card" [attr.data-testid]="'logo-' + variant.id">
+        <div class="stage">
+          @for (size of sizes; track size) {
+            <app-logo-mark [variant]="variant.id" [size]="size" [glow]="size >= 32" />
+          }
+        </div>
+        <h3>
+          {{ variant.name }}
+          @if (variant.chosen) {
+            <span class="chosen">chosen</span>
+          }
+        </h3>
+        <p class="muted">{{ variant.idea }}</p>
+      </article>
+    }
+  </div>
+  <h3>Header</h3>
+  <div class="wordmarks">
+    <figure>
+      <app-wordmark [height]="42" />
+      <figcaption class="muted">The top bar today: the pill at 42 px</figcaption>
+    </figure>
+    <figure>
+      <span class="lockup"
+        ><app-logo-mark [size]="40" /><span class="lockup-name">cowork</span></span
+      >
+      <figcaption class="muted">Alternative: the mark and the name, no pill</figcaption>
+    </figure>
+    <figure>
+      <app-wordmark [height]="56" />
+      <figcaption class="muted">The pill at 56 px (the login page)</figcaption>
+    </figure>
+  </div>
+
+  <h2>Logo colours</h2>
+  <div class="swatches">
+    @for (colour of logo; track colour.name) {
+      <div class="swatch">
+        <span class="chip" [style.background]="colour.value"></span>
+        <span>{{ colour.name }}</span>
+        <code class="muted">{{ colour.value }}</code>
+      </div>
+    }
+  </div>
+
+  <div class="schemes">
+    @for (scheme of schemes; track scheme) {
+      <div class="scheme" [style.color-scheme]="scheme" [attr.data-scheme]="scheme">
+        <h2>{{ scheme }}</h2>
+
+        <h3>Primary and surfaces</h3>
+        <div class="scale">
+          @for (step of steps; track step) {
+            <span
+              class="step"
+              [style.background]="'var(--p-primary-' + step + ')'"
+              [title]="'primary ' + step"
+            ></span>
+          }
+        </div>
+        <div class="scale">
+          @for (step of steps; track step) {
+            <span
+              class="step"
+              [style.background]="'var(--p-surface-' + step + ')'"
+              [title]="'surface ' + step"
+            ></span>
+          }
+        </div>
+
+        <h3>Badges</h3>
+        <div class="row">
+          @for (state of states; track state) {
+            <app-state [value]="state" />
+          }
+        </div>
+        <div class="row">
+          @for (severity of severities; track severity) {
+            <app-severity [value]="severity" />
+          }
+          @for (security of securities; track security) {
+            <app-security [value]="security" />
+          }
+        </div>
+        <div class="row">
+          @for (type of types; track type) {
+            <app-type [value]="type" [showLabel]="true" />
+          }
+        </div>
+
+        <h3>Buttons</h3>
+        <div class="row">
+          <button pButton type="button" size="small">
+            <i class="pi pi-plus"></i>File a ticket
+          </button>
+          <button pButton type="button" severity="secondary" size="small">Move to decided</button>
+          <button pButton type="button" [outlined]="true" size="small">Comment</button>
+          <button pButton type="button" [text]="true" size="small">Cancel</button>
+          <button
+            pButton
+            type="button"
+            severity="danger"
+            [text]="true"
+            [rounded]="true"
+            [iconOnly]="true"
+            aria-label="Delete"
+          >
+            <i class="pi pi-trash"></i>
+          </button>
+        </div>
+
+        <h3>Fields</h3>
+        <div class="fields">
+          <input pInputText placeholder="Title" value="The board flickers when an event arrives" />
+          <p-select
+            [options]="people"
+            optionLabel="name"
+            optionValue="id"
+            [(ngModel)]="assignee"
+            placeholder="Assignee"
+            size="small"
+            [showClear]="true"
+          />
+          <p-select
+            [options]="states"
+            [multiple]="true"
+            [(ngModel)]="chosen"
+            placeholder="States"
+            size="small"
+            ariaLabel="States"
+          />
+          <p-selectbutton [options]="efforts" [(ngModel)]="effort" size="small" />
+          <div class="slider">
+            <span class="muted">Progress {{ progress() }}%</span>
+            <p-slider [(ngModel)]="progress" [step]="25" />
+          </div>
+          <label class="toggle"><p-toggleswitch [(ngModel)]="watching" /> Watch this ticket</label>
+        </div>
+
+        <h3>Card</h3>
+        <article class="sample-card">
+          <div class="row">
+            <app-type [value]="'bug'" />
+            <span class="tabular muted">COW-9</span>
+            <app-state [value]="'in-progress'" />
+            <app-severity [value]="'medium'" />
+          </div>
+          <p class="sample-title">The board flickers when an event arrives during a drag</p>
+          <div class="sample-progress"><span style="width: 50%"></span></div>
+        </article>
+      </div>
+    }
+  </div>
+
+  <h2>Toasts</h2>
+  <div class="row">
+    <button pButton type="button" severity="success" size="small" (click)="toast('success')">
+      Success
+    </button>
+    <button pButton type="button" severity="info" size="small" (click)="toast('info')">Info</button>
+    <button pButton type="button" severity="warn" size="small" (click)="toast('warn')">
+      Warning
+    </button>
+    <button pButton type="button" severity="danger" size="small" (click)="toast('error')">
+      Error
+    </button>
+  </div>
+</section>

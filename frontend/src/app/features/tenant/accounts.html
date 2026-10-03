@@ -1,0 +1,203 @@
+<p-confirmdialog />
+<app-new-account-dialog [(visible)]="creating" (created)="issued($event)" />
+<app-reset-password-dialog [(account)]="resetting" (passwordSet)="issued($event)" />
+<app-secret-dialog
+  [(secret)]="secret"
+  [header]="'Temporary password for ' + (issuedTo()?.username ?? '')"
+  label="Temporary password"
+>
+  <strong>Shown once.</strong> Give it to {{ issuedTo()?.display_name }} yourself, over a channel
+  you trust. They must change it at their first login; until then anyone who knows it can sign in as
+  them.
+</app-secret-dialog>
+
+<section class="page">
+  <header class="head">
+    <h1>Accounts</h1>
+    <span class="spacer"></span>
+    @if (tenant.isAdmin()) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        data-testid="new-account"
+        (click)="creating.set(true)"
+      >
+        <i class="pi pi-plus"></i>New account
+      </button>
+    }
+  </header>
+
+  @if (tenant.isAdmin()) {
+    <p class="muted lead">
+      The local accounts this tenant created, for people who have no identity elsewhere. An account
+      is one person for the whole installation: this tenant manages its password and its sessions,
+      whichever other tenants the person works in.
+    </p>
+    <div class="panel">
+      <p-table
+        [value]="accounts.list()"
+        [loading]="accounts.accounts.isLoading()"
+        [showLoader]="false"
+        size="small"
+        data-testid="accounts"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Username</th>
+            <th>Name</th>
+            <th class="col-role">Role</th>
+            <th>Status</th>
+            <th class="col-actions" aria-label="Actions"></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-account>
+          <tr [attr.data-testid]="'account-' + account.username">
+            <td>
+              <span class="username">{{ account.username }}</span>
+              @if (isOwn(account)) {
+                <span class="muted"> (you)</span>
+              }
+            </td>
+            <td>{{ account.display_name }}</td>
+            <td class="col-role">
+              @if (account.role) {
+                <span [pTooltip]="roleMeaning(account.role)" [showDelay]="400">{{
+                  account.role
+                }}</span>
+              } @else {
+                <span
+                  class="muted"
+                  pTooltip="The tenant has no grant for this person any more"
+                  [showDelay]="400"
+                  >none</span
+                >
+              }
+            </td>
+            <td>
+              <span class="flags">
+                @if (account.deactivated_at) {
+                  <span
+                    class="pill"
+                    [style.--accent]="'var(--p-state-dropped)'"
+                    data-testid="flag-deactivated"
+                    [pTooltip]="
+                      'Since ' + dateTime(account.deactivated_at) + '. ' + flags.deactivated
+                    "
+                    [showDelay]="400"
+                    >deactivated</span
+                  >
+                }
+                @if (account.locked) {
+                  <span
+                    class="pill"
+                    [style.--accent]="'var(--p-severity-high)'"
+                    data-testid="flag-locked"
+                    [pTooltip]="flags.locked"
+                    [showDelay]="400"
+                    ><i class="pi pi-lock"></i>locked</span
+                  >
+                }
+                @if (account.password_change_required) {
+                  <span
+                    class="pill"
+                    [style.--accent]="'var(--p-state-analysed)'"
+                    data-testid="flag-password"
+                    [pTooltip]="flags.passwordChange"
+                    [showDelay]="400"
+                    >must change password</span
+                  >
+                }
+              </span>
+            </td>
+            <td class="col-actions">
+              @if (!account.deactivated_at) {
+                <span class="actions">
+                  @if (!isOwn(account)) {
+                    <button
+                      pButton
+                      type="button"
+                      [text]="true"
+                      [rounded]="true"
+                      severity="secondary"
+                      size="small"
+                      [iconOnly]="true"
+                      pTooltip="Reset password"
+                      [attr.aria-label]="'Reset the password of ' + account.username"
+                      [attr.data-testid]="'account-reset-' + account.username"
+                      (click)="resetting.set(account)"
+                    >
+                      <i class="pi pi-key"></i>
+                    </button>
+                    @if (account.locked) {
+                      <button
+                        pButton
+                        type="button"
+                        [text]="true"
+                        [rounded]="true"
+                        severity="secondary"
+                        size="small"
+                        [iconOnly]="true"
+                        pTooltip="Unlock"
+                        [attr.aria-label]="'Unlock ' + account.username"
+                        [attr.data-testid]="'account-unlock-' + account.username"
+                        (click)="unlock(account)"
+                      >
+                        <i class="pi pi-lock-open"></i>
+                      </button>
+                    }
+                  }
+                  <button
+                    pButton
+                    type="button"
+                    [text]="true"
+                    [rounded]="true"
+                    severity="secondary"
+                    size="small"
+                    [iconOnly]="true"
+                    pTooltip="End sessions"
+                    [attr.aria-label]="'End the sessions of ' + account.username"
+                    [attr.data-testid]="'account-sessions-' + account.username"
+                    (click)="endSessions(account)"
+                  >
+                    <i class="pi pi-sign-out"></i>
+                  </button>
+                  @if (!isOwn(account)) {
+                    <button
+                      pButton
+                      type="button"
+                      [text]="true"
+                      [rounded]="true"
+                      severity="danger"
+                      size="small"
+                      [iconOnly]="true"
+                      pTooltip="Deactivate"
+                      [attr.aria-label]="'Deactivate ' + account.username"
+                      [attr.data-testid]="'account-deactivate-' + account.username"
+                      (click)="deactivate(account)"
+                    >
+                      <i class="pi pi-ban"></i>
+                    </button>
+                  }
+                </span>
+              }
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr>
+            <td colspan="5" class="muted empty" data-testid="accounts-empty">
+              {{ failure() ?? 'No accounts yet.' }}
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  } @else if (session.me.isLoading()) {
+    <p-skeleton width="24rem" height="2rem" />
+  } @else {
+    <p class="muted" data-testid="accounts-notice">
+      Only the administrators of this tenant manage its accounts.
+    </p>
+  }
+</section>

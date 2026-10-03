@@ -1,0 +1,57 @@
+<section class="page">
+  <header class="head">
+    <h1>Time</h1>
+    <p class="muted">What was booked in the period, under the visibility of time entries.</p>
+  </header>
+
+  <div class="toolbar">
+    <span class="range">
+      <input
+        pInputText
+        type="date"
+        [ngModel]="from()"
+        (ngModelChange)="from.set($event)"
+        aria-label="From"
+        data-testid="report-from"
+      />
+      <span class="muted">to</span>
+      <input
+        pInputText
+        type="date"
+        [ngModel]="to()"
+        (ngModelChange)="to.set($event)"
+        aria-label="To"
+        data-testid="report-to"
+      />
+    </span>
+    <p-selectbutton
+      [options]="groups"
+      [ngModel]="groupBy()"
+      (ngModelChange)="groupBy.set($event)"
+      [allowEmpty]="false"
+      size="small"
+      ariaLabel="Group by"
+      data-testid="report-group"
+    />
+    <span class="spacer"></span>
+    <span class="total tabular" data-testid="report-total">{{ duration(total()) }}</span>
+  </div>
+
+  <div class="panel">
+    @if (failure(); as problem) {
+      <p class="muted empty" data-testid="report-failed">
+        The report could not be loaded: {{ problem.detail || problem.title }}
+      </p>
+    } @else {
+      @for (row of rows(); track row.key) {
+        <div class="row" [attr.data-testid]="'report-' + row.key">
+          <span class="label">{{ row.label }}</span>
+          <span class="bar"><span [style.width]="share(row.minutes)"></span></span>
+          <span class="minutes tabular">{{ duration(row.minutes) }}</span>
+        </div>
+      } @empty {
+        <p class="muted empty">Nothing booked in this period.</p>
+      }
+    }
+  </div>
+</section>

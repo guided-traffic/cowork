@@ -1,0 +1,137 @@
+<div class="moves">
+  @if (main(); as move) {
+    <button
+      pButton
+      type="button"
+      size="small"
+      [attr.data-testid]="'move-' + move.to"
+      (click)="start(move)"
+      [disabled]="busy() && !pending()"
+    >
+      @if (busy() && !pending()) {
+        <i class="pi pi-spinner pi-spin"></i>
+      } @else {
+        <i
+          [class]="
+            move.kind === 'done'
+              ? 'pi pi-check'
+              : move.kind === 'reopen'
+                ? 'pi pi-replay'
+                : 'pi pi-arrow-right'
+          "
+        ></i>
+      }
+      {{ move.label }}
+    </button>
+  }
+  @if (others().length > 0) {
+    <button
+      pButton
+      type="button"
+      size="small"
+      severity="secondary"
+      [outlined]="true"
+      data-testid="more-moves"
+      [iconOnly]="true"
+      (click)="menu.toggle($event)"
+      aria-label="More moves"
+    >
+      <i class="pi pi-ellipsis-h"></i>
+    </button>
+    <p-menu #menu [model]="others()" [popup]="true" appendTo="body" />
+  }
+</div>
+
+<p-dialog
+  [visible]="pending() !== null"
+  (visibleChange)="$event || close()"
+  [modal]="true"
+  [draggable]="false"
+  [style]="{ width: '32rem' }"
+  [header]="dialogTitle()"
+  data-testid="move-dialog"
+>
+  @if (pending(); as move) {
+    <form class="form" (ngSubmit)="send()">
+      @if (move.input === 'block') {
+        <div class="field">
+          <span id="block-kind-label">Waits on</span>
+          <p-select
+            [options]="blockKinds"
+            [ngModel]="blockKind()"
+            (ngModelChange)="blockKind.set($event)"
+            name="kind"
+            size="small"
+            ariaLabelledBy="block-kind-label"
+            data-testid="block-kind"
+          />
+        </div>
+        @if (blockKind() === 'ticket') {
+          <label class="field">
+            <span>The ticket it waits on</span>
+            <input
+              pInputText
+              name="blockTicket"
+              [ngModel]="blockTicket()"
+              (ngModelChange)="blockTicket.set($event)"
+              placeholder="COW-12"
+              data-testid="block-ticket"
+            />
+          </label>
+        }
+      }
+      <label class="field">
+        <span>{{ move.input === 'note' ? 'Verification note' : 'Reason' }}</span>
+        <textarea
+          pTextarea
+          name="text"
+          rows="4"
+          [ngModel]="text()"
+          (ngModelChange)="text.set($event)"
+          [placeholder]="
+            move.input === 'note' ? 'What was run, against what, with what result' : 'Why'
+          "
+          data-testid="move-text"
+        ></textarea>
+      </label>
+      @if (prerequisitesOpen()) {
+        <label class="override">
+          <p-checkbox
+            [binary]="true"
+            [ngModel]="override()"
+            (ngModelChange)="override.set($event)"
+            name="override"
+          />
+          <span>Close it over its open prerequisites</span>
+        </label>
+        @if (override()) {
+          <label class="field">
+            <span>Why it may close before them</span>
+            <textarea
+              pTextarea
+              name="overrideReason"
+              rows="2"
+              [ngModel]="overrideReason()"
+              (ngModelChange)="overrideReason.set($event)"
+              data-testid="override-reason"
+            ></textarea>
+          </label>
+        }
+      }
+      @if (error(); as message) {
+        <small class="error" data-testid="move-error">{{ message }}</small>
+      }
+      <div class="actions">
+        <button pButton type="button" [text]="true" severity="secondary" (click)="close()">
+          Cancel
+        </button>
+        <button pButton type="submit" data-testid="move-send" [disabled]="!canSend() || busy()">
+          @if (busy()) {
+            <i class="pi pi-spinner pi-spin"></i>
+          }
+          {{ move.label }}
+        </button>
+      </div>
+    </form>
+  }
+</p-dialog>

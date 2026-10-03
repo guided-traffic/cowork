@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="border" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#70e6ce"/><stop offset="0.22" stop-color="#6e51eb"/><stop offset="0.40" stop-color="#a63cd8"/><stop offset="0.56" stop-color="#d233b8"/><stop offset="0.72" stop-color="#db6a68"/><stop offset="0.86" stop-color="#e7a666"/><stop offset="1" stop-color="#f2d672"/></linearGradient>
+    <radialGradient id="ink" cx="0.5" cy="0.3" r="0.72"><stop offset="0" stop-color="#2b1673"/><stop offset="1" stop-color="#160941"/></radialGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#border)"/>
+  <rect x="5.5" y="5.5" width="53" height="53" rx="14.5" fill="url(#ink)"/>
+  <rect x="18.7" y="19.4" width="6.3" height="23.799999999999997" rx="2.4499999999999997" fill="#fff" opacity="1"/><rect x="28.85" y="19.4" width="6.3" height="16.799999999999997" rx="2.4499999999999997" fill="#fff" opacity="0.85"/><rect x="39.0" y="19.4" width="6.3" height="9.1" rx="2.4499999999999997" fill="#fff" opacity="0.7"/><path fill="#fff" d="M41.1 33.400000000000006C41.1 36.86500000000001 43.934999999999995 39.7 47.4 39.7C43.934999999999995 39.7 41.1 42.535 41.1 46.0C41.1 42.535 38.26500000000001 39.7 34.800000000000004 39.7C38.26500000000001 39.7 41.1 36.86500000000001 41.1 33.400000000000006Z"/>
+</svg>

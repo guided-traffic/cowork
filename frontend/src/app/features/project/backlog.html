@@ -1,0 +1,157 @@
+<section class="page">
+  <header class="head">
+    <div class="title">
+      <span class="key">{{ project() }}</span>
+      <h1>{{ details()?.name ?? project() }}</h1>
+      <span class="spacer"></span>
+      @if (session.tenant(); as tenant) {
+        <a
+          pButton
+          [text]="true"
+          [rounded]="true"
+          severity="secondary"
+          [routerLink]="['/t', tenant, 'p', project(), 'settings']"
+          data-testid="project-settings"
+          [iconOnly]="true"
+          aria-label="Project settings"
+          ><i class="pi pi-cog"></i
+        ></a>
+        <button
+          pButton
+          type="button"
+          size="small"
+          data-testid="new-ticket"
+          (click)="creating.set(true)"
+        >
+          <i class="pi pi-plus"></i>New ticket
+        </button>
+        <app-new-ticket-dialog
+          [tenant]="tenant"
+          [project]="project()"
+          [(visible)]="creating"
+          (filed)="filed($event)"
+        />
+      }
+    </div>
+    @if (details()?.description; as description) {
+      <p class="muted">{{ description }}</p>
+    }
+  </header>
+
+  <div class="toolbar">
+    <p-iconfield class="search">
+      <p-inputicon class="pi pi-search" />
+      <input
+        pInputText
+        type="search"
+        placeholder="Search title and body"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        aria-label="Search"
+        data-testid="search"
+      />
+    </p-iconfield>
+    <p-select
+      [options]="stateOptions"
+      [multiple]="true"
+      optionLabel="state"
+      optionValue="state"
+      [ngModel]="selectedStates()"
+      (ngModelChange)="onStates($event ?? [])"
+      placeholder="Every state"
+      [showClear]="true"
+      size="small"
+      ariaLabel="States"
+      data-testid="state-filter"
+    />
+    <span class="spacer"></span>
+    <span class="muted tabular" data-testid="total">{{ total() }} tickets</span>
+  </div>
+
+  <div class="panel">
+    <p-table
+      [value]="rows()"
+      [lazy]="true"
+      (onLazyLoad)="onLazyLoad($event)"
+      [paginator]="true"
+      [rows]="perPage()"
+      [first]="(page() - 1) * perPage()"
+      [rowsPerPageOptions]="pageSizes"
+      [totalRecords]="total()"
+      [loading]="loading()"
+      [showLoader]="false"
+      dataKey="key"
+      size="small"
+      [rowHover]="true"
+      class="tickets"
+      data-testid="backlog-table"
+    >
+      <ng-template #header>
+        <tr>
+          <th class="col-key">Key</th>
+          <th>Title</th>
+          <th class="col-state">State</th>
+          <th class="col-badge">Severity</th>
+          <th class="col-assignee">Assignee</th>
+          <th class="col-progress">Progress</th>
+          <th class="col-urgency">Urgency</th>
+          <th class="col-when">Updated</th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-ticket>
+        <tr class="row" (click)="open(ticket)" [attr.data-testid]="'row-' + ticket.key">
+          <td class="col-key">
+            <a
+              [routerLink]="[
+                '/t',
+                session.tenant(),
+                'tickets',
+                ticket.project + '-' + ticket.number,
+              ]"
+              (click)="$event.stopPropagation()"
+              class="tabular"
+              >{{ ticket.project }}-{{ ticket.number }}</a
+            >
+          </td>
+          <td>
+            <div class="cell-title">
+              <app-type [value]="ticket.type" />
+              <span class="text">{{ ticket.title }}</span>
+              <app-security [value]="ticket.security" />
+            </div>
+          </td>
+          <td class="col-state"><app-state [value]="ticket.state" /></td>
+          <td class="col-badge"><app-severity [value]="ticket.severity" /></td>
+          <td class="col-assignee">
+            @if (ticket.assignee; as assignee) {
+              <span>{{ assignee.display_name }}</span>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <td class="col-progress">
+            <div
+              class="progress"
+              [pTooltip]="
+                ticket.progress + '%' + (ticket.progress_derived ? ', from its children' : '')
+              "
+            >
+              <span [style.width.%]="ticket.progress"></span>
+            </div>
+          </td>
+          <td class="col-urgency">
+            <span [pTooltip]="urgencyMeaning(ticket)" [showDelay]="400">{{ ticket.urgency }}</span>
+          </td>
+          <td class="col-when muted">{{ ago(ticket.updated_at) }}</td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="8" class="empty muted" data-testid="empty">
+            {{ failure() ?? 'No tickets match.' }}
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+</section>

@@ -33,6 +33,8 @@
               }
             ],
             "styles": [
+              "node_modules/@fontsource-variable/inter/index.css",
+              "node_modules/primeicons/primeicons.css",
               "src/styles.scss"
             ]
           },
@@ -41,16 +43,22 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "1mb",
+                  "maximumError": "1.5mb"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
-                  "maximumError": "8kB"
+                  "maximumWarning": "6kB",
+                  "maximumError": "10kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "fileReplacements": [
+                {
+                  "replace": "src/app/dev/dev.routes.ts",
+                  "with": "src/app/dev/dev.routes.prod.ts"
+                }
+              ]
             },
             "development": {
               "optimization": false,
@@ -72,11 +80,18 @@
           },
           "defaultConfiguration": "development",
           "options": {
-            "proxyConfig": "proxy.conf.json"
+            "proxyConfig": "proxy.conf.mjs"
           }
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "coverageExclude": [
+              "src/app/api/**",
+              "src/app/dev/dev.routes.prod.ts",
+              "src/main.ts"
+            ]
+          }
         },
         "lint": {
           "builder": "@angular-eslint/builder:lint",

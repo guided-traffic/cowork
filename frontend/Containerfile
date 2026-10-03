@@ -7,7 +7,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
-RUN npx ng build --configuration production
+# The PrimeUI license key (docs/adr/0052 D9) arrives as a BuildKit secret, so it is in no layer
+# and no build argument; without it the bundle works and shows PrimeNG's license notice.
+RUN --mount=type=secret,id=primeui_license,required=false \
+    npx ng build --configuration production $(node scripts/primeui-define.mjs /run/secrets/primeui_license)
 
 # Final stage: nginx, unprivileged, serving the bundle and proxying /api/ to
 # the backend. The image entrypoint renders nginx/default.conf.template with

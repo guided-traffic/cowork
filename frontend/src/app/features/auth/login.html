@@ -1,0 +1,69 @@
+<main class="auth-page">
+  <section class="card" aria-labelledby="login-title">
+    <app-wordmark [height]="56" />
+    <h1 id="login-title">Sign in</h1>
+
+    @if (auth.options.isLoading()) {
+      <p class="muted">Loading…</p>
+    } @else if (unavailable()) {
+      <p class="muted" data-testid="login-unavailable">
+        This installation offers no login yet. An operator configures the local administrator or an
+        identity provider.
+      </p>
+    } @else if (local()) {
+      <form class="form" (ngSubmit)="submit()">
+        <label class="field">
+          <span>Username</span>
+          <input
+            pInputText
+            name="username"
+            autocomplete="username"
+            [ngModel]="username()"
+            (ngModelChange)="username.set($event)"
+            data-testid="login-username"
+          />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <span class="password">
+            <input
+              pInputPassword
+              [(mask)]="masked"
+              id="login-password"
+              name="password"
+              [ngModel]="password()"
+              (ngModelChange)="password.set($event)"
+              autocomplete="current-password"
+              [fluid]="true"
+              data-testid="login-password"
+            />
+            <button
+              type="button"
+              class="reveal"
+              (click)="masked.set(!masked())"
+              [attr.aria-label]="masked() ? 'Show the password' : 'Hide the password'"
+              data-testid="login-reveal"
+            >
+              <i [class]="masked() ? 'pi pi-eye' : 'pi pi-eye-slash'"></i>
+            </button>
+          </span>
+        </label>
+        @if (error(); as message) {
+          <p class="error" role="alert" data-testid="login-error">{{ message }}</p>
+        }
+        <button
+          pButton
+          type="submit"
+          [fluid]="true"
+          data-testid="login-submit"
+          [disabled]="!canSubmit() || busy()"
+        >
+          @if (busy()) {
+            <i class="pi pi-spinner pi-spin"></i>
+          }
+          Sign in
+        </button>
+      </form>
+    }
+  </section>
+</main>

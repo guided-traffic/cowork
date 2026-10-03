@@ -1,0 +1,245 @@
+<p-confirmdialog />
+
+<section class="page">
+  <nav class="crumbs muted">
+    @if (at(); as a) {
+      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'backlog']">{{ a.project }}</a>
+      <span>/</span>
+      <span class="tabular">{{ key() }}</span>
+    }
+  </nav>
+
+  @if (ticket(); as t) {
+    <header class="head">
+      <div class="head-top">
+        <div class="badges">
+          <app-type [value]="t.type" [showLabel]="true" />
+          <app-state [value]="t.state" />
+          <app-severity [value]="t.severity" />
+          <app-security [value]="t.security" />
+          @if (t.confidential) {
+            <span
+              class="pill"
+              pTooltip="Visible to the tenant's administrators, the assignee and the reporter"
+              ><i class="pi pi-lock"></i>confidential</span
+            >
+          }
+        </div>
+        <app-ticket-moves [ticket]="t" />
+      </div>
+      <h1 data-testid="ticket-title">{{ t.title }}</h1>
+      @if (t.block; as block) {
+        <div class="block" data-testid="block">
+          <i class="pi pi-ban"></i>
+          <span
+            ><strong>Blocked</strong> ({{ block.kind
+            }}{{ block.ticket ? ', on ' + block.ticket : '' }}): {{ block.reason }}</span
+          >
+        </div>
+      }
+      @if (t.threat) {
+        <div class="threat">
+          <i class="pi pi-shield"></i><span>{{ t.threat }}</span>
+        </div>
+      }
+    </header>
+
+    <div class="layout">
+      <div class="main">
+        <section class="card">
+          <h2>Description</h2>
+          @if (t.body) {
+            <div class="body" data-testid="body">{{ t.body }}</div>
+          } @else {
+            <p class="muted">No description.</p>
+          }
+        </section>
+
+        <section class="card">
+          <h2>
+            Questions <span class="count muted">{{ openQuestions().length }} open</span>
+          </h2>
+          @if (relations.questions.error(); as error) {
+            <p class="muted" data-testid="questions-failed">{{ failure(error) }}</p>
+          }
+          @for (question of openQuestions(); track question.id) {
+            <article class="question open" [attr.data-testid]="'question-' + question.number">
+              <p class="ask">{{ question.question }}</p>
+              @if (question.options) {
+                <p class="muted small"><strong>Options:</strong> {{ question.options }}</p>
+              }
+              @if (question.recommendation) {
+                <p class="muted small">
+                  <strong>Recommended:</strong> {{ question.recommendation }}
+                </p>
+              }
+              <p class="meta muted">
+                asked by {{ question.asked_by.display_name
+                }}{{ question.asked_by_agent ? ' via ' + question.asked_by_agent : '' }}
+                {{ question.asked_of ? '· of ' + question.asked_of.display_name : '' }} ·
+                {{ ago(question.created_at) }}
+              </p>
+              <app-answer-question [ticketKey]="t.key" [question]="question" />
+            </article>
+          } @empty {
+            <p class="muted">No open question.</p>
+          }
+          @for (question of settledQuestions(); track question.id) {
+            <article class="question settled">
+              <p class="ask">{{ question.question }}</p>
+              <p class="small">
+                @if (question.status === 'answered') {
+                  <strong>Answer:</strong> {{ question.answer }}
+                } @else {
+                  <span class="muted">withdrawn</span>
+                }
+              </p>
+              @if (question.status === 'answered') {
+                <app-answer-question [ticketKey]="t.key" [question]="question" />
+              }
+            </article>
+          }
+          <app-ask-question [ticketKey]="t.key" />
+        </section>
+
+        <section class="card">
+          <h2>Comments</h2>
+          @if (relations.comments.error(); as error) {
+            <p class="muted" data-testid="comments-failed">{{ failure(error) }}</p>
+          } @else if (relations.comments.hasValue()) {
+            @for (comment of relations.comments.value().items; track comment.id) {
+              <article class="comment" [attr.data-testid]="'comment-' + comment.id">
+                <p class="meta muted">
+                  <strong>{{ comment.author.display_name }}</strong>
+                  {{ comment.agent ? 'via ' + comment.agent : '' }} · {{ ago(comment.created_at) }}
+                  {{ comment.edited ? '· edited' : '' }}
+                </p>
+                @if (comment.withdrawn) {
+                  <p class="muted">withdrawn</p>
+                } @else {
+                  <p class="text">{{ comment.body }}</p>
+                }
+              </article>
+            } @empty {
+              <p class="muted">No comments yet.</p>
+            }
+          } @else {
+            <p-skeleton height="4rem" />
+          }
+          <app-comment-composer [ticketKey]="t.key" />
+        </section>
+
+        <section class="card">
+          <h2>Activity</h2>
+          @if (relations.activity.error(); as error) {
+            <p class="muted" data-testid="activity-failed">{{ failure(error) }}</p>
+          } @else if (relations.activity.hasValue()) {
+            <ol class="activity">
+              @for (item of relations.activity.value().items; track item.id) {
+                <li>
+                  <span class="dot"></span>
+                  <span class="what">{{ describe(item) }}</span>
+                  @if (item.agent) {
+                    <span class="agent" pTooltip="Recorded for an agent acting for this person"
+                      ><i class="pi pi-sparkles"></i>{{ item.agent }}</span
+                    >
+                  }
+                  <span class="when muted" [pTooltip]="dateTime(item.at)">{{ ago(item.at) }}</span>
+                  @if (item.reason || item.note) {
+                    <span class="why muted">{{ item.reason || item.note }}</span>
+                  }
+                </li>
+              }
+            </ol>
+          } @else {
+            <p-skeleton height="6rem" />
+          }
+        </section>
+      </div>
+
+      <aside class="side">
+        <section class="card">
+          <app-ticket-fields [ticket]="t" />
+        </section>
+
+        <section class="card">
+          <h2>Interest</h2>
+          @if (relations.interest.error(); as error) {
+            <p class="muted" data-testid="interest-failed">{{ failure(error) }}</p>
+          } @else {
+            <app-interest-control
+              [ticketKey]="t.key"
+              [interests]="interests()"
+              [me]="session.person()?.id"
+            />
+          }
+        </section>
+
+        <section class="card">
+          <h2>Links</h2>
+          @if (relations.links.error(); as error) {
+            <p class="muted" data-testid="links-failed">{{ failure(error) }}</p>
+          } @else if (relations.links.hasValue()) {
+            @for (link of relations.links.value().items; track link.id) {
+              <div class="link" [attr.data-testid]="'link-' + link.id">
+                <div class="link-head">
+                  <span class="muted small">{{ link.name }}</span>
+                  <button
+                    pButton
+                    type="button"
+                    [text]="true"
+                    [rounded]="true"
+                    size="small"
+                    severity="secondary"
+                    [attr.data-testid]="'unlink-' + link.id"
+                    [iconOnly]="true"
+                    (click)="unlink(link)"
+                    aria-label="Remove this link"
+                  >
+                    <i class="pi pi-times"></i>
+                  </button>
+                </div>
+                <span class="link-target"
+                  ><span class="tabular">{{ link.ticket.key }}</span>
+                  <app-state [value]="link.ticket.state"
+                /></span>
+                <span class="small">{{ link.ticket.title }}</span>
+              </div>
+            } @empty {
+              <p class="muted">No links.</p>
+            }
+          }
+          <app-link-adder [ticketKey]="t.key" />
+        </section>
+
+        <section class="card">
+          @if (relations.attachments.error(); as error) {
+            <h2>Attachments</h2>
+            <p class="muted" data-testid="attachments-failed">{{ failure(error) }}</p>
+          } @else {
+            <app-attachments-card [ticketKey]="t.key" />
+          }
+        </section>
+
+        <section class="card">
+          @if (relations.time.error(); as error) {
+            <h2>Time</h2>
+            <p class="muted" data-testid="time-failed">{{ failure(error) }}</p>
+          } @else {
+            <app-time-card [ticketKey]="t.key" />
+          }
+        </section>
+      </aside>
+    </div>
+  } @else if (missing(); as problem) {
+    <div class="notice" data-testid="ticket-missing">
+      <h1>{{ problem.status === 404 ? 'No such ticket' : problem.title }}</h1>
+      <p class="muted">
+        {{ problem.status === 404 ? 'It does not exist, or you cannot see it.' : problem.detail }}
+      </p>
+    </div>
+  } @else {
+    <p-skeleton width="60%" height="2rem" />
+    <p-skeleton height="12rem" />
+  }
+</section>
