@@ -2,8 +2,31 @@ apiVersion: v1
 entries:
   cowork:
   - apiVersion: v2
+    appVersion: 0.2.0
+    created: "2026-10-03T16:02:05.810100119Z"
+    description: Multi-tenant backlog and kanban board for people and LLM agents working
+      across many projects
+    digest: 23efd4e3cbb61e9fe0d76f3f5b771e079b819cb9126c3501ea21bc247f327a57
+    home: https://github.com/guided-traffic/cowork
+    keywords:
+    - backlog
+    - kanban
+    - tickets
+    - llm
+    - multi-tenant
+    maintainers:
+    - name: Guided Traffic
+      url: https://github.com/guided-traffic
+    name: cowork
+    sources:
+    - https://github.com/guided-traffic/cowork
+    type: application
+    urls:
+    - https://guided-traffic.github.io/cowork/cowork-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
     appVersion: 0.1.1
-    created: "2026-10-03T08:35:20.226458133Z"
+    created: "2026-10-03T16:02:05.808917569Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 7ef312fc33fb7b8c2fe04e4cc8a40f7196df2f099059590fb2c8a5566816458c
@@ -26,7 +49,7 @@ entries:
     version: 0.1.1
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-10-03T08:35:20.225781253Z"
+    created: "2026-10-03T16:02:05.807837421Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 1ea39b98752030d21e567cb0b1b93b4c20a97e83ba6eb5b9176892b0f4186d48
@@ -47,4 +70,4 @@ entries:
     urls:
     - https://guided-traffic.github.io/cowork/cowork-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-03T08:35:20.224207886Z"
+generated: "2026-10-03T16:02:05.80610876Z"
