@@ -239,13 +239,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The S3 server of the attachment tests. A service container takes no
-      # command and the Chainguard MinIO image needs `server /data`, so it is
-      # started on the job's Docker daemon with the image the Makefile pins;
-      # the tests read COWORK_TEST_S3_* from make's defaults.
-      - name: Start the S3 server
-        run: make minio-up
-
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -258,6 +251,14 @@ jobs:
 
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      # The S3 server of the attachment tests. A service container takes no
+      # command and the Chainguard MinIO image needs `server /data`, so it is
+      # started on the job's Docker daemon with the image the Makefile pins;
+      # the tests read COWORK_TEST_S3_* from make's defaults. It needs
+      # make, so it starts after the build tools.
+      - name: Start the S3 server
+        run: make minio-up
 
       - name: Run integration tests with coverage
         run: make test-integration-coverage
