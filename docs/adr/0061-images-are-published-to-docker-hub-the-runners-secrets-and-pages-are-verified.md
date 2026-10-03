@@ -9,8 +9,8 @@ verifications of D2–D4 were made read-only against GitHub on 2026-10-01 and an
 runner and secrets questions without a decision.
 
 **Partly built.** The workflows push to `guidedtraffic/cowork-backend` and
-`guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`; the secret does not exist on
-this repository yet (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
+`guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`, an organisation secret since
+2026-10-03 (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
 verified from the logs of run 36909513652. Amended 2026-10-03 (D5): the owner chose install
 steps in the jobs for the runner-image gaps, over a runner image and over another container
 mode; the integration job passed with them on the first run of the phase-2 code.
@@ -31,7 +31,10 @@ workflow, which produced the evidence below.
 `guidedtraffic/cowork-frontend`, as `build.yml` and the chart's default `image.repository`
 values already say. The owner creates `DOCKERHUB_PAT` as a repository secret of
 `guided-traffic/cowork`, as the sibling project has it; until then every job that logs in to
-Docker Hub fails with "Password required" and the release cannot publish.
+Docker Hub fails with "Password required" and the release cannot publish. *(Amended
+2026-10-03: the owner created it as an organisation secret of `guided-traffic` instead, beside
+`APP_CLIENT_ID` and `APP_PRIVATE_KEY`; the repository reads it. Which repositories of the
+organisation may read it is the organisation's setting, not verified from here.)*
 
 **D2 — Verified: the self-hosted runner pool serves this repository.** The Renovate workflow
 (`runs-on: self-hosted`) completed successfully on `main` on 2026-10-01, and every Go job of

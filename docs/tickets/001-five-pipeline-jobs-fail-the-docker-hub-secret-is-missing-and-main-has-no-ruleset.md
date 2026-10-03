@@ -26,12 +26,12 @@ D1–D7 and [ADR 0003](../adr/0003-test-and-ci-policy.md) D1, D4.
     **Frontend (lint, test, build)** fails in "Setup Node.js", whose Node 26 cannot load
     `libatomic.so.1`. The runner image has neither. On the phase-2 branch these jobs install
     `make`, and the frontend job `libatomic1` before `setup-node`, the way the Go jobs install
-    `build-essential` (ADR 0061 D5); the same branch moved the integration job's S3 server
-    after its build tools, and that job passes.
+    `build-essential` (ADR 0061 D5), and they pass; so does the integration job, whose S3
+    server starts after its build tools.
   - **Container Malware Scan (backend)** and **(frontend)** fail in "Login to Docker Hub" with
-    `Password required`: the repository has no `DOCKERHUB_PAT` (ADR 0061 D1). The build step is
-    skipped, and Trivy then reports that it finds no image; its message lists the missing
-    containerd and podman sockets.
+    `Password required`, skip their build, and Trivy reports that it finds no image. The
+    organisation secret `DOCKERHUB_PAT` now exists and the repository reads it (ADR 0061 D1);
+    no scan leg has run with it yet.
 - The scan jobs reach a Docker Engine at `unix:///run/docker.sock` (`Server: Docker Engine -
   Community` in the "Docker info" output of `docker/setup-buildx-action`; ADR 0061 D5); they
   fail before they build, so whether a build works on that daemon is not known.
@@ -47,17 +47,14 @@ D1–D7 and [ADR 0003](../adr/0003-test-and-ci-policy.md) D1, D4.
 
 ## Required changes
 
-1. The owner creates the repository secret `DOCKERHUB_PAT` (ADR 0061 D1) — an act outside the
-   repository. With it the scan legs reach their build step; their first green run is the
-   proof that the daemon the pods reach builds and scans an image.
+1. The scan legs pass with the organisation secret: they log in, build both images on the
+   daemon the pods reach and scan them.
 2. An organisation administrator applies ADR 0073: the `main` ruleset with the thirteen required
    checks by their exact job names (D1) and the administrators on the bypass list (D2); squash
    merges only, the squash title taken from the pull request title, auto-merge on, head
    branches deleted on merge (D3); the `v*` tag ruleset for the semantic-release App (D4);
    `gh-pages` left unprotected (D5).
-3. The install steps of ADR 0061 D5 pass in CI: Helm Chart, Release Tooling and Frontend reach
-   their `make` targets, and Frontend gets past "Setup Node.js".
-4. Verification, recorded here when run: one green "Test and Release" run on `main` (the
+3. Verification, recorded here when run: one green "Test and Release" run on `main` (the
    thirteen jobs and semantic-release); `gh api` reads of the rulesets and the repository
    settings; a pull request that cannot merge while a required check is red.
 
