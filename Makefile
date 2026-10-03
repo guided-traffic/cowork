@@ -43,7 +43,7 @@ DEV_ADMIN_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_PORT)/cowork?
 # entrypoint is the minio binary without arguments, so `server /data` is its
 # command. The keys are development values.
 # renovate: datasource=docker depName=cgr.dev/chainguard/minio
-MINIO_IMAGE ?= cgr.dev/chainguard/minio:latest@sha256:0f95aa412a12351a95bb43c3b54b66440eb0aa022bb3f3458942678a489e915b
+MINIO_IMAGE ?= cgr.dev/chainguard/minio:latest@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034
 MINIO_CONTAINER ?= cowork-minio
 MINIO_PORT ?= 9000
 MINIO_ACCESS_KEY ?= cowork

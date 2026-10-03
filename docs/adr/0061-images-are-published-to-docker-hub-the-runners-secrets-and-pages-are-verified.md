@@ -8,9 +8,11 @@ assume, over GitHub Container Registry (the recommendation) and over publishing 
 verifications of D2–D4 were made read-only against GitHub on 2026-10-01 and answer the
 runner and secrets questions without a decision.
 
-**Partly built.** The workflows push to `guidedtraffic/cowork-backend` and
+**Built.** The workflows push to `guidedtraffic/cowork-backend` and
 `guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`, an organisation secret since
-2026-10-03 (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
+2026-10-03 (D1). The first release, `0.1.0` on 2026-10-03, published both images to Docker Hub
+and the chart to `gh-pages`, served as the Helm repository `https://guided-traffic.github.io/cowork/`
+("Release Docker & Helm", run 37108086347). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
 verified from the logs of run 36909513652. Amended 2026-10-03 (D5): the owner chose install
 steps in the jobs for the runner-image gaps, over a runner image and over another container
 mode; the integration job passed with them on the first run of the phase-2 code. Verified on

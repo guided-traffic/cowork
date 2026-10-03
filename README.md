@@ -108,7 +108,7 @@ The frontend container substitutes four variables into its nginx configuration, 
 |---|---|---|
 | Migration | `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n` without a gap, no down files | `000001_tenants.up.sql` |
 | Container images | `guidedtraffic/cowork-backend:<semver>`, `guidedtraffic/cowork-frontend:<semver>` | both carry the release version |
-| Helm chart | `cowork`, `deploy/helm/cowork/` | `helm install cowork deploy/helm/cowork` |
+| Helm chart | `cowork` in the repository `https://guided-traffic.github.io/cowork/`, source `deploy/helm/cowork/`; chart version = release version | `helm install cowork cowork/cowork --version 0.1.0` |
 | Go module | `github.com/guided-traffic/cowork/backend` | — |
 | Angular project | `frontend`, output `frontend/dist/frontend/browser/` | — |
 | Ticket (interim, in this repository) | `docs/tickets/NNN-<kebab-slug>.md`, `id: T<n>` | rules in [docs/tickets/README.md](docs/tickets/README.md) |
@@ -222,9 +222,8 @@ kubectl -n cowork create secret generic cowork-database-owner \
   --from-literal=databaseUrl='postgres://cowork_owner:CHANGE-ME@postgres:5432/cowork?sslmode=require'
 kubectl -n cowork create secret generic cowork-session \
   --from-literal=sessionKey="$(openssl rand -base64 32)"
-helm upgrade --install cowork deploy/helm/cowork -n cowork \
-  --set backend.image.repository=<registry>/cowork-backend --set backend.image.tag=<tag> \
-  --set frontend.image.repository=<registry>/cowork-frontend --set frontend.image.tag=<tag> \
+helm repo add cowork https://guided-traffic.github.io/cowork/
+helm upgrade --install cowork cowork/cowork --version 0.1.0 -n cowork \
   --set database.existingSecret=cowork-database \
   --set database.owner.existingSecret=cowork-database-owner \
   --set session.existingSecret=cowork-session
@@ -233,7 +232,9 @@ kubectl -n cowork port-forward svc/cowork-frontend 8080:80     # the UI, /api/ p
 
 Attachments need an S3-compatible bucket and three more values; without them uploads are
 refused. Nobody can sign in to an installation yet: persons, tenants and tokens arrive with the
-login. There is no published image or chart repository yet. Details — the roles, the Secrets,
+login. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
+`guidedtraffic/cowork-frontend` on Docker Hub) with one version; the chart's image tags follow
+its `appVersion`. Details — the roles, the Secrets,
 the object storage, the Ingress annotations, the CloudNativePG note:
 [docs/operations/installation.md](docs/operations/installation.md).
 
@@ -241,8 +242,8 @@ the object storage, the Ingress annotations, the CloudNativePG note:
 <summary>Upgrade and uninstall</summary>
 
 ```bash
-helm upgrade cowork deploy/helm/cowork -n cowork --reuse-values \
-  --set backend.image.tag=<new> --set frontend.image.tag=<new>
+helm repo update cowork
+helm upgrade cowork cowork/cowork --version <new> -n cowork --reuse-values
 helm uninstall cowork -n cowork      # the database and the bucket are left untouched
 ```
 

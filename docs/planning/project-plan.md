@@ -24,7 +24,8 @@ Written 2026-09-29.
 ## Done
 
 Phases 0 (skeleton, 2026-09-29), 1 (the decisions, 2026-10-01) and 2 (the core domain and the
-API, 2026-10-02) are done and deleted from this file
+API, 2026-10-02, released as `0.1.0` on 2026-10-03 with a green pipeline, the images on Docker
+Hub and the chart in its Helm repository) are done and deleted from this file
 ([ADR 0002](../adr/0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
 D10): what they built is in the ADRs' `Status` sections and their index, how it works in
 [docs/developer/](../developer/README.md), and its gaps in [docs/security/](../security/README.md).
