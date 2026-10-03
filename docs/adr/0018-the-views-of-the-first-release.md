@@ -41,10 +41,9 @@ Ready, In Progress, Blocked and Review with their WIP counts, the count of the t
 the last fourteen days (the filter `done_after`,
 [ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D1), cards
 with the size, the bar of the current stage, the block and the count of the open tickets that
-block a card directly and that the caller can see (`open_prerequisites`; whether the card shows
-it or the count of the transitive closure of
-[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6 is open), and drags between the
-columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
+block a card directly and that the caller can see (`open_prerequisites`,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6 as amended 2026-10-03), and
+drags between the columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
 the note when the last stage fills, the moves with done by hand and its withdrawal, questions
 with the answer form, links, interest, comments, activity, attachments and time (the body as
 text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's

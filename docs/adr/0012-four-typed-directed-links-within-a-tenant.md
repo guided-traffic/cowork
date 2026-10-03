@@ -4,7 +4,8 @@
 
 Accepted, amended 2026-10-01 (D1's meaning of `blocks` sharpened to "prerequisite", D6 and
 D7 added: the transitive prerequisite view and the refusal of `done` over open
-prerequisites). Date: 2026-09-29. Decided by the owner as the answer to the catalog question
+prerequisites) and 2026-10-03 (D6: the card counts the open tickets that block it directly and
+that the reader can see, computed per read). Date: 2026-09-29. Decided by the owner as the answer to the catalog question
 "links between tickets?": a small typed set, over an untyped relation, over links that drive
 state automatically, and over tenant-defined link types. The additional rules of D4 were put
 to the owner with the question and were not objected to.
@@ -27,10 +28,10 @@ link is open to agents until the agent gates are reviewed after experience
 *(2026-10-03.)* Every ticket carries `open_prerequisites`, built as D7 counts: the open tickets
 that block it directly and that the caller can see, computed per read under the visibility
 predicate ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
-D4, D5). D6 and the Consequences describe the count on the card otherwise — the open
-prerequisites of the transitive closure, cached on the ticket — and the two disagree; which
-count the card shows is open. A count cached on the ticket would be the same for every caller
-and would count prerequisites some of them cannot see.
+D4, D5). The owner chose on 2026-10-03 that the card shows this count (D6 as amended): the
+count of the transitive closure cached on the ticket, as D6 had it, would be the same for every
+caller and would count prerequisites some of them cannot see; a transitive walk per read over
+what the reader can see would either tell that a hidden link exists or undercount.
 
 ## Context
 
@@ -81,8 +82,10 @@ B, every ticket that blocks such an A, and so on — a tree because D4 forbids c
 to the tenant because D2 is. The view shows each node with its key, title, state, assignee
 and progress, marks the `done` and `dropped` ones as settled, and gives the count of open
 prerequisites; it is served at `…/tickets/{number}/prerequisites` and its mirror, the
-dependents of a ticket, at `…/prerequisites` read upward. The ticket card shows the count of
-open prerequisites; the detail page shows the tree. A prerequisite in another project is
+dependents of a ticket, at `…/prerequisites` read upward. ~~The ticket card shows the count of
+open prerequisites;~~ *(Amended 2026-10-03:)* the ticket card shows the count of the open
+tickets that block it directly and that the reader can see, computed per read — the tickets
+D7 would refuse `done` over —; the detail page shows the tree. A prerequisite in another project is
 shown with its project; the tree never crosses a tenant.
 
 **D7 — `done` over open prerequisites is refused unless a person overrides it with a reason**
@@ -103,8 +106,10 @@ prerequisite.
 - D5 keeps state transitions attributable to people at the cost of one manual act per
   unblock; the notification of D5 makes the act cheap.
 - D6 is a recursive query per view (a `WITH RECURSIVE` over the tenant's `blocks` edges);
-  the cycle check of D4 bounds it. The count on the card is cached on the ticket and
-  recomputed when a link or a prerequisite's state changes.
+  the cycle check of D4 bounds it. ~~The count on the card is cached on the ticket and
+  recomputed when a link or a prerequisite's state changes.~~ *(Amended 2026-10-03:)* The
+  count on the card is one indexed lookup per row, under the reader's visibility; in a chain
+  A blocks B blocks C, C shows 1 while A is open behind B, and the tree tells the rest.
 - D7 turns "requires" from documentation into a check; the override keeps a person able to
   close a ticket whose prerequisite turned out not to matter, with the reason on record.
 
