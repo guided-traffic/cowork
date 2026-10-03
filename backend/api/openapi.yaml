@@ -102,6 +102,8 @@ paths:
     $ref: './tickets.yaml#/markdown'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions:
     $ref: './tickets.yaml#/transitions'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank:
+    $ref: './tickets.yaml#/rank'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions:
     $ref: './questions.yaml#/questions'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}:

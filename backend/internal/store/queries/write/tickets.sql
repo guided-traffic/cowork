@@ -8,14 +8,16 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
 RETURNING last_number;
 
 -- name: InsertTicket :one
+-- A new ticket, with its key at the bottom of its project's rank
+-- (docs/adr/0014 D2).
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential
+    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential, rank
 ) VALUES (
     sqlc.arg(tenant_id), sqlc.arg(project_id), sqlc.arg(number), sqlc.arg(type), sqlc.arg(title),
     sqlc.arg(body), sqlc.arg(severity), sqlc.arg(security), sqlc.narg(threat), sqlc.arg(urgency_derived),
     sqlc.arg(urgency_rule), sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
-    sqlc.narg(assignee_id), sqlc.arg(confidential)
+    sqlc.narg(assignee_id), sqlc.arg(confidential), sqlc.arg(rank)::text
 )
 RETURNING id;
 
@@ -67,7 +69,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
@@ -83,12 +85,16 @@ WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id);
 -- A move between states, a compare-and-set on the state the request names
 -- (docs/adr/0045 D2). done sets progress to 100 (docs/adr/0017 D5); the
 -- dates are the acts' (docs/adr/0009 D6): decided_at the last time the ticket
--- reached decided, done_at while it is done.
+-- reached decided, done_at while it is done. done and dropped take the rank
+-- away, a reopen brings the key it is given — the bottom — and every other
+-- move keeps the rank (docs/adr/0014 D1).
 UPDATE tickets
 SET state = sqlc.arg(to_state),
     blocked_from = sqlc.narg(blocked_from), block_kind = sqlc.narg(block_kind),
     block_reason = sqlc.narg(block_reason), block_ticket_id = sqlc.narg(block_ticket_id),
     block_external_ref = sqlc.narg(block_external_ref),
+    rank = CASE WHEN sqlc.arg(to_state)::ticket_state IN ('done', 'dropped') THEN NULL
+                ELSE coalesce(sqlc.narg(rank)::text, rank) END,
     progress = CASE WHEN sqlc.arg(to_state)::ticket_state = 'done' THEN 100 ELSE progress END,
     decided_at = CASE WHEN sqlc.arg(to_state)::ticket_state = 'decided' THEN now() ELSE decided_at END,
     done_at = CASE WHEN sqlc.arg(to_state)::ticket_state = 'done' THEN now()
@@ -119,3 +125,99 @@ RETURNING t.parent_id;
 SELECT project_id, version, confidential, assignee_id, reporter_id
 FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
+
+-- name: LockProjectRank :exec
+-- The project's counter row, locked until the transaction ends. A filing takes
+-- it with its number (NextTicketNumber); a move and a reopen take it before
+-- they read a key. So every write that hands out a key in the project is
+-- ordered by one row — two of them never compute a key from the same
+-- neighbours (docs/adr/0014 D2) — and filing still never waits for a change of
+-- the project's settings (migration 3). Taken before any ticket row is written.
+SELECT last_number FROM ticket_counters
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
+FOR UPDATE;
+
+-- name: ListUnrankedTickets :many
+-- The project's open tickets without a key — filed, or reopened, by a release
+-- before the rank (docs/adr/0028 D3) — in number order: they are ranked at the
+-- bottom before the next key is handed out, where the list already shows them.
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+SELECT id FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
+  AND rank IS NULL AND state NOT IN ('done', 'dropped')
+ORDER BY number;
+
+-- name: RankUnrankedTicket :exec
+-- An unranked open ticket's first key, at the place the list showed it: no
+-- move, so no act and no version (docs/adr/0050 D1). Done and dropped take no
+-- rank lock: a ticket that went done or dropped since ListUnrankedTickets
+-- read it stays without a key.
+UPDATE tickets
+SET rank = sqlc.arg(rank)::text
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND rank IS NULL
+  AND state NOT IN ('done', 'dropped');
+
+-- name: LastRank :one
+-- The project's greatest key, "" without one: the bottom. Every ticket counts,
+-- whatever the caller can see and whatever its state, so a key is never handed
+-- out twice.
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+SELECT coalesce(max(rank), '')::text AS last
+FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id);
+
+-- name: GetTicketRank :one
+-- A ticket's state and key as they are under the rank lock.
+-- visibility: exempt (a ticket the caller read through the predicate in this transaction)
+SELECT state, rank FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
+
+-- name: NextRankedTicket :one
+-- The key of the first ticket after a key in the project's rank, whatever the
+-- caller can see and whatever its state: a new key lies strictly between two
+-- keys that exist, so it never equals or passes one the caller cannot see.
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+SELECT rank::text AS rank FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank > sqlc.arg(after)::text
+ORDER BY rank
+LIMIT 1;
+
+-- name: PreviousRankedTicket :one
+-- The key of the last ticket before a key in the project's rank, as
+-- NextRankedTicket.
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+SELECT rank::text AS rank FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank < sqlc.arg(before)::text
+ORDER BY rank DESC
+LIMIT 1;
+
+-- name: NextSeenRankedTicket :one
+-- The first open ticket after a key in the project's rank that the caller can
+-- see: when it is the moved ticket, the move changes nothing the caller sees,
+-- and it is answered as no move whatever sits between unseen
+-- (docs/adr/0014 D2).
+SELECT t.id FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
+  AND t.rank > sqlc.arg(after)::text AND t.state NOT IN ('done', 'dropped')
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank
+LIMIT 1;
+
+-- name: PreviousSeenRankedTicket :one
+-- The last open ticket before a key that the caller can see, as
+-- NextSeenRankedTicket.
+SELECT t.id FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
+  AND t.rank < sqlc.arg(before)::text AND t.state NOT IN ('done', 'dropped')
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank DESC
+LIMIT 1;
+
+-- name: MoveTicketRank :one
+-- A move in the rank: one row, the ticket's own version raised
+-- (docs/adr/0014 D2, docs/adr/0050 D1); a ticket that went done or dropped
+-- meanwhile is no row.
+UPDATE tickets
+SET rank = sqlc.arg(rank)::text, version = version + 1, updated_at = now()
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND state NOT IN ('done', 'dropped')
+RETURNING version;

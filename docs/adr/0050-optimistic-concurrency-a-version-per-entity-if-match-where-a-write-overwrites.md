@@ -9,14 +9,16 @@ The rules of D5–D7 were put to the owner with the question and not objected to
 
 Amended 2026-10-02 (D1: the urgency override and the confidential flag count, derived values
 do not; D2: an entity read never answers `304`; D3: the overwriting writes the first
-implementation added; D5: an empty field's current value is `null`). A value cowork derives
-from another entity — the urgency re-derived
-when a link or another ticket changes, a parent's progress derived from its children — falls
-under D1's own reason: counting it would fail an edit on a concurrent change elsewhere.
+implementation added; D5: an empty field's current value is `null`) and 2026-10-03 (D1: a
+move in the rank counts, the first key given to a ticket a release before the rank left
+without one does not; D4: a move in the rank takes no `If-Match`, written when the rank was
+built). A value cowork derives from another entity — the urgency re-derived when a link or
+another ticket changes, a parent's progress derived from its children — falls under D1's own
+reason: counting it would fail an edit on a concurrent change elsewhere.
 
 **Built** (phase 2, 2026-10-02): D1–D5 for tickets, comments, questions, projects, tenants and
-time entries. D6's clients and D7's UI arrive with them; memberships and saved filters have no
-write route yet.
+time entries; the rank's moves since 2026-10-03. D6's clients and D7's UI arrive with them;
+memberships and saved filters have no write route yet.
 
 ## Context
 
@@ -40,7 +42,10 @@ assignee, rank, progress — and not comments, links, interest or attachments, w
 entities of their own; otherwise every field change would fail on a concurrent comment.
 *(Amended 2026-10-02: the urgency override and the confidential flag are the ticket's own and
 count; the urgency re-derived from a link or another ticket's change and a parent's derived
-progress do not.)*
+progress do not.)* *(Amended 2026-10-03: a move in the rank counts; the first key the rank
+gives a ticket a release before the rank left without one does not — it is no move, and it
+comes with another ticket's write ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
+D2).)*
 
 **D2 — The version is the strong `ETag`.** Every `GET` of an entity, including
 `…/markdown` and `…/context` ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)),
@@ -59,7 +64,10 @@ settings, a time entry's correction, and the change of an answer once a question
 **D4 — No `If-Match` on writes that do not overwrite:** `PUT` on addressed relations (links,
 interest, watch), `POST` with an idempotency key, transitions with their `from`
 ([ADR 0045](0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)
-D1, D2, D3).
+D1, D2, D3). *(Amended 2026-10-03:)* A move in the rank
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2) takes none either: it names
+where the ticket goes, not the key it had, so the last move wins and a drag keeps the person's
+drop; the move still raises the version (D1).
 
 **D5 — A `412` carries what the client needs to merge:** the current `version` and, in
 `errors[]`, each field the request tried to change with its `pointer` and the `current`

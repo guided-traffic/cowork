@@ -107,8 +107,9 @@ transitions:
       note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
       D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
       with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
-      for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
-      not required (docs/adr/0045 D3, D7).
+      for done, `drop` for dropped (docs/adr/0043 D4). Done and dropped take the ticket's rank away,
+      a reopen ranks it at the bottom of its project (docs/adr/0014 D1). An Idempotency-Key is
+      recorded on the act, not required (docs/adr/0045 D3, D7).
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -124,6 +125,46 @@ transitions:
     responses:
       '200':
         description: The ticket in its new state
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+rank:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: moveTicketRank
+    tags: [tickets]
+    summary: Place the ticket directly after or before another ticket of its project
+    description: |
+      A move in the project's rank (docs/adr/0014 D1, D2): the ticket gets a key strictly between
+      the neighbour's and the next key on that side — every ticket of the project counts, those
+      the caller cannot see included — so one row is written and the list is never renumbered.
+      The key itself is never shown. Recorded as `ranked` with the neighbour, the version raised.
+      A ticket that already sits there among the tickets the caller can see answers 200 unchanged
+      and records nothing. No `If-Match`: a move does not overwrite, the last one wins
+      (docs/adr/0050 D4). A member's act with `write` scope; an agent needs `rank`
+      (docs/adr/0043 D4). A done or dropped ticket has no rank: as the ticket or as its
+      neighbour, 409 `state_conflict`. A neighbour the caller cannot see is the 400 of one that
+      does not exist.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketRankSet'
+          example:
+            after: 12
+    responses:
+      '200':
+        description: The ticket in its place
         headers:
           ETag:
             $ref: './components/headers.yaml#/ETag'

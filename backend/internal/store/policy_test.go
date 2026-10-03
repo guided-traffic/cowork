@@ -63,6 +63,22 @@ func TestEveryTableHasItsPolicyAndGrant(t *testing.T) {
 	}
 }
 
+// A migration that lifts the force of row-level security for a backfill of
+// its own restores it later in the same file: the file runs as one
+// transaction, so no committed state leaves a table unforced
+// (docs/adr/0021 D1). The test above would not see a missing restore — an
+// earlier migration's FORCE satisfies it.
+func TestLiftedForceIsRestoredInTheSameMigration(t *testing.T) {
+	noForce := regexp.MustCompile(`(?m)^ALTER TABLE (\w+) NO FORCE ROW LEVEL SECURITY;`)
+	for name, body := range migrationBodies(t) {
+		for _, m := range noForce.FindAllStringSubmatchIndex(body, -1) {
+			table := body[m[2]:m[3]]
+			assert.Contains(t, body[m[1]:], "ALTER TABLE "+table+" FORCE ROW LEVEL SECURITY;",
+				"%s lifts the force on %s and does not restore it", name, table)
+		}
+	}
+}
+
 // A policy reads the request context only through the guarded functions or a
 // NULLIF over the setting: on a pooled connection an ended transaction's
 // setting reads ” and a bare cast raises instead of matching nothing

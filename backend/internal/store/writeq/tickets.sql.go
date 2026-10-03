@@ -13,6 +13,30 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
+const getTicketRank = `-- name: GetTicketRank :one
+SELECT state, rank FROM tickets
+WHERE tenant_id = $1 AND id = $2
+`
+
+type GetTicketRankParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetTicketRankRow struct {
+	State domain.TicketState
+	Rank  *string
+}
+
+// A ticket's state and key as they are under the rank lock.
+// visibility: exempt (a ticket the caller read through the predicate in this transaction)
+func (q *Queries) GetTicketRank(ctx context.Context, arg GetTicketRankParams) (GetTicketRankRow, error) {
+	row := q.db.QueryRow(ctx, getTicketRank, arg.TenantID, arg.ID)
+	var i GetTicketRankRow
+	err := row.Scan(&i.State, &i.Rank)
+	return i, err
+}
+
 const getWrittenTicket = `-- name: GetWrittenTicket :one
 SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.body, t.state,
        t.blocked_from, t.block_kind, t.block_reason, t.block_ticket_id, t.block_external_ref,
@@ -22,7 +46,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
@@ -77,6 +101,7 @@ type GetWrittenTicketRow struct {
 	AssigneeUsername      *string
 	AssigneeName          *string
 	Confidential          bool
+	Rank                  *string
 	OpenedAt              time.Time
 	DecidedAt             *time.Time
 	DoneAt                *time.Time
@@ -131,6 +156,7 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 		&i.AssigneeUsername,
 		&i.AssigneeName,
 		&i.Confidential,
+		&i.Rank,
 		&i.OpenedAt,
 		&i.DecidedAt,
 		&i.DoneAt,
@@ -144,12 +170,12 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 const insertTicket = `-- name: InsertTicket :one
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential
+    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential, rank
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
     $11, $12, $13, $14,
-    $15, $16
+    $15, $16, $17::text
 )
 RETURNING id
 `
@@ -171,8 +197,11 @@ type InsertTicketParams struct {
 	ReporterID     uuid.UUID
 	AssigneeID     *uuid.UUID
 	Confidential   bool
+	Rank           string
 }
 
+// A new ticket, with its key at the bottom of its project's rank
+// (docs/adr/0014 D2).
 func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertTicket,
 		arg.TenantID,
@@ -191,7 +220,161 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (uui
 		arg.ReporterID,
 		arg.AssigneeID,
 		arg.Confidential,
+		arg.Rank,
 	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lastRank = `-- name: LastRank :one
+SELECT coalesce(max(rank), '')::text AS last
+FROM tickets
+WHERE tenant_id = $1 AND project_id = $2
+`
+
+type LastRankParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+}
+
+// The project's greatest key, "" without one: the bottom. Every ticket counts,
+// whatever the caller can see and whatever its state, so a key is never handed
+// out twice.
+// visibility: exempt (the rank keys of the project the caller writes in, never shown)
+func (q *Queries) LastRank(ctx context.Context, arg LastRankParams) (string, error) {
+	row := q.db.QueryRow(ctx, lastRank, arg.TenantID, arg.ProjectID)
+	var last string
+	err := row.Scan(&last)
+	return last, err
+}
+
+const listUnrankedTickets = `-- name: ListUnrankedTickets :many
+SELECT id FROM tickets
+WHERE tenant_id = $1 AND project_id = $2
+  AND rank IS NULL AND state NOT IN ('done', 'dropped')
+ORDER BY number
+`
+
+type ListUnrankedTicketsParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+}
+
+// The project's open tickets without a key — filed, or reopened, by a release
+// before the rank (docs/adr/0028 D3) — in number order: they are ranked at the
+// bottom before the next key is handed out, where the list already shows them.
+// visibility: exempt (the rank keys of the project the caller writes in, never shown)
+func (q *Queries) ListUnrankedTickets(ctx context.Context, arg ListUnrankedTicketsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUnrankedTickets, arg.TenantID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockProjectRank = `-- name: LockProjectRank :exec
+SELECT last_number FROM ticket_counters
+WHERE tenant_id = $1 AND project_id = $2
+FOR UPDATE
+`
+
+type LockProjectRankParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+}
+
+// The project's counter row, locked until the transaction ends. A filing takes
+// it with its number (NextTicketNumber); a move and a reopen take it before
+// they read a key. So every write that hands out a key in the project is
+// ordered by one row — two of them never compute a key from the same
+// neighbours (docs/adr/0014 D2) — and filing still never waits for a change of
+// the project's settings (migration 3). Taken before any ticket row is written.
+func (q *Queries) LockProjectRank(ctx context.Context, arg LockProjectRankParams) error {
+	_, err := q.db.Exec(ctx, lockProjectRank, arg.TenantID, arg.ProjectID)
+	return err
+}
+
+const moveTicketRank = `-- name: MoveTicketRank :one
+UPDATE tickets
+SET rank = $1::text, version = version + 1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND state NOT IN ('done', 'dropped')
+RETURNING version
+`
+
+type MoveTicketRankParams struct {
+	Rank     string
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// A move in the rank: one row, the ticket's own version raised
+// (docs/adr/0014 D2, docs/adr/0050 D1); a ticket that went done or dropped
+// meanwhile is no row.
+func (q *Queries) MoveTicketRank(ctx context.Context, arg MoveTicketRankParams) (int32, error) {
+	row := q.db.QueryRow(ctx, moveTicketRank, arg.Rank, arg.TenantID, arg.ID)
+	var version int32
+	err := row.Scan(&version)
+	return version, err
+}
+
+const nextRankedTicket = `-- name: NextRankedTicket :one
+SELECT rank::text AS rank FROM tickets
+WHERE tenant_id = $1 AND project_id = $2 AND rank > $3::text
+ORDER BY rank
+LIMIT 1
+`
+
+type NextRankedTicketParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+	After     string
+}
+
+// The key of the first ticket after a key in the project's rank, whatever the
+// caller can see and whatever its state: a new key lies strictly between two
+// keys that exist, so it never equals or passes one the caller cannot see.
+// visibility: exempt (the rank keys of the project the caller writes in, never shown)
+func (q *Queries) NextRankedTicket(ctx context.Context, arg NextRankedTicketParams) (string, error) {
+	row := q.db.QueryRow(ctx, nextRankedTicket, arg.TenantID, arg.ProjectID, arg.After)
+	var rank string
+	err := row.Scan(&rank)
+	return rank, err
+}
+
+const nextSeenRankedTicket = `-- name: NextSeenRankedTicket :one
+SELECT t.id FROM tickets t
+WHERE t.tenant_id = $1 AND t.project_id = $2
+  AND t.rank > $3::text AND t.state NOT IN ('done', 'dropped')
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank
+LIMIT 1
+`
+
+type NextSeenRankedTicketParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+	After     string
+}
+
+// The first open ticket after a key in the project's rank that the caller can
+// see: when it is the moved ticket, the move changes nothing the caller sees,
+// and it is answered as no move whatever sits between unseen
+// (docs/adr/0014 D2).
+func (q *Queries) NextSeenRankedTicket(ctx context.Context, arg NextSeenRankedTicketParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, nextSeenRankedTicket, arg.TenantID, arg.ProjectID, arg.After)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -217,6 +400,75 @@ func (q *Queries) NextTicketNumber(ctx context.Context, arg NextTicketNumberPara
 	var last_number int32
 	err := row.Scan(&last_number)
 	return last_number, err
+}
+
+const previousRankedTicket = `-- name: PreviousRankedTicket :one
+SELECT rank::text AS rank FROM tickets
+WHERE tenant_id = $1 AND project_id = $2 AND rank < $3::text
+ORDER BY rank DESC
+LIMIT 1
+`
+
+type PreviousRankedTicketParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+	Before    string
+}
+
+// The key of the last ticket before a key in the project's rank, as
+// NextRankedTicket.
+// visibility: exempt (the rank keys of the project the caller writes in, never shown)
+func (q *Queries) PreviousRankedTicket(ctx context.Context, arg PreviousRankedTicketParams) (string, error) {
+	row := q.db.QueryRow(ctx, previousRankedTicket, arg.TenantID, arg.ProjectID, arg.Before)
+	var rank string
+	err := row.Scan(&rank)
+	return rank, err
+}
+
+const previousSeenRankedTicket = `-- name: PreviousSeenRankedTicket :one
+SELECT t.id FROM tickets t
+WHERE t.tenant_id = $1 AND t.project_id = $2
+  AND t.rank < $3::text AND t.state NOT IN ('done', 'dropped')
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank DESC
+LIMIT 1
+`
+
+type PreviousSeenRankedTicketParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+	Before    string
+}
+
+// The last open ticket before a key that the caller can see, as
+// NextSeenRankedTicket.
+func (q *Queries) PreviousSeenRankedTicket(ctx context.Context, arg PreviousSeenRankedTicketParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, previousSeenRankedTicket, arg.TenantID, arg.ProjectID, arg.Before)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const rankUnrankedTicket = `-- name: RankUnrankedTicket :exec
+UPDATE tickets
+SET rank = $1::text
+WHERE tenant_id = $2 AND id = $3 AND rank IS NULL
+  AND state NOT IN ('done', 'dropped')
+`
+
+type RankUnrankedTicketParams struct {
+	Rank     string
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// An unranked open ticket's first key, at the place the list showed it: no
+// move, so no act and no version (docs/adr/0050 D1). Done and dropped take no
+// rank lock: a ticket that went done or dropped since ListUnrankedTickets
+// read it stays without a key.
+func (q *Queries) RankUnrankedTicket(ctx context.Context, arg RankUnrankedTicketParams) error {
+	_, err := q.db.Exec(ctx, rankUnrankedTicket, arg.Rank, arg.TenantID, arg.ID)
+	return err
 }
 
 const refreshDerivedProgress = `-- name: RefreshDerivedProgress :one
@@ -347,13 +599,15 @@ SET state = $1,
     blocked_from = $2, block_kind = $3,
     block_reason = $4, block_ticket_id = $5,
     block_external_ref = $6,
+    rank = CASE WHEN $1::ticket_state IN ('done', 'dropped') THEN NULL
+                ELSE coalesce($7::text, rank) END,
     progress = CASE WHEN $1::ticket_state = 'done' THEN 100 ELSE progress END,
     decided_at = CASE WHEN $1::ticket_state = 'decided' THEN now() ELSE decided_at END,
     done_at = CASE WHEN $1::ticket_state = 'done' THEN now()
                    WHEN $1::ticket_state = 'filed' THEN NULL
                    ELSE done_at END,
     version = version + 1, updated_at = now()
-WHERE tenant_id = $7 AND id = $8 AND state = $9
+WHERE tenant_id = $8 AND id = $9 AND state = $10
 RETURNING version
 `
 
@@ -364,6 +618,7 @@ type TransitionTicketParams struct {
 	BlockReason      *string
 	BlockTicketID    *uuid.UUID
 	BlockExternalRef *string
+	Rank             *string
 	TenantID         uuid.UUID
 	ID               uuid.UUID
 	FromState        domain.TicketState
@@ -372,7 +627,9 @@ type TransitionTicketParams struct {
 // A move between states, a compare-and-set on the state the request names
 // (docs/adr/0045 D2). done sets progress to 100 (docs/adr/0017 D5); the
 // dates are the acts' (docs/adr/0009 D6): decided_at the last time the ticket
-// reached decided, done_at while it is done.
+// reached decided, done_at while it is done. done and dropped take the rank
+// away, a reopen brings the key it is given — the bottom — and every other
+// move keeps the rank (docs/adr/0014 D1).
 func (q *Queries) TransitionTicket(ctx context.Context, arg TransitionTicketParams) (int32, error) {
 	row := q.db.QueryRow(ctx, transitionTicket,
 		arg.ToState,
@@ -381,6 +638,7 @@ func (q *Queries) TransitionTicket(ctx context.Context, arg TransitionTicketPara
 		arg.BlockReason,
 		arg.BlockTicketID,
 		arg.BlockExternalRef,
+		arg.Rank,
 		arg.TenantID,
 		arg.ID,
 		arg.FromState,

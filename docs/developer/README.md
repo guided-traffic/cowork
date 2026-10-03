@@ -99,7 +99,9 @@ change.
 
 ## What has no page here
 
-The identity provider's login and the UI's login page, the MCP server, the boards and rank, the
-person-level lists, deletion, import, the notification inbox and metrics are not built ([architecture.md](architecture.md#what-is-not-built)).
+The identity provider's login and the UI's login page, the MCP server, the boards, the score
+beside the rank, the person-level lists, deletion, import, the notification inbox and metrics
+are not built ([architecture.md](architecture.md#what-is-not-built)); the rank itself is a section
+of [domain.md](domain.md#rank).
 The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
 each gets its page here when it exists.

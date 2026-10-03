@@ -10,12 +10,19 @@ visible to the client. The rules of D5–D7 were put to the owner with the quest
 objected to.
 
 Amended 2026-10-02 (D1: the server key is `COWORK_SESSION_KEY`, required from phase 2, and the
-cursor key is derived from it; D2: the two modes do not mix in one request). A cursor "does not
-expire" (D5), so a key made up per process would not do; deriving the cursor key under a label
-of its own keeps it apart from the session use the server key gets later.
+cursor key is derived from it; D2: the two modes do not mix in one request) and 2026-10-03 (D1:
+the project's list carries the key and the number, and its cursor names the rank order,
+written when the rank was built, and carries the two sealed, written when a review found that a
+readable rank string tells about tickets the caller cannot see; D4: the backlog, whose rows
+are dragged, loads with the cursor
+— a consequence of the backlog of [ADR 0018](0018-the-views-of-the-first-release.md) D1 as
+amended that day). A cursor "does not expire" (D5), so a key made up per
+process would not do; deriving the cursor key under a label of its own keeps it apart from the
+session use the server key gets later.
 
 **Partly built** (phase 2, 2026-10-02): D1, D3, D5–D7 on every list route, the project's
-tickets ordered by number until the rank exists ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
+tickets in its rank since 2026-10-03, the unranked after the ranked by number
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
 D2's numbered pages on the two ticket lists and the tenant's time entries — the audit view,
 members, tokens and projects carry the cursor only so far; D4's markings and client helpers
 arrive with the generated frontend client.
@@ -40,13 +47,24 @@ costs nothing noticeable there.
 **D1 — Every list route supports cursor pagination:** `?limit=` (default 50, clamped to
 `COWORK_MAX_PAGE_SIZE`) and `?cursor=`; the response is `{items, next_cursor}` with
 `next_cursor` null at the end. The cursor is opaque: base64url of the sort key(s) and the
-last value — `id` for time-ordered lists, the rank string for the backlog, `(score, id)` for
-score-ordered lists, `(rank, id)` for search — signed with HMAC under the server key
-([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D1) so it cannot be forged
-or edited. *(Amended 2026-10-02: the server key is `COWORK_SESSION_KEY`, standard base64 of at
-least 32 bytes, required by `cowork serve`; the cursors are signed with a key derived from it
-by HKDF-SHA256 under the label `cowork cursor v1`, and a cursor names its operation and its
-path parameters besides the position.)*
+last value — `id` for time-ordered lists, ~~the rank string for the backlog~~ *(amended
+2026-10-03: the rank string and the ticket number for the backlog, whose unranked tickets —
+done and dropped ones, and open ones a release before the rank filed — follow the ranked ones
+by number)*, `(score, id)` for score-ordered lists, `(rank, id)` for search — signed with HMAC
+under the server key ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D1) so it
+cannot be forged or edited. *(Amended 2026-10-02: the server key is `COWORK_SESSION_KEY`,
+standard base64 of at least 32 bytes, required by `cowork serve`; the cursors are signed with a
+key derived from it by HKDF-SHA256 under the label `cowork cursor v1`, and a cursor names its
+operation and its path parameters besides the position.)* *(Amended 2026-10-03: a project's
+list names its rank order as well, so a cursor of the number order that list had before the
+rank answers `invalid_cursor` (D5) instead of being read in another order. Its position is
+sealed: a rank string is computed over tickets the caller may not see
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2), so the cursor carries it
+encrypted with AES-256-GCM under a key derived from the server key under the label
+`cowork cursor position v1`, padded to one length, the nonce an HMAC of the padded position
+under a key derived under `cowork cursor nonce v1` — deterministic, so a page and its weak
+ETag stay the same while the list does. A client reads neither the rank string nor its
+length.)*
 
 **D2 — Table-like lists additionally support numbered pages:** `?page=N&per_page=M`
 (`per_page` from 25, 50, 100, clamped like `limit`), and the response then carries `total`
@@ -62,7 +80,10 @@ members, tokens, projects. The depth is capped: `page × per_page` above 10 000 
 **D4 — The UI follows the list's kind.** Tables show page numbers with jump and a `per_page`
 choice; streams show "load more" or scroll. The generated clients
 ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md)) offer both helpers,
-and the OpenAPI document marks per operation which modes it carries.
+and the OpenAPI document marks per operation which modes it carries. *(Amended 2026-10-03:
+the backlog is a table whose rows are dragged into their rank and their urgency group, and a
+drag cannot cross a page; it loads with the cursor and shows "load more". Its route keeps
+both modes for other clients.)*
 
 **D5 — A cursor is bound to its list and sort.** A cursor from one route presented to
 another, or a tampered one, answers `400 invalid_cursor`. A cursor does not expire; it is a

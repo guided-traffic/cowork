@@ -184,8 +184,8 @@ The identity provider (OIDC, the groups gate and mappings, [ADR 0029], [ADR 0030
 local accounts only — and, with it, the groups snapshot of a session; the reactivation of a person
 and the list of one's own sessions; the person-level lists, search, saved filters, the
 boards and the dashboard; the administration of memberships and of restricted projects' lists;
-the MCP server; rank; deletion and purge; the `/context` export; import; the notification inbox;
-metrics. The
+the MCP server; the score beside the rank, the backlog's drag and the rebalancing of the rank's
+keys; deletion and purge; the `/context` export; import; the notification inbox; metrics. The
 order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md); each
 gets its section here, or a page of its own, when it exists.
 

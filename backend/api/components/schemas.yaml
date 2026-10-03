@@ -563,6 +563,15 @@ Transition:
       minLength: 1
       maxLength: 100000
       description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+TicketRankSet:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  maxProperties: 1
+  description: Exactly one of after and before, the number of an open ticket of the same project (docs/adr/0014 D2)
+  properties:
+    after: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly after}
+    before: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly before}
 BlockSet:
   type: object
   additionalProperties: false

@@ -34,6 +34,10 @@ func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTick
 		if perr != nil {
 			return perr
 		}
+		rank, err := reopenRank(ctx, w, t, tc, mv)
+		if err != nil {
+			return err
+		}
 		explainedBy, err := explain(ctx, w, t, tc, body.Comment)
 		if err != nil {
 			return err
@@ -54,7 +58,7 @@ func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTick
 				ev.Refs = append(ev.Refs, ids...)
 			}
 		}
-		waitsOn, err := move(ctx, w, t, tc, mv, body, after)
+		waitsOn, err := move(ctx, w, t, tc, mv, body, after, rank)
 		if err != nil {
 			return err
 		}
@@ -163,11 +167,26 @@ func prerequisites(ctx context.Context, r *store.Reader, t tenantScope, tc ticke
 	return keys, ids, nil
 }
 
-// move writes the state and its effects: the block and the link it names,
-// the urgency of the ticket and — when a decision opens or settles — of the
-// tickets it blocks (docs/adr/0010 D3). It returns the ticket a block waits
-// on, uuid.Nil without one.
-func move(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, mv domain.Move, body apigen.Transition, after map[string]any) (uuid.UUID, error) {
+// reopenRank is the key a reopened ticket joins its project's rank with, at
+// the bottom, taken before the transition writes anything; nil for every
+// other move, which keeps the rank or — into done or dropped — takes it away
+// (docs/adr/0014 D1).
+func reopenRank(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, mv domain.Move) (*string, error) {
+	if mv != domain.MoveReopen {
+		return nil, nil
+	}
+	key, err := rankAtBottom(ctx, w, t, tc.project.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &key, nil
+}
+
+// move writes the state and its effects: the rank a reopen brings, the block
+// and the link it names, the urgency of the ticket and — when a decision opens
+// or settles — of the tickets it blocks (docs/adr/0010 D3). It returns the
+// ticket a block waits on, uuid.Nil without one.
+func move(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, mv domain.Move, body apigen.Transition, after map[string]any, rank *string) (uuid.UUID, error) {
 	before, _, err := urgencyInputs(ctx, w.Reader, t, tc.row.ID)
 	if err != nil {
 		return uuid.Nil, err
@@ -179,7 +198,7 @@ func move(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, mv 
 			return uuid.Nil, err
 		}
 	}
-	params := writeq.TransitionTicketParams{TenantID: t.ID, ID: tc.row.ID, FromState: from, ToState: to}
+	params := writeq.TransitionTicketParams{TenantID: t.ID, ID: tc.row.ID, FromState: from, ToState: to, Rank: rank}
 	var waitsOn *ticketCtx
 	if mv == domain.MoveBlock {
 		if waitsOn, err = blockTicket(ctx, w.Reader, t, tc, body.Block); err != nil {

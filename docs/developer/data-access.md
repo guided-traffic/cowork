@@ -27,6 +27,13 @@ setting fails, on purpose. `cowork serve` then calls `DB.CheckRuntimeRole` on it
 `checkDatabase` in [`main.go`](../../backend/cmd/cowork/main.go) reads `DB.SchemaState` and
 refuses a dirty or a pending schema and warns about one that is ahead.
 
+A migration file runs as one statement string over the simple protocol, so PostgreSQL runs it
+as one transaction. A migration that rewrites rows runs as the owner with no tenant set, and
+the forced policy hides every row from it: `000017_ticket_rank` lifts the force on `tickets`
+for its backfill and restores it later in the file ([ADR 0021] D1).
+`TestLiftedForceIsRestoredInTheSameMigration` holds every lifted force to a restore in the same
+file; the integration tier reads the force back after the run.
+
 The grants are per table and per column: `SELECT`, `INSERT` where rows are created, `UPDATE`
 on the columns a route may change — table-wide only on `ticket_counters`, `idempotency_keys`
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
@@ -181,6 +188,7 @@ the one on the ticket the query reads.
 | `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation belongs to the ticket, not to the reader ([domain.md](domain.md#urgency)) |
 | `CanSeeProject`, `CanSeeTicket` | whether *another* person sees a project or a ticket: the assignee, the person asked |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
+| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists` and `ticket_derived_progress`
 read the tenant's tickets past the predicate for the same reasons; row-level security still
@@ -205,7 +213,7 @@ enters the SQL text; only the integer `LIMIT` and `OFFSET` are formatted in. The
 | `HasOpenQuestions`, `Interest` | an open question exists; the caller's or anyone's stake exists |
 | progress filters | on the effective progress: 100 when done, else derived, else own |
 | `Query` | `search @@ plainto_tsquery('cowork_simple', …)` ([ADR 0025]) |
-| `TicketOrder` | `ByNumber` for a project's list, `NewestFirst` (id descending) for the tenant's |
+| `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number — and `NewestFirst` (id descending) for the tenant's; `Position` writes a row's cursor position, the id or `<key>.<number>` with an empty key for an unranked ticket, which the API seals ([api.md](api.md#paging)) |
 | `TicketPage` | after a cursor position with `LIMIT` one above the page, or a numbered page with `LIMIT`/`OFFSET` and a `count(*)` total |
 
 ## Advisory locks
@@ -225,9 +233,13 @@ The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
 ([`jobs.go`](../../backend/internal/store/jobs.go)). The check that follows a lock is a new
 statement and sees every write committed before the lock was granted, so two concurrent writes
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
-never meets it. Two orderings are row locks, not advisory: the `ticket_counters` row a filing
-updates (`NextTicketNumber`) and the tenant row the time lock is read from `FOR SHARE`
-(`TimeLockedUntil`).
+never meets it. Two orderings are row locks, not advisory: the `ticket_counters` row and the
+tenant row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
+project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
+and a reopen lock it `FOR UPDATE` (`LockProjectRank`) before they read a key, and each of the
+three takes it before it writes a ticket row, so they cannot deadlock over it
+([domain.md](domain.md#rank)). It is a row of its own so that filing never waits for a change
+of the project's settings.
 
 ## The login and the sessions
 

@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-02.
+tree on 2026-10-03.
 
 ## Projects, keys and the counter
 
@@ -87,9 +87,10 @@ row it wrote (`GetWrittenTicket`).
 
 `UpdateTicketFields` (the fields of `PATCH`: type, title, severity, security, threat, effort,
 parent, assignee, progress, the flag set with a class), `UpdateTicketBody`,
-`SetUrgencyOverride`, `SetConfidential` and `TransitionTicket` raise `version`. A re-derived
-urgency and a derived progress do not: they are caused by other entities and would fail a
-concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
+`SetUrgencyOverride`, `SetConfidential`, `TransitionTicket` and `MoveTicketRank` (a move in the
+rank) raise `version`. A re-derived urgency, a derived progress and the first key the rank gives
+an unranked ticket (`RankUnrankedTicket`) do not: they are caused by other tickets' writes and
+would fail a concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
 attachments and time entries are entities of their own and leave the ticket's version alone.
 
 ## Urgency
@@ -166,7 +167,9 @@ on anything but done, is `400`.
 
 - **Effects** (`TransitionTicket`): done sets `progress` to 100 and `done_at`; a reopen clears
   `done_at`; reaching `decided` sets `decided_at` each time; entering `blocked` stores where it
-  came from and the block, every other move clears them.
+  came from and the block, every other move clears them. Done and dropped clear `rank`; a
+  reopen ranks the ticket at the bottom (`reopenRank`, before the transition writes anything);
+  every other move keeps the rank, `blocked` included ([rank](#rank)).
 - **A block that names a ticket** — required for kind `ticket` — reads it through the predicate
   and adds `<that ticket> blocks <this one>` when the link is missing, with its acts, lock and
   cycle check.
@@ -175,6 +178,63 @@ on anything but done, is `400`.
   reason — a person's act, hard-off for agents. The act then names the overridden keys and
   carries them in `Refs`.
 - An `Idempotency-Key` sent with a transition is recorded on the act.
+
+## Rank
+
+A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the code is
+[`api/rank.go`](../../backend/internal/api/rank.go) and
+[`domain/rank.go`](../../backend/internal/domain/rank.go).
+
+- **A key** is `tickets.rank`, `text COLLATE "C"` (migration `000017_ticket_rank`): a base-62
+  fraction over `0-9A-Za-z`, whose ASCII order the `C` collation compares, 1 to 128 characters,
+  never ending in `0` — a `CHECK` and `domain.ValidRank`. A key belongs to one ticket of its
+  project (the unique index `tickets_by_rank`). A done or dropped ticket has none (a key the
+  previous release left on one is read as none, below). A key is computed over tickets the
+  caller may not see, so no answer shows one — not a ticket (`ticketView`), not an act, not a
+  cursor ([security/tenancy.md](../security/tenancy.md#h-3), H-3); what a client reads of the
+  rank is the list's order.
+- **`domain.RankBetween(a, b)`** is a key strictly between two keys, `""` an open end: the
+  middle between two keys; at an open end the shortest key that moves by no more than the square
+  of the distance to that end, so runs of filings at the bottom or moves to the top stay within
+  five characters for ten thousand keys. A gap that keeps taking moves halves each time; after
+  635 moves directly before the same ticket, or 762 directly after it (`TestRankOneGapRunsOut`),
+  the next key would pass 128 characters, and `ErrRankTooLong` fails the move as an internal
+  error — no rebalancing is built.
+- **The rank lock** is the project's `ticket_counters` row. A filing holds it from
+  `NextTicketNumber`; a move and a reopen take it with `LockProjectRank` first. Every key is
+  computed from keys read after the lock, over every ticket of the project — those the caller
+  cannot see included (`LastRank`, `NextRankedTicket`, `PreviousRankedTicket`) — so two writes
+  never compute a key from the same neighbours and no key is handed out twice.
+- **A filing and a reopen** get `rankAtBottom`: the key after the greatest of the project.
+- **A move** is `PUT …/{number}/rank` with `{"after": n}` or `{"before": n}`, a number of the
+  same project. Under the lock it reads the ticket and the neighbour again, and beside the
+  neighbour on that side (`beside`) the first open ticket the caller can see
+  (`NextSeenRankedTicket`, `PreviousSeenRankedTicket`) and the next key of any ticket
+  (`NextRankedTicket`, `PreviousRankedTicket`). When the ticket the caller sees there is the
+  moved one, it already sits there and the answer is `200` unchanged, without an act, whatever
+  hidden ticket sits between them (`planRank`). Otherwise `MoveTicketRank` writes a key between
+  the neighbour's and that next key and raises the version, and the act `ranked` names the
+  neighbour's full key under `after` or `before`, with the neighbour in `Refs` — no rank key.
+  No `If-Match`: the last move wins ([ADR 0050] D4). A member's act with `write` scope; an
+  agent needs `rank`.
+- **Refusals:** a body with neither or both of `after` and `before`, and the ticket as its own
+  neighbour, are `400 validation_failed`; a neighbour that does not exist or that the caller
+  cannot see is the same `400` at `/after` or `/before`; a done or dropped ticket, or neighbour,
+  is `409 state_conflict` naming its state; a ticket that went done or dropped between the read
+  and the write is `409` as well.
+- **Tickets without a key.** The previous release files and reopens tickets without one, and
+  its done and dropped leave a key in place ([ADR 0028] D3). Before a write hands out a key, it
+  ranks its project's open tickets without one at the bottom, in number order
+  (`rankUnranked`) — no act and no version; one that went done or dropped meanwhile, which
+  takes no rank lock, gets none (`RankUnrankedTicket` checks the state). A move that turns out
+  to change nothing rolls those keys back with it. The key a done or dropped ticket kept is
+  read as none: the list orders by `rankedKey` in
+  [`store/tickets.go`](../../backend/internal/store/tickets.go), `TicketOrder.Position` leaves it
+  out, and a move's `NextSeenRankedTicket` counts open tickets only.
+- **The project's list** orders the ranked tickets by their key, then the unranked — done,
+  dropped, and open ones of the previous release — by number. Its cursor carries the key and
+  the number sealed ([api.md](api.md#paging)). Migration 17 ranked every project's open tickets
+  in number order, evenly spaced.
 
 ## Questions
 
@@ -260,11 +320,11 @@ own (D3, D5).
 
 ## Not built
 
-There is no `rank` column and no ordering by rank ([ADR 0014]): a project's list orders by
-number, the tenant's newest first. There is no `deleted_at` and no deletion or purge
-([ADR 0024]). No route creates memberships, entries on a restricted project's list or tokens;
-the tests and `make dev-seed` write them over the administrative connection
-([testing.md](testing.md#fixtures-of-the-integration-tier)).
+The score of [ADR 0014] D3–D5 is not built — no score beside the rank, and no person-level
+lists for it to order — nor is the rebalancing of the rank's keys. There is no `deleted_at` and
+no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
+project's list or tokens; the tests and `make dev-seed` write them over the administrative
+connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 
 [ADR 0006]: ../adr/0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md
 [ADR 0007]: ../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md
@@ -279,6 +339,7 @@ the tests and `make dev-seed` write them over the administrative connection
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0022]: ../adr/0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
+[ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md

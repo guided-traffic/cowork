@@ -30,7 +30,7 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at`
+       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.version, t.created_at, t.updated_at`
 
 const ticketFrom = `FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -109,18 +109,40 @@ type TicketOrder int
 
 // The two ticket orders.
 const (
-	// ByNumber is a project's list: the order of filing.
-	ByNumber TicketOrder = iota
+	// ByRank is a project's list: the ranked tickets by their key, then the
+	// unranked — the terminal ones, and the open ones a release before the
+	// rank filed — by number (docs/adr/0014 D1).
+	ByRank TicketOrder = iota
 	// NewestFirst is the tenant-wide list.
 	NewestFirst
 )
+
+// rankedKey is the key a ticket is listed by in its project's rank: none
+// while it is done or dropped. This release takes the key away with the
+// state; the previous release leaves it in the column (docs/adr/0028 D3), and
+// the list reads it as none.
+const rankedKey = "(CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END)"
+
+// Position is the cursor position after r in the order: the id (NewestFirst),
+// or the key and the number, "<key>.<number>", the key empty for an unranked
+// ticket, a done or dropped one included whatever its column holds (ByRank).
+func (o TicketOrder) Position(r TicketRow) string {
+	if o == NewestFirst {
+		return r.ID.String()
+	}
+	var key string
+	if r.Rank != nil && !r.State.Terminal() {
+		key = *r.Rank
+	}
+	return key + "." + strconv.Itoa(int(r.Number))
+}
 
 // TicketPage selects a page: after a cursor's position with a limit, or a
 // numbered page (docs/adr/0048 D1, D2).
 type TicketPage struct {
 	Order TicketOrder
-	// After is the cursor's position: a number (ByNumber) or an id
-	// (NewestFirst); empty for the first page.
+	// After is the cursor's position (TicketOrder.Position); empty for the
+	// first page.
 	After string
 	Limit int
 	// Page and PerPage select a numbered page; Page 0 means cursor mode.
@@ -189,7 +211,7 @@ func orderBy(o TicketOrder) string {
 	if o == NewestFirst {
 		return "ORDER BY t.id DESC"
 	}
-	return "ORDER BY t.number"
+	return "ORDER BY " + rankedKey + " NULLS LAST, t.number"
 }
 
 // queryBuilder collects conditions and their positional arguments; values
@@ -215,11 +237,20 @@ func (b *queryBuilder) after(o TicketOrder, after string) (string, error) {
 		}
 		return "t.id < " + b.arg(id), nil
 	}
-	n, err := strconv.Atoi(after)
+	key, number, _ := strings.Cut(after, ".")
+	n, err := strconv.Atoi(number)
 	if err != nil {
 		return "", fmt.Errorf("list tickets: bad cursor position: %w", err)
 	}
-	return "t.number > " + b.arg(n), nil
+	if key == "" {
+		return "(" + rankedKey + " IS NULL AND t.number > " + b.arg(n) + ")", nil
+	}
+	if !domain.ValidRank(key) {
+		return "", fmt.Errorf("list tickets: bad cursor position: %w", domain.ErrRankKey)
+	}
+	k := b.arg(key)
+	return "(" + rankedKey + " > " + k + " OR (" + rankedKey + " = " + k + " AND t.number > " + b.arg(n) + ") OR " +
+		rankedKey + " IS NULL)", nil
 }
 
 func (b *queryBuilder) filter(f TicketFilter) {

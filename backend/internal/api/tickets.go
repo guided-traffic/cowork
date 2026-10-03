@@ -34,6 +34,9 @@ func ticketURL(t tenantScope, project string, number int32) string {
 	return projectURL(t, project) + "/tickets/" + strconv.Itoa(int(number))
 }
 
+// ticketView is a ticket as the API shows it. The rank key is not shown: it is
+// computed over tickets the caller may not see (docs/adr/0014 D2), and the
+// list's order is what the caller reads of the rank.
 func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
 	v := apigen.Ticket{
 		Id: r.ID, Key: domain.FullKey(t.Slug, r.ProjectKey, r.Number), Project: r.ProjectKey, Number: int(r.Number),
@@ -293,8 +296,10 @@ func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key st
 }
 
 // newTicket validates a new ticket's references and derives what is derived:
-// the number, the urgency (docs/adr/0010 D3) and the confidential flag
-// (docs/adr/0065 D2).
+// the number, the rank at the bottom of the project (docs/adr/0014 D2), the
+// urgency (docs/adr/0010 D3) and the confidential flag (docs/adr/0065 D2).
+// The number's counter row is the project's rank lock as well, taken before
+// any ticket row is written.
 func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, p project, body apigen.TicketCreate) (writeq.InsertTicketParams, error) {
 	ins := writeq.InsertTicketParams{
 		TenantID: t.ID, ProjectID: p.ID, Type: domain.TicketType(body.Type), Title: body.Title,
@@ -324,7 +329,8 @@ func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, 
 		return ins, fmt.Errorf("next ticket number: %w", err)
 	}
 	ins.Number = number
-	return ins, nil
+	ins.Rank, err = rankAtBottom(ctx, w, t, p.ID)
+	return ins, err
 }
 
 // checkThreat holds threat to the security class (docs/adr/0010 D2).

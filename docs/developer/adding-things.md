@@ -83,8 +83,14 @@ the mechanics are [api.md](api.md)).
    release still reads — removal is a later release's migration
    ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)).
    It runs as the owner role; whatever the runtime role needs is granted in the same file.
+   A migration that rewrites rows of a forced table sees none of them — no tenant is set — so it
+   lifts the force for itself and restores it later in the same file, as `000017_ticket_rank`
+   does ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+   D1); a unit test holds every lift to its restore.
 2. Run `make postgres-up minio-up test-integration`; add an assertion there for what only the
-   database proves.
+   database proves. A rewrite of existing rows is tested from the version before it:
+   `migrateTo(t, ownerURL, n-1)` in [`migrate_test.go`](../../backend/test/integration/migrate_test.go)
+   on a database of its own, the rows written with the fixture, then `store.Migrate`.
 3. If the schema encodes a decision, the ADR is written in the same change.
 
 ## A problem code

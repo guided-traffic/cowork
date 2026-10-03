@@ -520,20 +520,21 @@ An administrator's own account is off limits for a password reset, an unlock and
 </details>
 
 <details>
-<summary>Tickets — 18 routes</summary>
+<summary>Tickets — 19 routes</summary>
 
 | Method and path | Does |
 |---|---|
 | `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max`, `opened_after`, `opened_before`, `updated_after`, `updated_before`, `q`, `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
-| `GET …/projects/{project}/tickets` | the project's tickets in the order they were filed; the same filters but `project` |
-| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next |
+| `GET …/projects/{project}/tickets` | the project's tickets in its rank: the ranked by their key, then the unranked — done and dropped, and open ones a release before the rank filed — by number ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md)); the same filters but `project`; a cursor from before the rank is `400 invalid_cursor` |
+| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next, its rank the bottom |
 | `GET …/{number}` | one ticket |
 | `PATCH …/{number}` | change its fields; `If-Match` |
 | `PUT …/{number}/body` | replace its body as a whole; `If-Match` |
 | `PUT …/{number}/urgency-override` | override the derived urgency with a reason, until an input of the derivation changes; an agent needs `override-urgency`; `If-Match` |
 | `DELETE …/{number}/urgency-override` | withdraw the override; `If-Match` |
 | `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason; `If-Match` |
-| `POST …/{number}/transitions` | move it to another state; `from` must be the current state, else `409 state_conflict`; done needs a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; an agent needs `decide`, `close` or `drop` for those moves |
+| `POST …/{number}/transitions` | move it to another state; `from` must be the current state, else `409 state_conflict`; done needs a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; an agent needs `decide`, `close` or `drop` for those moves; done and dropped take the rank away, a reopen ranks the ticket at the bottom |
+| `PUT …/{number}/rank` | place it directly after or before another open ticket of the project, `{"after": n}` or `{"before": n}`: one key written between the neighbour's and the next one's on that side, those the caller cannot see counted, recorded as `ranked` with the neighbour, the version raised — the key itself is never shown, the list's order is the rank; a ticket already there among those the caller can see is `200` unchanged; no `If-Match` — the last move wins; an agent needs `rank`; a done or dropped ticket or neighbour is `409 state_conflict`, a neighbour the caller cannot see the `400` of one that does not exist |
 | `GET …/{number}/links` | its links in both directions |
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |

@@ -351,7 +351,13 @@ projectTickets:
   get:
     operationId: listProjectTickets
     tags: [tickets]
-    summary: The project's tickets, in the order they were filed
+    summary: The project's tickets, in the project's rank
+    description: |
+      The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+      a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+      and the number sealed, since a key is computed over tickets the caller may not see, and is
+      bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+      D5).
     parameters:
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
@@ -403,8 +409,9 @@ projectTickets:
     summary: File a ticket
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-      the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
-      class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+      the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
+      (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
+      (docs/adr/0065 D2). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
