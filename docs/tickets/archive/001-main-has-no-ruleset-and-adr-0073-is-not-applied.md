@@ -1,17 +1,17 @@
 ---
 id: T1
 title: main has no ruleset, so ADR 0073 is not applied and a red check does not stop a merge
-state: in-progress
+state: done
 severity: high
 security: none
 threat:
-urgency: release      # rule 2: gates the release
+urgency: release      # rule 2: gated the release
 effort: S
-blocked-by: human
 filed-from: ADR 0061 D5 and ADR 0073 (the pipeline ticket of ADR 0074 D2)
 opened: 2026-10-02
 decided: 2026-10-03
-done:
+done: 2026-10-03
+shipped: the rulesets main and release tags and the squash, auto-merge and delete-on-merge switches of ADR 0073; a pull request is blocked while its required checks run
 ---
 
 ## Current state
@@ -33,12 +33,17 @@ D1–D7 and [ADR 0003](../adr/0003-test-and-ci-policy.md) D1, D4.
   prevents that. ADR 0073 D1–D5 are an administrator's act in GitHub, and ADR 0073's Status
   assigns them to this ticket.
 
-## Required changes
+## Verification
 
-1. An organisation administrator applies ADR 0073: the `main` ruleset with the thirteen required
-   checks by their exact job names (D1) and the administrators on the bypass list (D2); squash
-   merges only, the squash title taken from the pull request title, auto-merge on, head
-   branches deleted on merge (D3); the `v*` tag ruleset for the semantic-release App (D4);
-   `gh-pages` left unprotected (D5).
-2. Verification, recorded here when run: `gh api` reads of the rulesets and the repository
-   settings, and a pull request that cannot merge while a required check is red.
+- `gh api repos/guided-traffic/cowork/rulesets` lists the ruleset `main` (branch, active:
+  deletion, non-fast-forward, linear history, pull request with squash only, the thirteen
+  required checks bound to the GitHub Actions app with the branch kept up to date; bypass: the
+  organisation's administrators and the release App) and the ruleset `release tags` (`v*`:
+  creation, update and deletion; bypass: the release App). `…/rules/branches/main` returns the
+  five rules.
+- `gh api repos/guided-traffic/cowork` reads squash only, the squash title from the pull
+  request title, auto-merge on, delete-on-merge on.
+- Pull request #22 read `mergeStateStatus: BLOCKED` while its required checks ran.
+- Release `0.1.1` created its tag through the release App under the tag ruleset. No release has
+  pushed a release commit to `main` since the rulesets exist — the badge did not change —, so
+  the App's bypass of `main` has not been exercised yet.
