@@ -13,7 +13,7 @@ RUN npx ng build --configuration production
 # the backend. The image entrypoint renders nginx/default.conf.template with
 # the four variables NGINX_ENVSUBST_FILTER names substituted (and nothing
 # else: the filter keeps nginx's own $variables intact).
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 ARG BUILD_NUMBER
 ARG GIT_COMMIT

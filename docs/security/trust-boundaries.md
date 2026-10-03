@@ -101,7 +101,7 @@ stderr, and its line for a request nginx itself failed carries the query — H-1
 The backend image is `gcr.io/distroless/static-debian12:nonroot`, one static binary, no
 shell; the chart runs it as UID/GID 65532, and the migration init container runs the same
 image with the same security context. The frontend image is
-`nginxinc/nginx-unprivileged:1.30-alpine`, which has a shell; the chart runs it as UID/GID
+`nginxinc/nginx-unprivileged:1.31-alpine`, which has a shell; the chart runs it as UID/GID
 101. Both run with `runAsNonRoot`, a read-only root filesystem, all capabilities dropped,
 `allowPrivilegeEscalation: false`, the `RuntimeDefault` seccomp profile, and a ServiceAccount
 whose token is not mounted ([`values.yaml`](../../deploy/helm/cowork/values.yaml),
