@@ -17,8 +17,9 @@ without objecting to it, and it stands as version 1 until amended.
 which ranked every project's open tickets in number order), [`domain.RankBetween`](../../backend/internal/domain/rank.go),
 filings and reopens at the bottom, done and dropped without a key, the move
 `PUT …/tickets/{number}/rank` recorded as `ranked` ([`rank.go`](../../backend/internal/api/rank.go)),
-and a project's list in its rank. **Not built:** the score of D3–D5 and the person-level lists
-it orders; the drag in the backlog; the rebalancing the Consequences name.
+and a project's list in its rank; the drag in the backlog
+([ADR 0018](0018-the-views-of-the-first-release.md) D1). **Not built:** the score of D3–D5 and
+the person-level lists it orders; the rebalancing the Consequences name.
 
 ## Context
 

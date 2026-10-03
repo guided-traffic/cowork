@@ -31,14 +31,25 @@ D2. The rest of the amended D1 — the drags between the columns, a child's plac
 parent's group, the count that stands in for `done` — is this record's proposal and stays
 open to objection until the board is built.
 
-**Partly built** (phase 3, 2026-10-03): D1's backlog as a table in the project's rank order
-([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md), whose rank exists in the API
-since 2026-10-03) with filing (the drag and the score's marker not yet); D2's detail page with
-its fields to edit, the progress slider, the moves, questions with the answer form, links,
-interest, comments, activity, attachments and time (the body as text until it is rendered; the
-prerequisite tree missing); the time report; and as the tenant's front page, until D6's
-dashboard, each project's open tickets by state with the tickets updated last. The amendment
-of D1 of 2026-10-03 is not built yet.
+**Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-03 — the backlog as a table
+grouped by urgency in the project's rank ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)),
+loaded with the cursor, its rows dragged within and between the groups with the urgency override
+or its withdrawal and moved by a row menu from the keyboard, `release` and `icebox` offered as
+drop zones docked at the foot of the window while a row is dragged, the closed tickets on
+request, filing; the board with the column `next` and its Now button, the columns Refinement,
+Ready, In Progress, Blocked and Review with their WIP counts, the count of the tickets done in
+the last fourteen days (the filter `done_after`,
+[ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D1), cards
+with the size, the bar of the current stage, the block and the count of the open tickets that
+block a card directly and that the caller can see (`open_prerequisites`; whether the card shows
+it or the count of the transitive closure of
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6 is open), and drags between the
+columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
+the note when the last stage fills, the moves with done by hand and its withdrawal, questions
+with the answer form, links, interest, comments, activity, attachments and time (the body as
+text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's
+front page, until D6's dashboard, each project's open tickets by state with the tickets updated
+last. Not built: the score's marker in the backlog, D3–D7.
 
 ## Context
 
