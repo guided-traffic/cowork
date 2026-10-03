@@ -270,3 +270,46 @@ markdown:
               type: string
       default:
         $ref: './components/responses.yaml#/Problem'
+context:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: exportTicketContext
+    tags: [tickets]
+    summary: The ticket for reading, with what surrounds it
+    description: |
+      The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+      line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+      <agent>) — not an import format -->`, followed by read-only sections in a
+      fixed order (D2): `## Links` (typed, read from this ticket, each other
+      end's key, title, state and assignee), `## Prerequisites` (the tree of the
+      tickets that block it, to a depth of eight, with state, assignee and the
+      implementation stage, and the count of open ones), `## Recent comments`
+      (the last `comments`, oldest of them first, each quoted under its author,
+      agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+      (name, type, size and URL, never content) and `## Recent activity` (the
+      last `activity`). `comments=0` or `activity=0` leaves its section out. What
+      the caller cannot see is absent. The document carries no `ETag`: it is not
+      one entity. Every call is recorded: data left the system (D5). It is no
+      import format (D3): there is no importer yet, and the one ADR 0044
+      decides refuses a file that carries these sections.
+    parameters:
+      - name: comments
+        in: query
+        description: How many of the last comments to show
+        schema: {type: integer, minimum: 0, maximum: 100, default: 10}
+      - name: activity
+        in: query
+        description: How many of the last acts to show
+        schema: {type: integer, minimum: 0, maximum: 100, default: 10}
+    responses:
+      '200':
+        description: The document
+        content:
+          text/markdown:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'

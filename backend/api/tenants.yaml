@@ -172,6 +172,12 @@ projects:
       `write` scope. A member creates projects while the tenant allows it,
       an administrator always (docs/adr/0034 D9); an agent needs the
       `create-project` capability (docs/adr/0043 D4).
+
+      With `repository`, the project is created and the repository bound in one
+      recorded act, and the creation is idempotent over the remote
+      (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+      and path already, the answer is 200 with that project and nothing is
+      created or bound — 409 `repository_bound` when the caller cannot see it.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -184,7 +190,20 @@ projects:
             key: COW
             name: cowork
             description: The backlog of cowork itself
+            repository:
+              remote: git@github.com:guided-traffic/cowork.git
     responses:
+      '200':
+        description: A project of the tenant binds the repository already; that project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
       '201':
         description: The new project
         headers:

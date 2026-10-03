@@ -1,0 +1,88 @@
+package markdown
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The context document against golden files (docs/adr/0044 D2): the first
+// line, the canonical document, then the sections in their fixed order;
+// `go test ./internal/markdown -update` rewrites them.
+func TestRenderContext(t *testing.T) {
+	ticket := Ticket{
+		Key: "acme/VKO-12", Title: "Export drops attachments", Type: "bug", State: "in-progress", Severity: "high",
+		Security: "none", Urgency: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace",
+		Opened: *at("2026-10-01T08:00:00Z"), Decided: at("2026-10-02T09:00:00Z"),
+		Attachments: []string{"trace.txt"},
+		Body:        "## Current state\n\nThe zip has no files.\n",
+		Questions:   []Question{{Number: 1, Question: "Zip or tar?", Options: "- A: zip\n- B: tar", Recommendation: "A", Status: "open"}},
+	}
+	for name, c := range map[string]Context{
+		"context-full": {
+			Ticket: ticket, Exported: *at("2026-10-04T09:12:00Z"), By: "Ada Lovelace", Agent: "claude-code/unknown/7f3a",
+			Links: []Link{
+				{Name: "blocked by", Key: "acme/VKO-3", Title: "Fix the writer", State: "in-progress", Assignee: "Sam"},
+				{Name: "relates to", Key: "acme/OPS-1", Title: "Backups", State: "filed"},
+			},
+			Prerequisites: []Prerequisite{
+				{Depth: 1, Key: "acme/VKO-3", Title: "Fix the writer", State: "in-progress", Assignee: "Sam", Progress: 40},
+				{Depth: 2, Key: "acme/VKO-1", Title: "Pick a library", State: "done", Progress: 100},
+			},
+			Comments: []Comment{
+				{Author: "Sam", At: *at("2026-10-03T10:00:00Z"), Body: "Seen it twice.\n\n## Links\nnot a section"},
+				{Author: "Ada Lovelace", Agent: "claude-code/unknown/7f3a", At: *at("2026-10-04T08:00:00Z"), Withdrawn: true},
+			},
+			Attachments: []Attachment{{Name: "trace.txt", Type: "text/plain; charset=utf-8", Size: 1536,
+				URL: "/api/v1/tenants/acme/projects/VKO/tickets/12/attachments/0199a3c2-1d2e-7f00-8000-000000000009/content"}},
+			Activity: []Act{
+				{At: *at("2026-10-02T09:00:00Z"), Actor: "Ada Lovelace", Action: "transitioned",
+					Before: map[string]any{"state": "analysed"}, After: map[string]any{"state": "decided"}},
+				{At: *at("2026-10-03T10:00:00Z"), Actor: "Sam", Action: "linked",
+					After: map[string]any{"type": "blocks", "source": "acme/VKO-3", "target": "acme/VKO-12"}},
+				{At: *at("2026-10-03T11:00:00Z"), Actor: "Sam", Action: "updated", Before: map[string]any{"effort": "S", "title": "x"},
+					After: map[string]any{"effort": "M", "title": "y"}, Reason: "bigger than \"it looked\"\nat first"},
+				{At: *at("2026-10-04T08:00:00Z"), Actor: "Ada Lovelace", Agent: "claude-code/unknown/7f3a", Action: "linked", Redacted: true},
+			},
+		},
+		"context-quiet": {
+			Ticket: Ticket{Key: "acme/VKO-13", Title: "Nothing around it", Type: "task", State: "filed", Severity: "low",
+				Security: "none", Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
+			Exported: *at("2026-10-04T09:12:00Z"), By: "Sam",
+			Comments: []Comment{}, Activity: nil,
+		},
+	} {
+		got := RenderContext(c)
+		path := filepath.Join("testdata", name+".md")
+		if *update {
+			require.NoError(t, os.WriteFile(path, got, 0o600))
+		}
+		want, err := os.ReadFile(path)
+		require.NoError(t, err, "run with -update to write %s", path)
+		assert.Equal(t, string(want), string(got), name)
+	}
+}
+
+// The context starts with a line that is not frontmatter, so a reader of the
+// canonical grammar never takes it for an importable file (docs/adr/0044 D3),
+// and the canonical document follows unchanged.
+func TestContextCarriesTheCanonicalDocument(t *testing.T) {
+	tk := Ticket{Key: "acme/VKO-14", Title: "t", Type: "task", State: "filed", Severity: "low", Security: "none",
+		Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")}
+	got := string(RenderContext(Context{Ticket: tk, Exported: *at("2026-10-04T00:00:00Z"), By: "Sam"}))
+	first, rest, _ := strings.Cut(got, "\n")
+	assert.True(t, strings.HasPrefix(first, "<!-- cowork: context of acme/VKO-14, exported 2026-10-04T00:00:00Z by Sam — not an import format -->"))
+	assert.True(t, strings.HasPrefix(rest, string(Render(tk))))
+	assert.NotContains(t, got, "## Recent comments", "comments=0 leaves the section out")
+	assert.NotContains(t, got, "## Recent activity", "activity=0 leaves the section out")
+}
+
+func TestSize(t *testing.T) {
+	assert.Equal(t, "512 B", size(512))
+	assert.Equal(t, "1.5 KiB", size(1536))
+	assert.Equal(t, "2.0 MiB", size(2<<20))
+}

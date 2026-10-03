@@ -452,6 +452,16 @@
           "type": "integer"
         }
       },
+      "RepositoryID": {
+        "description": "The binding's id",
+        "in": "path",
+        "name": "repository",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
       "TenantSlug": {
         "description": "The tenant's slug (docs/adr/0005 D4)",
         "in": "path",
@@ -1390,6 +1400,33 @@
         ],
         "type": "object"
       },
+      "CurrentToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Token"
+          },
+          {
+            "properties": {
+              "request": {
+                "$ref": "#/components/schemas/RequestMark"
+              },
+              "restricted_project": {
+                "description": "The key of the project the token is restricted to",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "restricted_project",
+              "request"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)"
+      },
       "Effort": {
         "enum": [
           "XS",
@@ -1721,6 +1758,26 @@
         ],
         "type": "object"
       },
+      "LookupRemote": {
+        "properties": {
+          "identity": {
+            "description": "Its normalised identity; null for a remote that names no host (docs/adr/0066 D1)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remote": {
+            "description": "The remote as it was given, without credentials",
+            "type": "string"
+          }
+        },
+        "required": [
+          "remote",
+          "identity"
+        ],
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "display_name": {
@@ -2007,6 +2064,7 @@
           "username_taken",
           "tenant_slug_taken",
           "project_key_taken",
+          "repository_bound",
           "person_ambiguous",
           "grant_exists",
           "mapping_exists",
@@ -2172,6 +2230,9 @@
             "minLength": 1,
             "type": "string"
           },
+          "repository": {
+            "$ref": "#/components/schemas/RepositoryBind"
+          },
           "wip_limits": {
             "$ref": "#/components/schemas/WipLimits"
           }
@@ -2222,6 +2283,21 @@
         },
         "type": "object"
       },
+      "ProjectRef": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "type": "object"
+      },
       "ProjectRestrictionSet": {
         "additionalProperties": false,
         "properties": {
@@ -2232,6 +2308,26 @@
         },
         "required": [
           "restricted"
+        ],
+        "type": "object"
+      },
+      "ProposalTenant": {
+        "properties": {
+          "key": {
+            "description": "The project key proposed for this tenant, free there (docs/adr/0066 D2)",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "key"
         ],
         "type": "object"
       },
@@ -2431,6 +2527,244 @@
           "withdrawn"
         ],
         "type": "string"
+      },
+      "Repository": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "identity": {
+            "description": "The normalised remote, host/path (docs/adr/0066 D1)",
+            "type": "string"
+          },
+          "path": {
+            "description": "The sub-directory of a monorepo the binding covers; empty for the whole repository (docs/adr/0006 D3)",
+            "type": "string"
+          },
+          "remote": {
+            "description": "The remote as it was last given, without credentials",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "identity",
+          "path",
+          "remote",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "RepositoryBind": {
+        "additionalProperties": false,
+        "description": "A repository to bind, by a remote URL that cowork normalises (docs/adr/0066 D1)",
+        "properties": {
+          "path": {
+            "description": "A sub-directory of a monorepo, relative to its root; omitted, the whole repository",
+            "maxLength": 512,
+            "type": "string"
+          },
+          "remote": {
+            "description": "A git remote URL — SSH, scp-style, git or HTTP(S); its credentials are never stored",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "remote"
+        ],
+        "type": "object"
+      },
+      "RepositoryBindingRef": {
+        "description": "A project that binds the repository",
+        "properties": {
+          "archived": {
+            "description": "The project is archived and refuses new tickets (docs/adr/0006 D4)",
+            "type": "boolean"
+          },
+          "identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectRef"
+          },
+          "remote": {
+            "type": "string"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          }
+        },
+        "required": [
+          "tenant",
+          "project",
+          "identity",
+          "path",
+          "remote",
+          "archived"
+        ],
+        "type": "object"
+      },
+      "RepositoryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Repository"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "RepositoryLookup": {
+        "properties": {
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryBindingRef"
+            },
+            "type": "array"
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposal_unavailable": {
+            "description": "Why an unbound repository has no proposal, when it has none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remotes": {
+            "items": {
+              "$ref": "#/components/schemas/LookupRemote"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "One binding, several (a data error the person resolves, docs/adr/0066 D6), or none",
+            "enum": [
+              "bound",
+              "ambiguous",
+              "unbound"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "remotes",
+          "bindings",
+          "proposal",
+          "proposal_unavailable"
+        ],
+        "type": "object"
+      },
+      "RepositoryProposal": {
+        "description": "The project the agent proposes to create for an unbound repository (docs/adr/0066 D2, D3)",
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The proposed project name, the repository's name",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the tenant: the only one the caller may create projects in; the one that binds\nrepositories under the same remote owner; or none chosen, the list to choose from\n",
+            "enum": [
+              "only-tenant",
+              "remote-owner",
+              "choose"
+            ],
+            "type": "string"
+          },
+          "remote": {
+            "description": "The remote to bind, as given, without credentials",
+            "type": "string"
+          },
+          "tenant": {
+            "description": "The proposed tenant's slug; null when the person chooses from `tenants`",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenants": {
+            "description": "The tenant proposed, or the tenants to choose from, each with the key that is free there",
+            "items": {
+              "$ref": "#/components/schemas/ProposalTenant"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "identity",
+          "remote",
+          "name",
+          "tenant",
+          "tenants",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RequestMark": {
+        "properties": {
+          "agent": {
+            "description": "The request is an agent's, by the token's flag or by the X-Cowork-Agent header (docs/adr/0036 D2, D3)",
+            "type": "boolean"
+          },
+          "agent_mark": {
+            "description": "The agent its acts record — the header's value, or unknown-agent; null for a person's request",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4); empty for a\nperson's request, which the capabilities do not bound\n",
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent",
+          "agent_mark",
+          "capabilities"
+        ],
+        "type": "object"
       },
       "Role": {
         "description": "A tenant role, lowest first (docs/adr/0034 D1)",
@@ -3698,6 +4032,110 @@
         ]
       }
     },
+    "/api/v1/me/repositories/lookup": {
+      "get": {
+        "description": "Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and\nsearches the projects the caller sees in every tenant of the person — a\nrestricted token in its own tenant and project only (docs/adr/0035 D3). The\nremotes are tried in the order given, `origin` first by convention; the\nfirst one with a binding decides, and of its bindings those whose\nsub-directory covers `path`, the most specific first. One binding is\n`bound`; several are `ambiguous`, a data error the person resolves\n(docs/adr/0066 D6); none is `unbound`, with a proposal for a project made\nfrom the first remote that has an identity (D2): the tenant — the only one\nthe caller may create projects in, else the one that binds repositories\nunder the same owner, else the list to choose from — a key from the\nrepository's name, free in each tenant offered, and the name itself. A\ncaller who may create a project nowhere gets no proposal and the reason.\nA remote that names no host is reported with a null identity. Send no\ncredentials: cowork stores none, and a proxy's log may carry the query.\n",
+        "operationId": "lookupRepository",
+        "parameters": [
+          {
+            "description": "A git remote URL — SSH, scp-style, git or HTTP(S); repeatable, in order of preference",
+            "explode": true,
+            "in": "query",
+            "name": "remote",
+            "required": true,
+            "schema": {
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "The working directory relative to the repository root, for a monorepo's sub-directory bindings",
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "bindings": [],
+                  "proposal": {
+                    "identity": "github.com/guided-traffic/valkey-operator",
+                    "name": "valkey-operator",
+                    "reason": "remote-owner",
+                    "remote": "git@github.com:guided-traffic/valkey-operator.git",
+                    "tenant": "guided-traffic",
+                    "tenants": [
+                      {
+                        "key": "VO",
+                        "name": "Guided Traffic",
+                        "slug": "guided-traffic"
+                      }
+                    ]
+                  },
+                  "proposal_unavailable": null,
+                  "remotes": [
+                    {
+                      "identity": "github.com/guided-traffic/valkey-operator",
+                      "remote": "git@github.com:guided-traffic/valkey-operator.git"
+                    }
+                  ],
+                  "status": "unbound"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryLookup"
+                }
+              }
+            },
+            "description": "The binding, the bindings in conflict, or none and a proposal"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The project a repository is bound to, across the person's tenants",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/api/v1/me/token": {
+      "get": {
+        "description": "The token's metadata as the list shows it, the key of the project it is\nrestricted to, and the request's mark: whether it is an agent's — by the\ntoken's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the\nagent recorded on its acts, and the capabilities it holds\n(docs/adr/0043 D4). The MCP server reads it at start to tell the model what\nit may do (D6), and `cowork-mcp token check` to tell a person\n(docs/adr/0070 D2). A browser session presents no token: `404 not_found`.\n",
+        "operationId": "getMyToken",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentToken"
+                }
+              }
+            },
+            "description": "The token"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The token this request presents, and what it makes of the request",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/tokens": {
       "get": {
         "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
@@ -3832,6 +4270,32 @@
         },
         "security": [],
         "summary": "This document",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/schemas/cowork-yaml.json": {
+      "get": {
+        "description": "The optional binding file of a repository without a remote or of a fork\n(docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the\nsub-directory of a monorepo it binds — and `url`, the installation it\nbelongs to. Unauthenticated, so an editor can load it.\n",
+        "operationId": "getCoworkYamlSchema",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The schema, JSON Schema draft 2020-12"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "The JSON Schema of a repository's `.cowork.yaml`",
         "tags": [
           "meta"
         ]
@@ -4706,7 +5170,7 @@
         }
       ],
       "post": {
-        "description": "`write` scope. A member creates projects while the tenant allows it,\nan administrator always (docs/adr/0034 D9); an agent needs the\n`create-project` capability (docs/adr/0043 D4).\n",
+        "description": "`write` scope. A member creates projects while the tenant allows it,\nan administrator always (docs/adr/0034 D9); an agent needs the\n`create-project` capability (docs/adr/0043 D4).\n\nWith `repository`, the project is created and the repository bound in one\nrecorded act, and the creation is idempotent over the remote\n(docs/adr/0066 D3, D5): when a project of the tenant binds the repository\nand path already, the answer is 200 with that project and nothing is\ncreated or bound — 409 `repository_bound` when the caller cannot see it.\n",
         "operationId": "createProject",
         "parameters": [
           {
@@ -4719,7 +5183,10 @@
               "example": {
                 "description": "The backlog of cowork itself",
                 "key": "COW",
-                "name": "cowork"
+                "name": "cowork",
+                "repository": {
+                  "remote": "git@github.com:guided-traffic/cowork.git"
+                }
               },
               "schema": {
                 "$ref": "#/components/schemas/ProjectCreate"
@@ -4729,6 +5196,24 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "A project of the tenant binds the repository already; that project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
           "201": {
             "content": {
               "application/json": {
@@ -4985,6 +5470,131 @@
           "projects"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/repositories": {
+      "get": {
+        "operationId": "listRepositories",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryList"
+                }
+              }
+            },
+            "description": "A page of repositories in the order they were bound"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The repositories a project owns",
+        "tags": [
+          "repositories"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "post": {
+        "description": "Idempotent over the identity and the path: a repository the project binds\nalready answers 200 and keeps the remote as last given (docs/adr/0066 D1,\nD5); one another project of the tenant binds is 409 `repository_bound`, and\nnames that project only to a caller who sees it. Binding is the act of\ncreating a project (docs/adr/0043 D4): `write` scope, an administrator, or\na member while the tenant lets members create projects\n(docs/adr/0034 D9), and an agent needs `create-project`. The remote's\ncredentials are never stored.\n",
+        "operationId": "bindRepository",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "remote": "git@github.com:guided-traffic/cowork.git"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryBind"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repository"
+                }
+              }
+            },
+            "description": "The project binds the repository already"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repository"
+                }
+              }
+            },
+            "description": "The new binding",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Bind a repository to the project",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}": {
+      "delete": {
+        "description": "The same act as binding, by the same people (docs/adr/0043 D4); idempotent,\nso a binding that is gone answers 204 as well. The project and its tickets\nstay; the next session in the repository finds no binding.\n",
+        "operationId": "unbindRepository",
+        "responses": {
+          "204": {
+            "description": "The project does not bind the repository"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Unbind a repository from the project",
+        "tags": [
+          "repositories"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/RepositoryID"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/restriction": {
       "parameters": [
@@ -5957,6 +6567,66 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context": {
+      "get": {
+        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections.\n",
+        "operationId": "exportTicketContext",
+        "parameters": [
+          {
+            "description": "How many of the last comments to show",
+            "in": "query",
+            "name": "comments",
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many of the last acts to show",
+            "in": "query",
+            "name": "activity",
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The document"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket for reading, with what surrounds it",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest": {
       "delete": {
@@ -7555,6 +8225,9 @@
     },
     {
       "name": "projects"
+    },
+    {
+      "name": "repositories"
     },
     {
       "name": "tickets"

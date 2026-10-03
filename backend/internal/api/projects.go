@@ -93,59 +93,34 @@ func (s *Server) ListProjects(ctx context.Context, req apigen.ListProjectsReques
 
 // CreateProject creates a project and its ticket counter. A write act, for
 // members while the tenant allows it and for administrators always
-// (docs/adr/0034 D9); an agent needs create-project (docs/adr/0043 D4).
+// (docs/adr/0034 D9); an agent needs create-project (docs/adr/0043 D4). With a
+// repository it binds the repository in the same act and is idempotent over
+// the remote: a project of the tenant that binds it already is the answer
+// (docs/adr/0066 D3, D5).
 func (s *Server) CreateProject(ctx context.Context, req apigen.CreateProjectRequestObject) (apigen.CreateProjectResponseObject, error) {
 	t := tenantFrom(ctx)
-	p := principal(ctx)
 	body := *req.Body
+	var repo *boundRepository
+	if body.Repository != nil {
+		b, perr := readRepository(*body.Repository, "/repository")
+		if perr != nil {
+			return nil, perr
+		}
+		repo = &b
+	}
 	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createProject", t.ID.String(), body)
 	if perr != nil {
 		return nil, perr
 	}
 	var created project
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		tenant, err := w.GetTenant(ctx, t.ID)
-		if err != nil {
-			return err
-		}
-		need := auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeWrite, Capability: auth.CapCreateProject}
-		if tenant.MembersCreateProjects {
-			need.Role = domain.RoleMember
-		}
-		if perr := auth.Authorize(p, t.Role, need); perr != nil {
-			return perr
-		}
-		taken, err := w.ProjectKeyTaken(ctx, readq.ProjectKeyTakenParams{TenantID: t.ID, Key: body.Key})
-		if err != nil {
-			return err
-		}
-		if taken {
-			return &problem.Error{Code: problem.ProjectKeyTaken, Detail: "the tenant has a project with this key",
-				Errors: []problem.FieldError{{Pointer: "/key", Message: "taken"}}}
-		}
-		description := ""
-		if body.Description != nil {
-			description = *body.Description
-		}
-		row, err := w.InsertProject(ctx, writeq.InsertProjectParams{TenantID: t.ID, Key: body.Key, Name: body.Name,
-			Description: description, WipLimits: wipJSON(body.WipLimits)})
-		if err != nil {
-			return err
-		}
-		if err := w.InsertTicketCounter(ctx, writeq.InsertTicketCounterParams{TenantID: t.ID, ProjectID: row.ID}); err != nil {
-			return err
-		}
-		created = project(row)
-		w.Record(store.Event{EntityType: entityProject, EntityID: row.ID, Action: actionCreated,
-			After: map[string]any{"key": row.Key, fieldName: row.Name, fieldDescription: row.Description}})
-		res, err := stored(projectView(created), map[string]string{
-			headerETag: *etag(created.Version), headerLocation: projectURL(t, created.Key)})
-		if err != nil {
-			return err
-		}
-		w.Respond(res)
-		return nil
+		return insertProject(ctx, w, t, body, repo, &created)
 	})
+	if errors.Is(err, store.ErrNoChange) {
+		location := projectURL(t, created.Key)
+		return apigen.CreateProject200JSONResponse{Body: projectView(created), Headers: apigen.CreateProject200ResponseHeaders{
+			ETag: etag(created.Version), Location: &location}}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +135,85 @@ func (s *Server) CreateProject(ctx context.Context, req apigen.CreateProjectRequ
 	location := projectURL(t, created.Key)
 	return apigen.CreateProject201JSONResponse{Body: projectView(created), Headers: apigen.CreateProject201ResponseHeaders{
 		ETag: etag(created.Version), Location: &location}}, nil
+}
+
+// insertProject writes a project, its counter and the repository it binds
+// with the one act that records them, and sets the response a key stores; a
+// repository a project of the tenant binds already is store.ErrNoChange with
+// that project in out.
+func insertProject(ctx context.Context, w *store.Writer, t tenantScope, body apigen.ProjectCreate, repo *boundRepository, out *project) error {
+	tenant, err := w.GetTenant(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	if perr := auth.Authorize(principal(ctx), t.Role, creating(tenant.MembersCreateProjects)); perr != nil {
+		return perr
+	}
+	if repo != nil {
+		existing, found, err := bindingProject(ctx, w.Reader, t, *repo)
+		if err != nil {
+			return err
+		}
+		if found {
+			*out = existing
+			return store.ErrNoChange
+		}
+	}
+	taken, err := w.ProjectKeyTaken(ctx, readq.ProjectKeyTakenParams{TenantID: t.ID, Key: body.Key})
+	if err != nil {
+		return err
+	}
+	if taken {
+		return &problem.Error{Code: problem.ProjectKeyTaken, Detail: "the tenant has a project with this key",
+			Errors: []problem.FieldError{{Pointer: "/key", Message: "taken"}}}
+	}
+	description := ""
+	if body.Description != nil {
+		description = *body.Description
+	}
+	row, err := w.InsertProject(ctx, writeq.InsertProjectParams{TenantID: t.ID, Key: body.Key, Name: body.Name,
+		Description: description, WipLimits: wipJSON(body.WipLimits)})
+	if err != nil {
+		return err
+	}
+	if err := w.InsertTicketCounter(ctx, writeq.InsertTicketCounterParams{TenantID: t.ID, ProjectID: row.ID}); err != nil {
+		return err
+	}
+	*out = project(row)
+	after := map[string]any{"key": row.Key, fieldName: row.Name, fieldDescription: row.Description}
+	if repo != nil {
+		if _, err := w.InsertRepository(ctx, writeq.InsertRepositoryParams{TenantID: t.ID, ProjectID: row.ID,
+			Identity: repo.identity, Path: repo.path, Remote: repo.remote}); err != nil {
+			return createdBoundAlready(ctx, w, t, *repo, out, err)
+		}
+		after[fieldRepository], after[fieldPath], after[fieldRemote] = repo.identity, repo.path, repo.remote
+	}
+	w.Record(store.Event{EntityType: entityProject, EntityID: row.ID, Action: actionCreated, After: after})
+	res, err := stored(projectView(*out), map[string]string{
+		headerETag: *etag(out.Version), headerLocation: projectURL(t, out.Key)})
+	if err != nil {
+		return err
+	}
+	w.Respond(res)
+	return nil
+}
+
+// createdBoundAlready answers a creation whose binding a simultaneous request
+// wrote first, as the later request would: the project that binds the
+// repository, and nothing of this creation committed.
+func createdBoundAlready(ctx context.Context, w *store.Writer, t tenantScope, b boundRepository, out *project, insertErr error) error {
+	if !errors.Is(insertErr, pgx.ErrNoRows) {
+		return insertErr
+	}
+	existing, found, err := bindingProject(ctx, w.Reader, t, b)
+	switch {
+	case err != nil:
+		return err
+	case !found:
+		return insertErr
+	}
+	*out = existing
+	return store.ErrNoChange
 }
 
 // GetProject answers one project the caller can see.

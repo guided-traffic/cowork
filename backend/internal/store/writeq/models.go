@@ -815,6 +815,17 @@ type ProjectAccess struct {
 	CreatedAt time.Time
 }
 
+type ProjectRepository struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+	Identity  string
+	Path      string
+	Remote    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Question struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID

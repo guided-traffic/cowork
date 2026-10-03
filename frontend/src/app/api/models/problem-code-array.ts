@@ -29,6 +29,7 @@ export const PROBLEM_CODE: ProblemCode[] = [
   'username_taken',
   'tenant_slug_taken',
   'project_key_taken',
+  'repository_bound',
   'person_ambiguous',
   'grant_exists',
   'mapping_exists',

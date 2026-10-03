@@ -12,12 +12,13 @@ import (
 )
 
 // public are the operations that answer without a credential: the build's
-// version, the document itself (docs/adr/0046 D5), what the login page offers
+// version, the document itself (docs/adr/0046 D5), the schema of a
+// repository's binding file (docs/adr/0066 D4), what the login page offers
 // and the logins themselves — the local one and the identity provider's two
 // browser navigations (docs/adr/0033 D8, docs/adr/0031 D1, docs/adr/0029 D1).
 var public = map[string]bool{
-	"getVersion": true, "getOpenAPI": true, "getAuthOptions": true, "loginLocal": true,
-	"loginOidc": true, "oidcCallback": true,
+	"getVersion": true, "getOpenAPI": true, "getCoworkYamlSchema": true, "getAuthOptions": true,
+	"loginLocal": true, "loginOidc": true, "oidcCallback": true,
 }
 
 // openQuery are the operations that take query parameters the document does

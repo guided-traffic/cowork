@@ -727,6 +727,7 @@ every error body carries one of these as `code`.
 | `username_taken` | 409 | The installation has a person with this username; usernames are unique (docs/adr/0033 D2) |
 | `tenant_slug_taken` | 409 | The installation has a tenant with this slug; slugs are never reused (docs/adr/0005 D4) |
 | `project_key_taken` | 409 | The tenant has a project with this key; keys are never reused (docs/adr/0007 D4) |
+| `repository_bound` | 409 | Another project of the tenant binds this repository and path; a repository is in at most one project (docs/adr/0066 D6) |
 | `person_ambiguous` | 409 | Several persons have this e-mail address, which is a display attribute and not an identity (docs/adr/0029 D5); nobody was granted |
 | `grant_exists` | 409 | The person holds a grant in this tenant already; change its role with `PUT …/members/{person_id}/grant` (docs/adr/0030 D3) |
 | `mapping_exists` | 409 | The tenant maps this group already; change that mapping's role instead (docs/adr/0030 D2) |

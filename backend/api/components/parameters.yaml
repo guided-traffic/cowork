@@ -268,3 +268,9 @@ AttachmentID:
   required: true
   description: The attachment's id
   schema: {type: string, format: uuid}
+RepositoryID:
+  name: repository
+  in: path
+  required: true
+  description: The binding's id
+  schema: {type: string, format: uuid}

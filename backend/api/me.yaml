@@ -117,6 +117,28 @@ token:
         description: Revoked
       default:
         $ref: './components/responses.yaml#/Problem'
+currentToken:
+  get:
+    operationId: getMyToken
+    tags: [me]
+    summary: The token this request presents, and what it makes of the request
+    description: |
+      The token's metadata as the list shows it, the key of the project it is
+      restricted to, and the request's mark: whether it is an agent's — by the
+      token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+      agent recorded on its acts, and the capabilities it holds
+      (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+      it may do (D6), and `cowork-mcp token check` to tell a person
+      (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+    responses:
+      '200':
+        description: The token
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/CurrentToken'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 password:
   put:
     operationId: changeMyPassword

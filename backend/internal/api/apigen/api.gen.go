@@ -387,6 +387,7 @@ const (
 	ProblemCodePreconditionRequired   ProblemCode = "precondition_required"
 	ProblemCodeProjectArchived        ProblemCode = "project_archived"
 	ProblemCodeProjectKeyTaken        ProblemCode = "project_key_taken"
+	ProblemCodeRepositoryBound        ProblemCode = "repository_bound"
 	ProblemCodeSessionRequired        ProblemCode = "session_required"
 	ProblemCodeStateConflict          ProblemCode = "state_conflict"
 	ProblemCodeTenantSlugTaken        ProblemCode = "tenant_slug_taken"
@@ -468,6 +469,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeProjectKeyTaken:
 		return true
+	case ProblemCodeRepositoryBound:
+		return true
 	case ProblemCodeSessionRequired:
 		return true
 	case ProblemCodeStateConflict:
@@ -530,6 +533,48 @@ func (e QuestionStatus) Valid() bool {
 	case QuestionStatusOpen:
 		return true
 	case QuestionStatusWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RepositoryLookupStatus.
+const (
+	RepositoryLookupStatusAmbiguous RepositoryLookupStatus = "ambiguous"
+	RepositoryLookupStatusBound     RepositoryLookupStatus = "bound"
+	RepositoryLookupStatusUnbound   RepositoryLookupStatus = "unbound"
+)
+
+// Valid indicates whether the value is a known member of the RepositoryLookupStatus enum.
+func (e RepositoryLookupStatus) Valid() bool {
+	switch e {
+	case RepositoryLookupStatusAmbiguous:
+		return true
+	case RepositoryLookupStatusBound:
+		return true
+	case RepositoryLookupStatusUnbound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RepositoryProposalReason.
+const (
+	RepositoryProposalReasonChoose      RepositoryProposalReason = "choose"
+	RepositoryProposalReasonOnlyTenant  RepositoryProposalReason = "only-tenant"
+	RepositoryProposalReasonRemoteOwner RepositoryProposalReason = "remote-owner"
+)
+
+// Valid indicates whether the value is a known member of the RepositoryProposalReason enum.
+func (e RepositoryProposalReason) Valid() bool {
+	switch e {
+	case RepositoryProposalReasonChoose:
+		return true
+	case RepositoryProposalReasonOnlyTenant:
+		return true
+	case RepositoryProposalReasonRemoteOwner:
 		return true
 	default:
 		return false
@@ -1207,6 +1252,33 @@ type ConfidentialSet struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// CurrentToken The token a request presents, and what it makes of the request (docs/adr/0043 D6)
+type CurrentToken struct {
+	// Agent The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+	Agent        bool                                  `json:"agent"`
+	Capabilities []Capability                          `json:"capabilities"`
+	CreatedAt    time.Time                             `json:"created_at"`
+	ExpiresAt    time.Time                             `json:"expires_at"`
+	Id           openapi_types.UUID                    `json:"id"`
+	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
+	Name         string                                `json:"name"`
+	Request      RequestMark                           `json:"request"`
+
+	// RestrictedProject The key of the project the token is restricted to
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to
+	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
+
+	// RestrictedTenant The slug of the tenant the token is restricted to
+	RestrictedTenant nullable.Nullable[string]    `json:"restricted_tenant,omitempty"`
+	RevokedAt        nullable.Nullable[time.Time] `json:"revoked_at,omitempty"`
+
+	// Scope A token's scope (docs/adr/0035 D3)
+	Scope Scope      `json:"scope"`
+	State TokenState `json:"state"`
+}
+
 // Effort defines model for Effort.
 type Effort string
 
@@ -1341,6 +1413,15 @@ type LogoutResult struct {
 	// `post_logout_redirect_uri`; the browser navigates there to end its
 	// session at the identity provider too (docs/adr/0031 D4)
 	EndSessionUrl string `json:"end_session_url"`
+}
+
+// LookupRemote defines model for LookupRemote.
+type LookupRemote struct {
+	// Identity Its normalised identity; null for a remote that names no host (docs/adr/0066 D1)
+	Identity nullable.Nullable[string] `json:"identity"`
+
+	// Remote The remote as it was given, without credentials
+	Remote string `json:"remote"`
 }
 
 // Me defines model for Me.
@@ -1518,6 +1599,9 @@ type ProjectCreate struct {
 	Key         string  `json:"key"`
 	Name        string  `json:"name"`
 
+	// Repository A repository to bind, by a remote URL that cowork normalises (docs/adr/0066 D1)
+	Repository *RepositoryBind `json:"repository,omitempty"`
+
 	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
 	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
@@ -1539,10 +1623,24 @@ type ProjectPatch struct {
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
 }
 
+// ProjectRef defines model for ProjectRef.
+type ProjectRef struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
 // ProjectRestrictionSet defines model for ProjectRestrictionSet.
 type ProjectRestrictionSet struct {
 	// Restricted True restricts the project to the administrators and its access list, false opens it to every member (docs/adr/0034 D3)
 	Restricted bool `json:"restricted"`
+}
+
+// ProposalTenant defines model for ProposalTenant.
+type ProposalTenant struct {
+	// Key The project key proposed for this tenant, free there (docs/adr/0066 D2)
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
 }
 
 // Question defines model for Question.
@@ -1606,6 +1704,103 @@ type QuestionPatch struct {
 
 // QuestionStatus docs/adr/0011 D2
 type QuestionStatus string
+
+// Repository defines model for Repository.
+type Repository struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Identity The normalised remote, host/path (docs/adr/0066 D1)
+	Identity string `json:"identity"`
+
+	// Path The sub-directory of a monorepo the binding covers; empty for the whole repository (docs/adr/0006 D3)
+	Path string `json:"path"`
+
+	// Remote The remote as it was last given, without credentials
+	Remote    string    `json:"remote"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RepositoryBind A repository to bind, by a remote URL that cowork normalises (docs/adr/0066 D1)
+type RepositoryBind struct {
+	// Path A sub-directory of a monorepo, relative to its root; omitted, the whole repository
+	Path *string `json:"path,omitempty"`
+
+	// Remote A git remote URL — SSH, scp-style, git or HTTP(S); its credentials are never stored
+	Remote string `json:"remote"`
+}
+
+// RepositoryBindingRef A project that binds the repository
+type RepositoryBindingRef struct {
+	// Archived The project is archived and refuses new tickets (docs/adr/0006 D4)
+	Archived bool       `json:"archived"`
+	Identity string     `json:"identity"`
+	Path     string     `json:"path"`
+	Project  ProjectRef `json:"project"`
+	Remote   string     `json:"remote"`
+	Tenant   TenantRef  `json:"tenant"`
+}
+
+// RepositoryList defines model for RepositoryList.
+type RepositoryList struct {
+	Items      []Repository              `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// RepositoryLookup defines model for RepositoryLookup.
+type RepositoryLookup struct {
+	Bindings []RepositoryBindingRef                `json:"bindings"`
+	Proposal nullable.Nullable[RepositoryProposal] `json:"proposal"`
+
+	// ProposalUnavailable Why an unbound repository has no proposal, when it has none
+	ProposalUnavailable nullable.Nullable[string] `json:"proposal_unavailable"`
+	Remotes             []LookupRemote            `json:"remotes"`
+
+	// Status One binding, several (a data error the person resolves, docs/adr/0066 D6), or none
+	Status RepositoryLookupStatus `json:"status"`
+}
+
+// RepositoryLookupStatus One binding, several (a data error the person resolves, docs/adr/0066 D6), or none
+type RepositoryLookupStatus string
+
+// RepositoryProposal The project the agent proposes to create for an unbound repository (docs/adr/0066 D2, D3)
+type RepositoryProposal struct {
+	Identity string `json:"identity"`
+
+	// Name The proposed project name, the repository's name
+	Name string `json:"name"`
+
+	// Reason Why the tenant: the only one the caller may create projects in; the one that binds
+	// repositories under the same remote owner; or none chosen, the list to choose from
+	Reason RepositoryProposalReason `json:"reason"`
+
+	// Remote The remote to bind, as given, without credentials
+	Remote string `json:"remote"`
+
+	// Tenant The proposed tenant's slug; null when the person chooses from `tenants`
+	Tenant nullable.Nullable[string] `json:"tenant"`
+
+	// Tenants The tenant proposed, or the tenants to choose from, each with the key that is free there
+	Tenants []ProposalTenant `json:"tenants"`
+}
+
+// RepositoryProposalReason Why the tenant: the only one the caller may create projects in; the one that binds
+// repositories under the same remote owner; or none chosen, the list to choose from
+type RepositoryProposalReason string
+
+// RequestMark defines model for RequestMark.
+type RequestMark struct {
+	// Agent The request is an agent's, by the token's flag or by the X-Cowork-Agent header (docs/adr/0036 D2, D3)
+	Agent bool `json:"agent"`
+
+	// AgentMark The agent its acts record — the header's value, or unknown-agent; null for a person's request
+	AgentMark nullable.Nullable[string] `json:"agent_mark"`
+
+	// Capabilities What an agent's request may do beyond the baseline: the token's set for a flagged token,
+	// every capability for a plain token the header marks (docs/adr/0043 D4); empty for a
+	// person's request, which the capabilities do not bound
+	Capabilities []Capability `json:"capabilities"`
+}
 
 // Role A tenant role, lowest first (docs/adr/0034 D1)
 type Role string
@@ -2172,6 +2367,9 @@ type Query = string
 // QuestionNumber defines model for QuestionNumber.
 type QuestionNumber = int
 
+// RepositoryID defines model for RepositoryID.
+type RepositoryID = openapi_types.UUID
+
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
 
@@ -2201,6 +2399,15 @@ type UpdatedBefore = time.Time
 
 // Username defines model for Username.
 type Username = string
+
+// LookupRepositoryParams defines parameters for LookupRepository.
+type LookupRepositoryParams struct {
+	// Remote A git remote URL — SSH, scp-style, git or HTTP(S); repeatable, in order of preference
+	Remote []string `form:"remote" json:"remote"`
+
+	// Path The working directory relative to the repository root, for a monorepo's sub-directory bindings
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
 
 // ListMyTokensParams defines parameters for ListMyTokens.
 type ListMyTokensParams struct {
@@ -2342,6 +2549,22 @@ type ListProjectAccessParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListRepositoriesParams defines parameters for ListRepositories.
+type ListRepositoriesParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// BindRepositoryParams defines parameters for BindRepository.
+type BindRepositoryParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // SetProjectRestrictionParams defines parameters for SetProjectRestriction.
@@ -2518,6 +2741,15 @@ type SetConfidentialParams struct {
 	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
 	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// ExportTicketContextParams defines parameters for ExportTicketContext.
+type ExportTicketContextParams struct {
+	// Comments How many of the last comments to show
+	Comments *int `form:"comments,omitempty" json:"comments,omitempty"`
+
+	// Activity How many of the last acts to show
+	Activity *int `form:"activity,omitempty" json:"activity,omitempty"`
 }
 
 // ListInterestParams defines parameters for ListInterest.
@@ -2793,6 +3025,9 @@ type UpdateProjectJSONRequestBody = ProjectPatch
 // SetProjectAccessJSONRequestBody defines body for SetProjectAccess for application/json ContentType.
 type SetProjectAccessJSONRequestBody = ProjectAccessSet
 
+// BindRepositoryJSONRequestBody defines body for BindRepository for application/json ContentType.
+type BindRepositoryJSONRequestBody = RepositoryBind
+
 // SetProjectRestrictionJSONRequestBody defines body for SetProjectRestriction for application/json ContentType.
 type SetProjectRestrictionJSONRequestBody = ProjectRestrictionSet
 
@@ -2954,6 +3189,40 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	//
+	// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+	// searches the projects the caller sees in every tenant of the person — a
+	// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+	// remotes are tried in the order given, `origin` first by convention; the
+	// first one with a binding decides, and of its bindings those whose
+	// sub-directory covers `path`, the most specific first. One binding is
+	// `bound`; several are `ambiguous`, a data error the person resolves
+	// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+	// from the first remote that has an identity (D2): the tenant — the only one
+	// the caller may create projects in, else the one that binds repositories
+	// under the same owner, else the list to choose from — a key from the
+	// repository's name, free in each tenant offered, and the name itself. A
+	// caller who may create a project nowhere gets no proposal and the reason.
+	// A remote that names no host is reported with a null identity. Send no
+	// credentials: cowork stores none, and a proxy's log may carry the query.
+	//
+	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+	LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMyToken The token this request presents, and what it makes of the request
+	//
+	// The token's metadata as the list shows it, the key of the project it is
+	// restricted to, and the request's mark: whether it is an agent's — by the
+	// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+	// agent recorded on its acts, and the capabilities it holds
+	// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+	// it may do (D6), and `cowork-mcp token check` to tell a person
+	// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+	//
+	// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+	GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
@@ -3034,6 +3303,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	//
+	// The optional binding file of a repository without a remote or of a fork
+	// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+	// sub-directory of a monorepo it binds — and `url`, the installation it
+	// belongs to. Unauthenticated, so an editor can load it.
+	//
+	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+	GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateTenantWithBody Create a tenant
 	//
@@ -3365,6 +3644,12 @@ type ClientInterface interface {
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
 	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -3375,6 +3660,12 @@ type ClientInterface interface {
 	// `write` scope. A member creates projects while the tenant allows it,
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
+	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3456,6 +3747,52 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRepositories The repositories a project owns
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+	ListRepositories(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BindRepositoryWithBody Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BindRepository Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnbindRepository Unbind a repository from the project
+	//
+	// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+	// so a binding that is gone answers 204 as well. The project and its tickets
+	// stay; the next session in the repository finds no binding.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+	UnbindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetProjectRestrictionWithBody Restrict a project to its access list, or open it
 	//
@@ -3722,6 +4059,27 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 	SetConfidential(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	//
+	// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+	// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+	// <agent>) — not an import format -->`, followed by read-only sections in a
+	// fixed order (D2): `## Links` (typed, read from this ticket, each other
+	// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+	// tickets that block it, to a depth of eight, with state, assignee and the
+	// implementation stage, and the count of open ones), `## Recent comments`
+	// (the last `comments`, oldest of them first, each quoted under its author,
+	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+	// the caller cannot see is absent. The document carries no `ETag`: it is not
+	// one entity. Every call is recorded: data left the system (D5). It is no
+	// import format (D3): there is no importer yet, and the one ADR 0044
+	// decides refuses a file that carries these sections.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+	ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RemoveInterest Remove the caller's own stake
 	//
@@ -4315,6 +4673,60 @@ func (c *Client) ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSON
 	return c.Client.Do(req)
 }
 
+// LookupRepository The project a repository is bound to, across the person's tenants
+//
+// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+// searches the projects the caller sees in every tenant of the person — a
+// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+// remotes are tried in the order given, `origin` first by convention; the
+// first one with a binding decides, and of its bindings those whose
+// sub-directory covers `path`, the most specific first. One binding is
+// `bound`; several are `ambiguous`, a data error the person resolves
+// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+// from the first remote that has an identity (D2): the tenant — the only one
+// the caller may create projects in, else the one that binds repositories
+// under the same owner, else the list to choose from — a key from the
+// repository's name, free in each tenant offered, and the name itself. A
+// caller who may create a project nowhere gets no proposal and the reason.
+// A remote that names no host is reported with a null identity. Send no
+// credentials: cowork stores none, and a proxy's log may carry the query.
+//
+// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+func (c *Client) LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLookupRepositoryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMyToken The token this request presents, and what it makes of the request
+//
+// The token's metadata as the list shows it, the key of the project it is
+// restricted to, and the request's mark: whether it is an agent's — by the
+// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+// agent recorded on its acts, and the capabilities it holds
+// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+// it may do (D6), and `cowork-mcp token check` to tell a person
+// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+//
+// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+func (c *Client) GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyTokenRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListMyTokens The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
@@ -4436,6 +4848,26 @@ func (c *Client) RevokeMyToken(ctx context.Context, tokenId openapi_types.UUID, 
 // Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 func (c *Client) GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetOpenAPIRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+//
+// The optional binding file of a repository without a remote or of a fork
+// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+// sub-directory of a monorepo it binds — and `url`, the installation it
+// belongs to. Unauthenticated, so an editor can load it.
+//
+// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+func (c *Client) GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCoworkYamlSchemaRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -5046,6 +5478,12 @@ func (c *Client) ListProjects(ctx context.Context, tenant TenantSlug, params *Li
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
 //
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -5066,6 +5504,12 @@ func (c *Client) CreateProjectWithBody(ctx context.Context, tenant TenantSlug, p
 // `write` scope. A member creates projects while the tenant allows it,
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
+//
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5228,6 +5672,92 @@ func (c *Client) SetProjectAccess(ctx context.Context, tenant TenantSlug, projec
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveProjectRequest(c.Server, tenant, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRepositories The repositories a project owns
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+func (c *Client) ListRepositories(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRepositoriesRequest(c.Server, tenant, project, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BindRepositoryWithBody Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *Client) BindRepositoryWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBindRepositoryRequestWithBody(c.Server, tenant, project, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BindRepository Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *Client) BindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBindRepositoryRequest(c.Server, tenant, project, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnbindRepository Unbind a repository from the project
+//
+// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+// so a binding that is gone answers 204 as well. The project and its tickets
+// stay; the next session in the repository finds no binding.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+func (c *Client) UnbindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnbindRepositoryRequest(c.Server, tenant, project, repository)
 	if err != nil {
 		return nil, err
 	}
@@ -5744,6 +6274,37 @@ func (c *Client) SetConfidentialWithBody(ctx context.Context, tenant TenantSlug,
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 func (c *Client) SetConfidential(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetConfidentialRequest(c.Server, tenant, project, number, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportTicketContext The ticket for reading, with what surrounds it
+//
+// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+// <agent>) — not an import format -->`, followed by read-only sections in a
+// fixed order (D2): `## Links` (typed, read from this ticket, each other
+// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+// tickets that block it, to a depth of eight, with state, assignee and the
+// implementation stage, and the count of open ones), `## Recent comments`
+// (the last `comments`, oldest of them first, each quoted under its author,
+// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+// (name, type, size and URL, never content) and `## Recent activity` (the
+// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+// the caller cannot see is absent. The document carries no `ETag`: it is not
+// one entity. Every call is recorded: data left the system (D5). It is no
+// import format (D3): there is no importer yet, and the one ADR 0044
+// decides refuses a file that carries these sections.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+func (c *Client) ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportTicketContextRequest(c.Server, tenant, project, number, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6779,6 +7340,99 @@ func NewChangeMyPasswordRequestWithBody(server string, contentType string, body 
 	return req, nil
 }
 
+// NewLookupRepositoryRequest constructs an http.Request for the LookupRepository method
+func NewLookupRepositoryRequest(server string, params *LookupRepositoryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/repositories/lookup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Remote != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "remote", params.Remote, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMyTokenRequest constructs an http.Request for the GetMyToken method
+func NewGetMyTokenRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListMyTokensRequest constructs an http.Request for the ListMyTokens method
 func NewListMyTokensRequest(server string, params *ListMyTokensParams) (*http.Request, error) {
 	var err error
@@ -6944,6 +7598,33 @@ func NewGetOpenAPIRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/openapi.json")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCoworkYamlSchemaRequest constructs an http.Request for the GetCoworkYamlSchema method
+func NewGetCoworkYamlSchemaRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schemas/cowork-yaml.json")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -8524,6 +9205,203 @@ func NewArchiveProjectRequest(server string, tenant TenantSlug, project ProjectK
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListRepositoriesRequest constructs an http.Request for the ListRepositories method
+func NewListRepositoriesRequest(server string, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewBindRepositoryRequest calls the generic BindRepository builder with application/json body
+func NewBindRepositoryRequest(server string, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBindRepositoryRequestWithBody(server, tenant, project, params, "application/json", bodyReader)
+}
+
+// NewBindRepositoryRequestWithBody constructs an http.Request for the BindRepository method, with any body, and a specified content type
+func NewBindRepositoryRequestWithBody(server string, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUnbindRepositoryRequest constructs an http.Request for the UnbindRepository method
+func NewUnbindRepositoryRequest(server string, tenant TenantSlug, project ProjectKey, repository RepositoryID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "repository", repository, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10149,6 +11027,93 @@ func NewSetConfidentialRequestWithBody(server string, tenant TenantSlug, project
 			req.Header.Set("If-Match", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewExportTicketContextRequest constructs an http.Request for the ExportTicketContext method
+func NewExportTicketContextRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/context", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Comments != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "comments", *params.Comments, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Activity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "activity", *params.Activity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -12813,6 +13778,44 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPasswordWithResponse(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error)
 
+	// LookupRepositoryWithResponse The project a repository is bound to, across the person's tenants
+	//
+	// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+	// searches the projects the caller sees in every tenant of the person — a
+	// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+	// remotes are tried in the order given, `origin` first by convention; the
+	// first one with a binding decides, and of its bindings those whose
+	// sub-directory covers `path`, the most specific first. One binding is
+	// `bound`; several are `ambiguous`, a data error the person resolves
+	// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+	// from the first remote that has an identity (D2): the tenant — the only one
+	// the caller may create projects in, else the one that binds repositories
+	// under the same owner, else the list to choose from — a key from the
+	// repository's name, free in each tenant offered, and the name itself. A
+	// caller who may create a project nowhere gets no proposal and the reason.
+	// A remote that names no host is reported with a null identity. Send no
+	// credentials: cowork stores none, and a proxy's log may carry the query.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+	LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error)
+
+	// GetMyTokenWithResponse The token this request presents, and what it makes of the request
+	//
+	// The token's metadata as the list shows it, the key of the project it is
+	// restricted to, and the request's mark: whether it is an agent's — by the
+	// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+	// agent recorded on its acts, and the capabilities it holds
+	// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+	// it may do (D6), and `cowork-mcp token check` to tell a person
+	// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+	GetMyTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyTokenResponse, error)
+
 	// ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
@@ -12899,6 +13902,18 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPIWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOpenAPIResponse, error)
+
+	// GetCoworkYamlSchemaWithResponse The JSON Schema of a repository's `.cowork.yaml`
+	//
+	// The optional binding file of a repository without a remote or of a fork
+	// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+	// sub-directory of a monorepo it binds — and `url`, the installation it
+	// belongs to. Unauthenticated, so an editor can load it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+	GetCoworkYamlSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCoworkYamlSchemaResponse, error)
 
 	// CreateTenantWithBodyWithResponse Create a tenant
 	//
@@ -13252,6 +14267,12 @@ type ClientWithResponsesInterface interface {
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
 	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -13262,6 +14283,12 @@ type ClientWithResponsesInterface interface {
 	// `write` scope. A member creates projects while the tenant allows it,
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
+	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -13351,6 +14378,56 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ArchiveProjectResponse, error)
+
+	// ListRepositoriesWithResponse The repositories a project owns
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+	ListRepositoriesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*ListRepositoriesResponse, error)
+
+	// BindRepositoryWithBodyWithResponse Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error)
+
+	// BindRepositoryWithResponse Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error)
+
+	// UnbindRepositoryWithResponse Unbind a repository from the project
+	//
+	// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+	// so a binding that is gone answers 204 as well. The project and its tickets
+	// stay; the next session in the repository finds no binding.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+	UnbindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*UnbindRepositoryResponse, error)
 
 	// SetProjectRestrictionWithBodyWithResponse Restrict a project to its access list, or open it
 	//
@@ -13637,6 +14714,29 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 	SetConfidentialWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConfidentialResponse, error)
+
+	// ExportTicketContextWithResponse The ticket for reading, with what surrounds it
+	//
+	// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+	// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+	// <agent>) — not an import format -->`, followed by read-only sections in a
+	// fixed order (D2): `## Links` (typed, read from this ticket, each other
+	// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+	// tickets that block it, to a depth of eight, with state, assignee and the
+	// implementation stage, and the count of open ones), `## Recent comments`
+	// (the last `comments`, oldest of them first, each quoted under its author,
+	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+	// the caller cannot see is absent. The document carries no `ETag`: it is not
+	// one entity. Every call is recorded: data left the system (D5). It is no
+	// import format (D3): there is no importer yet, and the one ADR 0044
+	// decides refuses a file that carries these sections.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+	ExportTicketContextWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*ExportTicketContextResponse, error)
 
 	// RemoveInterestWithResponse Remove the caller's own stake
 	//
@@ -14316,6 +15416,116 @@ func (r ChangeMyPasswordResponse) ContentType() string {
 	return ""
 }
 
+// LookupRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for LookupRepository
+type LookupRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LookupRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RepositoryLookup
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LookupRepositoryResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LookupRepositoryResponse) GetJSON200() *RepositoryLookup {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LookupRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LookupRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LookupRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LookupRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LookupRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetMyTokenResponseDefaultHeaders the declared response headers of an HTTP default response for GetMyToken
+type GetMyTokenResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetMyTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CurrentToken
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetMyTokenResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyTokenResponse) GetJSON200() *CurrentToken {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetMyTokenResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListMyTokensResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyTokens
 type ListMyTokensResponseDefaultHeaders struct {
 	XRequestId *string
@@ -14523,6 +15733,61 @@ func (r GetOpenAPIResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetOpenAPIResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetCoworkYamlSchemaResponseDefaultHeaders the declared response headers of an HTTP default response for GetCoworkYamlSchema
+type GetCoworkYamlSchemaResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetCoworkYamlSchemaResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *map[string]interface{}
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetCoworkYamlSchemaResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCoworkYamlSchemaResponse) GetJSON200() *map[string]interface{} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetCoworkYamlSchemaResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCoworkYamlSchemaResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCoworkYamlSchemaResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCoworkYamlSchemaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCoworkYamlSchemaResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15569,6 +16834,12 @@ func (r ListProjectsResponse) ContentType() string {
 	return ""
 }
 
+// CreateProjectResponse200Headers the declared response headers of an HTTP 200 response for CreateProject
+type CreateProjectResponse200Headers struct {
+	ETag     *string
+	Location *string
+}
+
 // CreateProjectResponse201Headers the declared response headers of an HTTP 201 response for CreateProject
 type CreateProjectResponse201Headers struct {
 	ETag     *string
@@ -15583,14 +16854,23 @@ type CreateProjectResponseDefaultHeaders struct {
 type CreateProjectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Project
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *Project
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *CreateProjectResponse200Headers
 	// Headers201 the parsed response headers for an HTTP 201 response
 	Headers201 *CreateProjectResponse201Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *CreateProjectResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateProjectResponse) GetJSON200() *Project {
+	return r.JSON200
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -15970,6 +17250,178 @@ func (r ArchiveProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListRepositoriesResponseDefaultHeaders the declared response headers of an HTTP default response for ListRepositories
+type ListRepositoriesResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListRepositoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RepositoryList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListRepositoriesResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRepositoriesResponse) GetJSON200() *RepositoryList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListRepositoriesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRepositoriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRepositoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRepositoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRepositoriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// BindRepositoryResponse201Headers the declared response headers of an HTTP 201 response for BindRepository
+type BindRepositoryResponse201Headers struct {
+	Location *string
+}
+
+// BindRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for BindRepository
+type BindRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type BindRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Repository
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Repository
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *BindRepositoryResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *BindRepositoryResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BindRepositoryResponse) GetJSON200() *Repository {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r BindRepositoryResponse) GetJSON201() *Repository {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r BindRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r BindRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BindRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BindRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BindRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UnbindRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for UnbindRepository
+type UnbindRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UnbindRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UnbindRepositoryResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnbindRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UnbindRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnbindRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnbindRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnbindRepositoryResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -17063,6 +18515,54 @@ func (r SetConfidentialResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetConfidentialResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExportTicketContextResponseDefaultHeaders the declared response headers of an HTTP default response for ExportTicketContext
+type ExportTicketContextResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ExportTicketContextResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ExportTicketContextResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExportTicketContextResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportTicketContextResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportTicketContextResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportTicketContextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportTicketContextResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19081,6 +20581,56 @@ func (c *ClientWithResponses) ChangeMyPasswordWithResponse(ctx context.Context, 
 	return ParseChangeMyPasswordResponse(rsp)
 }
 
+// LookupRepositoryWithResponse The project a repository is bound to, across the person's tenants
+//
+// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+// searches the projects the caller sees in every tenant of the person — a
+// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+// remotes are tried in the order given, `origin` first by convention; the
+// first one with a binding decides, and of its bindings those whose
+// sub-directory covers `path`, the most specific first. One binding is
+// `bound`; several are `ambiguous`, a data error the person resolves
+// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+// from the first remote that has an identity (D2): the tenant — the only one
+// the caller may create projects in, else the one that binds repositories
+// under the same owner, else the list to choose from — a key from the
+// repository's name, free in each tenant offered, and the name itself. A
+// caller who may create a project nowhere gets no proposal and the reason.
+// A remote that names no host is reported with a null identity. Send no
+// credentials: cowork stores none, and a proxy's log may carry the query.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+func (c *ClientWithResponses) LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error) {
+	rsp, err := c.LookupRepository(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLookupRepositoryResponse(rsp)
+}
+
+// GetMyTokenWithResponse The token this request presents, and what it makes of the request
+//
+// The token's metadata as the list shows it, the key of the project it is
+// restricted to, and the request's mark: whether it is an agent's — by the
+// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+// agent recorded on its acts, and the capabilities it holds
+// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+// it may do (D6), and `cowork-mcp token check` to tell a person
+// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+func (c *ClientWithResponses) GetMyTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyTokenResponse, error) {
+	rsp, err := c.GetMyToken(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyTokenResponse(rsp)
+}
+
 // ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
@@ -19196,6 +20746,24 @@ func (c *ClientWithResponses) GetOpenAPIWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetOpenAPIResponse(rsp)
+}
+
+// GetCoworkYamlSchemaWithResponse The JSON Schema of a repository's `.cowork.yaml`
+//
+// The optional binding file of a repository without a remote or of a fork
+// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+// sub-directory of a monorepo it binds — and `url`, the installation it
+// belongs to. Unauthenticated, so an editor can load it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+func (c *ClientWithResponses) GetCoworkYamlSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCoworkYamlSchemaResponse, error) {
+	rsp, err := c.GetCoworkYamlSchema(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCoworkYamlSchemaResponse(rsp)
 }
 
 // CreateTenantWithBodyWithResponse Create a tenant
@@ -19712,6 +21280,12 @@ func (c *ClientWithResponses) ListProjectsWithResponse(ctx context.Context, tena
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
 //
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -19728,6 +21302,12 @@ func (c *ClientWithResponses) CreateProjectWithBodyWithResponse(ctx context.Cont
 // `write` scope. A member creates projects while the tenant allows it,
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
+//
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -19870,6 +21450,80 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseArchiveProjectResponse(rsp)
+}
+
+// ListRepositoriesWithResponse The repositories a project owns
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+func (c *ClientWithResponses) ListRepositoriesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*ListRepositoriesResponse, error) {
+	rsp, err := c.ListRepositories(ctx, tenant, project, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRepositoriesResponse(rsp)
+}
+
+// BindRepositoryWithBodyWithResponse Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *ClientWithResponses) BindRepositoryWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error) {
+	rsp, err := c.BindRepositoryWithBody(ctx, tenant, project, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBindRepositoryResponse(rsp)
+}
+
+// BindRepositoryWithResponse Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *ClientWithResponses) BindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error) {
+	rsp, err := c.BindRepository(ctx, tenant, project, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBindRepositoryResponse(rsp)
+}
+
+// UnbindRepositoryWithResponse Unbind a repository from the project
+//
+// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+// so a binding that is gone answers 204 as well. The project and its tickets
+// stay; the next session in the repository finds no binding.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+func (c *ClientWithResponses) UnbindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*UnbindRepositoryResponse, error) {
+	rsp, err := c.UnbindRepository(ctx, tenant, project, repository, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnbindRepositoryResponse(rsp)
 }
 
 // SetProjectRestrictionWithBodyWithResponse Restrict a project to its access list, or open it
@@ -20306,6 +21960,35 @@ func (c *ClientWithResponses) SetConfidentialWithResponse(ctx context.Context, t
 		return nil, err
 	}
 	return ParseSetConfidentialResponse(rsp)
+}
+
+// ExportTicketContextWithResponse The ticket for reading, with what surrounds it
+//
+// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+// <agent>) — not an import format -->`, followed by read-only sections in a
+// fixed order (D2): `## Links` (typed, read from this ticket, each other
+// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+// tickets that block it, to a depth of eight, with state, assignee and the
+// implementation stage, and the count of open ones), `## Recent comments`
+// (the last `comments`, oldest of them first, each quoted under its author,
+// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+// (name, type, size and URL, never content) and `## Recent activity` (the
+// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+// the caller cannot see is absent. The document carries no `ETag`: it is not
+// one entity. Every call is recorded: data left the system (D5). It is no
+// import format (D3): there is no importer yet, and the one ADR 0044
+// decides refuses a file that carries these sections.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+func (c *ClientWithResponses) ExportTicketContextWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*ExportTicketContextResponse, error) {
+	rsp, err := c.ExportTicketContext(ctx, tenant, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportTicketContextResponse(rsp)
 }
 
 // RemoveInterestWithResponse Remove the caller's own stake
@@ -21228,6 +22911,98 @@ func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordRespons
 	return response, nil
 }
 
+// ParseLookupRepositoryResponse parses an HTTP response from a LookupRepositoryWithResponse call
+func ParseLookupRepositoryResponse(rsp *http.Response) (*LookupRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LookupRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RepositoryLookup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers LookupRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetMyTokenResponse parses an HTTP response from a GetMyTokenWithResponse call
+func ParseGetMyTokenResponse(rsp *http.Response) (*GetMyTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CurrentToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetMyTokenResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListMyTokensResponse parses an HTTP response from a ListMyTokensWithResponse call
 func ParseListMyTokensResponse(rsp *http.Response) (*ListMyTokensResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21395,6 +23170,52 @@ func ParseGetOpenAPIResponse(rsp *http.Response) (*GetOpenAPIResponse, error) {
 	switch {
 	case true:
 		var headers GetOpenAPIResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetCoworkYamlSchemaResponse parses an HTTP response from a GetCoworkYamlSchemaWithResponse call
+func ParseGetCoworkYamlSchemaResponse(rsp *http.Response) (*GetCoworkYamlSchemaResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCoworkYamlSchemaResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetCoworkYamlSchemaResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -22339,6 +24160,13 @@ func ParseCreateProjectResponse(rsp *http.Response) (*CreateProjectResponse, err
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Project
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Project
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -22356,6 +24184,23 @@ func ParseCreateProjectResponse(rsp *http.Response) (*CreateProjectResponse, err
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers CreateProjectResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers200 = &headers
 	case rsp.StatusCode == 201:
 		var headers CreateProjectResponse201Headers
 		if values := rsp.Header.Values("ETag"); len(values) > 0 {
@@ -22677,6 +24522,157 @@ func ParseArchiveProjectResponse(rsp *http.Response) (*ArchiveProjectResponse, e
 		response.Headers200 = &headers
 	case true:
 		var headers ArchiveProjectResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListRepositoriesResponse parses an HTTP response from a ListRepositoriesWithResponse call
+func ParseListRepositoriesResponse(rsp *http.Response) (*ListRepositoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRepositoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RepositoryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListRepositoriesResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseBindRepositoryResponse parses an HTTP response from a BindRepositoryWithResponse call
+func ParseBindRepositoryResponse(rsp *http.Response) (*BindRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BindRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Repository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Repository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers BindRepositoryResponse201Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers BindRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUnbindRepositoryResponse parses an HTTP response from a UnbindRepositoryWithResponse call
+func ParseUnbindRepositoryResponse(rsp *http.Response) (*UnbindRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnbindRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers UnbindRepositoryResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -23689,6 +25685,45 @@ func ParseSetConfidentialResponse(rsp *http.Response) (*SetConfidentialResponse,
 		response.Headers200 = &headers
 	case true:
 		var headers SetConfidentialResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExportTicketContextResponse parses an HTTP response from a ExportTicketContextWithResponse call
+func ParseExportTicketContextResponse(rsp *http.Response) (*ExportTicketContextResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportTicketContextResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ExportTicketContextResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -25492,6 +27527,12 @@ type ServerInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	// (GET /api/v1/me/repositories/lookup)
+	LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams)
+	// GetMyToken The token this request presents, and what it makes of the request
+	// (GET /api/v1/me/token)
+	GetMyToken(w http.ResponseWriter, r *http.Request)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(w http.ResponseWriter, r *http.Request, params ListMyTokensParams)
@@ -25504,6 +27545,9 @@ type ServerInterface interface {
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(w http.ResponseWriter, r *http.Request)
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	// (GET /api/v1/schemas/cowork-yaml.json)
+	GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(w http.ResponseWriter, r *http.Request, params CreateTenantParams)
@@ -25582,6 +27626,15 @@ type ServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// ListRepositories The repositories a project owns
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	ListRepositories(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListRepositoriesParams)
+	// BindRepository Bind a repository to the project
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	BindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params BindRepositoryParams)
+	// UnbindRepository Unbind a repository from the project
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository})
+	UnbindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, repository RepositoryID)
 	// SetProjectRestriction Restrict a project to its access list, or open it
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/restriction)
 	SetProjectRestriction(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params SetProjectRestrictionParams)
@@ -25636,6 +27689,9 @@ type ServerInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential)
 	SetConfidential(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params SetConfidentialParams)
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context)
+	ExportTicketContext(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ExportTicketContextParams)
 	// RemoveInterest Remove the caller's own stake
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest)
 	RemoveInterest(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
@@ -25774,6 +27830,66 @@ func (siw *ServerInterfaceWrapper) ChangeMyPassword(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// LookupRepository operation middleware
+func (siw *ServerInterfaceWrapper) LookupRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupRepositoryParams
+
+	// ------------- Required query parameter "remote" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "remote", r.URL.Query(), &params.Remote, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "remote"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "remote", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupRepository(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyToken operation middleware
+func (siw *ServerInterfaceWrapper) GetMyToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyTokens operation middleware
 func (siw *ServerInterfaceWrapper) ListMyTokens(w http.ResponseWriter, r *http.Request) {
 
@@ -25892,6 +28008,20 @@ func (siw *ServerInterfaceWrapper) GetOpenAPI(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOpenAPI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCoworkYamlSchema operation middleware
+func (siw *ServerInterfaceWrapper) GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCoworkYamlSchema(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -27160,6 +29290,173 @@ func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRepositories operation middleware
+func (siw *ServerInterfaceWrapper) ListRepositories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRepositoriesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRepositories(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BindRepository operation middleware
+func (siw *ServerInterfaceWrapper) BindRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BindRepositoryParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BindRepository(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnbindRepository operation middleware
+func (siw *ServerInterfaceWrapper) UnbindRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "repository" -------------
+	var repository RepositoryID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repository", r.PathValue("repository"), &repository, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repository", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnbindRepository(w, r, tenant, project, repository)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -28686,6 +30983,79 @@ func (siw *ServerInterfaceWrapper) SetConfidential(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetConfidential(w, r, tenant, project, number, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportTicketContext operation middleware
+func (siw *ServerInterfaceWrapper) ExportTicketContext(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportTicketContextParams
+
+	// ------------- Optional query parameter "comments" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "comments", r.URL.Query(), &params.Comments, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "comments"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "comments", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activity", r.URL.Query(), &params.Activity, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activity", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportTicketContext(w, r, tenant, project, number, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -31111,10 +33481,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.ListMyTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.CreateMyToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/me/tokens/{token_id}", wrapper.RevokeMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/openapi.json", wrapper.GetOpenAPI)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schemas/cowork-yaml.json", wrapper.GetCoworkYamlSchema)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants", wrapper.CreateTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.GetTenant)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.UpdateTenant)
@@ -31141,6 +33514,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.RemoveProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.SetProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/archive", wrapper.ArchiveProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.ListRepositories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.BindRepository)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}", wrapper.UnbindRepository)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/restriction", wrapper.SetProjectRestriction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.ListProjectTickets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.CreateTicket)
@@ -31159,6 +33535,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions", wrapper.ListCommentRevisions)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal", wrapper.WithdrawComment)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential", wrapper.SetConfidential)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context", wrapper.ExportTicketContext)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.RemoveInterest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.ListInterest)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.SetInterest)
@@ -31270,6 +33647,91 @@ type ChangeMyPassworddefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ChangeMyPassworddefaultApplicationProblemPlusJSONResponse) VisitChangeMyPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupRepositoryRequestObject struct {
+	Params LookupRepositoryParams
+}
+
+type LookupRepositoryResponseObject interface {
+	VisitLookupRepositoryResponse(w http.ResponseWriter) error
+}
+
+type LookupRepository200JSONResponse RepositoryLookup
+
+func (response LookupRepository200JSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LookupRepositorydefaultApplicationProblemPlusJSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyTokenRequestObject struct {
+}
+
+type GetMyTokenResponseObject interface {
+	VisitGetMyTokenResponse(w http.ResponseWriter) error
+}
+
+type GetMyToken200JSONResponse CurrentToken
+
+func (response GetMyToken200JSONResponse) VisitGetMyTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyTokendefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetMyTokendefaultApplicationProblemPlusJSONResponse) VisitGetMyTokenResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -31436,6 +33898,48 @@ type GetOpenAPIdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetOpenAPIdefaultApplicationProblemPlusJSONResponse) VisitGetOpenAPIResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCoworkYamlSchemaRequestObject struct {
+}
+
+type GetCoworkYamlSchemaResponseObject interface {
+	VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error
+}
+
+type GetCoworkYamlSchema200JSONResponse map[string]interface{}
+
+func (response GetCoworkYamlSchema200JSONResponse) VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse) VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -32345,6 +34849,34 @@ type CreateProjectResponseObject interface {
 	VisitCreateProjectResponse(w http.ResponseWriter) error
 }
 
+type CreateProject200ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateProject200JSONResponse struct {
+	Body    Project
+	Headers CreateProject200ResponseHeaders
+}
+
+func (response CreateProject200JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateProject201ResponseHeaders struct {
 	ETag     *string
 	Location *string
@@ -32674,6 +35206,160 @@ type ArchiveProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ArchiveProjectdefaultApplicationProblemPlusJSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositoriesRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  ListRepositoriesParams
+}
+
+type ListRepositoriesResponseObject interface {
+	VisitListRepositoriesResponse(w http.ResponseWriter) error
+}
+
+type ListRepositories200JSONResponse RepositoryList
+
+func (response ListRepositories200JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositoriesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListRepositoriesdefaultApplicationProblemPlusJSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepositoryRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  BindRepositoryParams
+	Body    *BindRepositoryJSONRequestBody
+}
+
+type BindRepositoryResponseObject interface {
+	VisitBindRepositoryResponse(w http.ResponseWriter) error
+}
+
+type BindRepository200JSONResponse Repository
+
+func (response BindRepository200JSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepository201ResponseHeaders struct {
+	Location *string
+}
+
+type BindRepository201JSONResponse struct {
+	Body    Repository
+	Headers BindRepository201ResponseHeaders
+}
+
+func (response BindRepository201JSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response BindRepositorydefaultApplicationProblemPlusJSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindRepositoryRequestObject struct {
+	Tenant     TenantSlug   `json:"tenant"`
+	Project    ProjectKey   `json:"project"`
+	Repository RepositoryID `json:"repository"`
+}
+
+type UnbindRepositoryResponseObject interface {
+	VisitUnbindRepositoryResponse(w http.ResponseWriter) error
+}
+
+type UnbindRepository204Response struct {
+}
+
+func (response UnbindRepository204Response) VisitUnbindRepositoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnbindRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UnbindRepositorydefaultApplicationProblemPlusJSONResponse) VisitUnbindRepositoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -33696,6 +36382,58 @@ type SetConfidentialdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SetConfidentialdefaultApplicationProblemPlusJSONResponse) VisitSetConfidentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportTicketContextRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ExportTicketContextParams
+}
+
+type ExportTicketContextResponseObject interface {
+	VisitExportTicketContextResponse(w http.ResponseWriter) error
+}
+
+type ExportTicketContext200TextmarkdownResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportTicketContext200TextmarkdownResponse) VisitExportTicketContextResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/markdown")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportTicketContextdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ExportTicketContextdefaultApplicationProblemPlusJSONResponse) VisitExportTicketContextResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -35520,6 +38258,12 @@ type StrictServerInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	// (GET /api/v1/me/repositories/lookup)
+	LookupRepository(ctx context.Context, request LookupRepositoryRequestObject) (LookupRepositoryResponseObject, error)
+	// GetMyToken The token this request presents, and what it makes of the request
+	// (GET /api/v1/me/token)
+	GetMyToken(ctx context.Context, request GetMyTokenRequestObject) (GetMyTokenResponseObject, error)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(ctx context.Context, request ListMyTokensRequestObject) (ListMyTokensResponseObject, error)
@@ -35532,6 +38276,9 @@ type StrictServerInterface interface {
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(ctx context.Context, request GetOpenAPIRequestObject) (GetOpenAPIResponseObject, error)
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	// (GET /api/v1/schemas/cowork-yaml.json)
+	GetCoworkYamlSchema(ctx context.Context, request GetCoworkYamlSchemaRequestObject) (GetCoworkYamlSchemaResponseObject, error)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
@@ -35610,6 +38357,15 @@ type StrictServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
+	// ListRepositories The repositories a project owns
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error)
+	// BindRepository Bind a repository to the project
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	BindRepository(ctx context.Context, request BindRepositoryRequestObject) (BindRepositoryResponseObject, error)
+	// UnbindRepository Unbind a repository from the project
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository})
+	UnbindRepository(ctx context.Context, request UnbindRepositoryRequestObject) (UnbindRepositoryResponseObject, error)
 	// SetProjectRestriction Restrict a project to its access list, or open it
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/restriction)
 	SetProjectRestriction(ctx context.Context, request SetProjectRestrictionRequestObject) (SetProjectRestrictionResponseObject, error)
@@ -35664,6 +38420,9 @@ type StrictServerInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential)
 	SetConfidential(ctx context.Context, request SetConfidentialRequestObject) (SetConfidentialResponseObject, error)
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context)
+	ExportTicketContext(ctx context.Context, request ExportTicketContextRequestObject) (ExportTicketContextResponseObject, error)
 	// RemoveInterest Remove the caller's own stake
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest)
 	RemoveInterest(ctx context.Context, request RemoveInterestRequestObject) (RemoveInterestResponseObject, error)
@@ -35859,6 +38618,56 @@ func (sh *strictHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// LookupRepository operation middleware
+func (sh *strictHandler) LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams) {
+	var request LookupRepositoryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupRepository(ctx, request.(LookupRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupRepositoryResponseObject); ok {
+		if err := validResponse.VisitLookupRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyToken operation middleware
+func (sh *strictHandler) GetMyToken(w http.ResponseWriter, r *http.Request) {
+	var request GetMyTokenRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyToken(ctx, request.(GetMyTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyTokenResponseObject); ok {
+		if err := validResponse.VisitGetMyTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMyTokens operation middleware
 func (sh *strictHandler) ListMyTokens(w http.ResponseWriter, r *http.Request, params ListMyTokensParams) {
 	var request ListMyTokensRequestObject
@@ -35961,6 +38770,30 @@ func (sh *strictHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOpenAPIResponseObject); ok {
 		if err := validResponse.VisitGetOpenAPIResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCoworkYamlSchema operation middleware
+func (sh *strictHandler) GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request) {
+	var request GetCoworkYamlSchemaRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCoworkYamlSchema(ctx, request.(GetCoworkYamlSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCoworkYamlSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCoworkYamlSchemaResponseObject); ok {
+		if err := validResponse.VisitGetCoworkYamlSchemaResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -36750,6 +39583,97 @@ func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListRepositories operation middleware
+func (sh *strictHandler) ListRepositories(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListRepositoriesParams) {
+	var request ListRepositoriesRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRepositories(ctx, request.(ListRepositoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRepositories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRepositoriesResponseObject); ok {
+		if err := validResponse.VisitListRepositoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BindRepository operation middleware
+func (sh *strictHandler) BindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params BindRepositoryParams) {
+	var request BindRepositoryRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	var body BindRepositoryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BindRepository(ctx, request.(BindRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BindRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BindRepositoryResponseObject); ok {
+		if err := validResponse.VisitBindRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnbindRepository operation middleware
+func (sh *strictHandler) UnbindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, repository RepositoryID) {
+	var request UnbindRepositoryRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Repository = repository
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnbindRepository(ctx, request.(UnbindRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnbindRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnbindRepositoryResponseObject); ok {
+		if err := validResponse.VisitUnbindRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SetProjectRestriction operation middleware
 func (sh *strictHandler) SetProjectRestriction(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params SetProjectRestrictionParams) {
 	var request SetProjectRestrictionRequestObject
@@ -37320,6 +40244,35 @@ func (sh *strictHandler) SetConfidential(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetConfidentialResponseObject); ok {
 		if err := validResponse.VisitSetConfidentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportTicketContext operation middleware
+func (sh *strictHandler) ExportTicketContext(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ExportTicketContextParams) {
+	var request ExportTicketContextRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportTicketContext(ctx, request.(ExportTicketContextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportTicketContext")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportTicketContextResponseObject); ok {
+		if err := validResponse.VisitExportTicketContextResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

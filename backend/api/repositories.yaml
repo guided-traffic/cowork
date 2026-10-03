@@ -1,0 +1,144 @@
+# The repositories a project owns, bound by their normalised remote identity,
+# and the lookup across the person's tenants (docs/adr/0066, docs/adr/0006 D3).
+lookup:
+  get:
+    operationId: lookupRepository
+    tags: [repositories]
+    summary: The project a repository is bound to, across the person's tenants
+    description: |
+      Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+      searches the projects the caller sees in every tenant of the person — a
+      restricted token in its own tenant and project only (docs/adr/0035 D3). The
+      remotes are tried in the order given, `origin` first by convention; the
+      first one with a binding decides, and of its bindings those whose
+      sub-directory covers `path`, the most specific first. One binding is
+      `bound`; several are `ambiguous`, a data error the person resolves
+      (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+      from the first remote that has an identity (D2): the tenant — the only one
+      the caller may create projects in, else the one that binds repositories
+      under the same owner, else the list to choose from — a key from the
+      repository's name, free in each tenant offered, and the name itself. A
+      caller who may create a project nowhere gets no proposal and the reason.
+      A remote that names no host is reported with a null identity. Send no
+      credentials: cowork stores none, and a proxy's log may carry the query.
+    parameters:
+      - name: remote
+        in: query
+        required: true
+        description: A git remote URL — SSH, scp-style, git or HTTP(S); repeatable, in order of preference
+        style: form
+        explode: true
+        schema:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: {type: string, minLength: 1, maxLength: 2000}
+      - name: path
+        in: query
+        description: The working directory relative to the repository root, for a monorepo's sub-directory bindings
+        schema: {type: string, maxLength: 512}
+    responses:
+      '200':
+        description: The binding, the bindings in conflict, or none and a proposal
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/RepositoryLookup'
+            example:
+              status: unbound
+              remotes:
+                - remote: git@github.com:guided-traffic/valkey-operator.git
+                  identity: github.com/guided-traffic/valkey-operator
+              bindings: []
+              proposal:
+                identity: github.com/guided-traffic/valkey-operator
+                remote: git@github.com:guided-traffic/valkey-operator.git
+                name: valkey-operator
+                tenant: guided-traffic
+                reason: remote-owner
+                tenants:
+                  - slug: guided-traffic
+                    name: Guided Traffic
+                    key: VO
+              proposal_unavailable: null
+      default:
+        $ref: './components/responses.yaml#/Problem'
+repositories:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: listRepositories
+    tags: [repositories]
+    summary: The repositories a project owns
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of repositories in the order they were bound
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/RepositoryList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: bindRepository
+    tags: [repositories]
+    summary: Bind a repository to the project
+    description: |
+      Idempotent over the identity and the path: a repository the project binds
+      already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+      D5); one another project of the tenant binds is 409 `repository_bound`, and
+      names that project only to a caller who sees it. Binding is the act of
+      creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+      a member while the tenant lets members create projects
+      (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+      credentials are never stored.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/RepositoryBind'
+          example:
+            remote: git@github.com:guided-traffic/cowork.git
+    responses:
+      '200':
+        description: The project binds the repository already
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Repository'
+      '201':
+        description: The new binding
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Repository'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+repository:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/RepositoryID'
+  delete:
+    operationId: unbindRepository
+    tags: [repositories]
+    summary: Unbind a repository from the project
+    description: |
+      The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+      so a binding that is gone answers 204 as well. The project and its tickets
+      stay; the next session in the repository finds no binding.
+    responses:
+      '204':
+        description: The project does not bind the repository
+      default:
+        $ref: './components/responses.yaml#/Problem'

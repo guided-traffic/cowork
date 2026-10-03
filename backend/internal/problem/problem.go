@@ -64,6 +64,7 @@ var (
 	MappingExists          = Code{"mapping_exists", http.StatusConflict, "Mapping exists", "The tenant maps this group already; change that mapping's role instead (docs/adr/0030 D2)"}
 	LastAdmin              = Code{"last_admin", http.StatusConflict, "Last administrator", "The change would leave the tenant without an administrator who can sign in: nobody active and admitted by the gate would hold the admin role, mapped or granted (docs/adr/0034 D1)"}
 	ProjectArchived        = Code{"project_archived", http.StatusConflict, "Project archived", "An archived project refuses new tickets (docs/adr/0006 D4)"}
+	RepositoryBound        = Code{"repository_bound", http.StatusConflict, "Repository bound", "Another project of the tenant binds this repository and path; a repository is in at most one project (docs/adr/0066 D6)"}
 	StateConflict          = Code{"state_conflict", http.StatusConflict, "State conflict", "The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2)"}
 	ParentCycle            = Code{"parent_cycle", http.StatusConflict, "Parent cycle", "The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2)"}
 	LinkCycle              = Code{"link_cycle", http.StatusConflict, "Link cycle", "The blocks link would close a cycle of prerequisites (docs/adr/0012 D4)"}
@@ -91,7 +92,7 @@ var Catalogue = []Code{
 	ValidationFailed, IdempotencyKeyRequired, InvalidCursor, PageTooDeep,
 	Unauthenticated, TokenExpired, TokenRevoked, NotAllowed, InvalidCredentials,
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
-	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken,
+	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, RepositoryBound,
 	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,
 	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
 	PreconditionFailed, PayloadTooLarge,

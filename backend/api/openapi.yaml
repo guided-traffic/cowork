@@ -38,6 +38,7 @@ tags:
   - name: accounts
   - name: tenants
   - name: projects
+  - name: repositories
   - name: tickets
   - name: questions
   - name: comments
@@ -49,6 +50,8 @@ paths:
     $ref: './meta.yaml#/version'
   /api/v1/openapi.json:
     $ref: './meta.yaml#/document'
+  /api/v1/schemas/cowork-yaml.json:
+    $ref: './meta.yaml#/coworkYamlSchema'
   /auth/options:
     $ref: './auth.yaml#/options'
   /auth/local:
@@ -67,6 +70,10 @@ paths:
     $ref: './me.yaml#/tokens'
   /api/v1/me/tokens/{token_id}:
     $ref: './me.yaml#/token'
+  /api/v1/me/token:
+    $ref: './me.yaml#/currentToken'
+  /api/v1/me/repositories/lookup:
+    $ref: './repositories.yaml#/lookup'
   /api/v1/tenants:
     $ref: './tenants.yaml#/tenants'
   /api/v1/tenants/{tenant}:
@@ -103,6 +110,10 @@ paths:
     $ref: './members.yaml#/projectAccessList'
   /api/v1/tenants/{tenant}/projects/{project}/access/{person_id}:
     $ref: './members.yaml#/projectAccess'
+  /api/v1/tenants/{tenant}/projects/{project}/repositories:
+    $ref: './repositories.yaml#/repositories'
+  /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}:
+    $ref: './repositories.yaml#/repository'
   /api/v1/tenants/{tenant}/events:
     $ref: './events.yaml#/events'
   /api/v1/tenants/{tenant}/tickets:
@@ -119,6 +130,8 @@ paths:
     $ref: './tenants.yaml#/ticketConfidential'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown:
     $ref: './tickets.yaml#/markdown'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context:
+    $ref: './tickets.yaml#/context'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions:
     $ref: './tickets.yaml#/transitions'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank:
