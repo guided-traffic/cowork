@@ -20,11 +20,11 @@ On the branch of phase 3, the backend has the sessions, the local administrator,
 CSRF and the creation routes — `backend/internal/auth`, `internal/api/{session,login,accounts}.go`,
 `internal/bootstrap`, migrations 15 and 16, the chart's `localAdmin.*`, `bootstrap.*` and
 `auth.*`, and docs/security/{sessions,local-accounts,csrf}.md; the unit and integration tiers,
-lint, gosec, vuln and the chart checks passed on 2026-10-03. The UI has the login page, the
+lint, gosec, vuln and the chart checks pass. The UI has the login page, the
 password change, the sign-out and the `401` redirect; `make dev` logs in as the local
 administrator `dev` over HTTPS, and the dev proxy holds no token any more.
 
-The owner decided two questions of the build on 2026-10-03: creating and resetting a local
+The owner decided two questions of the build: creating and resetting a local
 account are session-only (a leaked admin token must not become access that survives its
 revocation), and the login throttle finds the client address through trusted proxies
 (`COWORK_TRUSTED_PROXIES`, X-Forwarded-For read from the right) with a NetworkPolicy that admits
@@ -40,9 +40,11 @@ All of it is decided and unbuilt; the records are the specification. The routes 
 details below are this ticket's design within them, written into the API document first
 ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md)).
 
-**Still to do:** the review fixes of the tokens page, the accounts page and "create the first
-tenant" (being built; the pages themselves are built and pass in Chromium and WebKit against the
-running stack); Q1 below; the e2e paths of T29; and three small gaps the UI met:
+**Still to do:** Q1 below; the e2e paths of T29; and three small gaps the UI met. The tokens
+page, the accounts page and "create the first tenant" are built, reviewed and fixed, and pass in
+Chromium and WebKit against the running stack.
+
+The gaps:
 
 - A token names its project restriction by id (`restricted_project_id`) while it names its
   tenant by slug; the tokens page looks the key up per tenant. A `restricted_project` key in
@@ -50,7 +52,9 @@ running stack); Q1 below; the e2e paths of T29; and three small gaps the UI met:
 - The UI cannot learn `COWORK_TOKEN_MAX_LIFETIME`: the form accepts up to the schema's 3650 days
   and the server shortens the request, which the dialog's expiry then shows.
 - "Create the first tenant" is offered to a global administrator without a membership, also
-  when tenants exist that they do not belong to; no route says whether a tenant exists. The table below is the shape that was built.
+  when tenants exist that they do not belong to; no route says whether a tenant exists.
+
+The table below is the shape that was built.
 
 **The routes.** The browser flows live outside `/api/v1`, as ADR 0037 D5 names them, and nginx
 and the dev proxy get a location `^~ /auth/` to the backend:
@@ -122,7 +126,7 @@ session-only routes refuse a token with `403`.
 
 ## Verified
 
-- 2026-10-03, Playwright against `make dev`: Chromium and WebKit are sent to the login, log in as
+- Playwright against `make dev`: Chromium and WebKit are sent to the login, log in as
   `dev`, keep `__Host-cowork-session` (Secure, HttpOnly, Lax), open the live stream, write a
   comment through the session (the CSRF check passes from `https://localhost:4200`), sign out and
   are sent to the login again. Over plain `http://localhost` WebKit dropped the cookie, which is

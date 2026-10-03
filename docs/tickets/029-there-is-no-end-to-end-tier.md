@@ -19,8 +19,9 @@ done:
 [ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)
 decides Playwright against the built containers, two identities, both colour schemes and a
 required CI job. `@playwright/test` is a development dependency of the frontend (used by hand for
-screenshots on 2026-10-03); there is no `frontend/e2e/`, no `make e2e`, no `e2e` job. The login
-of T27 is the precondition: the suite logs in through the page.
+screenshots and for the login, tokens and accounts flows against `make dev`); there is no
+`frontend/e2e/`, no `make e2e`, no `e2e` job. The login of T27, now built, is the precondition:
+the suite logs in through the page.
 
 ## Required changes
 
@@ -33,7 +34,7 @@ of T27 is the precondition: the suite logs in through the page.
 3. Every smoke path in both schemes; a coarse dark-mode screenshot comparison (D3); WebKit beside
    Chromium for the smoke paths (D8); `data-testid` and data seeded through the API (D7).
    **TLS in front of the images**: WebKit stores no `Secure` cookie from plain-HTTP localhost
-   (measured 2026-10-03, [ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md)
+   (measured, [ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md)
    D2), so the suite reaches the frontend over HTTPS — a TLS-terminating proxy or nginx with a
    test certificate — with `ignoreHTTPSErrors` and `COWORK_BASE_URL` set to that origin.
 4. The `e2e` job after `container-malware-scan`, reusing its images, ten minutes budget, trace and

@@ -25,7 +25,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
   D2), which no installation has.
 - **Decisions the phase builds on**, beyond the records it implements — the owner's answers of
-  the conversion on 2026-10-03, amended into the records they change:
+  the conversion, amended into the records they change:
   - **the local login moves from phase 4 into phase 3.** The plan's "temporary login with a
     token" predated [ADR 0035](../adr/0035-personal-access-tokens.md) D7 ("the browser never
     holds a token") and ADR 0038's amendment ("the UI needs the login first"); the owner chose
@@ -42,7 +42,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
     (ADR 0052 D2, D8); dark is designed first, light works with the same tokens (D3);
   - **live updates in under a second without a page reload**, which
     [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-    already decides; measured through the dev proxy on 2026-10-03: a comment's event reached an
+    already decides; measured through the dev proxy: a comment's event reached an
     open stream 29 ms after the write started;
   - **the owner watches the UI while it is built**: `make dev` runs the whole stack with live
     reload and demo data; the dev proxy is the token's only holder until T27;
