@@ -2,8 +2,9 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { Account, AccountList, Me } from '../api/models';
+import { Account, AccountList, Me, MemberList } from '../api/models';
 import { AccountsService } from './accounts.service';
+import { MembersService } from './members.service';
 import { SessionService } from './session.service';
 
 const account = (username: string, overrides: Partial<Account> = {}): Account => ({
@@ -37,8 +38,8 @@ const person = (admin = true): Me => ({
   ],
 });
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const listUrl = '/api/v1/tenants/acme/accounts';
+const membersUrl = /^\/api\/v1\/tenants\/[^/]+\/members$/;
 
 const rejection = (promise: Promise<unknown>) =>
   promise.then(
@@ -285,9 +286,22 @@ describe('AccountsService', () => {
     const write = (method: string, url: string) =>
       http.expectOne((request) => request.method === method && request.url === url);
     const noContent = { status: 204, statusText: 'No Content' };
+    /** The load of the members that a created account sets off: two, when nobody had asked for them before. */
+    const flushMembers = async () => {
+      for (let round = 0; round < 3; round++) {
+        await settle();
+        const asked = http.match(
+          (request) => request.method === 'GET' && membersUrl.test(request.url),
+        );
+        if (asked.length === 0) {
+          return;
+        }
+        asked.forEach((request) => request.flush({ items: [], next_cursor: null }));
+      }
+    };
     /** The reload of the list that follows an act, once the act's answer is taken. */
     const reload = async () => {
-      await settle();
+      await flushMembers();
       return page('acme');
     };
 
@@ -306,9 +320,21 @@ describe('AccountsService', () => {
         role: 'member' as const,
         temporary_password: 'a-temporary-one',
       };
+      const key = '0199aaaa-1111-7000-8000-000000000001';
+      const memberPage = (names: string[]): MemberList => ({
+        items: names.map((name) => ({
+          person: { id: `id-${name}`, display_name: name },
+          role: 'member',
+        })),
+        next_cursor: null,
+      });
+      const membersGet = () =>
+        http.expectOne(
+          (request) => request.method === 'GET' && request.url === '/api/v1/tenants/acme/members',
+        );
 
       it('posts the account to the accounts of the tenant and hands back the one that was made', async () => {
-        const done = service.create(body);
+        const done = service.create(body, key);
 
         const sent = write('POST', listUrl);
         expect(sent.request.body).toEqual(body);
@@ -320,28 +346,42 @@ describe('AccountsService', () => {
         (await reload()).flush(pageOf(['ada', 'sam'], null));
       });
 
-      it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-        const first = service.create(body);
-        const one = write('POST', listUrl);
-        one.flush(account('sam'));
-        await first;
+      it('sends the key it is given, not one of its own (docs/adr/0045 D3)', async () => {
+        const done = service.create(body, key);
+
+        const sent = write('POST', listUrl);
+        expect(sent.request.headers.get('Idempotency-Key')).toBe(key);
+        sent.flush(account('sam'));
+        await done;
+        (await reload()).flush(pageOf(['ada', 'sam'], null));
+      });
+
+      it('sends the same key again for a retry of the same content after a network failure, and another one for other content', async () => {
+        const lost = rejection(service.create(body, key));
+        write('POST', listUrl).error(new ProgressEvent('error'));
+        expect(((await lost) as HttpErrorResponse).status).toBe(0);
+        await settle();
+        noLoad();
+
+        const retry = service.create(body, key);
+        const again = write('POST', listUrl);
+        expect(again.request.headers.get('Idempotency-Key')).toBe(key);
+        again.flush(account('sam'));
+        await retry;
         (await reload()).flush(pageOf(['ada', 'sam'], null));
         await settle();
 
-        const second = service.create({ ...body, username: 'kim' });
-        const two = write('POST', listUrl);
-        two.flush(account('kim'));
-        await second;
+        const other = '0199aaaa-1111-7000-8000-000000000002';
+        const changed = service.create({ ...body, username: 'kim' }, other);
+        const third = write('POST', listUrl);
+        expect(third.request.headers.get('Idempotency-Key')).toBe(other);
+        third.flush(account('kim'));
+        await changed;
         (await reload()).flush(pageOf(['ada', 'sam', 'kim'], null));
-
-        const keys = [one, two].map((sent) => sent.request.headers.get('Idempotency-Key'));
-        expect(keys[0]).toMatch(uuid);
-        expect(keys[1]).toMatch(uuid);
-        expect(keys[0]).not.toBe(keys[1]);
       });
 
       it('loads the list again, so that the new account shows', async () => {
-        const done = service.create(body);
+        const done = service.create(body, key);
         await settle();
         noLoad();
         write('POST', listUrl).flush(account('sam'));
@@ -361,11 +401,11 @@ describe('AccountsService', () => {
         page('globex').flush(pageOf(['g'], null));
         await settle();
 
-        const done = service.create(body);
+        const done = service.create(body, key);
         write('POST', '/api/v1/tenants/globex/accounts').flush(account('sam'));
         await done;
 
-        await settle();
+        await flushMembers();
         page('globex').flush(pageOf(['g', 'sam'], null));
       });
 
@@ -375,9 +415,9 @@ describe('AccountsService', () => {
         [403, 'forbidden'],
         [500, 'internal'],
       ])(
-        'rejects with the HTTP error of a %i and does not load the list again',
+        'rejects with the HTTP error of a %i and loads neither the list nor the members again',
         async (status, code) => {
-          const outcome = rejection(service.create(body));
+          const outcome = rejection(service.create(body, key));
 
           write('POST', listUrl).flush(refusal(status, code).body, refusal(status, code).init);
           const error = await outcome;
@@ -386,9 +426,81 @@ describe('AccountsService', () => {
           expect(error).toBeInstanceOf(HttpErrorResponse);
           expect((error as HttpErrorResponse).status).toBe(status);
           noLoad();
+          http.expectNone((request) => membersUrl.test(request.url));
           expect(usernames()).toEqual(['ada']);
         },
       );
+
+      describe('the members of the tenant', () => {
+        const members = () => {
+          const service = TestBed.inject(MembersService);
+          TestBed.tick();
+          return service;
+        };
+        const names = (service: MembersService) =>
+          service.list().map((member) => member.person.display_name);
+
+        it('are not asked for while the accounts are listed, so the page of the accounts starts no load of them', async () => {
+          await settle();
+
+          http.expectNone((request) => membersUrl.test(request.url));
+        });
+
+        it('are loaded again once the account is made, because the account is a member from then on', async () => {
+          const held = members();
+          membersGet().flush(memberPage(['ada']));
+          await settle();
+          expect(names(held)).toEqual(['ada']);
+
+          const done = service.create(body, key);
+          write('POST', listUrl).flush(account('sam'));
+          await done;
+          await settle();
+
+          const reloaded = membersGet();
+          expect(held.members.status()).toBe('reloading');
+          expect(names(held)).toEqual(['ada']);
+          reloaded.flush(memberPage(['ada', 'sam']));
+          await settle();
+          expect(names(held)).toEqual(['ada', 'sam']);
+          page('acme').flush(pageOf(['ada', 'sam'], null));
+        });
+
+        it('are loaded again only after the answer, not before it', async () => {
+          const held = members();
+          membersGet().flush(memberPage(['ada']));
+          await settle();
+
+          const done = service.create(body, key);
+          await settle();
+          http.expectNone((request) => membersUrl.test(request.url));
+          write('POST', listUrl).flush(account('sam'));
+          await done;
+          await settle();
+
+          membersGet().flush(memberPage(['ada', 'sam']));
+          await settle();
+          expect(names(held)).toEqual(['ada', 'sam']);
+          page('acme').flush(pageOf(['ada', 'sam'], null));
+        });
+
+        it('are loaded once more when the load that was under way ends, because its answer may predate the account', async () => {
+          const held = members();
+          const inFlight = membersGet();
+
+          const done = service.create(body, key);
+          write('POST', listUrl).flush(account('sam'));
+          await done;
+          await settle();
+          inFlight.flush(memberPage(['ada']));
+          await settle();
+
+          membersGet().flush(memberPage(['ada', 'sam']));
+          await settle();
+          expect(names(held)).toEqual(['ada', 'sam']);
+          page('acme').flush(pageOf(['ada', 'sam'], null));
+        });
+      });
     });
 
     describe('reset', () => {
@@ -403,6 +515,16 @@ describe('AccountsService', () => {
 
         await done;
         (await reload()).flush(pageOf(['ada'], null));
+      });
+
+      it('loads no members, because nobody joined', async () => {
+        const done = service.reset('sam', 'a-new-temporary-one');
+        write('PUT', `${listUrl}/sam/password`).flush(null, noContent);
+        await done;
+        await settle();
+
+        http.expectNone((request) => membersUrl.test(request.url));
+        page('acme').flush(pageOf(['ada'], null));
       });
 
       it('loads the list again, so that the account shows as having to change its password', async () => {
@@ -457,6 +579,16 @@ describe('AccountsService', () => {
 
         await done;
         (await reload()).flush(pageOf(['ada'], null));
+      });
+
+      it('loads no members, because nobody joined', async () => {
+        const done = run(service);
+        write(method, `${listUrl}/sam/${path}`).flush(null, noContent);
+        await done;
+        await settle();
+
+        http.expectNone((request) => membersUrl.test(request.url));
+        page('acme').flush(pageOf(['ada'], null));
       });
 
       it('writes to the tenant that is entered', async () => {
@@ -517,12 +649,15 @@ describe('AccountsService', () => {
         'POST',
         listUrl,
         (s: AccountsService) =>
-          s.create({
-            username: 'sam',
-            display_name: 'Sam',
-            role: 'member',
-            temporary_password: 'x'.repeat(12),
-          }),
+          s.create(
+            {
+              username: 'sam',
+              display_name: 'Sam',
+              role: 'member',
+              temporary_password: 'x'.repeat(12),
+            },
+            '0199aaaa-1111-7000-8000-000000000003',
+          ),
       ],
       [
         'resetting',
@@ -552,7 +687,7 @@ describe('AccountsService', () => {
         const done = run(service);
         write(method, url).flush(account('sam'));
         await done;
-        await settle();
+        await flushMembers();
         inFlight.flush(pageOf(['ada'], null));
         await settle();
 

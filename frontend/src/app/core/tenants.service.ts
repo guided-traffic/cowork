@@ -16,13 +16,15 @@ export class TenantsService {
   private readonly injector = inject(Injector);
 
   /**
-   * Creates a tenant; its creator becomes its first administrator (docs/adr/0032 D7). The person's
-   * memberships are loaded again, because the new one is what the tenant's pages and the tenant
-   * switcher read.
+   * Creates a tenant; its creator becomes its first administrator (docs/adr/0032 D7). The key is
+   * the form's, one for each content it holds: a retry of the same slug and name sends the same
+   * key, so an answer that was lost is answered again instead of being refused as taken
+   * (docs/adr/0045). The person's memberships are loaded again, because the new one is what the
+   * tenant's pages and the tenant switcher read.
    */
-  async create(body: TenantCreate): Promise<Tenant> {
+  async create(body: TenantCreate, idempotencyKey: string): Promise<Tenant> {
     const tenant = await this.api.invoke(createTenant, {
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     refresh(this.session.me, this.injector);

@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, input, model, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
-import { InputPassword } from 'primeng/inputpassword';
+import { InputText } from 'primeng/inputtext';
 import { Account } from '../../api/models';
+import { AuthService } from '../../core/auth.service';
 
 /** A temporary password an administrator set, and the account it is for: shown once, then forgotten. */
 export interface IssuedPassword {
@@ -17,8 +18,12 @@ export interface IssuedPassword {
  */
 export const passwordAlphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-/** Sixteen of these characters are about 92 bits, more than the policy (length only) asks for. */
-export const generatedLength = 16;
+/**
+ * A generated password is at least this long: 24 of these characters are about 139 bits, and the
+ * installation's minimum (`COWORK_PASSWORD_MIN_LENGTH`, 12 by default) is longer only where an
+ * operator has raised it, which `TemporaryPassword` follows.
+ */
+export const generatedLength = 24;
 
 /**
  * A random password from `crypto.getRandomValues`. A byte is used only below the greatest multiple
@@ -38,43 +43,40 @@ export function generatePassword(length = generatedLength): string {
 }
 
 /**
- * The field for a temporary password (docs/adr/0033 D4): hidden until the person shows it, and
- * filled with a generated one by a button, which also shows it, since an administrator has to read
- * out what they set. The server holds the password to its policy; its message comes in as `error`.
- * The value travels through `value`, not through the form the field sits in, so its `ngModel` is
- * standalone.
+ * The field for a temporary password (docs/adr/0033 D4), filled with a generated one by a button.
+ * It is a plain text field and never a password field: an administrator reads the password out and
+ * hands it over, and a field that looks like a credential makes a password manager offer to save
+ * it under the administrator's own login for this site, or to fill that login into it. For the
+ * same reason it carries `autocomplete="off"` and the attributes that the common managers read as
+ * "leave this alone". The server holds the password to its policy and its message comes in as
+ * `error`. The value travels through `value`, not through the form the field sits in, so its
+ * `ngModel` is standalone.
  */
 @Component({
   selector: 'app-temporary-password',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, InputPassword],
+  imports: [ButtonDirective, FormsModule, InputText],
   template: `
     <div class="row">
       <div class="field">
-        <span class="label">Temporary password</span>
-        <span class="password">
-          <input
-            pInputPassword
-            aria-label="Temporary password"
-            [(mask)]="masked"
-            autocomplete="new-password"
-            spellcheck="false"
-            [fluid]="true"
-            [ngModel]="value()"
-            [ngModelOptions]="{ standalone: true }"
-            (ngModelChange)="value.set($event)"
-            [attr.data-testid]="testId()"
-          />
-          <button
-            type="button"
-            class="reveal"
-            (click)="masked.set(!masked())"
-            [attr.aria-label]="masked() ? 'Show the password' : 'Hide the password'"
-            [attr.data-testid]="testId() + '-reveal'"
-          >
-            <i [class]="masked() ? 'pi pi-eye' : 'pi pi-eye-slash'"></i>
-          </button>
-        </span>
+        <label [attr.for]="inputId()">Temporary password</label>
+        <input
+          pInputText
+          type="text"
+          [attr.id]="inputId()"
+          autocomplete="off"
+          spellcheck="false"
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore
+          data-form-type="other"
+          [ngModel]="value()"
+          [ngModelOptions]="{ standalone: true }"
+          (ngModelChange)="value.set($event)"
+          [attr.aria-invalid]="!!error()"
+          [attr.aria-describedby]="error() ? errorId() : null"
+          [attr.data-testid]="testId()"
+        />
       </div>
       <button
         pButton
@@ -88,7 +90,9 @@ export function generatePassword(length = generatedLength): string {
       </button>
     </div>
     @if (error(); as message) {
-      <small class="error" data-testid="temporary-password-error">{{ message }}</small>
+      <small class="error" role="alert" [attr.id]="errorId()" [attr.data-testid]="errorId()">{{
+        message
+      }}</small>
     }
   `,
   styles: `
@@ -108,30 +112,15 @@ export function generatePassword(length = generatedLength): string {
       flex-direction: column;
       gap: 0.375rem;
     }
-    .label {
+    label {
       font-size: 0.8125rem;
       font-weight: 550;
     }
-    .password {
-      position: relative;
-      display: block;
-      input {
-        padding-right: 2.5rem;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      }
-    }
-    .reveal {
-      position: absolute;
-      top: 50%;
-      right: 0.5rem;
-      transform: translateY(-50%);
-      padding: 0.25rem;
-      border: 0;
-      background: none;
-      color: var(--p-text-muted-color);
-      cursor: pointer;
+    input {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     .error {
+      font-size: 0.75rem;
       color: var(--p-severity-critical);
     }
   `,
@@ -139,13 +128,22 @@ export function generatePassword(length = generatedLength): string {
 export class TemporaryPassword {
   readonly value = model('');
   readonly error = input<string>();
-  /** The `data-testid` of the input; the reveal and generate buttons add `-reveal` and `-generate`. */
+  /** The `data-testid` of the input; its button and its error add `-generate` and `-error`. */
   readonly testId = input('temporary-password');
 
-  protected readonly masked = signal(true);
+  private readonly auth = inject(AuthService);
+
+  protected readonly inputId = computed(() => `${this.testId()}-input`);
+  protected readonly errorId = computed(() => `${this.testId()}-error`);
+  /** As long as the installation's minimum asks, and never shorter than `generatedLength`. */
+  private readonly length = computed(() =>
+    Math.max(
+      generatedLength,
+      this.auth.options.hasValue() ? this.auth.options.value().password_min_length : 0,
+    ),
+  );
 
   protected generate(): void {
-    this.value.set(generatePassword());
-    this.masked.set(false);
+    this.value.set(generatePassword(this.length()));
   }
 }

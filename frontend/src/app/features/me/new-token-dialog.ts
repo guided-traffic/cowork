@@ -22,13 +22,24 @@ import { CAPABILITY } from '../../api/models/capability-array';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
+import { describedBy, numberAria, selectAria } from '../../shared/field-aria';
+import { keepOpenWhile } from '../../shared/keep-open';
 
-/** What each scope reaches, in a line (docs/adr/0035 D3), shown beside the choice and in the list. */
+/**
+ * What each scope reaches, in a line (docs/adr/0035 D3, docs/security/tokens.md), shown beside the
+ * choice and in the list. The strongest acts are named, the irreversible ones among them: a
+ * person who chooses `admin` for a script that changes a setting should read that the same token
+ * deactivates accounts for good.
+ */
 export const scopeMeanings: Record<Scope, string> = {
   read: 'Reads what you may read.',
-  write: 'Reads, and does what a member does: files and moves tickets, comments, books time.',
+  write:
+    'Reads, and does what a member does: files and moves tickets, comments, books time, creates ' +
+    'projects where you may, and revokes your other tokens.',
   admin:
-    'Does what write does, and what your admin role allows: tenant settings, archiving a project.',
+    'Does what write does, and what your admin role allows: tenant settings and the time lock, ' +
+    "archiving projects, the confidential flag, withdrawing other people's comments, and " +
+    'unlocking, ending the sessions of and deactivating (for good) the local accounts of the tenant.',
 };
 
 /** What each capability lets an agent do beyond the baseline (docs/adr/0043 D4). */
@@ -50,17 +61,23 @@ export const assisted: Capability[] = CAPABILITY.filter(
     !['decide', 'close', 'rank', 'create-project', 'record-answer'].includes(capability),
 );
 
-/** The lifetime a token starts with, and the longest the form offers (docs/adr/0035 D4). */
-export const defaultLifetimeDays = 90;
-export const maxLifetimeDays = 365;
+/**
+ * The longest lifetime the form takes, in days: the bound of the API's schema. The installation
+ * holds a token to its own maximum, shortens a longer one, and says what the token got.
+ */
+export const maxLifetimeDays = 3650;
 
 const scopes: Scope[] = ['read', 'write', 'admin'];
 
 /**
  * Creates a personal access token (docs/adr/0035 D5): its name, scope, an agent flag with the
  * capabilities (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
- * An agent token has at most `write` scope, and the form says so before the server has to. The
- * answer carries the plaintext, which the dialog hands on in the event and keeps nowhere.
+ * An agent token has at most `write` scope, and the form says so before the server has to; one
+ * with no capability keeps the baseline and nothing more, which is a choice like any other. The
+ * lifetime is left empty unless the person fills it, which is the installation's default. The
+ * answer carries the plaintext, which the dialog hands on in the event and keeps nowhere. While
+ * the request is out nothing closes the dialog, so that a refusal always lands in the form that
+ * was sent.
  */
 @Component({
   selector: 'app-new-token-dialog',
@@ -72,28 +89,38 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
       (visibleChange)="visible.set($event)"
       [modal]="true"
       [draggable]="false"
-      [dismissableMask]="true"
+      [closable]="!saving()"
+      [dismissableMask]="!saving()"
       [style]="{ width: '38rem' }"
       header="New token"
       data-testid="new-token-dialog"
     >
       <form class="form" (ngSubmit)="save()">
-        <label class="field">
-          <span>Name</span>
+        <div class="field">
+          <label for="token-name-input">Name</label>
           <input
             pInputText
+            id="token-name-input"
             name="name"
             maxlength="100"
             autocomplete="off"
             placeholder="claude on my laptop"
             [ngModel]="name()"
             (ngModelChange)="name.set($event)"
+            [attr.aria-invalid]="!!errors()['name']"
+            [attr.aria-describedby]="describedBy(errors()['name'] && 'token-name-error')"
             data-testid="token-name"
           />
           @if (errors()['name']; as error) {
-            <small class="error" data-testid="token-name-error">{{ error }}</small>
+            <small
+              class="error"
+              id="token-name-error"
+              role="alert"
+              data-testid="token-name-error"
+              >{{ error }}</small
+            >
           }
-        </label>
+        </div>
 
         <div class="field">
           <span id="token-scope-label">Scope</span>
@@ -106,17 +133,26 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             (ngModelChange)="scope.set($event)"
             name="scope"
             size="small"
+            [invalid]="!!errors()['scope']"
+            [pt]="scopePt()"
             ariaLabelledBy="token-scope-label"
             data-testid="token-scope"
           />
-          <small class="muted" data-testid="token-scope-meaning">
+          <small class="muted" id="token-scope-meaning" data-testid="token-scope-meaning">
             {{ scopeMeanings[scope()] }}
             @if (agent()) {
-              An agent token has at most write scope.
+              An agent token has at most write scope, and what stays with a person — booking time,
+              revoking tokens, administration — is never its own.
             }
           </small>
           @if (errors()['scope']; as error) {
-            <small class="error" data-testid="token-scope-error">{{ error }}</small>
+            <small
+              class="error"
+              id="token-scope-error"
+              role="alert"
+              data-testid="token-scope-error"
+              >{{ error }}</small
+            >
           }
         </div>
 
@@ -150,8 +186,10 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
                 [ngModel]="capabilities()"
                 (ngModelChange)="capabilities.set($event ?? [])"
                 name="capabilities"
-                placeholder="Choose at least one"
+                placeholder="None: the baseline only"
                 size="small"
+                [invalid]="!!errors()['capabilities']"
+                [pt]="capabilitiesPt()"
                 ariaLabelledBy="token-capabilities-label"
                 data-testid="token-capabilities"
               >
@@ -185,18 +223,33 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
                 Assisted
               </button>
             </div>
-            <small class="muted" data-testid="token-capabilities-count">
+            <small
+              class="muted"
+              id="token-capabilities-count"
+              data-testid="token-capabilities-count"
+            >
               {{ capabilities().length }} of {{ everything.length }} chosen. Full is everything;
               assisted leaves deciding, closing, ranking, creating projects and recording answers to
               you.
             </small>
             @if (capabilities().length === 0) {
-              <small class="error" data-testid="token-capabilities-none">
-                Choose at least one. A token that names none is given every capability.
+              <small
+                class="muted"
+                id="token-capabilities-none"
+                data-testid="token-capabilities-none"
+              >
+                No capability: the baseline only — filing and editing tickets, comments, links,
+                questions, progress and a watch stake.
               </small>
             }
             @if (errors()['capabilities']; as error) {
-              <small class="error" data-testid="token-capabilities-error">{{ error }}</small>
+              <small
+                class="error"
+                id="token-capabilities-error"
+                role="alert"
+                data-testid="token-capabilities-error"
+                >{{ error }}</small
+              >
             }
           </div>
         }
@@ -214,11 +267,19 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
               placeholder="Any tenant of yours"
               [showClear]="true"
               size="small"
+              [invalid]="!!errors()['tenant']"
+              [pt]="tenantPt()"
               ariaLabelledBy="token-tenant-label"
               data-testid="token-tenant"
             />
             @if (errors()['tenant']; as error) {
-              <small class="error" data-testid="token-tenant-error">{{ error }}</small>
+              <small
+                class="error"
+                id="token-tenant-error"
+                role="alert"
+                data-testid="token-tenant-error"
+                >{{ error }}</small
+              >
             }
           </div>
           @if (tenant()) {
@@ -235,23 +296,35 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
                 [showClear]="true"
                 [loading]="projects.isLoading()"
                 size="small"
+                [invalid]="!!errors()['project']"
+                [pt]="projectPt()"
                 ariaLabelledBy="token-project-label"
                 data-testid="token-project"
               />
               @if (projects.error()) {
-                <small class="error" data-testid="token-project-failed"
+                <small
+                  class="error"
+                  id="token-project-failed"
+                  role="alert"
+                  data-testid="token-project-failed"
                   >The projects of this tenant could not be loaded.</small
                 >
               }
               @if (errors()['project']; as error) {
-                <small class="error" data-testid="token-project-error">{{ error }}</small>
+                <small
+                  class="error"
+                  id="token-project-error"
+                  role="alert"
+                  data-testid="token-project-error"
+                  >{{ error }}</small
+                >
               }
             </div>
           }
         </div>
         <small class="muted">
           A token that is restricted is useless anywhere else. An unrestricted one reaches every
-          tenant you belong to.
+          tenant you belong to, now and later.
         </small>
 
         <div class="field">
@@ -266,16 +339,31 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             [useGrouping]="false"
             [showButtons]="false"
             suffix=" days"
+            placeholder="Installation default"
             size="small"
+            [invalid]="!!errors()['lifetime_days']"
+            [pt]="lifetimePt()"
             ariaLabelledBy="token-lifetime-label"
+            [ariaDescribedBy]="
+              describedBy(
+                'token-lifetime-hint',
+                errors()['lifetime_days'] && 'token-lifetime-error'
+              ) ?? undefined
+            "
             data-testid="token-lifetime"
           />
-          <small class="muted">
-            1 to {{ maxDays }} days. The installation may shorten it; the token shows its expiry
-            once it exists.
+          <small class="muted" id="token-lifetime-hint" data-testid="token-lifetime-hint">
+            Empty is the installation's default. Up to {{ maxDays }} days; the installation may
+            shorten it, and the token shows its expiry once it exists.
           </small>
           @if (errors()['lifetime_days']; as error) {
-            <small class="error" data-testid="token-lifetime-error">{{ error }}</small>
+            <small
+              class="error"
+              id="token-lifetime-error"
+              role="alert"
+              data-testid="token-lifetime-error"
+              >{{ error }}</small
+            >
           }
         </div>
 
@@ -285,6 +373,7 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             type="button"
             [text]="true"
             severity="secondary"
+            [disabled]="saving()"
             (click)="visible.set(false)"
             data-testid="token-cancel"
           >
@@ -316,6 +405,7 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
       flex-direction: column;
       gap: 0.375rem;
       min-width: 0;
+      > label:not(.check),
       > span:first-child {
         font-size: 0.8125rem;
         font-weight: 550;
@@ -366,6 +456,7 @@ export class NewTokenDialog {
   protected readonly everything = [...CAPABILITY];
   protected readonly assistedSet = assisted;
   protected readonly maxDays = maxLifetimeDays;
+  protected readonly describedBy = describedBy;
   protected readonly capabilityOptions = CAPABILITY.map((value) => ({
     value,
     meaning: capabilityMeanings[value],
@@ -377,7 +468,8 @@ export class NewTokenDialog {
   protected readonly capabilities = signal<Capability[]>([...CAPABILITY]);
   protected readonly tenant = signal<string | null>(null);
   protected readonly project = signal<string | null>(null);
-  protected readonly days = signal<number | null>(defaultLifetimeDays);
+  /** Empty is the installation's default: the request then leaves `lifetime_days` out. */
+  protected readonly days = signal<number | null>(null);
   protected readonly saving = signal(false);
   protected readonly errors = signal<Record<string, string>>({});
 
@@ -406,16 +498,50 @@ export class NewTokenDialog {
     const days = this.days();
     return (
       this.name().trim() !== '' &&
-      days !== null &&
-      Number.isInteger(days) &&
-      days >= 1 &&
-      days <= maxLifetimeDays &&
-      (!this.agent() || this.capabilities().length > 0) &&
+      (days === null || (Number.isInteger(days) && days >= 1 && days <= maxLifetimeDays)) &&
       !this.saving()
     );
   });
 
+  /**
+   * What PrimeNG leaves out of a field the server refused: `aria-invalid` on the element a person
+   * tabs to, and the text that says why, with the hint that is always there.
+   */
+  protected readonly scopePt = computed(() =>
+    selectAria(
+      !!this.errors()['scope'],
+      describedBy('token-scope-meaning', this.errors()['scope'] && 'token-scope-error'),
+    ),
+  );
+  protected readonly capabilitiesPt = computed(() =>
+    selectAria(
+      !!this.errors()['capabilities'],
+      describedBy(
+        'token-capabilities-count',
+        this.capabilities().length === 0 && 'token-capabilities-none',
+        this.errors()['capabilities'] && 'token-capabilities-error',
+      ),
+    ),
+  );
+  protected readonly tenantPt = computed(() =>
+    selectAria(
+      !!this.errors()['tenant'],
+      describedBy(this.errors()['tenant'] && 'token-tenant-error'),
+    ),
+  );
+  protected readonly projectPt = computed(() =>
+    selectAria(
+      !!this.errors()['project'],
+      describedBy(
+        this.projects.error() && 'token-project-failed',
+        this.errors()['project'] && 'token-project-error',
+      ),
+    ),
+  );
+  protected readonly lifetimePt = computed(() => numberAria(!!this.errors()['lifetime_days']));
+
   constructor() {
+    keepOpenWhile(() => this.saving());
     // However the dialog closes, the next one starts clean.
     effect(() => {
       if (!this.visible()) {
@@ -444,10 +570,12 @@ export class NewTokenDialog {
     }
     const tenant = this.tenant();
     const project = this.project();
+    const days = this.days();
     const body: TokenCreate = {
       name: this.name().trim(),
       scope: this.scope(),
-      // In the order of the vocabulary, not of the clicks.
+      // In the order of the vocabulary, not of the clicks; none chosen is an empty list, which
+      // the API reads as the baseline only.
       ...(this.agent()
         ? {
             agent: true,
@@ -455,7 +583,7 @@ export class NewTokenDialog {
           }
         : {}),
       ...(tenant ? { tenant, ...(project ? { project } : {}) } : {}),
-      lifetime_days: this.days() as number,
+      ...(days !== null ? { lifetime_days: days } : {}),
     };
     this.saving.set(true);
     this.errors.set({});
@@ -473,7 +601,13 @@ export class NewTokenDialog {
       }
       this.created.emit(token);
     } catch (error) {
-      this.errors.set(this.problems.report(error, { fields: true }).fields);
+      if (this.visible()) {
+        this.errors.set(this.problems.report(error, { fields: true }).fields);
+      } else {
+        // The page closed the dialog while the request was out, and the form is empty: a field
+        // error would sit under nothing and come back with the next token. A toast says it.
+        this.problems.report(error);
+      }
     } finally {
       this.saving.set(false);
     }
@@ -486,7 +620,7 @@ export class NewTokenDialog {
     this.capabilities.set([...CAPABILITY]);
     this.tenant.set(null);
     this.project.set(null);
-    this.days.set(defaultLifetimeDays);
+    this.days.set(null);
     this.errors.set({});
   }
 }

@@ -7,6 +7,8 @@ import { Tooltip } from 'primeng/tooltip';
 import type { MockInstance } from 'vitest';
 import { Account, Me, Problem } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
+import { AuthService } from '../../core/auth.service';
+import { HARD_NAVIGATION, HardNavigation } from '../../core/hard-navigation';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { dateTime } from '../../shared/time';
@@ -71,6 +73,7 @@ describe('Accounts', () => {
   let unlock: MockInstance<AccountsService['unlock']>;
   let deactivate: MockInstance<AccountsService['deactivate']>;
   let endSessions: MockInstance<AccountsService['endSessions']>;
+  let navigate: MockInstance<HardNavigation>;
 
   beforeEach(() => {
     list = signal<Account[]>([ada, sam]);
@@ -86,6 +89,7 @@ describe('Accounts', () => {
     unlock = vi.fn<AccountsService['unlock']>().mockResolvedValue(undefined);
     deactivate = vi.fn<AccountsService['deactivate']>().mockResolvedValue(undefined);
     endSessions = vi.fn<AccountsService['endSessions']>().mockResolvedValue(undefined);
+    navigate = vi.fn<HardNavigation>();
     TestBed.configureTestingModule({
       providers: [
         MessageService,
@@ -106,9 +110,22 @@ describe('Accounts', () => {
           useValue: { tenant: tenantSlug, person, me: { isLoading: personLoading } },
         },
         { provide: TenantService, useValue: { isAdmin } },
+        { provide: HARD_NAVIGATION, useValue: navigate },
+        {
+          provide: AuthService,
+          useValue: {
+            options: {
+              hasValue: () => true,
+              value: () => ({ local: true, oidc: false, password_min_length: 12 }),
+            },
+          },
+        },
       ],
     });
   });
+
+  // Whatever a test spied on goes back, also when an assertion of the test has failed.
+  afterEach(() => vi.restoreAllMocks());
 
   async function render() {
     const fixture = TestBed.createComponent(Accounts);
@@ -568,11 +585,47 @@ describe('Accounts', () => {
     });
 
     describe('ending the sessions', () => {
-      it('ends the sessions of the account of the row and says so, without asking first', async () => {
-        const add = toasts();
+      const dialog = () => document.body.querySelector('.p-confirmdialog');
+
+      const press = (label: string) =>
+        [...(dialog()?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent?.trim() === label)
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      async function ask(fixture: ComponentFixture<Accounts>, username = 'sam') {
+        el(fixture, `account-sessions-${username}`)?.click();
+        await settle(fixture);
+      }
+
+      it('asks first, naming the account, and says that its tokens are not affected', async () => {
         const fixture = await render();
 
-        el(fixture, 'account-sessions-sam')?.click();
+        await ask(fixture);
+
+        expect(dialog()?.textContent).toContain('End the sessions of sam?');
+        expect(dialog()?.textContent).toContain('Every session of sam ends');
+        expect(dialog()?.textContent).toContain('Their tokens are not affected and keep working');
+        expect(dialog()?.textContent).toContain('only deactivating the account revokes them');
+        expect(endSessions).not.toHaveBeenCalled();
+      });
+
+      it('opens with the focus on the button that keeps the sessions', async () => {
+        const fixture = await render();
+
+        await ask(fixture);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const focused = document.activeElement as HTMLElement | null;
+        expect(focused?.textContent?.trim()).toBe('Keep them');
+        expect(dialog()?.contains(focused)).toBe(true);
+      });
+
+      it('ends the sessions of the account of the row when it is confirmed, and says what ended and what did not', async () => {
+        const add = toasts();
+        const fixture = await render();
+        await ask(fixture);
+
+        press('End sessions');
         await settle(fixture);
 
         expect(endSessions).toHaveBeenCalledExactlyOnceWith('sam');
@@ -580,32 +633,118 @@ describe('Accounts', () => {
           expect.objectContaining({
             severity: 'success',
             summary: 'Sessions ended',
-            detail: 'sam is signed out everywhere.',
+            detail: 'Every session of sam has ended. Their tokens are not affected.',
           }),
         );
-        expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+        expect(navigate).not.toHaveBeenCalled();
       });
 
-      it('lets an administrator end their own sessions', async () => {
+      it('does not say that anybody is signed out everywhere, which the tokens of the account would contradict', async () => {
+        const add = toasts();
         const fixture = await render();
+        await ask(fixture);
 
-        el(fixture, 'account-sessions-ada')?.click();
+        press('End sessions');
         await settle(fixture);
 
-        expect(endSessions).toHaveBeenCalledExactlyOnceWith('ada');
+        expect(JSON.stringify(add.mock.calls)).not.toContain('everywhere');
+      });
+
+      it('does nothing when the person keeps the sessions', async () => {
+        const add = toasts();
+        const fixture = await render();
+        await ask(fixture);
+
+        press('Keep them');
+        await settle(fixture);
+
+        expect(endSessions).not.toHaveBeenCalled();
+        expect(add).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
       });
 
       it('toasts the problem when the server refuses', async () => {
         endSessions.mockRejectedValue(refusal(403, 'Forbidden', 'Not for you.'));
         const add = toasts();
         const fixture = await render();
+        await ask(fixture);
 
-        el(fixture, 'account-sessions-sam')?.click();
+        press('End sessions');
         await settle(fixture);
 
         expect(add).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ summary: 'Forbidden', detail: 'Not for you.' }),
         );
+        expect(navigate).not.toHaveBeenCalled();
+      });
+
+      describe('on the own row of the administrator', () => {
+        it('says that this session ends too, here at once and in every other browser, and that the tokens stay', async () => {
+          const fixture = await render();
+
+          await ask(fixture, 'ada');
+
+          expect(dialog()?.textContent).toContain('End the sessions of ada?');
+          expect(dialog()?.textContent).toContain('this one too');
+          expect(dialog()?.textContent).toContain('signed out here at once');
+          expect(dialog()?.textContent).toContain('every other browser and tab');
+          expect(dialog()?.textContent).toContain('Your tokens are not affected');
+          expect(endSessions).not.toHaveBeenCalled();
+        });
+
+        it('opens with the focus on the button that keeps the sessions', async () => {
+          const fixture = await render();
+
+          await ask(fixture, 'ada');
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          expect((document.activeElement as HTMLElement | null)?.textContent?.trim()).toBe(
+            'Keep them',
+          );
+        });
+
+        it('ends the sessions and loads the login page as a new document, instead of leaving the page to find out', async () => {
+          const add = toasts();
+          const fixture = await render();
+          await ask(fixture, 'ada');
+
+          press('End sessions');
+          await settle(fixture);
+
+          expect(endSessions).toHaveBeenCalledExactlyOnceWith('ada');
+          expect(navigate).toHaveBeenCalledExactlyOnceWith('/login');
+          expect(add).not.toHaveBeenCalled();
+        });
+
+        it('stays on the page, and says why, when the server refuses', async () => {
+          endSessions.mockRejectedValue(refusal(403, 'Forbidden', 'Not for you.'));
+          const add = toasts();
+          const fixture = await render();
+          await ask(fixture, 'ada');
+
+          press('End sessions');
+          await settle(fixture);
+
+          expect(navigate).not.toHaveBeenCalled();
+          expect(add).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ summary: 'Forbidden' }),
+          );
+        });
+
+        it('leaves the page only after the backend has ended the sessions', async () => {
+          let finish: () => void = () => undefined;
+          endSessions.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+          const fixture = await render();
+          await ask(fixture, 'ada');
+
+          press('End sessions');
+          await new Promise((resolve) => setTimeout(resolve));
+          expect(navigate).not.toHaveBeenCalled();
+          finish();
+          await settle(fixture);
+
+          expect(navigate).toHaveBeenCalledExactlyOnceWith('/login');
+        });
       });
     });
 
@@ -642,6 +781,17 @@ describe('Accounts', () => {
           (button) => button.textContent?.trim() === 'Deactivate',
         );
         expect(accept?.className).toContain('p-button-danger');
+      });
+
+      it('opens with the focus on the button that keeps the account, so that a second Enter does not deactivate it for good', async () => {
+        const fixture = await render();
+
+        await ask(fixture);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const focused = document.activeElement as HTMLElement | null;
+        expect(focused?.textContent?.trim()).toBe('Keep it');
+        expect(dialog()?.contains(focused)).toBe(true);
       });
 
       it('deactivates the account and says so when it is confirmed', async () => {

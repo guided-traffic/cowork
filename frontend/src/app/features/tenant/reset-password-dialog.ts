@@ -15,13 +15,15 @@ import { Dialog } from 'primeng/dialog';
 import { Account } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
 import { ProblemService } from '../../core/problem.service';
+import { keepOpenWhile } from '../../shared/keep-open';
 import { IssuedPassword, TemporaryPassword } from './temporary-password';
 
 /**
  * Sets a new temporary password on a local account (docs/adr/0033 D5). The dialog is open exactly
  * while it holds the account; every session of the account ends, and the person changes the
  * password at the next login. The page shows the password once, from the event, and the dialog
- * forgets it as soon as it closes, however it closes.
+ * forgets it as soon as it closes, however it closes. While the request is out nothing closes it,
+ * so that a refusal always lands in the form that was sent.
  */
 @Component({
   selector: 'app-reset-password-dialog',
@@ -33,7 +35,8 @@ import { IssuedPassword, TemporaryPassword } from './temporary-password';
       (visibleChange)="closed($event)"
       [modal]="true"
       [draggable]="false"
-      [dismissableMask]="true"
+      [closable]="!saving()"
+      [dismissableMask]="!saving()"
       [style]="{ width: '32rem' }"
       [header]="'Reset the password of ' + (account()?.username ?? '')"
       data-testid="reset-password-dialog"
@@ -54,6 +57,7 @@ import { IssuedPassword, TemporaryPassword } from './temporary-password';
             type="button"
             [text]="true"
             severity="secondary"
+            [disabled]="saving()"
             (click)="account.set(null)"
             data-testid="reset-cancel"
           >
@@ -107,6 +111,7 @@ export class ResetPasswordDialog {
   protected readonly canSave = computed(() => this.password() !== '' && !this.saving());
 
   constructor() {
+    keepOpenWhile(() => this.saving());
     // However the dialog closes, what was typed goes with it.
     effect(() => {
       if (this.account() === null) {
@@ -137,7 +142,13 @@ export class ResetPasswordDialog {
       this.passwordSet.emit({ account, password });
       this.account.set(null);
     } catch (error) {
-      this.errors.set(this.problems.report(error, { fields: true }).fields);
+      if (this.account() === account) {
+        this.errors.set(this.problems.report(error, { fields: true }).fields);
+      } else {
+        // The page closed the dialog, or opened it for another account, while the request was out:
+        // a field error would sit under nothing, or under somebody else. A toast says it.
+        this.problems.report(error);
+      }
     } finally {
       this.saving.set(false);
     }

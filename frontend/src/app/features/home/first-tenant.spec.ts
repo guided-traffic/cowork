@@ -33,6 +33,8 @@ function refusal(
   return new HttpErrorResponse({ status, statusText: body.title, error: body });
 }
 
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 describe('tenantSlug', () => {
   it.each(['ab', 'acme', 'a1', '0a', 'a-b', 'a--b', 'ab-', 'a'.repeat(63)])(
     'accepts the slug %s',
@@ -250,7 +252,10 @@ describe('FirstTenant', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith({ slug: 'acme', name: 'Acme Corp' });
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        { slug: 'acme', name: 'Acme Corp' },
+        expect.stringMatching(uuid),
+      );
     });
 
     it('goes into the tenant that was made, by the slug the server answered with', async () => {
@@ -345,6 +350,154 @@ describe('FirstTenant', () => {
       expect(create.mock.calls[1][0].slug).toBe('acme-2');
       expect(el(fixture, 'first-tenant-slug-error')).toBeNull();
       expect(navigate).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('the fields', () => {
+    it('names each field by a label of its own, whose hint and error are not part of the name', async () => {
+      const fixture = await render();
+
+      const label = (text: string) =>
+        [...host(fixture).querySelectorAll('label')].find((each) => each.textContent === text);
+      expect((label('Slug') as HTMLLabelElement).htmlFor).toBe('first-tenant-slug-input');
+      expect((label('Name') as HTMLLabelElement).htmlFor).toBe('first-tenant-name-input');
+      expect((el(fixture, 'first-tenant-slug') as HTMLInputElement).id).toBe(
+        'first-tenant-slug-input',
+      );
+      expect((el(fixture, 'first-tenant-name') as HTMLInputElement).id).toBe(
+        'first-tenant-name-input',
+      );
+    });
+  });
+
+  describe('for assistive technology', () => {
+    const refused = async () => {
+      create.mockRejectedValue(
+        refusal(409, 'tenant_slug_taken', [
+          { pointer: '/slug', message: 'is taken' },
+          { pointer: '/name', message: 'must not be blank' },
+        ]),
+      );
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      return fixture;
+    };
+
+    it('marks each refused field as invalid, with the text that says why, which is an alert', async () => {
+      const fixture = await refused();
+
+      for (const [field, error] of [
+        ['first-tenant-slug', 'first-tenant-slug-error'],
+        ['first-tenant-name', 'first-tenant-name-error'],
+      ]) {
+        const input = el(fixture, field) as HTMLInputElement;
+        expect(input.getAttribute('aria-invalid'), field).toBe('true');
+        expect(input.getAttribute('aria-describedby')?.split(' '), field).toContain(error);
+        expect(el(fixture, error)?.id, error).toBe(error);
+        expect(el(fixture, error)?.getAttribute('role'), error).toBe('alert');
+      }
+    });
+
+    it('keeps the hint of the slug in the description beside the error, and claims no validity while an error shows', async () => {
+      const fixture = await refused();
+
+      const input = el(fixture, 'first-tenant-slug') as HTMLInputElement;
+      expect(input.getAttribute('aria-describedby')).toBe(
+        'first-tenant-slug-hint first-tenant-slug-error',
+      );
+      expect(input.getAttribute('aria-invalid')).not.toBe('false');
+      for (const id of input.getAttribute('aria-describedby')?.split(' ') ?? []) {
+        expect(host(fixture).querySelector(`#${id}`), id).not.toBeNull();
+      }
+    });
+
+    it('takes it away again with the next attempt, and leaves no field claiming to be invalid', async () => {
+      const fixture = await refused();
+      let finish: (tenant: Tenant) => void = () => undefined;
+      create.mockReturnValue(new Promise<Tenant>((resolve) => (finish = resolve)));
+
+      submit(fixture);
+      await settle(fixture);
+
+      for (const field of ['first-tenant-slug', 'first-tenant-name']) {
+        const input = el(fixture, field) as HTMLInputElement;
+        expect(input.getAttribute('aria-invalid'), field).toBe('false');
+        expect(input.getAttribute('aria-describedby') ?? '', field).not.toContain('-error');
+      }
+      finish(made);
+      await settle(fixture);
+    });
+  });
+
+  describe('the key of the act (docs/adr/0045)', () => {
+    const keyOf = (call: number) => create.mock.calls[call][1];
+    const lost = () => new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' });
+
+    it('is a UUID, and is the same for a retry of the same slug and name after a network failure', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(keyOf(0)).toMatch(uuid);
+      expect(keyOf(1)).toBe(keyOf(0));
+      expect(create.mock.calls[1][0]).toEqual(create.mock.calls[0][0]);
+    });
+
+    it('lets the retry of a lost answer go into the tenant, which the server answers again', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      expect(navigate).not.toHaveBeenCalled();
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme']);
+    });
+
+    it.each([
+      ['the slug', 'first-tenant-slug', 'acme-2'],
+      ['the name', 'first-tenant-name', 'Acme Corporation'],
+    ])(
+      'is another one as soon as %s is changed, because the body is another',
+      async (_what, field, value) => {
+        create.mockRejectedValueOnce(lost());
+        const fixture = await render();
+        fill(fixture);
+        submit(fixture);
+        await settle(fixture);
+
+        typeInto(fixture, field, value);
+        submit(fixture);
+        await settle(fixture);
+
+        expect(create).toHaveBeenCalledTimes(2);
+        expect(keyOf(1)).not.toBe(keyOf(0));
+      },
+    );
+
+    it('does not change while the person only looks at the form', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      await settle(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(keyOf(1)).toBe(keyOf(0));
     });
   });
 });

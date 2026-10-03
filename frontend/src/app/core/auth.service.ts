@@ -17,10 +17,12 @@ export class AuthService {
   /** What the login page offers (docs/adr/0033 D8): the local form, the identity provider, or neither. */
   readonly options = resource({ loader: () => this.api.invoke(getAuthOptions) });
 
-  async login(username: string, password: string): Promise<LocalLoginResult> {
-    const result = await this.api.invoke(loginLocal, { body: { username, password } });
-    this.session.me.reload();
-    return result;
+  /**
+   * Starts the session. Who is working is not asked again here: the login page replaces the
+   * document afterwards (`HARD_NAVIGATION`), and the new one asks.
+   */
+  login(username: string, password: string): Promise<LocalLoginResult> {
+    return this.api.invoke(loginLocal, { body: { username, password } });
   }
 
   /** Changes the person's password; every other session of theirs ends (docs/adr/0033 D4). */
@@ -31,8 +33,11 @@ export class AuthService {
     this.session.me.reload();
   }
 
-  async logout(): Promise<void> {
-    await this.api.invoke(logout);
-    this.session.me.reload();
+  /**
+   * Ends the session. Who is working is not asked again — the answer would be a `401` racing the
+   * sign-out's own way to the login: the shell replaces the document afterwards.
+   */
+  logout(): Promise<void> {
+    return this.api.invoke(logout);
   }
 }

@@ -107,19 +107,26 @@ export class Tokens {
     return tokenStateMeanings[state];
   }
 
-  /** `all capabilities`, `3 capabilities`, or `the baseline` for an agent that was given none. */
-  protected capabilitySummary(token: Token): string {
+  /**
+   * What an agent token may do, as text in the cell and not behind a hover: `all nine capabilities`,
+   * the names of the ones it has, or `the baseline only` for an agent that was given none. These
+   * are what a person looks at to decide which token to revoke.
+   */
+  protected capabilitiesText(token: Token): string {
     if (token.capabilities.length === CAPABILITY.length) {
-      return 'all capabilities';
+      return 'all nine capabilities';
     }
-    return token.capabilities.length === 0
-      ? 'the baseline'
-      : `${token.capabilities.length} of ${CAPABILITY.length} capabilities`;
+    return token.capabilities.length === 0 ? 'the baseline only' : token.capabilities.join(', ');
   }
 
-  /** The key of the project a token is restricted to; its id, shortened, until the key is found. */
+  /**
+   * The key of the project a token is restricted to. Until the key is found — the person left the
+   * tenant, or no longer sees the project — the end of its id stands in: the id is a UUIDv7, whose
+   * start is the time it was made and the same for projects made in the same minute, and whose end
+   * is random.
+   */
   protected projectKey(id: string): string {
-    return this.tokens.keyOfProject(id) ?? id.slice(0, 8);
+    return this.tokens.keyOfProject(id) ?? id.slice(-8);
   }
 
   protected created({ token: plaintext, ...token }: TokenCreated): void {
@@ -136,6 +143,8 @@ export class Tokens {
       acceptLabel: 'Revoke',
       rejectLabel: 'Keep it',
       acceptButtonProps: { severity: 'danger' },
+      // It cannot be undone: an Enter that comes a moment late must not confirm it.
+      defaultFocus: 'reject',
       accept: async () => {
         try {
           await this.tokens.revoke(token);

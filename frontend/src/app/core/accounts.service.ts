@@ -9,6 +9,7 @@ import {
   unlockAccount,
 } from '../api/functions';
 import { Account, AccountCreate } from '../api/models';
+import { MembersService } from './members.service';
 import { refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -53,14 +54,22 @@ export class AccountsService {
     this.accounts.hasValue() ? this.accounts.value() : [],
   );
 
-  /** Creates the account with a temporary password the person changes at the first login. */
-  async create(body: AccountCreate): Promise<Account> {
+  /**
+   * Creates the account with a temporary password the person changes at the first login. The key
+   * is the form's, one for each content it holds: a retry of the same content sends the same key,
+   * so an answer that was lost is answered again instead of being refused as taken (docs/adr/0045).
+   * The account is a member of the tenant from this moment, so the members and the pickers that
+   * read them are loaded again; `MembersService` is asked for only now, so that the page of the
+   * accounts does not start a load of members by being open.
+   */
+  async create(body: AccountCreate, idempotencyKey: string): Promise<Account> {
     const account = await this.api.invoke(createAccount, {
       tenant: this.session.tenant() as string,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     refresh(this.accounts, this.injector);
+    refresh(this.injector.get(MembersService).members, this.injector);
     return account;
   }
 

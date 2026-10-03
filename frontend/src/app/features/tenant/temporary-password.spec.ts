@@ -1,6 +1,7 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
+import { AuthOptions } from '../../api/models';
+import { AuthService } from '../../core/auth.service';
 import {
   generatedLength,
   generatePassword,
@@ -34,11 +35,11 @@ describe('generatePassword', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('makes sixteen characters, all of them from the alphabet', () => {
+  it('makes twenty-four characters, all of them from the alphabet', () => {
     const password = generatePassword();
 
-    expect(generatedLength).toBe(16);
-    expect(password).toHaveLength(16);
+    expect(generatedLength).toBe(24);
+    expect(password).toHaveLength(24);
     expect([...password].every((character) => passwordAlphabet.includes(character))).toBe(true);
   });
 
@@ -104,6 +105,26 @@ class Host {
 }
 
 describe('TemporaryPassword', () => {
+  let options: WritableSignal<AuthOptions | undefined>;
+
+  beforeEach(() => {
+    options = signal<AuthOptions | undefined>({
+      local: true,
+      oidc: false,
+      password_min_length: 12,
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: AuthService,
+          useValue: {
+            options: { hasValue: () => options() !== undefined, value: () => options() },
+          },
+        },
+      ],
+    });
+  });
+
   async function render() {
     const fixture = TestBed.createComponent(Host);
     await settle(fixture);
@@ -121,6 +142,11 @@ describe('TemporaryPassword', () => {
     (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
   const input = (fixture: ComponentFixture<Host>, testId = 'temporary-password') =>
     el(fixture, testId) as HTMLInputElement;
+  const generate = async (fixture: ComponentFixture<Host>, testId = 'temporary-password') => {
+    el(fixture, `${testId}-generate`)?.click();
+    await settle(fixture);
+    return fixture.componentInstance.value();
+  };
 
   function typeInto(fixture: ComponentFixture<Host>, value: string) {
     const field = input(fixture);
@@ -129,85 +155,81 @@ describe('TemporaryPassword', () => {
     fixture.detectChanges();
   }
 
-  it('asks for a temporary password, hidden, with a button that generates one', async () => {
-    const fixture = await render();
-
-    const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.label')?.textContent).toBe('Temporary password');
-    expect(input(fixture).getAttribute('aria-label')).toBe('Temporary password');
-    expect(input(fixture).type).toBe('password');
-    expect(input(fixture).getAttribute('autocomplete')).toBe('new-password');
-    expect(el(fixture, 'temporary-password-generate')?.textContent?.trim()).toBe('Generate');
-    expect(el(fixture, 'temporary-password-error')).toBeNull();
-  });
-
-  it('hands on what is typed, as it is', async () => {
-    const fixture = await render();
-
-    typeInto(fixture, '  Correct Horse  ');
-
-    expect(fixture.componentInstance.value()).toBe('  Correct Horse  ');
-  });
-
-  it('shows what the host sets', async () => {
-    const fixture = await render();
-
-    fixture.componentInstance.value.set('from-the-host');
-    await settle(fixture);
-
-    expect(input(fixture).value).toBe('from-the-host');
-  });
-
-  describe('showing the password', () => {
-    it('is turned on and off with the eye, and says what it will do', async () => {
+  describe('the field', () => {
+    it('is a plain text field, never a password field, so that no password manager takes it for a credential', async () => {
       const fixture = await render();
-      const reveal = el(fixture, 'temporary-password-reveal') as HTMLButtonElement;
-      expect(reveal.getAttribute('aria-label')).toBe('Show the password');
-      expect(reveal.querySelector('i')?.classList).toContain('pi-eye');
 
-      reveal.click();
-      await settle(fixture);
-      expect(input(fixture).type).toBe('text');
-      expect(reveal.getAttribute('aria-label')).toBe('Hide the password');
-      expect(reveal.querySelector('i')?.classList).toContain('pi-eye-slash');
-
-      reveal.click();
-      await settle(fixture);
-      expect(input(fixture).type).toBe('password');
-      expect(reveal.getAttribute('aria-label')).toBe('Show the password');
+      const field = input(fixture);
+      expect(field.type).toBe('text');
+      expect(field.getAttribute('type')).toBe('text');
+      expect(field.hasAttribute('pinputpassword')).toBe(false);
+      expect(field.classList.contains('p-inputpassword')).toBe(false);
+      expect(field.querySelector('[class*="inputpassword"]')).toBeNull();
     });
 
-    it('follows the field when the field changes its own mask', async () => {
+    it('tells the browser and the common password managers to leave it alone', async () => {
       const fixture = await render();
 
-      fixture.debugElement.query(By.css('input')).triggerEventHandler('maskChange', false);
-      await settle(fixture);
-      expect(input(fixture).type).toBe('text');
-      expect(
-        (el(fixture, 'temporary-password-reveal') as HTMLButtonElement).getAttribute('aria-label'),
-      ).toBe('Hide the password');
-
-      fixture.debugElement.query(By.css('input')).triggerEventHandler('maskChange', true);
-      await settle(fixture);
-      expect(input(fixture).type).toBe('password');
+      const field = input(fixture);
+      expect(field.getAttribute('autocomplete')).toBe('off');
+      expect(field.getAttribute('spellcheck')).toBe('false');
+      expect(field.hasAttribute('data-1p-ignore')).toBe(true);
+      expect(field.getAttribute('data-lpignore')).toBe('true');
+      expect(field.hasAttribute('data-bwignore')).toBe(true);
+      expect(field.getAttribute('data-form-type')).toBe('other');
     });
 
-    it('is not a button that submits a form', async () => {
+    it('has no button that reveals or hides it, because it is never hidden', async () => {
       const fixture = await render();
 
-      expect((el(fixture, 'temporary-password-reveal') as HTMLButtonElement).type).toBe('button');
-      expect((el(fixture, 'temporary-password-generate') as HTMLButtonElement).type).toBe('button');
+      expect(el(fixture, 'temporary-password-reveal')).toBeNull();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.reveal')).toBeNull();
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('button')).toHaveLength(1);
+    });
+
+    it('is named by a label of its own, which a click on the name goes to', async () => {
+      const fixture = await render();
+
+      const label = (fixture.nativeElement as HTMLElement).querySelector(
+        'label',
+      ) as HTMLLabelElement;
+      expect(label.textContent).toBe('Temporary password');
+      expect(label.htmlFor).toBe('temporary-password-input');
+      expect(input(fixture).id).toBe('temporary-password-input');
+    });
+
+    it('has a button that generates a password, which does not submit a form', async () => {
+      const fixture = await render();
+
+      const button = el(fixture, 'temporary-password-generate') as HTMLButtonElement;
+      expect(button.textContent?.trim()).toBe('Generate');
+      expect(button.type).toBe('button');
+    });
+
+    it('hands on what is typed, as it is', async () => {
+      const fixture = await render();
+
+      typeInto(fixture, '  Correct Horse  ');
+
+      expect(fixture.componentInstance.value()).toBe('  Correct Horse  ');
+    });
+
+    it('shows what the host sets', async () => {
+      const fixture = await render();
+
+      fixture.componentInstance.value.set('from-the-host');
+      await settle(fixture);
+
+      expect(input(fixture).value).toBe('from-the-host');
     });
   });
 
   describe('generating', () => {
-    it('fills the field with a generated password and shows it, so that it can be read out', async () => {
+    it('fills the field with a generated password of 24 characters from the alphabet, in plain sight', async () => {
       const fixture = await render();
 
-      el(fixture, 'temporary-password-generate')?.click();
-      await settle(fixture);
+      const password = await generate(fixture);
 
-      const password = fixture.componentInstance.value();
       expect(password).toHaveLength(generatedLength);
       expect([...password].every((character) => passwordAlphabet.includes(character))).toBe(true);
       expect(input(fixture).value).toBe(password);
@@ -218,43 +240,102 @@ describe('TemporaryPassword', () => {
       const fixture = await render();
       typeInto(fixture, 'typed by hand');
 
-      el(fixture, 'temporary-password-generate')?.click();
-      await settle(fixture);
-      const first = fixture.componentInstance.value();
-      el(fixture, 'temporary-password-generate')?.click();
-      await settle(fixture);
+      const first = await generate(fixture);
+      const second = await generate(fixture);
 
       expect(first).not.toBe('typed by hand');
-      expect(fixture.componentInstance.value()).not.toBe(first);
+      expect(second).not.toBe(first);
+    });
+
+    it('makes a password as long as an installation asks, when its minimum is longer than 24', async () => {
+      options.set({ local: true, oidc: false, password_min_length: 30 });
+      const fixture = await render();
+
+      const password = await generate(fixture);
+
+      expect(password).toHaveLength(30);
+      expect([...password].every((character) => passwordAlphabet.includes(character))).toBe(true);
+    });
+
+    it('follows the minimum when it changes after the field was shown', async () => {
+      const fixture = await render();
+      expect(await generate(fixture)).toHaveLength(24);
+
+      options.set({ local: true, oidc: false, password_min_length: 40 });
+
+      expect(await generate(fixture)).toHaveLength(40);
+    });
+
+    it.each([8, 12, 16, 24])(
+      'keeps to 24 characters when the minimum is %i, which is no longer',
+      async (minimum) => {
+        options.set({ local: true, oidc: false, password_min_length: minimum });
+        const fixture = await render();
+
+        expect(await generate(fixture)).toHaveLength(24);
+      },
+    );
+
+    it('makes 24 characters while the options of the installation are not known', async () => {
+      options.set(undefined);
+      const fixture = await render();
+
+      expect(await generate(fixture)).toHaveLength(24);
     });
   });
 
   describe('what the server said about it', () => {
-    it('shows the message beside the field, and nothing when there is none', async () => {
+    const message = (fixture: ComponentFixture<Host>, testId = 'temporary-password-error') =>
+      el(fixture, testId);
+
+    it('shows the message beside the field as an alert, and nothing when there is none', async () => {
       const fixture = await render();
+      expect(message(fixture)).toBeNull();
 
       fixture.componentInstance.error.set('must be at least 12 characters');
       await settle(fixture);
-      expect(el(fixture, 'temporary-password-error')?.textContent).toBe(
-        'must be at least 12 characters',
-      );
+      expect(message(fixture)?.textContent).toBe('must be at least 12 characters');
+      expect(message(fixture)?.getAttribute('role')).toBe('alert');
 
       fixture.componentInstance.error.set(undefined);
       await settle(fixture);
-      expect(el(fixture, 'temporary-password-error')).toBeNull();
+      expect(message(fixture)).toBeNull();
+    });
+
+    it('tells assistive technology that the field is invalid and which text says why, only while there is a message', async () => {
+      const fixture = await render();
+      expect(input(fixture).getAttribute('aria-invalid')).toBe('false');
+      expect(input(fixture).hasAttribute('aria-describedby')).toBe(false);
+
+      fixture.componentInstance.error.set('must be at least 12 characters');
+      await settle(fixture);
+      expect(input(fixture).getAttribute('aria-invalid')).toBe('true');
+      expect(input(fixture).getAttribute('aria-describedby')).toBe('temporary-password-error');
+      expect(message(fixture)?.id).toBe('temporary-password-error');
+
+      fixture.componentInstance.error.set(undefined);
+      await settle(fixture);
+      expect(input(fixture).getAttribute('aria-invalid')).toBe('false');
+      expect(input(fixture).hasAttribute('aria-describedby')).toBe(false);
     });
   });
 
   describe('the test id', () => {
-    it('names the input and, with a suffix, its two buttons', async () => {
+    it('names the input and, with a suffix, its generate button, its error and its label target', async () => {
       const fixture = await render();
       fixture.componentInstance.testId.set('account-password');
+      fixture.componentInstance.error.set('refused');
       await settle(fixture);
 
       expect(input(fixture, 'account-password')).not.toBeNull();
-      expect(el(fixture, 'account-password-reveal')).not.toBeNull();
       expect(el(fixture, 'account-password-generate')).not.toBeNull();
+      expect(el(fixture, 'account-password-error')?.id).toBe('account-password-error');
+      expect(input(fixture, 'account-password').id).toBe('account-password-input');
+      expect(input(fixture, 'account-password').getAttribute('aria-describedby')).toBe(
+        'account-password-error',
+      );
       expect(el(fixture, 'temporary-password')).toBeNull();
+      expect(el(fixture, 'temporary-password-error')).toBeNull();
     });
   });
 });

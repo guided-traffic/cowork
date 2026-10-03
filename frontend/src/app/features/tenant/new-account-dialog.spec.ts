@@ -7,6 +7,7 @@ import { Select } from 'primeng/select';
 import type { MockInstance } from 'vitest';
 import { Account, Problem } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
+import { AuthService } from '../../core/auth.service';
 import { accountUsername, NewAccountDialog, roleMeanings } from './new-account-dialog';
 import { generatedLength, IssuedPassword, passwordAlphabet } from './temporary-password';
 
@@ -20,6 +21,8 @@ const made: Account = {
   deactivated_at: null,
   created_at: '2026-10-03T10:00:00Z',
 };
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function refusal(
   status: number,
@@ -78,15 +81,29 @@ describe('NewAccountDialog', () => {
     create = vi.fn<AccountsService['create']>().mockResolvedValue(made);
     warn = vi.spyOn(console, 'warn');
     TestBed.configureTestingModule({
-      providers: [MessageService, { provide: AccountsService, useValue: { create } }],
+      providers: [
+        MessageService,
+        { provide: AccountsService, useValue: { create } },
+        {
+          provide: AuthService,
+          useValue: {
+            options: {
+              hasValue: () => true,
+              value: () => ({ local: true, oidc: false, password_min_length: 12 }),
+            },
+          },
+        },
+      ],
     });
   });
 
   afterEach(() => {
-    // A field that cannot register with the form it sits in is a warning of development builds
-    // (NG01354); the dialog must not cause one.
-    expect(warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'))).toEqual([]);
+    // Restore first, so that an assertion that fails does not leave the spy behind. A field that
+    // cannot register with the form it sits in is a warning of development builds (NG01354); the
+    // dialog must not cause one.
+    const warnings = warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'));
     warn.mockRestore();
+    expect(warnings).toEqual([]);
   });
 
   async function render(visible = true) {
@@ -131,6 +148,15 @@ describe('NewAccountDialog', () => {
 
   const saveButton = (fixture: ComponentFixture<NewAccountDialog>) =>
     el(fixture, 'account-save') as HTMLButtonElement | null;
+
+  const cancelButton = (fixture: ComponentFixture<NewAccountDialog>) =>
+    el(fixture, 'account-cancel') as HTMLButtonElement | null;
+
+  /** A key press as the browser makes one: aimed at the focused element, on its way up to the document. */
+  const press = (key: string, target: EventTarget = document.body) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  const mask = () => document.querySelector('.p-dialog-mask') as HTMLElement | null;
 
   function fill(
     fixture: ComponentFixture<NewAccountDialog>,
@@ -190,6 +216,57 @@ describe('NewAccountDialog', () => {
 
       expect(fixture.componentInstance.visible()).toBe(false);
       expect(create).not.toHaveBeenCalled();
+    });
+
+    it('closes with Escape, with the cross and with a click beside it while nothing is running', async () => {
+      const fixture = await render();
+      expect(document.querySelector('.p-dialog-close-button')).not.toBeNull();
+
+      press('Escape');
+      await settle(fixture);
+      expect(fixture.componentInstance.visible()).toBe(false);
+
+      fixture.componentInstance.visible.set(true);
+      await settle(fixture);
+      mask()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await settle(fixture);
+      expect(fixture.componentInstance.visible()).toBe(false);
+    });
+  });
+
+  describe('the fields', () => {
+    it('gives the username a neutral name and tells password managers to leave it alone, so that the form does not read as a sign-up', async () => {
+      const fixture = await render();
+
+      const field = el(fixture, 'account-username') as HTMLInputElement;
+      expect(field.name).toBe('account-username');
+      expect(field.getAttribute('autocomplete')).toBe('off');
+      expect(field.getAttribute('spellcheck')).toBe('false');
+      expect(field.hasAttribute('data-1p-ignore')).toBe(true);
+      expect(field.getAttribute('data-lpignore')).toBe('true');
+      expect(field.hasAttribute('data-bwignore')).toBe(true);
+      expect(field.getAttribute('data-form-type')).toBe('other');
+    });
+
+    it('has no field that a browser could take for a password, next to the username', async () => {
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('input[type="password"]')).toBeNull();
+      expect(host(fixture).querySelector('input[name="username"]')).toBeNull();
+      expect(host(fixture).querySelector('input[autocomplete="new-password"]')).toBeNull();
+    });
+
+    it('names each text field by a label of its own, whose hint and error are not part of the name', async () => {
+      const fixture = await render();
+
+      const label = (text: string) =>
+        [...host(fixture).querySelectorAll('label')].find((each) => each.textContent === text);
+      expect((label('Username') as HTMLLabelElement).htmlFor).toBe('account-username-input');
+      expect((label('Name') as HTMLLabelElement).htmlFor).toBe('account-name-input');
+      expect((el(fixture, 'account-username') as HTMLInputElement).id).toBe(
+        'account-username-input',
+      );
+      expect((el(fixture, 'account-name') as HTMLInputElement).id).toBe('account-name-input');
     });
   });
 
@@ -350,6 +427,7 @@ describe('NewAccountDialog', () => {
 
       const sent = create.mock.calls[0][0].temporary_password;
       expect(sent).toHaveLength(generatedLength);
+      expect(generatedLength).toBe(24);
       expect([...sent].every((character) => passwordAlphabet.includes(character))).toBe(true);
     });
   });
@@ -362,12 +440,15 @@ describe('NewAccountDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith({
-        username: 'ada',
-        display_name: 'Ada Lovelace',
-        role: 'member',
-        temporary_password: ' a temporary one ',
-      });
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        {
+          username: 'ada',
+          display_name: 'Ada Lovelace',
+          role: 'member',
+          temporary_password: ' a temporary one ',
+        },
+        expect.stringMatching(uuid),
+      );
     });
 
     it('creates the account with the role that was chosen', async () => {
@@ -473,12 +554,90 @@ describe('NewAccountDialog', () => {
       await settle(fixture);
 
       expect(el(fixture, 'account-name-error')?.textContent).toBe('must not be blank');
-      expect(
-        host(fixture).querySelector('.field small.error:not([data-testid])')?.textContent,
-      ).toBe('is not a role');
-      expect(el(fixture, 'temporary-password-error')?.textContent).toBe(
+      expect(el(fixture, 'account-role-error')?.textContent).toBe('is not a role');
+      expect(el(fixture, 'account-password-error')?.textContent).toBe(
         'must be at least 12 characters',
       );
+    });
+
+    describe('for assistive technology', () => {
+      const refused = async () => {
+        create.mockRejectedValue(
+          refusal(422, 'validation_failed', [
+            { pointer: '/username', message: 'is taken' },
+            { pointer: '/display_name', message: 'must not be blank' },
+            { pointer: '/role', message: 'is not a role' },
+            { pointer: '/temporary_password', message: 'must be at least 12 characters' },
+          ]),
+        );
+        const fixture = await render();
+        fill(fixture);
+        submit(fixture);
+        await settle(fixture);
+        return fixture;
+      };
+      const combobox = (fixture: ComponentFixture<NewAccountDialog>) =>
+        el(fixture, 'account-role')?.querySelector('[role="combobox"]');
+
+      it('marks each refused field as invalid, with the text that says why, which is an alert', async () => {
+        const fixture = await refused();
+
+        for (const [field, error] of [
+          ['account-username', 'account-username-error'],
+          ['account-name', 'account-name-error'],
+          ['account-password', 'account-password-error'],
+        ]) {
+          const input = el(fixture, field) as HTMLInputElement;
+          expect(input.getAttribute('aria-invalid'), field).toBe('true');
+          expect(input.getAttribute('aria-describedby')?.split(' '), field).toContain(error);
+          expect(el(fixture, error)?.id, error).toBe(error);
+          expect(el(fixture, error)?.getAttribute('role'), error).toBe('alert');
+        }
+        expect(combobox(fixture)?.getAttribute('aria-invalid')).toBe('true');
+        expect(combobox(fixture)?.getAttribute('aria-describedby')?.split(' ')).toContain(
+          'account-role-error',
+        );
+        expect(el(fixture, 'account-role-error')?.getAttribute('role')).toBe('alert');
+      });
+
+      it('keeps the hint of the username in the description beside the error, and claims no validity while an error shows', async () => {
+        const fixture = await refused();
+
+        const input = el(fixture, 'account-username') as HTMLInputElement;
+        expect(input.getAttribute('aria-describedby')).toBe(
+          'account-username-hint account-username-error',
+        );
+        expect(input.getAttribute('aria-invalid')).not.toBe('false');
+        for (const id of input.getAttribute('aria-describedby')?.split(' ') ?? []) {
+          expect(host(fixture).querySelector(`#${id}`), id).not.toBeNull();
+        }
+      });
+
+      it('marks the select invalid in its style as well', async () => {
+        const fixture = await refused();
+
+        const select = fixture.debugElement.query(By.css('[data-testid="account-role"]'))
+          .componentInstance as Select;
+        expect(select.invalid()).toBe(true);
+      });
+
+      it('takes it all away again with the next attempt, and leaves no field claiming to be invalid', async () => {
+        const fixture = await refused();
+        let finish: (account: Account) => void = () => undefined;
+        create.mockReturnValue(new Promise<Account>((resolve) => (finish = resolve)));
+
+        submit(fixture);
+        await settle(fixture);
+
+        for (const field of ['account-username', 'account-name', 'account-password']) {
+          const input = el(fixture, field) as HTMLInputElement;
+          expect(input.getAttribute('aria-invalid'), field).toBe('false');
+          expect(input.getAttribute('aria-describedby') ?? '', field).not.toContain('-error');
+        }
+        expect(combobox(fixture)?.hasAttribute('aria-invalid')).toBe(false);
+        finish(made);
+        await settle(fixture);
+      });
     });
 
     it('toasts a problem that names no field, such as an unreachable backend', async () => {
@@ -513,6 +672,219 @@ describe('NewAccountDialog', () => {
       expect(create).toHaveBeenCalledTimes(2);
       expect(create.mock.calls[1][0].username).toBe('ada2');
       expect(fixture.componentInstance.visible()).toBe(false);
+    });
+  });
+
+  describe('while the request is out', () => {
+    let finish: (account: Account) => void;
+    let fail: (error: unknown) => void;
+
+    async function sending() {
+      create.mockReturnValue(
+        new Promise<Account>((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        }),
+      );
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      return fixture;
+    }
+
+    it('cannot be closed with Cancel, with the cross, with Escape or with a click beside it', async () => {
+      const fixture = await sending();
+
+      expect(cancelButton(fixture)?.disabled).toBe(true);
+      cancelButton(fixture)?.click();
+      expect(document.querySelector('.p-dialog-close-button')).toBeNull();
+      press('Escape');
+      press('Escape', el(fixture, 'account-username') as HTMLElement);
+      mask()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await settle(fixture);
+
+      expect(fixture.componentInstance.visible()).toBe(true);
+      expect((el(fixture, 'account-username') as HTMLInputElement).value).toBe('ada');
+      finish(made);
+      await settle(fixture);
+    });
+
+    it('shows a refusal in the form that sent it, because the form is still there', async () => {
+      const fixture = await sending();
+      press('Escape');
+
+      fail(refusal(409, 'username_taken', [{ pointer: '/username', message: 'is taken' }]));
+      await settle(fixture);
+
+      expect(fixture.componentInstance.visible()).toBe(true);
+      expect(el(fixture, 'account-username-error')?.textContent).toBe('is taken');
+      expect((el(fixture, 'account-username') as HTMLInputElement).value).toBe('ada');
+    });
+
+    it('can be closed again once the refusal is there, with Cancel, the cross and Escape', async () => {
+      const fixture = await sending();
+      fail(refusal(409, 'username_taken', [{ pointer: '/username', message: 'is taken' }]));
+      await settle(fixture);
+
+      expect(cancelButton(fixture)?.disabled).toBe(false);
+      expect(document.querySelector('.p-dialog-close-button')).not.toBeNull();
+      press('Escape');
+      await settle(fixture);
+
+      expect(fixture.componentInstance.visible()).toBe(false);
+    });
+
+    it('closes by itself when the account is made, and the page gets the password', async () => {
+      const issued: IssuedPassword[] = [];
+      const fixture = await sending();
+      fixture.componentInstance.created.subscribe((each) => issued.push(each));
+
+      finish(made);
+      await settle(fixture);
+
+      expect(fixture.componentInstance.visible()).toBe(false);
+      expect(issued).toEqual([{ account: made, password: 'a-temporary-one' }]);
+    });
+
+    it('toasts a refusal that arrives after the page has closed the dialog, and keeps no error for the next form', async () => {
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await sending();
+
+      // The page leaves the tenant and closes the dialog it opened, whatever the request is doing.
+      fixture.componentInstance.visible.set(false);
+      await settle(fixture);
+      fail(refusal(409, 'username_taken', [{ pointer: '/username', message: 'is taken' }]));
+      await settle(fixture);
+
+      expect(add).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ summary: 'The account is not valid' }),
+      );
+      fixture.componentInstance.visible.set(true);
+      await settle(fixture);
+      expect(el(fixture, 'account-username-error')).toBeNull();
+      expect(
+        (el(fixture, 'account-username') as HTMLInputElement).getAttribute('aria-invalid'),
+      ).toBe('false');
+    });
+  });
+
+  describe('the key of the act (docs/adr/0045)', () => {
+    const keyOf = (call: number) => create.mock.calls[call][1];
+    const lost = () => new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' });
+
+    it('is a UUID of its own, and not the same one for two forms', async () => {
+      const first = await render();
+      fill(first);
+      submit(first);
+      await settle(first);
+      const second = await render();
+      fill(second);
+      submit(second);
+      await settle(second);
+
+      expect(keyOf(0)).toMatch(uuid);
+      expect(keyOf(1)).toMatch(uuid);
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('is the same for a retry of the same content after a network failure, so that a lost answer is answered again', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(keyOf(1)).toBe(keyOf(0));
+      expect(create.mock.calls[1][0]).toEqual(create.mock.calls[0][0]);
+    });
+
+    it.each([
+      ['the username', 'account-username', 'ada2'],
+      ['the name', 'account-name', 'Ada L. Lovelace'],
+      ['the password', 'account-password', 'another-temporary-one'],
+    ])(
+      'is another one as soon as %s is changed, because the body is another',
+      async (_what, field, value) => {
+        create.mockRejectedValueOnce(lost());
+        const fixture = await render();
+        fill(fixture);
+        submit(fixture);
+        await settle(fixture);
+
+        typeInto(fixture, field, value);
+        submit(fixture);
+        await settle(fixture);
+
+        expect(create).toHaveBeenCalledTimes(2);
+        expect(keyOf(1)).not.toBe(keyOf(0));
+      },
+    );
+
+    it('is another one as soon as the role is changed', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      choose(fixture, 'admin');
+      submit(fixture);
+      await settle(fixture);
+
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('is another one once the content was changed at all, even when it is changed back: the key follows changes', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      typeInto(fixture, 'account-name', 'Somebody else');
+      typeInto(fixture, 'account-name', 'Ada Lovelace');
+      submit(fixture);
+      await settle(fixture);
+
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('is reset by closing the form: the same content typed again into a new form is a new act', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      cancelButton(fixture)?.click();
+      await settle(fixture);
+      fixture.componentInstance.visible.set(true);
+      await settle(fixture);
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('does not change while the person only looks at the form', async () => {
+      create.mockRejectedValueOnce(lost());
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      await settle(fixture);
+      fixture.detectChanges();
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(keyOf(1)).toBe(keyOf(0));
     });
   });
 });

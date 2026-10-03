@@ -151,7 +151,7 @@ describe('TokensService', () => {
       expect(ids()).toEqual(['a', 'b']);
     });
 
-    it('keeps each token as the API lists it, with its state, and never holds a plaintext', async () => {
+    it('keeps each token as the API lists it, with its state', async () => {
       const dead = token('x', { state: 'revoked', revoked_at: '2026-10-02T10:00:00Z' });
       page().flush({
         items: [token('w', { agent: true, capabilities: ['rank'] }), dead],
@@ -161,7 +161,6 @@ describe('TokensService', () => {
 
       expect(service.list().map((entry) => entry.state)).toEqual(['active', 'revoked']);
       expect(service.list()[0].capabilities).toEqual(['rank']);
-      expect(JSON.stringify(service.list())).not.toContain('cwk_');
     });
 
     it('lists nothing when a page fails, and says why', async () => {
@@ -241,7 +240,7 @@ describe('TokensService', () => {
       expect(keys[0]).not.toBe(keys[1]);
     });
 
-    it('loads the list again after the answer, so that the new token shows, and never lists a plaintext', async () => {
+    it('loads the list again after the answer, so that the new token shows', async () => {
       const done = service.create(body);
       await settle();
       http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
@@ -255,6 +254,23 @@ describe('TokensService', () => {
       await settle();
 
       expect(ids()).toEqual(['a', 'new']);
+    });
+
+    it('does not put the answer of the creation into the list, which would show the plaintext until the list is loaded again', async () => {
+      const done = service.create(body);
+      write().flush(created());
+      const answer = await done;
+      await settle();
+
+      // The list is asked for again but has not answered: what it holds now is what it held before,
+      // and the answer that carries the plaintext is nowhere in it.
+      const again = page();
+      expect(answer.token).toBe(plaintext);
+      expect(ids()).toEqual(['a']);
+      expect(JSON.stringify(service.list())).not.toContain(plaintext);
+      expect(JSON.stringify(service.tokens.value())).not.toContain(plaintext);
+      again.flush({ items: [token('a'), token('new', { name: 'ci' })], next_cursor: null });
+      await settle();
       expect(JSON.stringify(service.list())).not.toContain(plaintext);
     });
 

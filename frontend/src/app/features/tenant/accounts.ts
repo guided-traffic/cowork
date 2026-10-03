@@ -15,6 +15,7 @@ import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { Account, Role } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
+import { HARD_NAVIGATION } from '../../core/hard-navigation';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
@@ -37,7 +38,10 @@ export const flagMeanings = {
  * a temporary password, resetting a password, unlocking, ending the sessions and deactivating. A
  * temporary password is shown once, in a dialog, and held nowhere else. The server decides who may
  * do what; the page offers only what it will accept: nothing on the administrator's own row but
- * ending their sessions, and nothing on a deactivated one.
+ * ending their sessions, and nothing on a deactivated one. Ending sessions and deactivating ask
+ * first, with the focus on the button that does nothing. Ending the sessions of the
+ * administrator's own account ends the one this page runs in, so it is followed by a new document
+ * at the login page.
  */
 @Component({
   selector: 'app-accounts',
@@ -63,6 +67,7 @@ export class Accounts {
   private readonly problems = inject(ProblemService);
   private readonly messages = inject(MessageService);
   private readonly confirm = inject(ConfirmationService);
+  private readonly navigate = inject(HARD_NAVIGATION);
 
   protected readonly flags = flagMeanings;
   protected readonly dateTime = dateTime;
@@ -112,16 +117,38 @@ export class Accounts {
   }
 
   protected unlock(account: Account): void {
-    void this.run(() => this.accounts.unlock(account.username), {
-      summary: 'Account unlocked',
-      detail: `${account.username} can try to log in again.`,
-    });
+    void this.run(
+      () => this.accounts.unlock(account.username),
+      this.said('Account unlocked', `${account.username} can try to log in again.`),
+    );
   }
 
+  /**
+   * Ends every session of the account, which leaves its tokens as they are: a token made from a
+   * stolen session keeps working, and only deactivating the account revokes it. The text says so.
+   */
   protected endSessions(account: Account): void {
-    void this.run(() => this.accounts.endSessions(account.username), {
-      summary: 'Sessions ended',
-      detail: `${account.username} is signed out everywhere.`,
+    const own = this.isOwn(account);
+    this.confirm.confirm({
+      header: `End the sessions of ${account.username}?`,
+      message: own
+        ? 'Every session of your account ends, this one too: you are signed out here at once, ' +
+          'and in every other browser and tab. Your tokens are not affected.'
+        : `Every session of ${account.username} ends, and they sign in again. Their tokens are not ` +
+          'affected and keep working; only deactivating the account revokes them.',
+      acceptLabel: 'End sessions',
+      rejectLabel: 'Keep them',
+      defaultFocus: 'reject',
+      accept: () =>
+        this.run(
+          () => this.accounts.endSessions(account.username),
+          own
+            ? () => this.navigate('/login')
+            : this.said(
+                'Sessions ended',
+                `Every session of ${account.username} has ended. Their tokens are not affected.`,
+              ),
+        ),
     });
   }
 
@@ -134,18 +161,25 @@ export class Accounts {
       acceptLabel: 'Deactivate',
       rejectLabel: 'Keep it',
       acceptButtonProps: { severity: 'danger' },
+      // Nothing reactivates it: an Enter that comes a moment late must not confirm it.
+      defaultFocus: 'reject',
       accept: () =>
-        this.run(() => this.accounts.deactivate(account.username), {
-          summary: 'Account deactivated',
-          detail: `${account.username} cannot log in any more.`,
-        }),
+        this.run(
+          () => this.accounts.deactivate(account.username),
+          this.said('Account deactivated', `${account.username} cannot log in any more.`),
+        ),
     });
   }
 
-  private async run(act: () => Promise<void>, done: { summary: string; detail: string }) {
+  /** The toast that says an act is done. */
+  private said(summary: string, detail: string): () => void {
+    return () => this.messages.add({ severity: 'success', summary, detail, life: 4000 });
+  }
+
+  private async run(act: () => Promise<void>, done: () => void): Promise<void> {
     try {
       await act();
-      this.messages.add({ severity: 'success', ...done, life: 4000 });
+      done();
     } catch (error) {
       this.problems.report(error);
     }

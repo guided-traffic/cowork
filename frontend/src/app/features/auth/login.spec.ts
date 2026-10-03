@@ -1,11 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
 import { AuthOptions, LocalLoginResult, Problem } from '../../api/models';
 import { AuthService } from '../../core/auth.service';
+import { HARD_NAVIGATION, HardNavigation } from '../../core/hard-navigation';
 import { Login, safeReturn } from './login';
 
 describe('safeReturn', () => {
@@ -37,6 +37,13 @@ describe('safeReturn', () => {
   });
 });
 
+/** What the installation offers on the login page, with the minimum password length of the default. */
+const offered = (local: boolean, oidc: boolean): AuthOptions => ({
+  local,
+  oidc,
+  password_min_length: 12,
+});
+
 describe('Login', () => {
   let options: {
     isLoading: WritableSignal<boolean>;
@@ -45,10 +52,10 @@ describe('Login', () => {
     hasValue: () => boolean;
   };
   let login: MockInstance<AuthService['login']>;
-  let navigateByUrl: MockInstance<Router['navigateByUrl']>;
+  let navigate: MockInstance<HardNavigation>;
 
   beforeEach(() => {
-    const value = signal<AuthOptions | undefined>({ local: true, oidc: false });
+    const value = signal<AuthOptions | undefined>(offered(true, false));
     options = {
       isLoading: signal(false),
       error: signal<unknown>(undefined),
@@ -58,14 +65,14 @@ describe('Login', () => {
     login = vi
       .fn<AuthService['login']>()
       .mockResolvedValue({ password_change_required: false } satisfies LocalLoginResult);
+    navigate = vi.fn<HardNavigation>();
     TestBed.configureTestingModule({
       providers: [
-        provideRouter([]),
         MessageService,
         { provide: AuthService, useValue: { options, login } },
+        { provide: HARD_NAVIGATION, useValue: navigate },
       ],
     });
-    navigateByUrl = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   });
 
   async function render(back?: string) {
@@ -150,7 +157,7 @@ describe('Login', () => {
     });
 
     it('offers a notice and no form when the installation has no login at all', async () => {
-      options.value.set({ local: false, oidc: false });
+      options.value.set(offered(false, false));
 
       const fixture = await render();
 
@@ -171,7 +178,7 @@ describe('Login', () => {
     });
 
     it('offers no local form and no notice when only an identity provider is configured', async () => {
-      options.value.set({ local: false, oidc: true });
+      options.value.set(offered(false, true));
 
       const fixture = await render();
 
@@ -180,7 +187,7 @@ describe('Login', () => {
     });
 
     it('offers the form together with an identity provider when the installation has both', async () => {
-      options.value.set({ local: true, oidc: true });
+      options.value.set(offered(true, true));
 
       const fixture = await render();
 
@@ -194,7 +201,7 @@ describe('Login', () => {
       const fixture = await render();
       expect(host(fixture).querySelector('form')).toBeNull();
 
-      options.value.set({ local: true, oidc: false });
+      options.value.set(offered(true, false));
       options.isLoading.set(false);
       await settle(fixture);
 
@@ -285,7 +292,7 @@ describe('Login', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/');
     });
 
     it('goes back to the page the person came from', async () => {
@@ -295,7 +302,7 @@ describe('Login', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/t/acme/tickets/COW-12');
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/t/acme/tickets/COW-12');
     });
 
     it.each(['//evil.example', '/\\evil.example', 'https://evil.example', 'javascript:alert(1)'])(
@@ -307,7 +314,7 @@ describe('Login', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+        expect(navigate).toHaveBeenCalledExactlyOnceWith('/');
       },
     );
 
@@ -329,7 +336,7 @@ describe('Login', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(
         `/password?return=${encodeURIComponent('/t/acme/tickets/COW-12?tab=activity')}`,
       );
     });
@@ -342,7 +349,7 @@ describe('Login', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(
         `/password?return=${encodeURIComponent('/')}`,
       );
     });
@@ -366,7 +373,7 @@ describe('Login', () => {
       finish({ password_change_required: false });
       await settle(fixture);
 
-      expect(navigateByUrl).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledOnce();
     });
   });
 
@@ -385,7 +392,7 @@ describe('Login', () => {
 
       expect(el(fixture, 'login-error')?.textContent).toBe('The name or the password is wrong.');
       expect(el(fixture, 'login-error')?.getAttribute('role')).toBe('alert');
-      expect(navigateByUrl).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
     });
 
     it('does not repeat what the server said about the account on a 401', async () => {
@@ -443,7 +450,7 @@ describe('Login', () => {
       await settle(fixture);
 
       expect(el(fixture, 'login-error')).toBeNull();
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/');
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/');
     });
   });
 });

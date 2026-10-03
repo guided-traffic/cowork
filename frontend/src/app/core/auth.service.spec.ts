@@ -126,7 +126,6 @@ describe('AuthService', () => {
       expect(request.request.body).toEqual({ username: 'hans', password: 's3cret' });
       request.flush({ password_change_required: false });
       await done;
-      (await meAgain()).flush(hans);
     });
 
     it('hands on whether the password has to be changed', async () => {
@@ -135,22 +134,16 @@ describe('AuthService', () => {
       http.expectOne('/auth/local').flush({ password_change_required: true });
 
       expect(await done).toEqual({ password_change_required: true });
-      (await meAgain()).flush(hans);
     });
 
-    it('asks who is working again once the session exists, so that the pages show the person', async () => {
-      expect(session.person()).toBeUndefined();
+    it('does not ask who is working: the login page replaces the document, and the new one asks', async () => {
       const done = service.login('hans', 's3cret');
       http.expectOne('/auth/local').flush({ password_change_required: false });
       await done;
-
-      const again = await meAgain();
-      expect(session.me.status()).toBe('reloading');
-      again.flush(hans);
       await settle();
 
-      expect(session.person()?.display_name).toBe('Hans');
-      expect(session.memberships()).toEqual(hans.memberships);
+      http.expectNone('/api/v1/me');
+      expect(session.person()).toBeUndefined();
     });
 
     it('rejects with the HTTP error of a wrong password and does not ask who is working', async () => {
@@ -191,9 +184,7 @@ describe('AuthService', () => {
     it('asks who is working again, so that a required change is no longer required', async () => {
       session.me.set({ ...hans, password_change_required: true });
       const done = service.changePassword('initial', 'correct horse battery');
-      http
-        .expectOne('/api/v1/me/password')
-        .flush(null, { status: 204, statusText: 'No Content' });
+      http.expectOne('/api/v1/me/password').flush(null, { status: 204, statusText: 'No Content' });
       await done;
 
       (await meAgain()).flush({ ...hans, password_change_required: false });
@@ -238,21 +229,15 @@ describe('AuthService', () => {
       expect(request.request.body).toBeNull();
       request.flush(null, { status: 204, statusText: 'No Content' });
       await done;
-      (await meAgain()).flush(unauthenticated, unauthorized);
     });
 
-    it('asks who is working again once the session is gone, so that the pages drop the person', async () => {
-      expect(session.person()?.display_name).toBe('Hans');
+    it('does not ask who is working: that answer would be a 401 racing the way to the login', async () => {
       const done = service.logout();
       http.expectOne('/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
       await done;
-
-      (await meAgain()).flush(unauthenticated, unauthorized);
       await settle();
 
-      expect(session.me.status()).toBe('error');
-      expect(session.person()).toBeUndefined();
-      expect(session.memberships()).toEqual([]);
+      http.expectNone('/api/v1/me');
     });
 
     it('rejects with the HTTP error when the backend refuses, and keeps the person', async () => {

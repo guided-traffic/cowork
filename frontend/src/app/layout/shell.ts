@@ -20,6 +20,7 @@ import { catchError, of } from 'rxjs';
 import { Wordmark } from '../brand/logo';
 import { AuthService } from '../core/auth.service';
 import { EventStreamService } from '../core/event-stream.service';
+import { HARD_NAVIGATION } from '../core/hard-navigation';
 import { ProblemService } from '../core/problem.service';
 import { ProjectsService } from '../core/projects.service';
 import { TenantService } from '../core/tenant.service';
@@ -92,6 +93,7 @@ export class Shell {
 
   private readonly auth = inject(AuthService);
   private readonly problems = inject(ProblemService);
+  private readonly navigate = inject(HARD_NAVIGATION);
 
   /** The person's own menu: who is signed in, their tokens, their password, the way out. */
   protected readonly meItems = computed<MenuItem[]>(() => {
@@ -118,10 +120,11 @@ export class Shell {
     });
   }
 
+  /** Signing out ends with a new document, so that the next person in this tab starts from nothing. */
   protected async signOut(): Promise<void> {
     try {
       await this.auth.logout();
-      await this.router.navigate(['/login']);
+      this.navigate('/login');
     } catch (error) {
       this.problems.report(error);
     }

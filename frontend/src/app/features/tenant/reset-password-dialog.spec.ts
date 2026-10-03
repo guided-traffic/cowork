@@ -6,6 +6,7 @@ import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
 import { Account, Problem } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
+import { AuthService } from '../../core/auth.service';
 import { ResetPasswordDialog } from './reset-password-dialog';
 import { generatedLength, IssuedPassword, passwordAlphabet } from './temporary-password';
 
@@ -40,15 +41,29 @@ describe('ResetPasswordDialog', () => {
     reset = vi.fn<AccountsService['reset']>().mockResolvedValue(undefined);
     warn = vi.spyOn(console, 'warn');
     TestBed.configureTestingModule({
-      providers: [MessageService, { provide: AccountsService, useValue: { reset } }],
+      providers: [
+        MessageService,
+        { provide: AccountsService, useValue: { reset } },
+        {
+          provide: AuthService,
+          useValue: {
+            options: {
+              hasValue: () => true,
+              value: () => ({ local: true, oidc: false, password_min_length: 12 }),
+            },
+          },
+        },
+      ],
     });
   });
 
   afterEach(() => {
-    // A field that cannot register with the form it sits in is a warning of development builds
-    // (NG01354); the dialog must not cause one.
-    expect(warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'))).toEqual([]);
+    // Restore first, so that an assertion that fails does not leave the spy behind. A field that
+    // cannot register with the form it sits in is a warning of development builds (NG01354); the
+    // dialog must not cause one.
+    const warnings = warn.mock.calls.filter((call) => String(call[0]).includes('NG01354'));
     warn.mockRestore();
+    expect(warnings).toEqual([]);
   });
 
   async function render(account: Account | null = sam) {
@@ -86,6 +101,15 @@ describe('ResetPasswordDialog', () => {
 
   const saveButton = (fixture: ComponentFixture<ResetPasswordDialog>) =>
     el(fixture, 'reset-save') as HTMLButtonElement | null;
+
+  const cancelButton = (fixture: ComponentFixture<ResetPasswordDialog>) =>
+    el(fixture, 'reset-cancel') as HTMLButtonElement | null;
+
+  /** A key press as the browser makes one: aimed at the focused element, on its way up to the document. */
+  const press = (key: string, target: EventTarget = document.body) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  const mask = () => document.querySelector('.p-dialog-mask') as HTMLElement | null;
 
   describe('the dialog', () => {
     it('is closed while it holds no account', async () => {
@@ -139,6 +163,21 @@ describe('ResetPasswordDialog', () => {
       expect(reset).not.toHaveBeenCalled();
     });
 
+    it('closes with Escape, with the cross and with a click beside it while nothing is running', async () => {
+      const fixture = await render();
+      expect(document.querySelector('.p-dialog-close-button')).not.toBeNull();
+
+      press('Escape');
+      await settle(fixture);
+      expect(fixture.componentInstance.account()).toBeNull();
+
+      fixture.componentInstance.account.set(sam);
+      await settle(fixture);
+      mask()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await settle(fixture);
+      expect(fixture.componentInstance.account()).toBeNull();
+    });
+
     it('follows the account it is given when it is opened for another one', async () => {
       const fixture = await render();
 
@@ -172,6 +211,7 @@ describe('ResetPasswordDialog', () => {
       await settle(fixture);
 
       const sent = reset.mock.calls[0][1];
+      expect(generatedLength).toBe(24);
       expect(sent).toHaveLength(generatedLength);
       expect([...sent].every((character) => passwordAlphabet.includes(character))).toBe(true);
     });
@@ -277,7 +317,7 @@ describe('ResetPasswordDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(el(fixture, 'temporary-password-error')?.textContent).toBe(
+      expect(el(fixture, 'reset-password-error')?.textContent).toBe(
         'must be at least 12 characters',
       );
       expect(fixture.componentInstance.account()).toBe(sam);
@@ -298,7 +338,7 @@ describe('ResetPasswordDialog', () => {
       expect(add).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ summary: 'The password is not valid' }),
       );
-      expect(el(fixture, 'temporary-password-error')).toBeNull();
+      expect(el(fixture, 'reset-password-error')).toBeNull();
       expect(fixture.componentInstance.account()).toBe(sam);
     });
 
@@ -310,7 +350,7 @@ describe('ResetPasswordDialog', () => {
       typePassword(fixture, 'short');
       submit(fixture);
       await settle(fixture);
-      expect(el(fixture, 'temporary-password-error')).not.toBeNull();
+      expect(el(fixture, 'reset-password-error')).not.toBeNull();
 
       typePassword(fixture, 'a-long-enough-one');
       submit(fixture);
@@ -318,6 +358,159 @@ describe('ResetPasswordDialog', () => {
 
       expect(reset).toHaveBeenCalledTimes(2);
       expect(fixture.componentInstance.account()).toBeNull();
+    });
+  });
+
+  describe('for assistive technology', () => {
+    it('marks the password as invalid after a refusal, with the text that says why, which is an alert', async () => {
+      reset.mockRejectedValue(
+        refusal(422, [
+          { pointer: '/temporary_password', message: 'must be at least 12 characters' },
+        ]),
+      );
+      const fixture = await render();
+      typePassword(fixture, 'short');
+      const field = el(fixture, 'reset-password') as HTMLInputElement;
+      expect(field.getAttribute('aria-invalid')).toBe('false');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      expect(field.getAttribute('aria-describedby')).toBe('reset-password-error');
+      expect(el(fixture, 'reset-password-error')?.id).toBe('reset-password-error');
+      expect(el(fixture, 'reset-password-error')?.getAttribute('role')).toBe('alert');
+    });
+
+    it('takes it away again with the next attempt', async () => {
+      reset.mockRejectedValueOnce(
+        refusal(422, [{ pointer: '/temporary_password', message: 'too short' }]),
+      );
+      const fixture = await render();
+      typePassword(fixture, 'short');
+      submit(fixture);
+      await settle(fixture);
+      let finish: () => void = () => undefined;
+      reset.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+
+      typePassword(fixture, 'a-long-enough-one');
+      submit(fixture);
+      await settle(fixture);
+
+      const field = el(fixture, 'reset-password') as HTMLInputElement;
+      expect(field.getAttribute('aria-invalid')).toBe('false');
+      expect(field.hasAttribute('aria-describedby')).toBe(false);
+      finish();
+      await settle(fixture);
+    });
+  });
+
+  describe('while the request is out', () => {
+    let finish: () => void;
+    let fail: (error: unknown) => void;
+
+    async function sending() {
+      reset.mockReturnValue(
+        new Promise<void>((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        }),
+      );
+      const fixture = await render();
+      typePassword(fixture, 'a-temporary-one');
+      submit(fixture);
+      await settle(fixture);
+      return fixture;
+    }
+
+    it('cannot be closed with Cancel, with the cross, with Escape or with a click beside it', async () => {
+      const fixture = await sending();
+
+      expect(cancelButton(fixture)?.disabled).toBe(true);
+      cancelButton(fixture)?.click();
+      expect(document.querySelector('.p-dialog-close-button')).toBeNull();
+      press('Escape');
+      press('Escape', el(fixture, 'reset-password') as HTMLElement);
+      mask()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await settle(fixture);
+
+      expect(fixture.componentInstance.account()).toBe(sam);
+      expect((el(fixture, 'reset-password') as HTMLInputElement).value).toBe('a-temporary-one');
+      finish();
+      await settle(fixture);
+    });
+
+    it('shows a refusal in the form that sent it, because the form is still there', async () => {
+      const fixture = await sending();
+      press('Escape');
+
+      fail(
+        refusal(422, [
+          { pointer: '/temporary_password', message: 'must be at least 12 characters' },
+        ]),
+      );
+      await settle(fixture);
+
+      expect(fixture.componentInstance.account()).toBe(sam);
+      expect(el(fixture, 'reset-password-error')?.textContent).toBe(
+        'must be at least 12 characters',
+      );
+    });
+
+    it('can be closed again once the refusal is there, with Cancel, the cross and Escape', async () => {
+      const fixture = await sending();
+      fail(refusal(422, [{ pointer: '/temporary_password', message: 'too short' }]));
+      await settle(fixture);
+
+      expect(cancelButton(fixture)?.disabled).toBe(false);
+      expect(document.querySelector('.p-dialog-close-button')).not.toBeNull();
+      press('Escape');
+      await settle(fixture);
+
+      expect(fixture.componentInstance.account()).toBeNull();
+    });
+
+    it('closes by itself when the password is set, and the page gets it', async () => {
+      const issued: IssuedPassword[] = [];
+      const fixture = await sending();
+      fixture.componentInstance.passwordSet.subscribe((each) => issued.push(each));
+
+      finish();
+      await settle(fixture);
+
+      expect(fixture.componentInstance.account()).toBeNull();
+      expect(issued).toEqual([{ account: sam, password: 'a-temporary-one' }]);
+    });
+
+    it('toasts a refusal that arrives after the page has closed the dialog, and keeps no error for the next account', async () => {
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await sending();
+
+      // The page leaves the tenant and closes the dialog it opened, whatever the request is doing.
+      fixture.componentInstance.account.set(null);
+      await settle(fixture);
+      fail(refusal(422, [{ pointer: '/temporary_password', message: 'too short' }]));
+      await settle(fixture);
+
+      expect(add).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ summary: 'The password is not valid' }),
+      );
+      fixture.componentInstance.account.set({ ...sam, username: 'kim' });
+      await settle(fixture);
+      expect(el(fixture, 'reset-password-error')).toBeNull();
+    });
+
+    it('toasts a refusal that arrives after the dialog was opened for another account, and shows it under nobody', async () => {
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await sending();
+
+      fixture.componentInstance.account.set({ ...sam, username: 'kim' });
+      await settle(fixture);
+      fail(refusal(422, [{ pointer: '/temporary_password', message: 'too short' }]));
+      await settle(fixture);
+
+      expect(add).toHaveBeenCalledOnce();
+      expect(el(fixture, 'reset-password-error')).toBeNull();
     });
   });
 });

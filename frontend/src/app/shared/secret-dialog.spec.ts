@@ -30,9 +30,17 @@ describe('SecretDialog', () => {
   });
 
   afterEach(() => {
+    // Restore first: an assertion that fails must not leave a spy behind for the next test.
+    vi.restoreAllMocks();
     // jsdom has no clipboard of its own: leave it as it was found.
     delete (navigator as unknown as Record<string, unknown>)['clipboard'];
   });
+
+  /** Whether the secret is anywhere a person or a script could read it: in the markup, in a field, in the text. */
+  const pageHolds = (text: string) =>
+    document.body.innerHTML.includes(text) ||
+    document.body.textContent?.includes(text) === true ||
+    [...document.querySelectorAll('input')].some((input) => input.value.includes(text));
 
   async function render(value: string | null = secret) {
     const fixture = TestBed.createComponent(Host);
@@ -88,12 +96,15 @@ describe('SecretDialog', () => {
       expect(el(fixture, 'warning')?.textContent).toBe('Shown once.');
     });
 
-    it('is not closed by a click beside it, because what it shows cannot be shown again', async () => {
+    it('can be closed by nothing but its own button, because what it shows cannot be shown again', async () => {
       const fixture = await render();
 
       const dialog = fixture.debugElement.query(By.directive(Dialog)).componentInstance as Dialog;
-      expect(dialog.dismissableMask()).toBe(false);
       expect(dialog.modal()).toBe(true);
+      expect(dialog.closable()).toBe(false);
+      expect(dialog.closeOnEscape()).toBe(false);
+      expect(dialog.dismissableMask()).toBe(false);
+      expect(document.querySelector('.p-dialog-close-button')).toBeNull();
     });
 
     it('follows the secret when a new one is set while it is open', async () => {
@@ -126,32 +137,41 @@ describe('SecretDialog', () => {
       expect(field(fixture)).toBeNull();
     });
 
-    it('forgets the secret when the dialog asks to be closed, such as with Escape or the cross', async () => {
+    it('keeps the secret on Escape, which is pressed as a habit and would throw it away', async () => {
       const fixture = await render();
 
-      fixture.debugElement.query(By.css('p-dialog')).triggerEventHandler('visibleChange', false);
-      await settle(fixture);
-
-      expect(fixture.componentInstance.value()).toBeNull();
-      expect(field(fixture)).toBeNull();
-    });
-
-    it('keeps the secret when the dialog tells that it is visible', async () => {
-      const fixture = await render();
-
-      fixture.debugElement.query(By.css('p-dialog')).triggerEventHandler('visibleChange', true);
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      field(fixture)?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
       await settle(fixture);
 
       expect(fixture.componentInstance.value()).toBe(secret);
+      expect(field(fixture)?.value).toBe(secret);
     });
 
-    it('leaves no copy of the secret in the page once it is closed', async () => {
+    it('keeps the secret on a click beside the dialog', async () => {
       const fixture = await render();
+
+      document
+        .querySelector('.p-dialog-mask')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await settle(fixture);
+
+      expect(fixture.componentInstance.value()).toBe(secret);
+      expect(field(fixture)?.value).toBe(secret);
+    });
+
+    it('leaves no copy of the secret in the page once it is closed, and had one while it was open', async () => {
+      const fixture = await render();
+      expect(pageHolds(secret)).toBe(true);
 
       el(fixture, 'secret-done')?.click();
       await settle(fixture);
 
-      expect(document.body.innerHTML).not.toContain(secret);
+      expect(pageHolds(secret)).toBe(false);
     });
 
     it('stores the secret nowhere', async () => {
@@ -167,7 +187,6 @@ describe('SecretDialog', () => {
       expect(JSON.stringify({ ...localStorage })).not.toContain(secret);
       expect(JSON.stringify({ ...sessionStorage })).not.toContain(secret);
       expect(location.href).not.toContain(secret);
-      setItem.mockRestore();
     });
   });
 

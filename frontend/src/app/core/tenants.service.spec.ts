@@ -26,8 +26,6 @@ const acme: Tenant = {
   updated_at: '2026-10-03T10:00:00Z',
 };
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 const rejection = (promise: Promise<unknown>) =>
   promise.then(
     () => null,
@@ -52,6 +50,7 @@ describe('TenantsService', () => {
   const write = () =>
     http.expectOne((request) => request.method === 'POST' && request.url === '/api/v1/tenants');
   const body = { slug: 'acme', name: 'Acme Corp' };
+  const key = '0199aaaa-2222-7000-8000-000000000001';
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -76,7 +75,7 @@ describe('TenantsService', () => {
   });
 
   it('posts the slug and the name to /api/v1/tenants and hands back the tenant that was made', async () => {
-    const done = service.create(body);
+    const done = service.create(body, key);
 
     const sent = write();
     expect(sent.request.url).toBe('/api/v1/tenants');
@@ -89,31 +88,46 @@ describe('TenantsService', () => {
     http.expectOne('/api/v1/me').flush(administrator());
   });
 
-  it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-    const first = service.create(body);
-    const one = write();
-    one.flush(acme);
-    await first;
+  it('sends the key it is given, not one of its own (docs/adr/0045 D3)', async () => {
+    const done = service.create(body, key);
+
+    const sent = write();
+    expect(sent.request.headers.get('Idempotency-Key')).toBe(key);
+    sent.flush(acme);
+    await done;
+    await settle();
+    http.expectOne('/api/v1/me').flush(administrator());
+  });
+
+  it('sends the same key again for a retry of the same content after a network failure, and another one for other content', async () => {
+    const lost = rejection(service.create(body, key));
+    write().error(new ProgressEvent('error'));
+    expect(((await lost) as HttpErrorResponse).status).toBe(0);
+    await settle();
+    http.expectNone('/api/v1/me');
+
+    const retry = service.create(body, key);
+    const again = write();
+    expect(again.request.headers.get('Idempotency-Key')).toBe(key);
+    again.flush(acme);
+    await retry;
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
     await settle();
 
-    const second = service.create({ slug: 'globex', name: 'Globex' });
-    const two = write();
-    two.flush({ ...acme, slug: 'globex' });
-    await second;
+    const other = '0199aaaa-2222-7000-8000-000000000002';
+    const changed = service.create({ slug: 'globex', name: 'Globex' }, other);
+    const third = write();
+    expect(third.request.headers.get('Idempotency-Key')).toBe(other);
+    third.flush({ ...acme, slug: 'globex' });
+    await changed;
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
-
-    const keys = [one, two].map((sent) => sent.request.headers.get('Idempotency-Key'));
-    expect(keys[0]).toMatch(uuid);
-    expect(keys[1]).toMatch(uuid);
-    expect(keys[0]).not.toBe(keys[1]);
   });
 
   it('loads the person again, so that the new membership is there for the pages of the tenant', async () => {
     expect(session.memberships()).toEqual([]);
-    const done = service.create(body);
+    const done = service.create(body, key);
     await settle();
     http.expectNone('/api/v1/me');
     write().flush(acme);
@@ -135,7 +149,7 @@ describe('TenantsService', () => {
     await settle();
     const inFlight = http.expectOne('/api/v1/me');
 
-    const done = service.create(body);
+    const done = service.create(body, key);
     write().flush(acme);
     await done;
     await settle();
@@ -156,7 +170,7 @@ describe('TenantsService', () => {
   ])(
     'rejects with the HTTP error of a %i (%s) and does not load the person again',
     async (status, code) => {
-      const outcome = rejection(service.create(body));
+      const outcome = rejection(service.create(body, key));
 
       write().flush(
         { type: 'about:blank', title: 'Refused', status, code },

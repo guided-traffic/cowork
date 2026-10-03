@@ -15,10 +15,12 @@ import { InputText } from 'primeng/inputtext';
 /**
  * Shows a secret that cowork shows exactly once — a new token's plaintext, a temporary password —
  * with a button that copies it. The secret is the parent's signal and it is the only place the page
- * holds it: closing the dialog in any way sets it to `null`, and nothing here writes it anywhere
- * else (no storage, no URL, no log). The projected content is the warning that says what the secret
- * is and what holding it means; a click beside the dialog does not close it, because what it shows
- * cannot be shown again.
+ * holds it: the one way out is the button that says it is stored, which sets it to `null`, and
+ * nothing here writes it anywhere else (no storage, no URL, no log) — except the copy button,
+ * which puts the secret on the system clipboard, where cowork cannot reach it again and where a
+ * clipboard history may keep it. The projected content is the warning that says what the secret is
+ * and what holding it means. Escape, the cross and a click beside the dialog do not close it,
+ * because what it shows cannot be shown again.
  */
 @Component({
   selector: 'app-secret-dialog',
@@ -27,9 +29,10 @@ import { InputText } from 'primeng/inputtext';
   template: `
     <p-dialog
       [visible]="open()"
-      (visibleChange)="closed($event)"
       [modal]="true"
       [draggable]="false"
+      [closable]="false"
+      [closeOnEscape]="false"
       [dismissableMask]="false"
       [style]="{ width: '36rem' }"
       [header]="header()"
@@ -141,12 +144,6 @@ export class SecretDialog {
     computation: () => 'idle',
   });
   private readonly field = viewChild<ElementRef<HTMLInputElement>>('field');
-
-  protected closed(visible: boolean): void {
-    if (!visible) {
-      this.secret.set(null);
-    }
-  }
 
   protected selectAll(event: Event): void {
     (event.target as HTMLInputElement).select();

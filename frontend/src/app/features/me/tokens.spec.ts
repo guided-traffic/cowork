@@ -128,6 +128,9 @@ describe('Tokens', () => {
     });
   });
 
+  // Whatever a test spied on goes back, also when an assertion of the test has failed.
+  afterEach(() => vi.restoreAllMocks());
+
   async function render() {
     const fixture = TestBed.createComponent(Tokens);
     await settle(fixture);
@@ -199,9 +202,17 @@ describe('Tokens', () => {
       expect(reload).toHaveBeenCalledOnce();
     });
 
-    it('never shows a plaintext: a token is shown by its name, its metadata and its state', async () => {
+    it('never shows a plaintext: a token is shown by its name, its metadata and its state, whatever else its record carries', async () => {
+      // An answer that created a token carries its plaintext; were one to find its way into the
+      // list, the table must still show only what a row is made of.
+      list.set([{ ...laptop, token: plaintext } as Token, script]);
+      expect(JSON.stringify(list())).toContain(plaintext);
+
       const fixture = await render();
 
+      expect(row(fixture, 't1')).not.toBeNull();
+      expect(host(fixture).innerHTML).not.toContain(plaintext);
+      expect(host(fixture).textContent).not.toContain(plaintext);
       expect(host(fixture).innerHTML).not.toContain('cwk_');
     });
   });
@@ -269,39 +280,61 @@ describe('Tokens', () => {
   });
 
   describe('the agent column', () => {
-    it('shows an agent token as one, with all capabilities named when it has them all', async () => {
+    const capabilitiesOf = (fixture: ComponentFixture<Tokens>, id: string) =>
+      inRow(fixture, id, '[data-testid="capabilities"]');
+    const hasTooltip = (fixture: ComponentFixture<Tokens>, id: string, selector: string) =>
+      fixture.debugElement
+        .query(By.css(`[data-testid="token-${id}"] ${selector}`))
+        .injector.get(Tooltip, null) !== null;
+
+    it('shows an agent token as one, and says in the cell that it has all nine capabilities', async () => {
       const fixture = await render();
 
       expect(text(inRow(fixture, 't1', '[data-testid="agent"]'))).toBe('agent');
-      expect(text(inRow(fixture, 't1', '[data-testid="capabilities"]'))).toBe('all capabilities');
-      expect(tooltipOf(fixture, 't1', '[data-testid="capabilities"]')).toBe(CAPABILITY.join(', '));
+      expect(text(capabilitiesOf(fixture, 't1'))).toBe('all nine capabilities');
     });
 
-    it('counts the capabilities of an agent token that has some, and lists them in a tooltip', async () => {
+    it('names the capabilities of an agent token that has some, as text in the cell and not behind a hover', async () => {
       list.set([token('a', { agent: true, capabilities: ['drop', 'upload', 'interest'] })]);
       const fixture = await render();
 
-      expect(text(inRow(fixture, 'a', '[data-testid="capabilities"]'))).toBe('3 of 9 capabilities');
-      expect(tooltipOf(fixture, 'a', '[data-testid="capabilities"]')).toBe(
-        'drop, upload, interest',
-      );
+      expect(text(capabilitiesOf(fixture, 'a'))).toBe('drop, upload, interest');
+      expect(hasTooltip(fixture, 'a', '[data-testid="capabilities"]')).toBe(false);
     });
 
-    it('names the baseline for an agent token that has no capability', async () => {
+    it('names every capability of a long list, so that two agent tokens can be told apart by looking', async () => {
+      const eight = CAPABILITY.filter((each) => each !== 'close');
+      const seven = CAPABILITY.filter((each) => each !== 'close' && each !== 'decide');
+      list.set([
+        token('a', { agent: true, capabilities: eight }),
+        token('b', { agent: true, capabilities: seven }),
+      ]);
+      const fixture = await render();
+
+      expect(text(capabilitiesOf(fixture, 'a'))).toBe(eight.join(', '));
+      expect(text(capabilitiesOf(fixture, 'b'))).toBe(seven.join(', '));
+      expect(text(capabilitiesOf(fixture, 'a'))).not.toContain('close');
+      expect(text(capabilitiesOf(fixture, 'b'))).not.toContain('decide');
+    });
+
+    it('says that an agent token that has no capability has the baseline only', async () => {
       list.set([token('a', { agent: true, capabilities: [] })]);
       const fixture = await render();
 
-      expect(text(inRow(fixture, 'a', '[data-testid="capabilities"]'))).toBe('the baseline');
-      expect(tooltipOf(fixture, 'a', '[data-testid="capabilities"]')).toBe(
-        'The baseline of every agent token',
-      );
+      expect(text(capabilitiesOf(fixture, 'a'))).toBe('the baseline only');
+    });
+
+    it('keeps the explanation of the agent pill in a tooltip, which only repeats what the column says', async () => {
+      const fixture = await render();
+
+      expect(hasTooltip(fixture, 't1', '[data-testid="agent"]')).toBe(true);
     });
 
     it('shows a dash for a token that is no agent, without a pill or capabilities', async () => {
       const fixture = await render();
 
       expect(inRow(fixture, 't2', '[data-testid="agent"]')).toBeNull();
-      expect(inRow(fixture, 't2', '[data-testid="capabilities"]')).toBeNull();
+      expect(capabilitiesOf(fixture, 't2')).toBeNull();
       expect(text(cells(fixture, 't2')[2])).toBe('—');
     });
   });
@@ -333,14 +366,34 @@ describe('Tokens', () => {
       expect(restriction(fixture, 'a')?.querySelector('.key')).toBeNull();
     });
 
-    it('shows the start of the id of a project whose key is not found, with the whole id in a title', async () => {
+    it('shows the end of the id of a project whose key is not found, with the whole id in a title', async () => {
       keys.clear();
       const fixture = await render();
 
-      expect(text(restriction(fixture, 't1'))).toBe('acme / 0199aaaa');
+      expect(text(restriction(fixture, 't1'))).toBe('acme / 0000c0de');
       expect(restriction(fixture, 't1')?.querySelector('.key')?.getAttribute('title')).toBe(
         '0199aaaa-0000-7000-8000-00000000c0de',
       );
+    });
+
+    it('tells two projects apart whose keys are not found and whose ids were made in the same minute', async () => {
+      keys.clear();
+      // UUIDv7 starts with the time, so these two begin alike; what differs is at the end.
+      list.set([
+        token('a', {
+          restricted_tenant: 'acme',
+          restricted_project_id: '0199a3c2-5b1e-7a40-8c11-4d2f9e0a71b3',
+        }),
+        token('b', {
+          restricted_tenant: 'acme',
+          restricted_project_id: '0199a3c2-5b1e-7f02-9a6d-c81e5b3402ef',
+        }),
+      ]);
+      const fixture = await render();
+
+      expect(text(restriction(fixture, 'a'))).toBe('acme / 9e0a71b3');
+      expect(text(restriction(fixture, 'b'))).toBe('acme / 5b3402ef');
+      expect(text(restriction(fixture, 'a'))).not.toBe(text(restriction(fixture, 'b')));
     });
   });
 
@@ -396,6 +449,17 @@ describe('Tokens', () => {
         (button) => button.textContent?.trim() === 'Revoke',
       );
       expect(accept?.className).toContain('p-button-danger');
+    });
+
+    it('opens with the focus on the button that keeps the token, so that a second Enter does not revoke it for good', async () => {
+      const fixture = await render();
+
+      await ask(fixture);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const focused = document.activeElement as HTMLElement | null;
+      expect(focused?.textContent?.trim()).toBe('Keep it');
+      expect(dialog()?.contains(focused)).toBe(true);
     });
 
     it('revokes the token of the row and says so when it is confirmed', async () => {
@@ -502,18 +566,21 @@ describe('Tokens', () => {
       expect(document.body.innerHTML).not.toContain(plaintext);
     });
 
-    it('keeps the plaintext out of the page when it is closed another way, such as with Escape', async () => {
+    it('keeps the plaintext on Escape and on a click beside the dialog: only the button closes it', async () => {
       const fixture = await render();
       dialog(fixture).triggerEventHandler('created', made);
       await settle(fixture);
 
-      fixture.debugElement
-        .query(By.css('app-secret-dialog p-dialog'))
-        .triggerEventHandler('visibleChange', false);
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      document
+        .querySelector('.p-dialog-mask')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       await settle(fixture);
 
-      expect(fixture.componentInstance['secret']()).toBeNull();
-      expect(document.body.innerHTML).not.toContain(plaintext);
+      expect(fixture.componentInstance['secret']()).toBe(plaintext);
+      expect((el(fixture, 'secret-value') as HTMLInputElement).value).toBe(plaintext);
     });
 
     it('holds the plaintext in one place only, and in none once the dialog is closed', async () => {
@@ -554,7 +621,6 @@ describe('Tokens', () => {
       expect(setItem).not.toHaveBeenCalled();
       expect(JSON.stringify({ ...localStorage })).not.toContain(plaintext);
       expect(JSON.stringify({ ...sessionStorage })).not.toContain(plaintext);
-      setItem.mockRestore();
     });
   });
 

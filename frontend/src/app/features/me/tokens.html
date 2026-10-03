@@ -63,13 +63,9 @@
                   [showDelay]="400"
                   ><i class="pi pi-microchip-ai"></i>agent</span
                 >
-                <span
-                  class="muted capabilities"
-                  data-testid="capabilities"
-                  [pTooltip]="token.capabilities.join(', ') || 'The baseline of every agent token'"
-                  [showDelay]="400"
-                  >{{ capabilitySummary(token) }}</span
-                >
+                <span class="muted capabilities" data-testid="capabilities">{{
+                  capabilitiesText(token)
+                }}</span>
               </span>
             } @else {
               <span class="muted">—</span>

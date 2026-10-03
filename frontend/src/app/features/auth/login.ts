@@ -1,12 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
 import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { InputPassword } from 'primeng/inputpassword';
 import { Wordmark } from '../../brand/logo';
 import { AuthService } from '../../core/auth.service';
+import { HARD_NAVIGATION } from '../../core/hard-navigation';
 import { ProblemService } from '../../core/problem.service';
 
 /** Only a path of this application may be the way back after the login — never another site. */
@@ -19,7 +19,9 @@ export function safeReturn(value: string | null | undefined): string {
 /**
  * The login page (docs/adr/0033 D8): the local form when the installation has local accounts,
  * the identity provider's button when one is configured (phase 4), and a notice when it has
- * neither. A refusal says only that the name or the password is wrong, whichever it was.
+ * neither. A refusal says only that the name or the password is wrong, whichever it was. A
+ * sign-in ends with a new document, not a route change, so that nothing the person before them
+ * looked at in this tab is left in memory (`HARD_NAVIGATION`).
  */
 @Component({
   selector: 'app-login',
@@ -34,7 +36,7 @@ export class Login {
 
   protected readonly auth = inject(AuthService);
   private readonly problems = inject(ProblemService);
-  private readonly router = inject(Router);
+  private readonly navigate = inject(HARD_NAVIGATION);
 
   protected readonly username = signal('');
   protected readonly password = signal('');
@@ -66,7 +68,7 @@ export class Login {
       const result = await this.auth.login(this.username().trim(), this.password());
       this.password.set('');
       const back = safeReturn(this.return());
-      await this.router.navigateByUrl(
+      this.navigate(
         result.password_change_required ? `/password?return=${encodeURIComponent(back)}` : back,
       );
     } catch (error) {

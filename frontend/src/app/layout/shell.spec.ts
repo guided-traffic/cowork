@@ -10,6 +10,7 @@ import { Observable, of, throwError } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { Me, Membership, Project } from '../api/models';
 import { AuthService } from '../core/auth.service';
+import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
 import { ProjectsService } from '../core/projects.service';
 import { SessionService } from '../core/session.service';
@@ -69,6 +70,7 @@ describe('Shell', () => {
   let cycle: MockInstance<() => void>;
   let version: MockInstance<() => Observable<VersionInfo>>;
   let navigate: MockInstance<Router['navigate']>;
+  let hardNavigate: MockInstance<HardNavigation>;
 
   beforeEach(() => {
     memberships = signal<Membership[]>([acme]);
@@ -82,6 +84,7 @@ describe('Shell', () => {
     preference = signal<ThemePreference>('system');
     cycle = vi.fn<() => void>();
     version = vi.fn<() => Observable<VersionInfo>>(() => of(backend));
+    hardNavigate = vi.fn<HardNavigation>();
   });
 
   function configure() {
@@ -102,6 +105,7 @@ describe('Shell', () => {
         { provide: ProjectsService, useValue: projects },
         { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
         { provide: AuthService, useValue: { logout } },
+        { provide: HARD_NAVIGATION, useValue: hardNavigate },
         { provide: EventStreamService, useValue: { status } },
         { provide: ThemeService, useValue: { preference, cycle } },
         { provide: VersionService, useValue: { get: version } },
@@ -153,14 +157,30 @@ describe('Shell', () => {
       expect(labels(fixture)).toEqual(['Ada Lovelace', 'Your tokens', 'Sign out']);
     });
 
-    it('signs out and goes to the login page', async () => {
+    it('signs out and loads the login page as a new document, which empties what the application holds', async () => {
       const { fixture } = await render();
 
       item(fixture, 'Sign out').command?.({});
       await fixture.whenStable();
 
       expect(logout).toHaveBeenCalledTimes(1);
-      expect(navigate).toHaveBeenCalledWith(['/login']);
+      expect(hardNavigate).toHaveBeenCalledExactlyOnceWith('/login');
+      expect(navigate).not.toHaveBeenCalledWith(['/login']);
+    });
+
+    it('loads the login page only after the backend has ended the session', async () => {
+      let finish: () => void = () => undefined;
+      logout.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+      const { fixture } = await render();
+
+      item(fixture, 'Sign out').command?.({});
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(hardNavigate).not.toHaveBeenCalled();
+      finish();
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(hardNavigate).toHaveBeenCalledExactlyOnceWith('/login');
     });
 
     it('stays and says so when the sign-out fails', async () => {
@@ -173,6 +193,7 @@ describe('Shell', () => {
       await new Promise((resolve) => setTimeout(resolve));
 
       expect(toasts).toHaveBeenCalledTimes(1);
+      expect(hardNavigate).not.toHaveBeenCalled();
       expect(navigate).not.toHaveBeenCalledWith(['/login']);
     });
   });
