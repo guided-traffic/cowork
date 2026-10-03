@@ -1,0 +1,100 @@
+# sqlc reads the migration files as the schema and generates two packages
+# (docs/adr/0027 D1, D3): readq holds the read-only queries and is all a
+# store.Reader exposes; writeq holds the mutating ones, which only a
+# store.Writer inside store.Mutate exposes. `make generate` runs it and the
+# Code Linting job fails on a diff.
+version: "2"
+overrides:
+  go:
+    rename:
+      id: ID
+    overrides:
+      - db_type: "uuid"
+        go_type: "github.com/google/uuid.UUID"
+      - db_type: "uuid"
+        nullable: true
+        go_type:
+          import: "github.com/google/uuid"
+          type: "UUID"
+          pointer: true
+      - db_type: "timestamptz"
+        go_type: "time.Time"
+      - db_type: "timestamptz"
+        nullable: true
+        go_type:
+          type: "time.Time"
+          pointer: true
+      - db_type: "date"
+        go_type: "time.Time"
+      - db_type: "date"
+        nullable: true
+        go_type:
+          type: "time.Time"
+          pointer: true
+      - db_type: "tenant_role"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.Role"
+      - db_type: "token_scope"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.Scope"
+      - db_type: "membership_source"
+        go_type: "string"
+      - db_type: "ticket_type"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.TicketType"
+      - db_type: "ticket_state"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.TicketState"
+      - db_type: "ticket_state"
+        nullable: true
+        go_type:
+          import: "github.com/guided-traffic/cowork/backend/internal/domain"
+          type: "TicketState"
+          pointer: true
+      - db_type: "block_kind"
+        nullable: true
+        go_type:
+          import: "github.com/guided-traffic/cowork/backend/internal/domain"
+          type: "BlockKind"
+          pointer: true
+      - db_type: "block_kind"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.BlockKind"
+      - db_type: "severity"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.Severity"
+      - db_type: "security_class"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.SecurityClass"
+      - db_type: "urgency"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.Urgency"
+      - db_type: "urgency"
+        nullable: true
+        go_type:
+          import: "github.com/guided-traffic/cowork/backend/internal/domain"
+          type: "Urgency"
+          pointer: true
+      - db_type: "effort"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.Effort"
+      - db_type: "audit_action"
+        go_type: "string"
+      - db_type: "question_status"
+        go_type: "string"
+      - db_type: "interest_weight"
+        go_type: "string"
+      - db_type: "link_type"
+        go_type: "github.com/guided-traffic/cowork/backend/internal/domain.LinkType"
+sql:
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries/read
+    gen:
+      go:
+        package: readq
+        out: internal/store/readq
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries/write
+    gen:
+      go:
+        package: writeq
+        out: internal/store/writeq
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true

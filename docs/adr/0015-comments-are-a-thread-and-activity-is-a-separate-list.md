@@ -8,7 +8,16 @@ one merged timeline and over a threaded discussion tree. The rules of D3–D6 we
 owner with the question and were not objected to; D2's cross-reference is the adaptation
 this record adds to keep an agent's act and its explanation findable across the two views.
 
-**Not built.** No `comments` or `audit_events` table exists.
+Amended 2026-10-02 (D3: a comment's text never enters the audit record; D6: what the activity
+withholds). A withdrawal has to hide the text from every route, and an append-only row cannot
+forget it.
+
+**Partly built** (phase 2, 2026-10-02): D1–D4 and D6 — `comments` and `comment_revisions`
+(migration 11), the thread oldest first or reversed, edits with their history, withdrawal by the
+author, by the person for their agents' comments, by an agent for an agent's of the same person
+and by a tenant administrator with an `admin`-scope token (who never edits), the explaining comment on transitions, field
+changes and body changes, and the activity list over the audit record. D5's mentions arrive with
+the inbox.
 
 ## Context
 
@@ -44,7 +53,9 @@ it explains. This is how the two views stay one story.
 by an agent in a person's name with the agent mark. Its author may edit it; every edit keeps
 the previous text in an edit history readable from the comment. A comment is never deleted:
 its author or a tenant administrator may **withdraw** it, which hides the text, keeps the
-entry, and writes an act into the activity list.
+entry, and writes an act into the activity list. *(Added 2026-10-02: the text lives in the comment and its
+revisions only; the acts of commenting, editing and withdrawing carry no text, so a withdrawal
+hides it from the thread, the history and the activity alike.)*
 
 **D4 — An agent may edit or withdraw only the comments written by an agent of the same
 person.** A person may edit or withdraw their own comments and those their agents wrote.
@@ -54,7 +65,9 @@ person.** A person may edit or withdraw their own comments and those their agent
 
 **D6 — Both views are rendered from the record, not stored as views.** The activity list is
 a projection of the append-only audit record (the data record decides its table); the thread
-is the comments table. Neither is a document that could drift from the acts it shows.
+is the comments table. Neither is a document that could drift from the acts it shows. *(Added 2026-10-02: the activity leaves out time entries and
+the reads that leave the system, and shows an act that names a ticket the reader cannot see
+without its payload ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6).)*
 
 ## Consequences
 

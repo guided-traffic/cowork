@@ -9,8 +9,14 @@ verifications of D2–D4 were made read-only against GitHub on 2026-10-01 and an
 runner and secrets questions without a decision.
 
 **Partly built.** The workflows push to `guidedtraffic/cowork-backend` and
-`guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`; the secret does not exist on
-this repository yet (D1); the runner-image gaps of D5 are open.
+`guidedtraffic/cowork-frontend` and log in with `DOCKERHUB_PAT`, an organisation secret since
+2026-10-03 (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
+verified from the logs of run 36909513652. Amended 2026-10-03 (D5): the owner chose install
+steps in the jobs for the runner-image gaps, over a runner image and over another container
+mode; the integration job passed with them on the first run of the phase-2 code. Verified on
+2026-10-03 (run 37105034106): every job of "Test and Release" passes on the phase-2 branch,
+the container-scan legs among them — they log in with the organisation secret of D1, build
+each image on the runner's Docker daemon and scan it.
 
 ## Context
 
@@ -28,7 +34,10 @@ workflow, which produced the evidence below.
 `guidedtraffic/cowork-frontend`, as `build.yml` and the chart's default `image.repository`
 values already say. The owner creates `DOCKERHUB_PAT` as a repository secret of
 `guided-traffic/cowork`, as the sibling project has it; until then every job that logs in to
-Docker Hub fails with "Password required" and the release cannot publish.
+Docker Hub fails with "Password required" and the release cannot publish. *(Amended
+2026-10-03: the owner created it as an organisation secret of `guided-traffic` instead, beside
+`APP_CLIENT_ID` and `APP_PRIVATE_KEY`; the repository reads it. Which repositories of the
+organisation may read it is the organisation's setting, not verified from here.)*
 
 **D2 — Verified: the self-hosted runner pool serves this repository.** The Renovate workflow
 (`runs-on: self-hosted`) completed successfully on `main` on 2026-10-01, and every Go job of
@@ -45,14 +54,20 @@ semantic-release. No decision is needed.
 `https://guided-traffic.github.io/cowork/` (source branch `gh-pages`, path `/`, HTTPS
 enforced). The chart release of `build.yml` has its target.
 
-**D5 — Recorded, not decided here: the ARC runner image lacks `make`, `libatomic` and a
-Docker socket.** Observed on 2026-10-01: the Helm and release-tooling jobs fail with
-`make: command not found`; the frontend job's Node binary fails to load `libatomic.so.1`; the
-container-scan job builds no image because neither a Docker nor a containerd socket exists
-in the runner pod. The Go jobs pass because `setup-go` brings its toolchain and `make` is
-only missing where no `apt-get` step installed `build-essential`. This is pipeline work — a
-ticket, the first one when the catalog is done — and either a runner image with those tools
-or install steps in the affected jobs; the choice is made in that ticket, not in this record.
+**D5 — Recorded, not decided here: the ARC runner image lacks `make` and `libatomic`** *(amended
+2026-10-02: ~~and a Docker socket~~ — the run's logs show a Docker Engine 29.5.3 at
+`unix:///run/docker.sock`, and both container-scan legs fail at "Login to Docker Hub" with
+"Password required", which is D1's missing secret)*. Observed on 2026-10-01 (run 36909513652):
+the Helm and release-tooling jobs fail with `make: command not found`; the frontend job's
+Node binary fails to load `libatomic.so.1`. The Go jobs pass because `setup-go` brings its
+toolchain and `make` is only missing where no `apt-get` step installed `build-essential`.
+This is pipeline work — a ticket, the first one when the catalog is done — and either a
+runner image with those tools or install steps in the affected jobs; the choice is made in
+that ticket, not in this record. *(Amended 2026-10-03: chosen — install steps. A job that runs
+a `make` target installs `make` first with `sudo apt-get`, as the Go jobs install
+`build-essential`, and the frontend job installs `libatomic1` before `setup-node`. The
+repository owns those lines; the shared runner scale set and the sibling project's jobs stay
+as they are, and each run pays the `apt-get` time.)*
 
 **D6 — The repository is public.** Verified; the embargo rules of [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
 D7 apply from the first security ticket, and the README's coverage and Go Report Card badges
@@ -63,7 +78,7 @@ resolve.
 - One secret to create and the publishing path works as written; Docker Scout and the SBOM
   upload stay in `build.yml`.
 - The runner, the App token and Pages need no change.
-- D5 blocks four gates today; the first pipeline ticket fixes them before any release.
+- D5 and D1 block five gates today; the first pipeline ticket fixes them before any release.
 - The planning catalog's questions on registry, runners and secrets are closed; the
   repository-visibility question of the process block is answered by D6.
 

@@ -280,6 +280,13 @@
       "allowedVersions": "<19"
     },
     {
+      "description": "Release notes preset: conventional-changelog-conventionalcommits 10 needs conventional-changelog-writer 9, while @semantic-release/release-notes-generator 14 still brings writer 8, and hack/verify-release-tooling.mjs fails with that pair; hold the preset below 10 until the generator moves to writer 9",
+      "matchDepNames": [
+        "conventional-changelog-conventionalcommits"
+      ],
+      "allowedVersions": "<10"
+    },
+    {
       "description": "GitHub Actions: automerge minor and patch updates",
       "matchManagers": [
         "github-actions"
@@ -353,9 +360,20 @@
         "/^Makefile$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*(?:[^\\s:@]+:)?(?<currentValue>[^\\s:@]+)\\n"
       ],
       "versioningTemplate": "{{#if (equals datasource 'docker')}}docker{{else}}semver{{/if}}"
+    },
+    {
+      "description": "Update image digests pinned in the Makefile as tag@digest via renovate comments (the S3 test server)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>docker) depName=(?<depName>[^\\s]+)\\n.+\\?=\\s*[^\\s@]+:(?<currentValue>[^\\s:@/]+)@(?<currentDigest>sha256:[a-f0-9]{64})\\n"
+      ],
+      "versioningTemplate": "docker"
     },
     {
       "description": "Update Go version in the backend Containerfile",

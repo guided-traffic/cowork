@@ -28,6 +28,49 @@ database:
   # and throw-away installations: the value is stored in plain text in the
   # release Secret and in every `helm get values` output.
   url: ""
+  # The runtime role above owns nothing and is subject to row-level
+  # security; the owner role owns the database and runs the migrations
+  # (docs/adr/0021 D2). Its credential reaches only the migration init
+  # container, never the serving container. One source is required.
+  owner:
+    # Name of an existing Secret with the owner role's connection URL. Preferred.
+    existingSecret: ""
+    existingSecretKey: databaseUrl
+    # Inline URL for throw-away installations, rendered into a release Secret
+    # while backend.config.migrateOnStart is true. It stays in the release's
+    # values either way (helm get values).
+    url: ""
+
+# The server key, COWORK_SESSION_KEY: standard base64 of at least 32 bytes
+# (`openssl rand -base64 32`). It signs the list cursors; rotating it
+# invalidates the cursors clients hold (docs/adr/0048). Only a Secret
+# reference is accepted (docs/adr/0058 D3); the chart fails without one.
+session:
+  existingSecret: ""
+  keys:
+    key: sessionKey
+
+# S3-compatible object storage for the attachments (docs/adr/0016,
+# docs/adr/0058 D3). Without an endpoint the backend refuses uploads.
+storage:
+  # Secret with the access key of a bucket-scoped policy, never root keys.
+  existingSecret: ""
+  keys:
+    accessKeyId: accessKeyId
+    secretAccessKey: secretAccessKey
+  # http:// or https:// with host and port, e.g. https://s3.example.com.
+  endpoint: ""
+  bucket: ""
+  # Empty asks the server.
+  region: ""
+  # Path-style addressing, as MinIO expects.
+  pathStyle: true
+  tls:
+    # ConfigMap with the PEM of a private authority the endpoint's
+    # certificate chains to; empty uses the system pool.
+    caConfigMap: ""
+    keys:
+      ca: ca.crt
 
 ingress:
   enabled: false
@@ -57,9 +100,11 @@ backend:
     port: 8080
   # Server configuration; each key maps to one COWORK_* environment variable.
   config:
-    # COWORK_MIGRATE_ON_START: apply pending schema migrations before listening.
-    # Several replicas may start at once; golang-migrate serialises them with a
-    # PostgreSQL advisory lock.
+    # Run the schema migrations in an init container of every backend pod,
+    # with the owner credential (docs/adr/0057 D1). Several replicas may start
+    # at once; golang-migrate serialises them with an advisory lock. The
+    # serving container never migrates (COWORK_MIGRATE_ON_START=false) and
+    # refuses to start on pending migrations.
     migrateOnStart: true
     # COWORK_LOG_LEVEL: debug | info | warn | error
     logLevel: info
@@ -71,6 +116,24 @@ backend:
     # COWORK_BASE_URL: the public URL of the UI, e.g. https://cowork.example.com.
     # Empty until a feature needs it.
     baseURL: ""
+    # The limits of docs/adr/0039 D2; 0 disables each. nginx is sized from
+    # them with headroom (docs/adr/0039 D3).
+    # COWORK_MAX_JSON_BODY, in bytes.
+    maxJsonBody: 1048576
+    # COWORK_ATTACHMENT_MAX_BYTES, in bytes (docs/adr/0016 D6).
+    attachmentMaxBytes: 10485760
+    # COWORK_ATTACHMENT_MAX_PER_TICKET.
+    attachmentMaxPerTicket: 100
+    # COWORK_REQUEST_TIMEOUT, in seconds; the event stream is exempt.
+    requestTimeout: 30
+    # COWORK_MAX_PAGE_SIZE: the largest page a list returns.
+    maxPageSize: 200
+    # COWORK_MAX_QUERY_LENGTH: the longest full-text query, in characters.
+    maxQueryLength: 256
+    # COWORK_SSE_REPLAY_WINDOW: how long a replica keeps events for a replay.
+    sseReplayWindow: 5m
+    # COWORK_SSE_MAX_STREAMS_PER_PERSON, per replica.
+    sseMaxStreamsPerPerson: 10
   # Extra environment variables appended to the container, verbatim.
   extraEnv: []
   podAnnotations: {}
@@ -96,7 +159,8 @@ backend:
     requests:
       cpu: 50m
       memory: 128Mi
-  # Probes. The startup probe covers the migration run before the server listens.
+  # Probes. The migrations run in the init container before the server
+  # starts; the startup probe covers the server's own start.
   probes:
     startup:
       periodSeconds: 5

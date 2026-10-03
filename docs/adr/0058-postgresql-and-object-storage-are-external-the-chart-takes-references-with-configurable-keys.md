@@ -3,7 +3,8 @@
 ## Status
 
 Accepted, amended 2026-10-01 the same day (D1, D2: example manifests are provided after
-all, syntax-checked, with the tests remaining what is verified). Decided by the owner as the
+all, syntax-checked, with the tests remaining what is verified), amended 2026-10-02 (D3, D4,
+D5: the owner role of ADR 0021 D2 has its own credential). Decided by the owner as the
 answer to the catalog questions "how is PostgreSQL provided?" and "how is the object storage
 provided?", taken together: both external, the chart consuming references, over optional
 subcharts and over an umbrella chart; the owner first declined example manifests and then
@@ -11,8 +12,11 @@ allowed them as proposed. The owner's condition: because the Secrets and ConfigM
 operators an administrator cannot always shape, every key name the chart reads must be
 configurable. D3–D5 are the design for that condition and were not objected to.
 
-**Partly built.** `database.existingSecret` with `database.existingSecretKey` exists in the
-chart; nothing else of this record.
+**Partly built** (phase 2, 2026-10-02): D1, D3 and D5 in part — the database and owner Secrets
+by URL key (`database.existingSecret`, `database.owner.existingSecret`), the session key
+Secret, the storage credentials Secret with literal endpoint values and the CA ConfigMap, and
+the role and bucket requirements on the operations page. Not built: D3's component keys and
+`existingConfigMap` sources, D4's composed URL, D1's and D2's example manifests.
 
 ## Context
 
@@ -56,6 +60,7 @@ pattern for each of them:
 | Value | Reference | Keys (each configurable, with a default) |
 |---|---|---|
 | database | `database.existingSecret` | either `keys.url` (default `databaseUrl`) **or** the component keys `keys.host`, `keys.port`, `keys.name`, `keys.user`, `keys.password`, `keys.sslmode`; `database.existingConfigMap` may supply the non-secret components |
+| database owner *(added 2026-10-02, [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2)* | `database.owner.existingSecret` | the same key set as the database row; read only by the migration run (the init container or the Job of [ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)), never by the serving container |
 | object storage credentials | `storage.existingSecret` | `keys.accessKeyId`, `keys.secretAccessKey` |
 | object storage endpoint | `storage.existingConfigMap` or literal values | `keys.endpoint`, `keys.bucket`, `keys.region`, `keys.pathStyle`; `storage.tls.caConfigMap` + `keys.ca` for a private authority |
 | OIDC client ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)) | `oidc.existingSecret` | `keys.clientId`, `keys.clientSecret`; issuer and scopes as values or `oidc.existingConfigMap` keys |
@@ -70,14 +75,21 @@ is the production path.
 stays; alternatively `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`,
 `_SSLMODE` are read and composed by `config.Load`, so a Secret that has no URL key needs no
 copying and no init container. Both set is a configuration error; the password is
-URL-escaped when composed. The chart maps whichever key set the values name onto whichever
+URL-escaped when composed. *(Added 2026-10-02: the owner credential of ADR 0021 D2 takes the
+same two shapes, `COWORK_DATABASE_OWNER_URL` or the `COWORK_DATABASE_OWNER_*` components.)* The chart maps whichever key set the values name onto whichever
 variable set.
 
-**D5 — Requirements the operations page states, not provisions:** a database role that is
+**D5 — Requirements the operations page states, not provisions:** ~~a database role that is
 not a superuser and has no `BYPASSRLS` ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
 D2), owns its database, and may create extensions `unaccent`, `pg_trgm`, `btree_gin`
 ([ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)) — or
-the installation creates them beforehand; a bucket of its own with an access key whose policy
+the installation creates them beforehand;~~ *(amended 2026-10-02: two roles, ADR 0021 D2 — an
+owner role that owns the database — or holds `CREATE` on schema `public`, which since
+PostgreSQL 15 only the database's owner has by default, and `CREATE` on the database for the
+extensions `unaccent`, `pg_trgm`, `btree_gin`, unless the installation creates them
+beforehand; and a
+runtime role with `LOGIN` that is not a superuser, has no `BYPASSRLS`, owns nothing and is
+not a member of the owner role; the operator creates both);* a bucket of its own with an access key whose policy
 reaches that bucket only, never root credentials.
 
 ## Consequences

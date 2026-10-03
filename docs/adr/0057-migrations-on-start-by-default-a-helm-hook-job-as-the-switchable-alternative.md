@@ -2,15 +2,19 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question "where
+Accepted, amended 2026-10-02 (D1, D2: the owner credential of ADR 0021 D2). Date: 2026-10-01.
+Decided by the owner as the answer to the catalog question "where
 do migrations run in production?": both modes in the chart with on-start as the default, over
 on-start alone, over a hook Job alone as the only mode, and over a hook Job alone. The rules
-of D4–D7 were put to the owner with the question and not objected to.
+of D4–D7 were put to the owner with the question and not objected to. The amendment of
+2026-10-02 follows from the mandatory owner role of
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2: the
+serving container never holds the owner credential.
 
-**Partly built.** On-start migration with the advisory lock and the `COWORK_MIGRATE_ON_START`
-switch exist ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D5, verified); `cowork migrate` exists. Not built: the chart's `migrations.mode`, the hook
-Job, the stale-schema refusal in `serve`.
+**Partly built** (phase 2, 2026-10-02): D1 as amended — the chart's `migrate` init container
+with the owner credential and the serving container with `COWORK_MIGRATE_ON_START=false` — and
+D3's stale-schema refusal in `serve`. Not built: D2's `migrations.mode` and hook Job, D4's
+bootstrap, D5's second values file per mode, D6's notes.
 
 ## Context
 
@@ -29,14 +33,22 @@ was missing was the chart's half and a guard against pods serving a schema they 
 default) leaves `COWORK_MIGRATE_ON_START=true`; every backend replica runs the migration
 under the advisory lock before it listens; the startup probe covers the duration
 ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D8). Nothing changes for an installation that says nothing.
+D8). Nothing changes for an installation that says nothing. *(Amended 2026-10-02: in the chart
+the on-start run is an init container of the backend pod that runs `cowork migrate` with the
+owner credential of ADR 0021 D2; the serving container holds the runtime credential alone and
+runs with `COWORK_MIGRATE_ON_START=false`. Every replica still migrates under the advisory
+lock before it listens; the migration's duration delays the pod's start instead of running
+under the startup probe. `cowork serve` migrates by itself only where it is given the owner
+URL — a development convenience, never the chart's way.)*
 
 **D2 — Alternative: a Helm hook Job.** `migrations.mode: job` renders a Job with the same
 image and `args: ["migrate"]`, annotated `pre-install,pre-upgrade`, `hook-weight: "-10"`,
 `hook-delete-policy: before-hook-creation,hook-succeeded`, and sets
-`COWORK_MIGRATE_ON_START=false` on the Deployment. The Job reads the database URL from the
+`COWORK_MIGRATE_ON_START=false` on the Deployment. ~~The Job reads the database URL from the
 same Secret as the pods, or from `migrations.job.existingSecret` when the installation uses
-a separate owner role for DDL. A failed Job fails the release before any new pod starts.
+a separate owner role for DDL.~~ *(Amended 2026-10-02: the Job reads the owner credential of
+[ADR 0058](0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3; the separate owner role is no longer optional.)* A failed Job fails the release before any new pod starts.
 
 **D3 — `serve` refuses to run against a stale schema.** Whatever the mode, the backend
 compares the embedded migration set with the database's version at start; with pending

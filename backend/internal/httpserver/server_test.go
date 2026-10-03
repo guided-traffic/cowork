@@ -41,6 +41,8 @@ func problemOf(t *testing.T, res *http.Response) map[string]any {
 	typ, _ := body["type"].(string)
 	code, _ := body["code"].(string)
 	assert.Equal(t, "https://cowork.dev/problems/"+strings.ReplaceAll(code, "_", "-"), typ)
+	assert.Equal(t, res.Header.Get("X-Request-Id"), body["request_id"], "the body names the request the header names")
+	assert.NotEmpty(t, body["request_id"])
 	return body
 }
 
@@ -63,21 +65,38 @@ func TestReadyzWithoutCheckIsReady(t *testing.T) {
 	assert.Equal(t, map[string]any{"status": "ready"}, decode(t, res))
 }
 
+// The ping error can name the database host and user: it goes to the log,
+// never into the answer (docs/adr/0047 D3).
 func TestReadyzReportsFailingCheck(t *testing.T) {
-	h := New(Options{Ready: func(context.Context) error { return errors.New("database unreachable") }})
+	h := New(Options{Ready: func(context.Context) error { return errors.New("dial tcp db.internal:5432: user cowork_app") }})
 	res := do(t, h, http.MethodGet, "/readyz")
 	assert.Equal(t, http.StatusServiceUnavailable, res.StatusCode)
 	p := problemOf(t, res)
 	assert.Equal(t, "not_ready", p["code"])
-	assert.Equal(t, "database unreachable", p["detail"])
+	assert.Equal(t, "the database does not answer", p["detail"])
 	assert.Equal(t, "/readyz", p["instance"])
 }
 
-func TestVersion(t *testing.T) {
-	h := New(Options{Version: "1.2.3", Commit: "abc", BuildTime: "42"})
-	res := do(t, h, http.MethodGet, "/api/v1/version")
-	assert.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, map[string]any{"version": "1.2.3", "commit": "abc", "buildTime": "42"}, decode(t, res))
+func TestAPIPathsReachTheAPIHandler(t *testing.T) {
+	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+	res := do(t, New(Options{API: api}), http.MethodPost, "/api/v1/anything")
+	assert.Equal(t, http.StatusTeapot, res.StatusCode)
+}
+
+func TestEveryResponseCarriesARequestID(t *testing.T) {
+	res := do(t, New(Options{}), http.MethodGet, "/healthz")
+	assert.Len(t, res.Header.Get("X-Request-Id"), 36)
+}
+
+func TestAPanicIsAnInternalProblem(t *testing.T) {
+	api := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("secret internal state") })
+	res := do(t, New(Options{API: api}), http.MethodGet, "/api/v1/boom")
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	p := problemOf(t, res)
+	assert.Equal(t, "internal", p["code"])
+	assert.NotContains(t, p["detail"], "secret")
 }
 
 // The backend serves no UI: every path it does not know is a problem+json
@@ -101,7 +120,7 @@ func TestUnknownRouteIsProblem404(t *testing.T) {
 // catch-all's 404: handleGet registers the path a second time without a method.
 func TestKnownPathsRejectOtherMethods(t *testing.T) {
 	h := New(Options{})
-	for _, target := range []string{"/healthz", "/readyz", "/api/v1/version"} {
+	for _, target := range []string{"/healthz", "/readyz"} {
 		for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 			t.Run(method+" "+target, func(t *testing.T) {
 				res := do(t, h, method, target)

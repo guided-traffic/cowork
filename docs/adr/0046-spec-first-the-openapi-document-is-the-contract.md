@@ -7,7 +7,18 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 runtime validation, over code-first, over validation in tests only, and over hand-written
 clients. The rules of D5–D8 were put to the owner with the question and not objected to.
 
-**Not built.** No OpenAPI document; three hand-written routes.
+Amended 2026-10-02 (D1: the split files are bundled before generation; D2: the event stream
+is served outside the generated server; D4: the validator leaves the security requirements to
+the pipeline; D8: a Go test instead of `spectral`). `oapi-codegen`
+does not resolve references into other files, so the split document is bundled first; a stream
+is not a response a strict handler returns; and the rule D8 wants checked is three assertions
+over the loaded document, which a unit test makes without a Node toolchain in the backend's
+lint.
+
+**Partly built** (phase 2, 2026-10-02): D1, D2, D4 (responses validated in the test tier), D5,
+D7 and D8. D3 arrives with the frontend's first API call; D6's request and response examples
+exist on a few operations only, and the `sessionCookie` scheme arrives with the sessions of
+[ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md).
 
 ## Context
 
@@ -27,12 +38,19 @@ enforced at the boundary is a contract; one that is only published is documentat
 **D1 — `backend/api/openapi.yaml` is the source of the API.** OpenAPI 3.1, one root document
 with `$ref`s into one file per path family — `tenants.yaml`, `me.yaml`, `tickets.yaml`
 (the key resolver), `auth.yaml`, `admin.yaml` — and `components/` for schemas, responses
-and security schemes. A change to the API is a change to these files first.
+and security schemes. A change to the API is a change to these files first. *(Amended
+2026-10-02: the families built are `meta.yaml`, `me.yaml`, `tenants.yaml`, `tickets.yaml`,
+`questions.yaml`, `comments.yaml`, `time.yaml`, `attachments.yaml` and `events.yaml`;
+`make generate` bundles them into `backend/api/openapi.gen.json`, which the generator reads
+and the server embeds and serves.)*
 
 **D2 — `oapi-codegen` generates the Go server interface and the Go client.** Handlers
 implement the generated strict server interface; the MCP server and the integration tests use
 the generated client. `make generate` runs it beside `sqlc` ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
-D1), and the same CI job fails on a diff.
+D1), and the same CI job fails on a diff. *(Added 2026-10-02: the event stream of
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+is documented but excluded from the generated server and served by a handler of its own,
+after the same authentication, tenant boundary and request validation.)*
 
 **D3 — The Angular client is generated from the same document** into
 `frontend/src/app/api/`, by `ng-openapi-gen` or an equivalent that emits typed services; it
@@ -42,7 +60,9 @@ is never edited by hand, and the frontend build regenerates it from the committe
 (`kin-openapi`) validates every request's path, query, headers and body before the handler
 and answers a schema violation with the API's error shape; responses are validated in the
 test and development builds, so a handler that drifts from the document fails a test, not a
-client.
+client. *(Amended 2026-10-02: the validator does not check the security requirements — the
+pipeline has authenticated the caller before it validates — because its own check reads every
+body into memory first; a multipart body is left to the handler.)*
 
 **D5 — The document is served by the API** at `GET /api/v1/openapi.json`, unauthenticated,
 with `info.version` equal to the backend version; the MCP server compares the major version
@@ -59,8 +79,11 @@ and no content negotiation on versions.
 
 **D8 — The document is part of the security documentation.** The security page of the API
 reads auth schemes, scopes and error responses from the document, not from prose; a route
-missing a security requirement is a lint failure (`spectral` with a ruleset that requires
-it), run in `make lint`.
+missing a security requirement is a ~~lint failure (`spectral` with a ruleset that requires
+it), run in `make lint`~~ *(amended 2026-10-02)* test failure: a unit test over the bundled
+document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) requires an
+`operationId`, the bearer requirement (or an explicit empty one on the public operations), the
+problem response and a tag on every operation.
 
 ## Consequences
 

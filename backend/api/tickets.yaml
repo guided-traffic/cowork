@@ -1,0 +1,221 @@
+# The key resolver (docs/adr/0023 D3): a ticket by its key, under the tenant
+# it names. The key is one path segment, <PROJECT>-<number>, split at its last
+# hyphen.
+resolve:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - name: key
+      in: path
+      required: true
+      description: <PROJECT>-<number>
+      schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'}
+  get:
+    operationId: resolveTicket
+    tags: [tickets]
+    summary: A ticket by its key
+    description: The same body and ETag as the ticket's own route.
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+links:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listTicketLinks
+    tags: [tickets]
+    summary: The ticket's links in both directions
+    description: |
+      Each link read from this ticket, under its reverse name when the ticket is the target
+      (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of links
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/LinkList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+link:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/PathLinkType'
+    - $ref: './components/parameters.yaml#/OtherTicketKey'
+  put:
+    operationId: linkTickets
+    tags: [tickets]
+    summary: Link this ticket, as the source, to another ticket of the tenant
+    description: |
+      Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
+      act for an existing one. A member's act with `write` scope, in the agent baseline
+      (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
+      (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+    responses:
+      '200':
+        description: The link existed already
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Link'
+      '201':
+        description: The new link
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Link'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: unlinkTickets
+    tags: [tickets]
+    summary: Remove a link
+    description: Idempotent; removing a link that does not exist answers 204 as well.
+    responses:
+      '204':
+        description: The link is gone
+      default:
+        $ref: './components/responses.yaml#/Problem'
+transitions:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  post:
+    operationId: transitionTicket
+    tags: [tickets]
+    summary: Move the ticket to another state
+    description: |
+      The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into
+      blocked from any open state with a block and out of it only to where it came from,
+      dropped from any open state with a reason, done from in-progress with a verification
+      note. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045
+      D2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides
+      with a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`
+      for done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,
+      not required (docs/adr/0045 D3, D7).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/Transition'
+          example:
+            from: in-progress
+            to: done
+            note: make test-integration passed against PostgreSQL 18.6
+    responses:
+      '200':
+        description: The ticket in its new state
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+interest:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listInterest
+    tags: [tickets]
+    summary: Who holds a stake in the ticket (docs/adr/0013 D2)
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of stakes
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/InterestList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  put:
+    operationId: setInterest
+    tags: [tickets]
+    summary: Set the caller's own stake
+    description: |
+      One row per person and ticket (docs/adr/0013 D1): 201 for a new stake, 200 for a changed or
+      unchanged one. A viewer registers `watch` only; an agent `watch`, and `need` or `urgent`
+      with the `interest` capability (docs/adr/0043 D4).
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/InterestSet'
+    responses:
+      '200':
+        description: The stake changed, or was already so
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Interest'
+      '201':
+        description: The new stake
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Interest'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: removeInterest
+    tags: [tickets]
+    summary: Remove the caller's own stake
+    description: Idempotent.
+    responses:
+      '204':
+        description: The caller holds no stake
+      default:
+        $ref: './components/responses.yaml#/Problem'
+markdown:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: exportTicket
+    tags: [tickets]
+    summary: The canonical Markdown of the ticket
+    description: |
+      Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
+      body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
+      document is never answered 304. Every call is recorded: data left the system
+      (docs/adr/0044 D5).
+    responses:
+      '200':
+        description: The document
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          text/markdown:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'

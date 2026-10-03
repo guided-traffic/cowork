@@ -1,0 +1,37 @@
+# Meta: what a client reads before it authenticates.
+version:
+  get:
+    operationId: getVersion
+    tags: [meta]
+    summary: The backend build
+    description: The MCP server compares the major version at start (docs/adr/0040 D5).
+    security: []
+    responses:
+      '200':
+        description: The build
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Version'
+            example:
+              version: 0.4.0
+              commit: 540e9df
+              build_time: '1759363200'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+document:
+  get:
+    operationId: getOpenAPI
+    tags: [meta]
+    summary: This document
+    description: Unauthenticated; `info.version` is the backend version (docs/adr/0046 D5).
+    security: []
+    responses:
+      '200':
+        description: The OpenAPI document
+        content:
+          application/json:
+            schema:
+              type: object
+      default:
+        $ref: './components/responses.yaml#/Problem'

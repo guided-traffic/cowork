@@ -9,7 +9,15 @@ owner's condition: every limit is configurable and can be switched off. The inbo
 rule of D5 was put to the owner with the question and not objected to; it is configurable
 and switchable like the rest.
 
-**Not built.** No middleware beyond the request log.
+Amended 2026-10-02 (D2: the event stream is exempt from the request timeout, and the timeout
+bounds reading the body; D3: how the chart sizes nginx, and that nginx answers its own limits
+as problem bodies). An event stream lives
+for an hour ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D6, D9); a request timeout would cut it every thirty seconds.
+
+**Partly built** (phase 2, 2026-10-02): D1–D4 — the five limits of D2 in
+[`config.go`](../../backend/internal/config/config.go) and the request pipeline, nginx sized by
+the chart. D5 arrives with the inbox, D6 with the local login.
 
 ## Context
 
@@ -42,11 +50,24 @@ not guessed.
 
 A value of `0` disables that limit; the operations page says that a disabled body limit lets
 one request hold unbounded memory and that `0` belongs in no production values file.
+*(Added 2026-10-02:)* the event stream of ADR 0054 is exempt from `COWORK_REQUEST_TIMEOUT`; its
+heartbeat bounds an idle stream instead. The timeout is a context deadline that rolls the
+transaction back, never a buffering handler, and a read deadline on the request body, lifted
+once the body is read: a body that trickles in fails at the deadline.
 
 **D3 — The frontend proxy is sized above the backend's limits.** nginx's
 `client_max_body_size` is set from the attachment maximum plus headroom and its proxy
 timeouts above `COWORK_REQUEST_TIMEOUT`, so a limit is always the backend's JSON error and
-never nginx's default page. The chart renders both from the same values.
+never nginx's default page. The chart renders both from the same values. *(Made concrete
+2026-10-02:)* the image substitutes `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT`
+(image defaults `11m` and `40s`); the chart sets the body size to the larger of the JSON and
+the attachment maximum, rounded up to MiB, plus one MiB, and the read timeout to the request
+timeout plus ten seconds; a backend `0` becomes no body limit and an hour. A body above
+nginx's own limit, a backend nginx cannot reach and a backend that does not answer in time
+get static problem bodies from nginx — without `instance` and `request_id`
+([ADR 0047](0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6); the backend's
+own errors pass through, never intercepted. The event stream's location has no buffering and
+an hour's read timeout.
 
 **D4 — Abuse is answered by the record and by revocation.** The per-token view of the audit
 record ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6)

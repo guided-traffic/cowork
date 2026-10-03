@@ -64,13 +64,65 @@ func TestCountVersionsBetween(t *testing.T) {
 }
 
 func TestMigrateRejectsUnparsableURL(t *testing.T) {
-	_, err := Migrate(context.Background(), "://not-a-url")
+	_, err := Migrate(context.Background(), "://not-a-url", "cowork_app")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse owner database url")
+}
+
+// The owner role and the runtime role must differ (docs/adr/0021 D2); the
+// refusal comes before any connection is made.
+func TestMigrateRefusesTheOwnerAsRuntimeRole(t *testing.T) {
+	_, err := Migrate(context.Background(), "postgres://cowork_owner:secret@localhost:1/cowork", "cowork_owner")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is the owner role")
+}
+
+func TestMigrateRefusesAnUnnamedRuntimeRole(t *testing.T) {
+	_, err := Migrate(context.Background(), "postgres://cowork_owner:secret@localhost:1/cowork", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not named")
+}
+
+func TestOpenRejectsUnparsableURL(t *testing.T) {
+	_, err := Open(context.Background(), "://not-a-url", Options{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse database url")
 }
 
-func TestConnectRejectsUnparsableURL(t *testing.T) {
-	_, err := Connect(context.Background(), "://not-a-url")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse database url")
+func TestRoleFromURL(t *testing.T) {
+	role, err := RoleFromURL("postgres://cowork_app:secret@db:5432/cowork?sslmode=require")
+	require.NoError(t, err)
+	assert.Equal(t, "cowork_app", role)
+
+	_, err = RoleFromURL("://not-a-url")
+	assert.Error(t, err)
+}
+
+func TestSchemaStatePending(t *testing.T) {
+	embedded, err := EmbeddedVersion()
+	require.NoError(t, err)
+	require.Greater(t, embedded, uint(1))
+
+	fresh := SchemaState{Version: 0, Embedded: embedded}
+	n, err := fresh.Pending()
+	require.NoError(t, err)
+	assert.Equal(t, embedded, n)
+	assert.False(t, fresh.Ahead())
+
+	current := SchemaState{Version: embedded, Embedded: embedded}
+	n, err = current.Pending()
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	ahead := SchemaState{Version: embedded + 1, Embedded: embedded}
+	n, err = ahead.Pending()
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.True(t, ahead.Ahead())
+}
+
+func TestQueryName(t *testing.T) {
+	assert.Equal(t, "GetTenant", queryName("-- name: GetTenant :one\nSELECT 1"))
+	assert.Equal(t, "SELECT", queryName("SELECT 1"))
+	assert.Empty(t, queryName(""))
 }

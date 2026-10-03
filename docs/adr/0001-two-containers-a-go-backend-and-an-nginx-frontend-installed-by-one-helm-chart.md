@@ -3,7 +3,11 @@
 ## Status
 
 Accepted, amended 2026-10-01 (D5: no down files, see
-[ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)). Date:
+[ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)),
+amended 2026-10-02 (D5, D7, D8: migrations run under a separate owner role, see
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2; D3: four
+substituted nginx variables, see [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+D3). Date:
 2026-09-29. The stack was set by the owner in the founding brief; the cut into
 two containers and the "latest release" policy (D2, D9) are the owner's explicit instructions
 of the same day, given after a first skeleton had embedded the UI into the Go binary — that
@@ -33,10 +37,15 @@ building and are recorded here so they can be argued with.
   frontend takes `BACKEND_URL`.
 - D8: [`deploy/helm/cowork/`](../../deploy/helm/cowork/) renders two Deployments, two
   Services, an optional Ingress on the frontend Service and an optional database Secret.
+- Phase 2, verified 2026-10-02: both images rebuilt and run together read-only with the
+  migration as the owner role and the server as the runtime role; the frontend answered a body
+  above the backend's limit with the backend's problem and one above its own with its static
+  problem body, a stopped backend with the `502` problem, an API path ending in `.png` reached
+  the backend, a 10 MiB upload passed, the event stream passed unbuffered, and `SIGTERM` ended
+  an open stream at once.
 
-**Open:** everything that makes this a product — tenants beyond the table, projects, tickets,
-users, authentication, authorization, the API, the MCP interface — is not decided by this
-record. Those decisions are the question catalog in
+**Open:** everything that makes this a product — tenants, projects, tickets, users,
+authentication, authorization, the API, the MCP interface — is not decided by this record. Those decisions are the question catalog in
 [docs/planning/questions.md](../planning/questions.md) and become ADRs of their own.
 
 ## Context
@@ -68,7 +77,10 @@ router owns to `index.html` (never cached, because it names the bundle hashes), 
 bundles as immutable, answers its own `/healthz`, and proxies `/api/` to the backend Service.
 The backend URL is one environment variable, `BACKEND_URL`, rendered into the nginx
 configuration at container start; the image substitutes that variable and the resolver list
-the entrypoint reads from `/etc/resolv.conf`, and no other (`NGINX_ENVSUBST_FILTER`). nginx
+the entrypoint reads from `/etc/resolv.conf`, and no other (`NGINX_ENVSUBST_FILTER`)
+*(amended 2026-10-02: and the body size and the read timeout, `NGINX_CLIENT_MAX_BODY_SIZE` and
+`NGINX_PROXY_READ_TIMEOUT`, which the chart sets from the backend's limits — four variables;
+`/api/` is a `^~` prefix so no static-file rule takes an API path)*. nginx
 resolves the backend per request through that resolver, so the frontend starts before the
 backend Service exists and follows it when its address changes. The Ingress targets the
 frontend Service only. The backend Service exists beside it for scripts, tokens and a
@@ -81,7 +93,9 @@ and a session cookie is first-party.
 **D5 — The backend migrates the schema on start, and can be told not to.** Migrations are
 ~~pairs of `NNNNNN_<name>.up.sql` / `.down.sql` files~~ *(amended 2026-10-01: `.up.sql`
 files only, ADR 0028)* embedded into the binary and applied by golang-migrate before the
-listener opens. Several replicas may start at once; golang-migrate
+listener opens *(amended 2026-10-02: under the owner role of ADR 0021 D2, from
+`COWORK_DATABASE_OWNER_URL`; in the chart by an init container, [ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D1)*. Several replicas may start at once; golang-migrate
 serialises them with a PostgreSQL advisory lock. `COWORK_MIGRATE_ON_START=false` skips the
 run and `cowork migrate` applies it on demand, so an installation can move the migration into
 a Job later without a code change. A dirty schema version is an error the backend refuses to
@@ -92,12 +106,16 @@ primary key generator. The integration tier asserts the server version.
 
 **D7 — Backend configuration is `COWORK_*` environment variables and nothing else; the
 frontend's is `BACKEND_URL`.** No configuration files, no flags. `config.Load` reports every
-invalid value at once and `COWORK_DATABASE_URL` is the only required one. The chart maps its
+invalid value at once and `COWORK_DATABASE_URL` is ~~the only required one~~ *(amended
+2026-10-02: required, together with `COWORK_DATABASE_OWNER_URL` wherever migrations run —
+`cowork migrate`, and `cowork serve` with `COWORK_MIGRATE_ON_START=true`)*. The chart maps its
 values onto these variables one to one.
 
 **D8 — The Helm chart is the installation, brings no database, and hardens both pods.** The
 connection URL comes from `database.existingSecret` (preferred) or is rendered from
-`database.url` for throw-away installations. Each pod runs as its image's non-root user
+`database.url` for throw-away installations *(amended 2026-10-02: so does the owner role's,
+from `database.owner.existingSecret` or `database.owner.url`, read by the migration's init
+container only)*. Each pod runs as its image's non-root user
 (65532 for distroless, 101 for nginx-unprivileged) with a read-only root filesystem, all
 capabilities dropped, no privilege escalation, the `RuntimeDefault` seccomp profile and no
 service account token; the frontend gets `emptyDir` volumes at `/tmp` and

@@ -8,7 +8,9 @@ deactivation for people, explicit deletion for tenants — over "dropped is the 
 soft delete for tickets alone, and over hard delete. The additional rules of D7 were put to
 the owner with the question and confirmed.
 
-**Not built.** No table beyond `tenants` exists.
+**Partly built** (phase 2, 2026-10-02): D4 for projects (archived, never deleted) and people
+(a `deactivated_at` column a token's person is refused by). Ticket deletion, the purge, its
+filter on every list and the tenant deletion are not built; no route deletes anything.
 
 ## Context
 

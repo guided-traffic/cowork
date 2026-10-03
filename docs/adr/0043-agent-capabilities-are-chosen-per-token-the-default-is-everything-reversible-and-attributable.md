@@ -4,7 +4,10 @@
 
 Accepted, amended 2026-10-01 by [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
 D7 and D8 (`create-project` and `record-answer` become selectable capabilities; creating a
-project and recording a person's answer leave the hard-off list). Decided by the owner as the
+project and recording a person's answer leave the hard-off list), amended 2026-10-02 (D4:
+`create-project` follows the tenant setting of
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D9 instead of the `admin` role). Decided by the owner as the
 answer to the catalog question "what may an agent do without a human?": not a fixed list of agent limits but a set of capabilities
 the person chooses when creating an agent token, with every selectable capability switched on
 by default — over fixed server-side limits (the recommendation had been "no `decided`, no
@@ -12,7 +15,13 @@ by default — over fixed server-side limits (the recommendation had been "no `d
 list of D3 and the rules of D5–D7 were put to the owner with the decision and not objected
 to.
 
-**Not built.** No token, no capability check.
+**Built** (phase 2, 2026-10-02) for the acts that exist: D1, D2, D3, D4 and D5 — the capability
+set on the token, the baseline, the hard-off list and the capabilities checked by
+[`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
+with the rank, `create-project`'s repository binding with that binding — the set recorded on
+each act. D6 arrives with the MCP server. Acts no record lists are open to agents
+— reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens,
+removing a stake, editing a question, editing a project — until a review after experience.
 
 ## Context
 
@@ -60,7 +69,7 @@ these is an amendment of the record that closed it, not of this one.
 | `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3) |
 | `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 amended by this) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
-| `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person is tenant `admin` |
+| `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |
 | `record-answer` *(added 2026-10-01, ADR 0066 D8)* | recording and updating an answer the person gave, marked as recorded by the agent |
 
 The token page shows the nine switches and two shortcuts: **full** (all on, the default)

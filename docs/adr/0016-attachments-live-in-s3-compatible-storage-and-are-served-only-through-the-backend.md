@@ -12,7 +12,17 @@ safely; they were not part of the question and stay open to the owner's objectio
 first implementation makes them concrete. They are the minimum under which foreign bytes may
 be stored by one person and shown to another.
 
-**Not built.** No storage client, no `attachments` table, no configuration.
+Amended 2026-10-02 (D1: what the sanitised name keeps; D3: the allow-list as built and the SVG
+rule; D5: the name's extension follows the detected type; D6: the per-ticket count and its
+default, the maximum switchable off; the client). The first implementation made D3–D6 concrete:
+`net/http.DetectContentType` reports Markdown and patches as UTF-8 plain text and an SVG as
+plain text or XML, so an SVG is recognised by its root element; and the client was chosen by
+a suite against a MinIO test server.
+
+**Partly built** (phase 2, 2026-10-02): D1–D6 and D8 — [`internal/storage`](../../backend/internal/storage/)
+over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
+under the ticket's path. D6's per-tenant quota is neither enforced nor reported; D7 arrives
+with the sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6.
 
 ## Context
 
@@ -32,7 +42,9 @@ server decides what a file is and how it is delivered.
 S3-compatible object storage.** The object key is `<tenant-id>/<attachment-id>`; the bucket
 is private; metadata — id, tenant, ticket or comment, original file name (sanitised), size,
 SHA-256, detected content type, uploader, agent mark, timestamp — lives in PostgreSQL. Bytes
-never enter PostgreSQL. Storage is configured through `COWORK_S3_*` variables; an
+never enter PostgreSQL. *(Amended 2026-10-02: the sanitised name is the last path component in
+NFC, without control characters, bidirectional controls, double quotes or invalid UTF-8, at
+most 255 bytes; a right-to-left override would otherwise let `txt.exe` read as `exe.txt`.)* Storage is configured through `COWORK_S3_*` variables; an
 installation without them refuses uploads with a clear error and the UI hides the control.
 
 **D2 — Access follows the ticket.** Whoever may read the ticket may download its
@@ -43,7 +55,11 @@ until the purge; a tenant's deletion deletes its prefix.
 type is detected from the bytes (magic-number sniffing) and must be on an allow-list: raster
 images (PNG, JPEG, GIF, WebP), PDF, plain text and Markdown, patches, and archives only if a
 later amendment says so. SVG is stored as a file and never treated as an image. Anything
-else is refused at upload with the detected type in the error.
+else is refused at upload with the detected type in the error. *(Made concrete 2026-10-02: the allow-list is PNG, JPEG, GIF, WebP,
+PDF and UTF-8 plain text — which is what Markdown and patches are detected as — and SVG, stored
+as `image/svg+xml` when the bytes are text or XML whose root element is `svg`; the refusal is
+`415` naming the detected type; the list is a test fixture,
+[`domain_test.go`](../../backend/internal/domain/domain_test.go).)*
 
 **D4 — Bytes are served only through the backend**, at an attachment endpoint under the
 ticket's path, after the same authorization check as the ticket, streamed from storage. No
@@ -54,11 +70,20 @@ that outlives the session check that issued it.
 carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, and the
 detected type. Raster images are delivered inline; **everything else is delivered with
 `Content-Disposition: attachment`** and never rendered by the browser inside cowork's origin.
-PDF is a download, not an embedded viewer.
+PDF is a download, not an embedded viewer. *(Amended 2026-10-02: the stored name ends in an
+extension of the detected type — a name that ends in none gets the type's first appended,
+`run.bat` stored as text becomes `run.bat.txt` — so a download never offers the recipient's
+system an ending it would run.)*
 
 **D6 — Limits.** A per-file maximum (`COWORK_ATTACHMENT_MAX_BYTES`, default 10 MiB), a
 per-ticket count, and a per-tenant quota reported in the tenant's administration; uploads
-beyond a limit are refused before bytes are stored.
+beyond a limit are refused before bytes are stored. *(Made concrete 2026-10-02: the per-ticket count is
+`COWORK_ATTACHMENT_MAX_PER_TICKET`, default 100, `0` for none, refused with `409
+attachment_limit`; an upload is buffered in memory up to the maximum and one byte more, and the
+uploads in flight share a budget of 64 MiB, because the backend has no writable disk. The
+count is checked under a per-ticket lock, so simultaneous uploads cannot pass it together. A
+maximum of `0` switches the per-file limit off ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+D2); one upload at a time is then read whole, whatever its size.)*
 
 **D7 — Markdown may embed a raster-image attachment of the same ticket, and nothing else.**
 The sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)
@@ -79,6 +104,13 @@ amendment when an installation needs it.
 - New configuration: `COWORK_S3_ENDPOINT`, `COWORK_S3_BUCKET`, `COWORK_S3_REGION`,
   `COWORK_S3_ACCESS_KEY_ID`, `COWORK_S3_SECRET_ACCESS_KEY`, `COWORK_S3_USE_PATH_STYLE`,
   `COWORK_ATTACHMENT_MAX_BYTES` — the README's table grows in the change that builds it.
+  *(Added 2026-10-02:)* `COWORK_S3_CA` for a private authority and
+  `COWORK_ATTACHMENT_MAX_PER_TICKET`; endpoint, bucket and both keys come together or not at
+  all, and without them uploads answer `501 uploads_disabled` while lists and metadata work.
+- *(Added 2026-10-02:)* the client is `minio-go` v7 over `aws-sdk-go-v2`: a put with a known
+  size, a streamed get, delete, path-style addressing and a custom authority are each one
+  option, at a fraction of the dependency tree. The test server is the MinIO build Chainguard
+  publishes (`cgr.dev/chainguard/minio`, pinned by digest), started with `server /data`.
 - A security page of its own under `docs/security/` ("what an upload can and cannot do"),
   written in the change that builds the feature, with D8 as its first open gap.
 - The backend streams every download; large files and many readers cost backend bandwidth.

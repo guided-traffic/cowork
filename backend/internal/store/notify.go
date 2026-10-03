@@ -1,0 +1,111 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
+)
+
+// EventChannel is the channel the committed acts are published on
+// (docs/adr/0054 D4).
+const EventChannel = "cowork_events"
+
+// Notification is a published act: what a stream filters on and what it
+// tells — a key and a version, never content (docs/adr/0054 D2, D3). The
+// payload stays far below PostgreSQL's 8000 bytes.
+type Notification struct {
+	// ID is the audit row's id, the event id a client replays from.
+	ID           uuid.UUID  `json:"id"`
+	Tenant       uuid.UUID  `json:"tenant"`
+	Project      uuid.UUID  `json:"project"`
+	Entity       string     `json:"entity"`
+	Action       string     `json:"action"`
+	Key          string     `json:"key"`
+	Version      int32      `json:"version"`
+	Confidential bool       `json:"confidential"`
+	Assignee     *uuid.UUID `json:"assignee,omitempty"`
+	Reporter     uuid.UUID  `json:"reporter"`
+}
+
+// silent are the acts a stream does not carry: data leaving the system
+// changes nothing a client shows, and time follows its own visibility
+// (docs/adr/0026 D5, docs/adr/0034 D5).
+var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
+
+// publish notifies the listeners of a ticket's act. NOTIFY inside the
+// transaction is delivered when it commits and never when it rolls back
+// (docs/adr/0054 D4).
+func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
+	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
+		return nil
+	}
+	facts, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
+	if err != nil {
+		return fmt.Errorf("read the published ticket: %w", err)
+	}
+	payload, err := json.Marshal(Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
+		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
+		Assignee: facts.AssigneeID, Reporter: facts.ReporterID})
+	if err != nil {
+		return fmt.Errorf("encode the notification: %w", err)
+	}
+	if _, err := w.tx.Exec(ctx, "SELECT pg_notify($1, $2)", EventChannel, string(payload)); err != nil {
+		return fmt.Errorf("publish the act: %w", err)
+	}
+	return nil
+}
+
+// Listen holds one connection outside the pool on the channel and hands
+// every notification to deliver until ctx ends (docs/adr/0054 D4). up is told
+// true once listening and false while the connection is lost; it reconnects
+// with a growing pause.
+func (db *DB) Listen(ctx context.Context, deliver func(Notification), up func(bool)) {
+	pause := time.Second
+	for ctx.Err() == nil {
+		listening, err := db.listenOnce(ctx, deliver, up)
+		if ctx.Err() != nil {
+			return
+		}
+		up(false)
+		db.logger.Warn("the event listener lost its connection", "error", err)
+		if listening {
+			pause = time.Second
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pause):
+		}
+		pause = min(2*pause, 30*time.Second)
+	}
+}
+
+func (db *DB) listenOnce(ctx context.Context, deliver func(Notification), up func(bool)) (bool, error) {
+	conn, err := pgx.ConnectConfig(ctx, db.pool.Config().ConnConfig.Copy())
+	if err != nil {
+		return false, fmt.Errorf("connect the listener: %w", err)
+	}
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+	if _, err := conn.Exec(ctx, "LISTEN "+EventChannel); err != nil {
+		return false, fmt.Errorf("listen: %w", err)
+	}
+	up(true)
+	for {
+		n, err := conn.WaitForNotification(ctx)
+		if err != nil {
+			return true, fmt.Errorf("wait for a notification: %w", err)
+		}
+		var msg Notification
+		if err := json.Unmarshal([]byte(n.Payload), &msg); err != nil {
+			db.logger.Error("an event notification does not decode", "error", err)
+			continue
+		}
+		deliver(msg)
+	}
+}

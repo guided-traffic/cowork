@@ -8,8 +8,17 @@ updates?": sub-second updates through Server-Sent Events, over adaptive polling 
 The rules of D4–D9 are this record's design for the owner's requirement and were not objected
 to.
 
-**Not built.** No event stream, no listener connection; the nginx template has no events
-location.
+Amended 2026-10-02 (D3: the visible projects are recomputed at every heartbeat; D4: what a
+payload carries and which acts are published; D5: the heartbeat checks the token and the
+membership again, and a replica that lost its listener keeps no replay point from before). Revocation is immediate
+([ADR 0035](0035-personal-access-tokens.md) D6), and an open stream is not a next request.
+
+**Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
+with the inbox), D2 without `inbox.changed` and `membership.changed` (no route changes a
+membership yet), D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
+[`notify.go`](../../backend/internal/store/notify.go) and [`events.go`](../../backend/internal/api/events.go);
+the nginx template has the events location. D3's recomputation on `membership.changed`
+arrives with that event; D7's client side with the frontend.
 
 ## Context
 
@@ -41,7 +50,9 @@ list would not.
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on
-`membership.changed`) and drops events of projects the person may not see, so not even the
+`membership.changed`) *(amended 2026-10-02: and at every heartbeat, with the person's current
+role, so a project gained or lost by a change no event announces counts within one
+heartbeat)* and drops events of projects the person may not see, so not even the
 existence of a key in a restricted project leaks. Events never cross tenants: a subscription
 is to one tenant, and the person-level `?me=true` events are addressed to the person.
 
@@ -50,13 +61,22 @@ is to one tenant, and the person-level `?me=true` events are addressed to the pe
 transaction commits and not otherwise. Each backend replica holds **one dedicated listener
 connection** outside the pool, fans each notification out to its subscribed streams after D3's
 filter, and never blocks a mutation on a slow subscriber (bounded per-stream buffers; a
-subscriber that falls behind is sent `event: resync` and dropped).
+subscriber that falls behind is sent `event: resync` and dropped). *(Made concrete 2026-10-02: an act of a ticket is
+published — its comment, question, link, interest and attachment acts included — and the
+reads of [ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 and
+the time entries are not; the payload is the audit row's id, the tenant, the project, the
+entity, the action, the key, the version and the confidential rule's inputs, a few hundred
+bytes against PostgreSQL's limit of 8000; while the listener has lost its connection, new
+streams are refused with `503` and the open ones are told `resync` when it is back.)*
 
 **D5 — Reconnect and replay.** Every event has an `id` (the audit row's UUIDv7); each
 replica keeps a ring buffer of the last five minutes per tenant; a reconnect with
 `Last-Event-ID` inside the buffer replays the gap, outside it receives `event: resync` and the
 client refetches every visible list. A heartbeat comment every twenty seconds keeps proxies
-from closing idle streams.
+from closing idle streams. *(Added 2026-10-02: the heartbeat checks the token —
+not revoked, not expired, its person active — and the person's membership of the tenant again,
+and ends the stream when either fails. A replica whose listener comes back after a loss empties
+its ring buffers: the acts of the loss never reached them, so an earlier id answers `resync`.)*
 
 **D6 — The proxies are told not to buffer.** The backend sets `X-Accel-Buffering: no`,
 `Cache-Control: no-cache` and `Content-Type: text/event-stream`; the nginx template gets a

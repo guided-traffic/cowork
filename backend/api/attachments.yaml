@@ -1,0 +1,118 @@
+# Attachments: bytes in object storage, served only through the backend
+# (docs/adr/0016).
+attachments:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listAttachments
+    tags: [attachments]
+    summary: The ticket's attachments
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of attachments
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AttachmentList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: uploadAttachment
+    tags: [attachments]
+    summary: Upload a file to the ticket, or to one of its comments
+    description: |
+      A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
+      attachment only its author or that person's agents. The type is detected from the bytes
+      and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
+      COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+      501 `uploads_disabled`.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: {type: string, format: binary}
+              comment_id: {type: string, format: uuid}
+    responses:
+      '201':
+        description: The new attachment
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Attachment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+attachment:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/AttachmentID'
+  get:
+    operationId: getAttachment
+    tags: [attachments]
+    summary: An attachment's metadata
+    responses:
+      '200':
+        description: The metadata
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Attachment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+attachmentContent:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/AttachmentID'
+  get:
+    operationId: downloadAttachment
+    tags: [attachments]
+    summary: An attachment's bytes
+    description: |
+      Streamed from storage after the ticket's read check, with the detected type, `nosniff`,
+      `Content-Security-Policy: sandbox`, inline for raster images and a download for
+      everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
+      (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
+      (docs/adr/0059 D4).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: The bytes
+        headers:
+          ETag:
+            description: The quoted hex SHA-256 of the bytes
+            schema: {type: string}
+          Content-Disposition:
+            schema: {type: string}
+          X-Content-Type-Options:
+            schema: {type: string}
+          Content-Security-Policy:
+            schema: {type: string}
+        content:
+          '*/*':
+            schema: {type: string, format: binary}
+      '304':
+        description: The client holds these bytes
+        headers:
+          ETag:
+            description: The quoted hex SHA-256 of the bytes
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'

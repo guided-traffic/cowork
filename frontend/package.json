@@ -10,7 +10,7 @@
     "lint": "ng lint"
   },
   "private": true,
-  "packageManager": "npm@11.17.0",
+  "packageManager": "npm@12.2.0",
   "dependencies": {
     "@angular/common": "^22.2.0",
     "@angular/compiler": "^22.2.0",
@@ -26,6 +26,7 @@
     "@angular/cli": "^22.2.0",
     "@angular/compiler-cli": "^22.2.0",
     "@eslint/js": "^10.0.1",
+    "@vitest/coverage-v8": "^5.0.2",
     "angular-eslint": "22.5.0",
     "eslint": "^10.9.1",
     "jsdom": "^30.0.0",

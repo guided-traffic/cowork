@@ -16,7 +16,14 @@ type is added. D6 makes the transitive closure a view, D7 (proposed with the ame
 to objection) stops a ticket from being closed over open prerequisites without a recorded
 override.
 
-**Not built.** No `ticket_links` table exists.
+**Partly built** (phase 2, 2026-10-02): D1–D5 and D7 — `ticket_links` (migration 9) with the
+reverse names read from either end, links across projects and never across tenants (by the
+API and by the schema's composite keys), an act on both tickets, no self link, the `blocks`
+cycle refused by a walk over the tenant's graph under a per-tenant lock, and `done` refused
+over open direct prerequisites the closer can see unless a person overrides with a reason
+(an agent cannot). D6's prerequisite view arrives with the ticket detail. Removing a `blocks`
+link is open to agents until the agent gates are reviewed after experience
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).
 
 ## Context
 

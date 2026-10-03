@@ -1,0 +1,173 @@
+# The comment thread and the activity list of a ticket (docs/adr/0015).
+comments:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listComments
+    tags: [comments]
+    summary: The ticket's comment thread
+    parameters:
+      - $ref: './components/parameters.yaml#/Order'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of comments; a withdrawn one without its text
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/CommentList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: addComment
+    tags: [comments]
+    summary: Comment on the ticket
+    description: A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/CommentWrite'
+    responses:
+      '201':
+        description: The new comment
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Comment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+comment:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/CommentID'
+  get:
+    operationId: getComment
+    tags: [comments]
+    summary: One comment
+    responses:
+      '200':
+        description: The comment
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Comment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: editComment
+    tags: [comments]
+    summary: Edit a comment
+    description: |
+      A person edits their own comments and those their agents wrote; an agent only those an
+      agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/CommentWrite'
+    responses:
+      '200':
+        description: The comment
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Comment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+commentRevisions:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/CommentID'
+  get:
+    operationId: listCommentRevisions
+    tags: [comments]
+    summary: A comment's edit history, oldest first; empty once withdrawn
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of previous texts
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/CommentRevisionList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+commentWithdrawal:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/CommentID'
+  put:
+    operationId: withdrawComment
+    tags: [comments]
+    summary: Withdraw a comment
+    description: |
+      Hides the text and keeps the entry (docs/adr/0015 D3): the author, a person for their
+      agents' comments, an agent for comments an agent of the same person wrote, or a tenant
+      administrator. Idempotent.
+    responses:
+      '200':
+        description: The withdrawn comment
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Comment'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+activity:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listActivity
+    tags: [comments]
+    summary: The ticket's activity, every recorded act
+    description: |
+      A projection of the audit record (docs/adr/0015 D6) without time entries and without data
+      leaving the system. An act that names a ticket the caller cannot see shows without its
+      payload.
+    parameters:
+      - $ref: './components/parameters.yaml#/Order'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of acts
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ActivityList'
+      default:
+        $ref: './components/responses.yaml#/Problem'

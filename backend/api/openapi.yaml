@@ -1,0 +1,128 @@
+# The cowork API (docs/adr/0046): this document is the source. A change to the
+# API is a change here first; `make generate` bundles it into openapi.gen.json,
+# which the server embeds, serves at /api/v1/openapi.json and validates every
+# request against, and from which oapi-codegen writes the Go server interface
+# and client. One file per path family; components/ holds what they share.
+openapi: 3.1.0
+info:
+  title: cowork
+  version: 0.0.0 # replaced by the backend version when served (docs/adr/0046 D5)
+  description: |
+    A multi-tenant backlog for people and the agents that work for them.
+
+    Every route that names a person is authenticated with a personal access
+    token, `Authorization: Bearer cwk_…` (docs/adr/0035). A request marked as
+    an agent's — by the token's agent flag, or by an `X-Cowork-Agent:
+    name/model/session` header — is bound by the agent rules
+    (docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable
+    `code` (docs/adr/0047).
+servers:
+  - url: /
+security:
+  - bearerToken: []
+tags:
+  - name: meta
+  - name: me
+  - name: tenants
+  - name: projects
+  - name: tickets
+  - name: questions
+  - name: comments
+  - name: time
+  - name: attachments
+  - name: events
+paths:
+  /api/v1/version:
+    $ref: './meta.yaml#/version'
+  /api/v1/openapi.json:
+    $ref: './meta.yaml#/document'
+  /api/v1/me:
+    $ref: './me.yaml#/me'
+  /api/v1/me/tokens:
+    $ref: './me.yaml#/tokens'
+  /api/v1/me/tokens/{token_id}:
+    $ref: './me.yaml#/token'
+  /api/v1/tenants/{tenant}:
+    $ref: './tenants.yaml#/tenant'
+  /api/v1/tenants/{tenant}/members:
+    $ref: './tenants.yaml#/members'
+  /api/v1/tenants/{tenant}/audit:
+    $ref: './tenants.yaml#/audit'
+  /api/v1/tenants/{tenant}/projects:
+    $ref: './tenants.yaml#/projects'
+  /api/v1/tenants/{tenant}/projects/{project}:
+    $ref: './tenants.yaml#/project'
+  /api/v1/tenants/{tenant}/projects/{project}/archive:
+    $ref: './tenants.yaml#/projectArchive'
+  /api/v1/tenants/{tenant}/events:
+    $ref: './events.yaml#/events'
+  /api/v1/tenants/{tenant}/tickets:
+    $ref: './tenants.yaml#/tenantTickets'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets:
+    $ref: './tenants.yaml#/projectTickets'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}:
+    $ref: './tenants.yaml#/ticket'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body:
+    $ref: './tenants.yaml#/ticketBody'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override:
+    $ref: './tenants.yaml#/ticketUrgencyOverride'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential:
+    $ref: './tenants.yaml#/ticketConfidential'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown:
+    $ref: './tickets.yaml#/markdown'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions:
+    $ref: './tickets.yaml#/transitions'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions:
+    $ref: './questions.yaml#/questions'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}:
+    $ref: './questions.yaml#/question'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/answer:
+    $ref: './questions.yaml#/questionAnswer'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal:
+    $ref: './questions.yaml#/questionWithdrawal'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments:
+    $ref: './comments.yaml#/comments'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}:
+    $ref: './comments.yaml#/comment'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions:
+    $ref: './comments.yaml#/commentRevisions'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal:
+    $ref: './comments.yaml#/commentWithdrawal'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity:
+    $ref: './comments.yaml#/activity'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest:
+    $ref: './tickets.yaml#/interest'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries:
+    $ref: './time.yaml#/ticketTime'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}:
+    $ref: './time.yaml#/timeEntry'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/void:
+    $ref: './time.yaml#/timeEntryVoid'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions:
+    $ref: './time.yaml#/timeEntryRevisions'
+  /api/v1/tenants/{tenant}/time-entries:
+    $ref: './time.yaml#/tenantTime'
+  /api/v1/tenants/{tenant}/time-report:
+    $ref: './time.yaml#/timeReport'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments:
+    $ref: './attachments.yaml#/attachments'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}:
+    $ref: './attachments.yaml#/attachment'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content:
+    $ref: './attachments.yaml#/attachmentContent'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links:
+    $ref: './tickets.yaml#/links'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}:
+    $ref: './tickets.yaml#/link'
+  /api/v1/tickets/{tenant}/{key}:
+    $ref: './tickets.yaml#/resolve'
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: |
+        A personal access token, `cwk_` and 43 base62 characters
+        (docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the
+        request as an agent's; a token with the agent flag is an agent's
+        with or without it, and no header removes the flag (docs/adr/0036).

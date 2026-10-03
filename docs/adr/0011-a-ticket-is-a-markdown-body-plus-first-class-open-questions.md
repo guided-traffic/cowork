@@ -12,7 +12,12 @@ body text versus structured parts?": the body stays prose, the open questions be
 entities. The additional rules of D3–D6 were put to the owner with the question and were not
 objected to.
 
-**Not built.** No `tickets` or `questions` table exists.
+**Partly built** (phase 2, 2026-10-02): D1, D2 and D5 — the body replaced as a whole with the
+previous and the new text on the act, questions as entities (migration 10) with their number,
+the person asked, the answer only a person decides and an agent may record with
+`record-answer`; D4's export half in [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)'s
+`/markdown`. D3's person-level list arrives with the person-level views, D4's import with the
+importer, D6's sanitiser with the first rendered Markdown.
 
 ## Context
 

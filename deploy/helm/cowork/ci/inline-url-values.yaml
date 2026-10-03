@@ -1,10 +1,17 @@
-# Throw-away shape: the chart renders the database Secret itself.
+# Throw-away shape: the chart renders both database Secrets itself. The server
+# key has no inline path (docs/adr/0058 D3).
 database:
-  url: postgres://cowork:cowork@postgres:5432/cowork?sslmode=disable
+  url: postgres://cowork_app:cowork_app@postgres:5432/cowork?sslmode=disable
+  owner:
+    url: postgres://cowork_owner:cowork_owner@postgres:5432/cowork?sslmode=disable
+session:
+  existingSecret: cowork-session
 backend:
   config:
     logFormat: text
     logLevel: debug
+    attachmentMaxBytes: 0
+    requestTimeout: 0
   extraEnv:
     - name: COWORK_EXAMPLE
       value: "1"

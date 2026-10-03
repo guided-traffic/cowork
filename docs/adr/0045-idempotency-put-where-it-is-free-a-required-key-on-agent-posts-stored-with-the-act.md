@@ -8,7 +8,12 @@ key where `POST` is unavoidable — over a stored key on every unsafe request, o
 idempotency alone with client-generated ids, and over nothing. The rules of D5–D7 were put
 to the owner with the question and not objected to.
 
-**Not built.** No mutation route exists.
+**Built** (phase 2, 2026-10-02) except D5: `PUT` for the body, the links, the interest and the
+flags; the `from` precondition on transitions; keys on the other `POST`s, required from
+agents; the stored response and the replay in [`store.Mutate`](../../backend/internal/store/tx.go)
+with a `422` on a different request under the same key, expired by an hourly job; an upload's
+fingerprint over the file's hash, name and comment instead of the raw multipart body; an
+unsolicited key on a transition recorded on the act. D5 arrives with the MCP server.
 
 ## Context
 

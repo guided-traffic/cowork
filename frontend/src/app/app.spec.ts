@@ -18,7 +18,7 @@ describe('App', () => {
 
   it('renders the product name', async () => {
     const fixture = TestBed.createComponent(App);
-    http.expectOne('/api/v1/version').flush({ version: '1.0.0', commit: 'abc', buildTime: '1' });
+    http.expectOne('/api/v1/version').flush({ version: '1.0.0', commit: 'abc', build_time: '1' });
     await fixture.whenStable();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -27,7 +27,7 @@ describe('App', () => {
 
   it('shows the backend version once it answered', async () => {
     const fixture = TestBed.createComponent(App);
-    http.expectOne('/api/v1/version').flush({ version: '1.0.0', commit: 'abc', buildTime: '1' });
+    http.expectOne('/api/v1/version').flush({ version: '1.0.0', commit: 'abc', build_time: '1' });
     await fixture.whenStable();
 
     const compiled = fixture.nativeElement as HTMLElement;

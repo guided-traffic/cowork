@@ -9,7 +9,16 @@ people read as tables — over cursor alone, over offset alone, and over keyset 
 visible to the client. The rules of D5–D7 were put to the owner with the question and not
 objected to.
 
-**Not built.** No list route exists.
+Amended 2026-10-02 (D1: the server key is `COWORK_SESSION_KEY`, required from phase 2, and the
+cursor key is derived from it; D2: the two modes do not mix in one request). A cursor "does not
+expire" (D5), so a key made up per process would not do; deriving the cursor key under a label
+of its own keeps it apart from the session use the server key gets later.
+
+**Partly built** (phase 2, 2026-10-02): D1, D3, D5–D7 on every list route, the project's
+tickets ordered by number until the rank exists ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
+D2's numbered pages on the two ticket lists and the tenant's time entries — the audit view,
+members, tokens and projects carry the cursor only so far; D4's markings and client helpers
+arrive with the generated frontend client.
 
 ## Context
 
@@ -34,14 +43,18 @@ costs nothing noticeable there.
 last value — `id` for time-ordered lists, the rank string for the backlog, `(score, id)` for
 score-ordered lists, `(rank, id)` for search — signed with HMAC under the server key
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D1) so it cannot be forged
-or edited.
+or edited. *(Amended 2026-10-02: the server key is `COWORK_SESSION_KEY`, standard base64 of at
+least 32 bytes, required by `cowork serve`; the cursors are signed with a key derived from it
+by HKDF-SHA256 under the label `cowork cursor v1`, and a cursor names its operation and its
+path parameters besides the position.)*
 
 **D2 — Table-like lists additionally support numbered pages:** `?page=N&per_page=M`
 (`per_page` from 25, 50, 100, clamped like `limit`), and the response then carries `total`
 and `page`. The table-like lists are: ticket lists with filters (a project's backlog as a
 list, the tenant-wide filtered list, saved filters), the time report, the audit view,
 members, tokens, projects. The depth is capped: `page × per_page` above 10 000 answers
-`400 page_too_deep` with the advice to filter.
+`400 page_too_deep` with the advice to filter. *(Added 2026-10-02: `page` with `cursor` or
+`limit`, and `per_page` without `page`, answer `400 validation_failed`.)*
 
 **D3 — Streams are cursor-only:** activity, inbox, comments, search, `/me/next`,
 `/me/assigned`, `/me/decisions`. They carry no `total` and no `page`.

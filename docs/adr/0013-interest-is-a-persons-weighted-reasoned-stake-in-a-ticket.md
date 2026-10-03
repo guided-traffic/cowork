@@ -10,7 +10,11 @@ with a weight and a note, over plain votes, over direct rank editing by members,
 point budget. The additional rules of D4–D5 were put to the owner with the question and were
 not objected to.
 
-**Not built.** No `ticket_interest` table exists.
+**Partly built** (phase 2, 2026-10-02): D1, D2, D4 and D5 — `ticket_interest` (migration 12),
+one stake per person and ticket set and removed by its person, visible with the ticket, `watch`
+for viewers and agents and `need` and `urgent` for an agent with `interest`, kept and shown as
+settled when the ticket is done or dropped, and the lists' `interest` filter. D3's score and
+D6's watcher set arrive with the score and the notifications.
 
 ## Context
 

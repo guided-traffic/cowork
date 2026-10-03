@@ -7,7 +7,10 @@ a ticket addressed?": the globally unique form with the tenant in it, as the can
 spelling everywhere, over the shorter `PROJECT-number` that would have collided across
 tenants.
 
-**Not built.** No `projects` or `tickets` table exists.
+**Partly built** (phase 2, 2026-10-02): D1–D4 — the key grammar
+([`ParseTicketKey`](../../backend/internal/domain/ticket.go)), the counter row per project, the
+full key in every response, the short form taken where the path fixes the tenant, numbers never
+reused. D5's imports arrive with the importer.
 
 ## Context
 

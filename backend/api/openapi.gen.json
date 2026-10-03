@@ -1,0 +1,5681 @@
+{
+  "components": {
+    "headers": {
+      "ETag": {
+        "description": "The entity's version, the strong validator for `If-Match` (docs/adr/0050 D2)",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Location": {
+        "description": "The new entity's URL",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "parameters": {
+      "AttachmentID": {
+        "description": "The attachment's id",
+        "in": "path",
+        "name": "attachment",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "CommentID": {
+        "description": "The comment's id",
+        "in": "path",
+        "name": "comment",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "Cursor": {
+        "description": "The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)",
+        "in": "query",
+        "name": "cursor",
+        "schema": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "FilterAssignee": {
+        "description": "A person id, me or none, each negatable with !",
+        "explode": true,
+        "in": "query",
+        "name": "assignee",
+        "schema": {
+          "items": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterBlocked": {
+        "description": "Whether an open ticket the caller can see blocks the ticket (docs/adr/0049 D1)",
+        "in": "query",
+        "name": "blocked",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "FilterEffort": {
+        "explode": true,
+        "in": "query",
+        "name": "effort",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterHasOpenQuestions": {
+        "description": "Whether the ticket has an open question (docs/adr/0049 D1)",
+        "in": "query",
+        "name": "has_open_questions",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "FilterInterest": {
+        "description": "me — the caller holds a stake; any — anyone does; each negatable with ! (docs/adr/0049 D1)",
+        "explode": true,
+        "in": "query",
+        "name": "interest",
+        "schema": {
+          "items": {
+            "maxLength": 8,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterParent": {
+        "description": "A ticket key, or none for roots",
+        "explode": true,
+        "in": "query",
+        "name": "parent",
+        "schema": {
+          "items": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterProject": {
+        "description": "A project key, negatable with !",
+        "explode": true,
+        "in": "query",
+        "name": "project",
+        "schema": {
+          "items": {
+            "maxLength": 16,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterReporter": {
+        "description": "A person id or me, each negatable with !",
+        "explode": true,
+        "in": "query",
+        "name": "reporter",
+        "schema": {
+          "items": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterSecurity": {
+        "explode": true,
+        "in": "query",
+        "name": "security",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterSeverity": {
+        "explode": true,
+        "in": "query",
+        "name": "severity",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterState": {
+        "description": "A state, or !state; repeated values combine with OR (docs/adr/0049)",
+        "explode": true,
+        "in": "query",
+        "name": "state",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterType": {
+        "explode": true,
+        "in": "query",
+        "name": "type",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FilterUrgency": {
+        "explode": true,
+        "in": "query",
+        "name": "urgency",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
+      "FromDay": {
+        "description": "The first day of the period, inclusive",
+        "in": "query",
+        "name": "from",
+        "schema": {
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "GroupBy": {
+        "in": "query",
+        "name": "group_by",
+        "schema": {
+          "default": "ticket",
+          "enum": [
+            "ticket",
+            "project",
+            "person",
+            "tenant"
+          ],
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "description": "A UUID the client generates per act and repeats on every retry of it; an\nagent's POST requires one (docs/adr/0045 D3, D4).\n",
+        "in": "header",
+        "name": "Idempotency-Key",
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "IfMatch": {
+        "description": "The `ETag` of the version the client read. Required on overwriting writes:\nwithout it the answer is 428, with a stale one 412 (docs/adr/0050 D3).\n",
+        "in": "header",
+        "name": "If-Match",
+        "schema": {
+          "maxLength": 32,
+          "type": "string"
+        }
+      },
+      "IfNoneMatch": {
+        "description": "The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)",
+        "in": "header",
+        "name": "If-None-Match",
+        "schema": {
+          "maxLength": 128,
+          "type": "string"
+        }
+      },
+      "IncludeTerminal": {
+        "description": "Include done and dropped tickets; without it they show only when state names them",
+        "in": "query",
+        "name": "include_terminal",
+        "schema": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "IncludeVoided": {
+        "in": "query",
+        "name": "include_voided",
+        "schema": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "Limit": {
+        "description": "Items per page; the server caps it at its configured maximum",
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "default": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "OpenedAfter": {
+        "in": "query",
+        "name": "opened_after",
+        "schema": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "OpenedBefore": {
+        "in": "query",
+        "name": "opened_before",
+        "schema": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "Order": {
+        "description": "Oldest first by default; desc for newest first (docs/adr/0048 D6)",
+        "in": "query",
+        "name": "order",
+        "schema": {
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "type": "string"
+        }
+      },
+      "OtherTicketKey": {
+        "description": "The other end's key, \u003cPROJECT\u003e-\u003cnumber\u003e; a link never leaves the tenant (docs/adr/0012 D2)",
+        "in": "path",
+        "name": "other",
+        "required": true,
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
+          "type": "string"
+        }
+      },
+      "Page": {
+        "description": "A numbered page, from 1 (docs/adr/0048 D2); not with cursor",
+        "in": "query",
+        "name": "page",
+        "schema": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "PathLinkType": {
+        "description": "The link's type, the ticket in the path its source (docs/adr/0012 D1)",
+        "in": "path",
+        "name": "type",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/LinkType"
+        }
+      },
+      "PerPage": {
+        "in": "query",
+        "name": "per_page",
+        "schema": {
+          "enum": [
+            25,
+            50,
+            100
+          ],
+          "type": "integer"
+        }
+      },
+      "ProgressMax": {
+        "in": "query",
+        "name": "progress_max",
+        "schema": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "ProgressMin": {
+        "in": "query",
+        "name": "progress_min",
+        "schema": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "ProjectKey": {
+        "description": "The project's key (docs/adr/0007 D1)",
+        "in": "path",
+        "name": "project",
+        "required": true,
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "type": "string"
+        }
+      },
+      "Query": {
+        "description": "Full text over title and body (docs/adr/0025); its length is capped by the server",
+        "in": "query",
+        "name": "q",
+        "schema": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "QuestionNumber": {
+        "description": "The question's number within the ticket",
+        "in": "path",
+        "name": "question",
+        "required": true,
+        "schema": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "TenantSlug": {
+        "description": "The tenant's slug (docs/adr/0005 D4)",
+        "in": "path",
+        "name": "tenant",
+        "required": true,
+        "schema": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
+        }
+      },
+      "TicketNumber": {
+        "description": "The ticket's number in its project",
+        "in": "path",
+        "name": "number",
+        "required": true,
+        "schema": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "TimeEntryID": {
+        "description": "The time entry's id",
+        "in": "path",
+        "name": "entry",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "TimePerson": {
+        "description": "A person id, or me",
+        "in": "query",
+        "name": "person",
+        "schema": {
+          "maxLength": 64,
+          "type": "string"
+        }
+      },
+      "TimeProject": {
+        "description": "A project key",
+        "in": "query",
+        "name": "project",
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "type": "string"
+        }
+      },
+      "TimeTicket": {
+        "description": "A ticket key, \u003cPROJECT\u003e-\u003cnumber\u003e",
+        "in": "query",
+        "name": "ticket",
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
+          "type": "string"
+        }
+      },
+      "ToDay": {
+        "description": "The last day of the period, inclusive",
+        "in": "query",
+        "name": "to",
+        "schema": {
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "UpdatedAfter": {
+        "in": "query",
+        "name": "updated_after",
+        "schema": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "UpdatedBefore": {
+        "in": "query",
+        "name": "updated_before",
+        "schema": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "content": {
+          "application/problem+json": {
+            "example": {
+              "code": "not_found",
+              "detail": "no such tenant",
+              "instance": "/api/v1/tenants/acme",
+              "request_id": "0199a3c2-1d2e-7f00-8000-0000000000ff",
+              "status": 404,
+              "title": "Not found",
+              "type": "https://cowork.dev/problems/not-found"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description": "An RFC 9457 problem details body with a stable `code`, the `request_id`\nand, for validation failures, `errors[]` (docs/adr/0047).\n",
+        "headers": {
+          "X-Request-Id": {
+            "description": "The request's id, also in the body and in the log line",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Activity": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AuditAction"
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor_system": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": {
+            "description": "The changed fields after the act; null when redacted",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "before": {
+            "description": "The changed fields before the act; null when redacted",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "entity_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "explained_by_comment": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redacted": {
+            "description": "The act names a ticket the caller cannot see; its payload, reason and note are withheld",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "actor",
+          "actor_system",
+          "agent",
+          "action",
+          "entity_type",
+          "entity_id",
+          "before",
+          "after",
+          "reason",
+          "note",
+          "explained_by_comment",
+          "redacted"
+        ],
+        "type": "object"
+      },
+      "ActivityList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "AnswerSet": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "type": "object"
+      },
+      "Attachment": {
+        "properties": {
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "comment": {
+            "description": "The comment the attachment belongs to",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_type": {
+            "description": "Detected from the bytes (docs/adr/0016 D3)",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+              "text/plain; charset=utf-8",
+              "image/svg+xml"
+            ],
+            "type": "string"
+          },
+          "content_url": {
+            "description": "The download, through the backend only (docs/adr/0016 D4)",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "file_name": {
+            "description": "The uploaded name, sanitised (docs/adr/0016 D1)",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "The hex SHA-256 of the bytes, also the download's ETag",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uploaded_by": {
+            "$ref": "#/components/schemas/Person"
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "size",
+          "sha256",
+          "content_type",
+          "comment",
+          "uploaded_by",
+          "agent",
+          "created_at",
+          "content_url"
+        ],
+        "type": "object"
+      },
+      "AttachmentList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "AuditAction": {
+        "enum": [
+          "created",
+          "updated",
+          "transitioned",
+          "linked",
+          "unlinked",
+          "commented",
+          "edited",
+          "withdrawn",
+          "assigned",
+          "interest",
+          "ranked",
+          "overridden",
+          "asked",
+          "answered",
+          "booked",
+          "voided",
+          "locked",
+          "uploaded",
+          "downloaded",
+          "exported",
+          "deleted",
+          "restored",
+          "purged",
+          "revoked",
+          "refused",
+          "archived",
+          "confidential_set",
+          "confidential_lifted",
+          "expired"
+        ],
+        "type": "string"
+      },
+      "AuditEvent": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AuditAction"
+          },
+          "actor": {
+            "description": "A person, or a system actor such as system:idempotency-expiry",
+            "properties": {
+              "person": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Person"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "system": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "after": {
+            "description": "The changed fields after the act"
+          },
+          "agent": {
+            "description": "The agent mark, name/model/session or unknown-agent (docs/adr/0036)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "before": {
+            "description": "The changed fields before the act"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ticket_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "actor",
+          "entity_type",
+          "action"
+        ],
+        "type": "object"
+      },
+      "AuditList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Block": {
+        "properties": {
+          "external_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BlockKind"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ticket": {
+            "description": "The key of the ticket it waits on, when the caller can see that ticket",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "kind",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "BlockKind": {
+        "description": "What a blocked ticket waits on (docs/adr/0009 D2)",
+        "enum": [
+          "decision",
+          "human",
+          "product",
+          "release",
+          "external",
+          "ticket"
+        ],
+        "type": "string"
+      },
+      "BlockSet": {
+        "additionalProperties": false,
+        "description": "What a ticket entering blocked waits on (docs/adr/0009 D2)",
+        "properties": {
+          "external_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BlockKind"
+          },
+          "ticket": {
+            "description": "The ticket it waits on, which gets a blocks link to this one; required with kind ticket",
+            "maxLength": 80,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "Capability": {
+        "description": "An agent capability (docs/adr/0043 D4)",
+        "enum": [
+          "decide",
+          "close",
+          "drop",
+          "rank",
+          "override-urgency",
+          "interest",
+          "upload",
+          "create-project",
+          "record-answer"
+        ],
+        "type": "string"
+      },
+      "Comment": {
+        "properties": {
+          "agent": {
+            "description": "The agent mark when an agent wrote it in the author's name",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "body": {
+            "description": "Markdown; null once withdrawn (docs/adr/0015 D3)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "edited": {
+            "description": "The comment has an edit history",
+            "type": "boolean"
+          },
+          "explains": {
+            "description": "The acts this comment explains (docs/adr/0015 D2)",
+            "items": {
+              "$ref": "#/components/schemas/AuditAction"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "withdrawn": {
+            "type": "boolean"
+          },
+          "withdrawn_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "agent",
+          "body",
+          "withdrawn",
+          "withdrawn_at",
+          "edited",
+          "explains",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "CommentList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "CommentRevision": {
+        "properties": {
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "body": {
+            "description": "The text before the edit",
+            "type": "string"
+          },
+          "edited_by": {
+            "$ref": "#/components/schemas/Person"
+          }
+        },
+        "required": [
+          "body",
+          "edited_by",
+          "agent",
+          "at"
+        ],
+        "type": "object"
+      },
+      "CommentRevisionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentRevision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "CommentWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
+      "ConfidentialSet": {
+        "additionalProperties": false,
+        "properties": {
+          "confidential": {
+            "type": "boolean"
+          },
+          "reason": {
+            "description": "Required to lift the flag (docs/adr/0065 D3)",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidential"
+        ],
+        "type": "object"
+      },
+      "Effort": {
+        "enum": [
+          "XS",
+          "S",
+          "M",
+          "L"
+        ],
+        "type": "string"
+      },
+      "FieldError": {
+        "properties": {
+          "current": {
+            "description": "The server's current value of the field, on a 412; null when the field is empty",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "object",
+              "array",
+              "null"
+            ],
+            "x-go-type": "interface{}"
+          },
+          "message": {
+            "type": "string"
+          },
+          "pointer": {
+            "description": "A JSON pointer into the body, or query:\u003cname\u003e / header:\u003cname\u003e",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pointer",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Interest": {
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "settled": {
+            "description": "The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)",
+            "type": "boolean"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "weight": {
+            "$ref": "#/components/schemas/InterestWeight"
+          }
+        },
+        "required": [
+          "person",
+          "weight",
+          "note",
+          "since",
+          "updated_at",
+          "settled"
+        ],
+        "type": "object"
+      },
+      "InterestList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Interest"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "InterestSet": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "Expected for need and urgent",
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "weight": {
+            "$ref": "#/components/schemas/InterestWeight"
+          }
+        },
+        "required": [
+          "weight"
+        ],
+        "type": "object"
+      },
+      "InterestWeight": {
+        "description": "docs/adr/0013 D1",
+        "enum": [
+          "watch",
+          "need",
+          "urgent"
+        ],
+        "type": "string"
+      },
+      "Link": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "direction": {
+            "description": "Outgoing when the ticket read is the link's source; relates-to is stored once",
+            "enum": [
+              "outgoing",
+              "incoming"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The link read from this ticket: blocks, blocked by, relates to, duplicates, duplicated by, found in, found here",
+            "type": "string"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketRef"
+          },
+          "type": {
+            "$ref": "#/components/schemas/LinkType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "direction",
+          "name",
+          "ticket",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "LinkList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "LinkType": {
+        "description": "docs/adr/0012 D1",
+        "enum": [
+          "blocks",
+          "relates-to",
+          "duplicates",
+          "found-in"
+        ],
+        "type": "string"
+      },
+      "Me": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/Membership"
+            },
+            "type": "array"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "memberships"
+        ],
+        "type": "object"
+      },
+      "Member": {
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "person",
+          "role"
+        ],
+        "type": "object"
+      },
+      "MemberList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Membership": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          }
+        },
+        "required": [
+          "tenant",
+          "role"
+        ],
+        "type": "object"
+      },
+      "Person": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "username": {
+            "description": "The local identity's username, `local:\u003cusername\u003e` (docs/adr/0033 D2)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ProblemCode"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "type": "object"
+      },
+      "ProblemCode": {
+        "description": "The stable code of a problem (docs/adr/0047 D2)",
+        "enum": [
+          "validation_failed",
+          "idempotency_key_required",
+          "invalid_cursor",
+          "page_too_deep",
+          "unauthenticated",
+          "token_expired",
+          "token_revoked",
+          "forbidden",
+          "insufficient_scope",
+          "agent_forbidden",
+          "not_found",
+          "method_not_allowed",
+          "project_key_taken",
+          "project_archived",
+          "state_conflict",
+          "parent_cycle",
+          "link_cycle",
+          "open_prerequisites",
+          "period_locked",
+          "attachment_limit",
+          "uploads_disabled",
+          "precondition_failed",
+          "payload_too_large",
+          "unsupported_media_type",
+          "idempotency_mismatch",
+          "precondition_required",
+          "internal",
+          "not_ready",
+          "timeout",
+          "backend_unreachable"
+        ],
+        "type": "string"
+      },
+      "Project": {
+        "properties": {
+          "archived_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "restricted": {
+            "description": "Visible to administrators and the people on its list only (docs/adr/0034 D3)",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "wip_limits": {
+            "$ref": "#/components/schemas/WipLimits"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "restricted",
+          "wip_limits",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ProjectCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          "key": {
+            "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "wip_limits": {
+            "$ref": "#/components/schemas/WipLimits"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ProjectList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "ProjectPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "description": {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "wip_limits": {
+            "$ref": "#/components/schemas/WipLimits"
+          }
+        },
+        "type": "object"
+      },
+      "Question": {
+        "properties": {
+          "answer": {
+            "description": "Markdown",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answered_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answered_by": {
+            "description": "The person whose answer it is, also when an agent wrote it down",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "asked_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "asked_by_agent": {
+            "description": "The agent mark of the request that asked",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asked_of": {
+            "description": "The person asked; null for a question open in the tenant",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "number": {
+            "description": "Stable within the ticket: Q\u003cn\u003e (docs/adr/0011 D4)",
+            "type": "integer"
+          },
+          "options": {
+            "description": "Markdown: the context and the options",
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "recorded_by_agent": {
+            "description": "An agent wrote the person's answer down (docs/adr/0066 D8)",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuestionStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "withdrawn_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "question",
+          "options",
+          "recommendation",
+          "answer",
+          "status",
+          "asked_by",
+          "asked_by_agent",
+          "asked_of",
+          "answered_by",
+          "answered_at",
+          "recorded_by_agent",
+          "withdrawn_at",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "QuestionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "asked_of": {
+            "description": "A member who can see the ticket; omitted, the question is open in the tenant",
+            "format": "uuid",
+            "type": "string"
+          },
+          "options": {
+            "maxLength": 100000,
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "recommendation": {
+            "maxLength": 10000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "type": "object"
+      },
+      "QuestionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "QuestionPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "asked_of": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "maxLength": 100000,
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "recommendation": {
+            "maxLength": 10000,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "QuestionStatus": {
+        "description": "docs/adr/0011 D2",
+        "enum": [
+          "open",
+          "answered",
+          "withdrawn"
+        ],
+        "type": "string"
+      },
+      "Role": {
+        "description": "A tenant role, lowest first (docs/adr/0034 D1)",
+        "enum": [
+          "viewer",
+          "member",
+          "admin"
+        ],
+        "type": "string"
+      },
+      "Scope": {
+        "description": "A token's scope (docs/adr/0035 D3)",
+        "enum": [
+          "read",
+          "write",
+          "admin"
+        ],
+        "type": "string"
+      },
+      "SecurityClass": {
+        "enum": [
+          "live",
+          "boundary",
+          "hardening",
+          "none"
+        ],
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "cosmetic"
+        ],
+        "type": "string"
+      },
+      "Tenant": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "members_create_projects": {
+            "description": "Members create projects; off, only administrators do (docs/adr/0034 D9)",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "time_locked_until": {
+            "description": "Time entries on or before this date cannot change (docs/adr/0017 D8)",
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_visible_to_members": {
+            "description": "Members see every time entry of the projects they see, not only their own (docs/adr/0034 D5)",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "version",
+          "time_visible_to_members",
+          "members_create_projects",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "TenantPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "members_create_projects": {
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "time_locked_until": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_visible_to_members": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "TenantRef": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
+      "Ticket": {
+        "properties": {
+          "assignee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Block"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "description": "Markdown, the current state, replaced as a whole (docs/adr/0011 D1)",
+            "type": "string"
+          },
+          "confidential": {
+            "description": "Visible to the tenant's administrators, the assignee and the reporter only (docs/adr/0065)",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "done_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effort": {
+            "$ref": "#/components/schemas/Effort"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e (docs/adr/0007 D2)",
+            "type": "string"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "parent": {
+            "description": "The parent's key",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "description": "100 when done; derived from the children while there are any (docs/adr/0017 D3, D5)",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_derived": {
+            "description": "The progress is derived from the children and takes no manual value",
+            "type": "boolean"
+          },
+          "project": {
+            "description": "The project's key",
+            "type": "string"
+          },
+          "reporter": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityClass"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "threat": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "urgency": {
+            "$ref": "#/components/schemas/Urgency"
+          },
+          "urgency_derived": {
+            "$ref": "#/components/schemas/Urgency"
+          },
+          "urgency_override": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UrgencyOverride"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "urgency_rule": {
+            "description": "The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "project",
+          "number",
+          "type",
+          "title",
+          "body",
+          "state",
+          "block",
+          "severity",
+          "security",
+          "threat",
+          "urgency",
+          "urgency_derived",
+          "urgency_rule",
+          "urgency_override",
+          "effort",
+          "progress",
+          "progress_derived",
+          "parent",
+          "reporter",
+          "assignee",
+          "confidential",
+          "opened_at",
+          "decided_at",
+          "done_at",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketBodyReplace": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 200000,
+            "type": "string"
+          },
+          "comment": {
+            "description": "A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)",
+            "maxLength": 100000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
+      "TicketCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee": {
+            "description": "A member of the tenant",
+            "format": "uuid",
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 200000,
+            "type": "string"
+          },
+          "effort": {
+            "$ref": "#/components/schemas/Effort"
+          },
+          "parent": {
+            "description": "A ticket key of the same project, short or full",
+            "type": "string"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityClass"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "threat": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "severity",
+          "security",
+          "effort"
+        ],
+        "type": "object"
+      },
+      "TicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Ticket"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "TicketPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "assignee": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "comment": {
+            "description": "A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)",
+            "maxLength": 100000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "effort": {
+            "$ref": "#/components/schemas/Effort"
+          },
+          "parent": {
+            "description": "A ticket key of the same project; null makes the ticket a root",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "maximum": 100,
+            "minimum": 0,
+            "multipleOf": 5,
+            "type": "integer"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityClass"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "threat": {
+            "maxLength": 2000,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "type": "object"
+      },
+      "TicketRef": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "state"
+        ],
+        "type": "object"
+      },
+      "TicketState": {
+        "description": "docs/adr/0009 D1",
+        "enum": [
+          "filed",
+          "analysed",
+          "decided",
+          "in-progress",
+          "blocked",
+          "done",
+          "dropped"
+        ],
+        "type": "string"
+      },
+      "TicketType": {
+        "description": "docs/adr/0008 D1",
+        "enum": [
+          "task",
+          "bug",
+          "feature",
+          "decision",
+          "question"
+        ],
+        "type": "string"
+      },
+      "TimeEntry": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "day": {
+            "description": "The day worked",
+            "format": "date",
+            "type": "string"
+          },
+          "edited": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "minutes": {
+            "maximum": 1440,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "ticket": {
+            "description": "The ticket's key",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "voided": {
+            "description": "Kept and excluded from every sum (docs/adr/0017 D7)",
+            "type": "boolean"
+          },
+          "voided_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ticket",
+          "person",
+          "author",
+          "minutes",
+          "day",
+          "note",
+          "voided",
+          "voided_at",
+          "edited",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "TimeEntryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "format": "date",
+            "type": "string"
+          },
+          "minutes": {
+            "maximum": 1440,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "minutes",
+          "day"
+        ],
+        "type": "object"
+      },
+      "TimeEntryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimeEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
+          },
+          "total_minutes": {
+            "description": "The visible minutes of the ticket, voided entries excluded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "TimeEntryPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "day": {
+            "format": "date",
+            "type": "string"
+          },
+          "minutes": {
+            "maximum": 1440,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TimeEntryRevision": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "day": {
+            "format": "date",
+            "type": "string"
+          },
+          "edited_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "minutes": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "minutes",
+          "day",
+          "note",
+          "edited_by",
+          "at"
+        ],
+        "type": "object"
+      },
+      "TimeEntryRevisionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimeEntryRevision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "TimeReport": {
+        "properties": {
+          "group_by": {
+            "enum": [
+              "ticket",
+              "project",
+              "person",
+              "tenant"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "key": {
+                  "description": "The ticket key, the project key, the person id, or tenant",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "minutes": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "minutes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total_minutes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group_by",
+          "items",
+          "total_minutes"
+        ],
+        "type": "object"
+      },
+      "Token": {
+        "properties": {
+          "agent": {
+            "description": "The agent flag; every request of the token is an agent's (docs/adr/0036 D2)",
+            "type": "boolean"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_used_on": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "restricted_project_id": {
+            "description": "The id of the project the token is restricted to",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restricted_tenant": {
+            "description": "The slug of the tenant the token is restricted to",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scope",
+          "agent",
+          "capabilities",
+          "created_at",
+          "expires_at",
+          "state"
+        ],
+        "type": "object"
+      },
+      "TokenList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "TokenState": {
+        "enum": [
+          "active",
+          "expired",
+          "revoked"
+        ],
+        "type": "string"
+      },
+      "Transition": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "$ref": "#/components/schemas/BlockSet"
+          },
+          "comment": {
+            "description": "A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)",
+            "maxLength": 100000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "note": {
+            "description": "The verification note done requires — what was run, against what, with what result (docs/adr/0009 D5)",
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "override_prerequisites": {
+            "description": "Close over open prerequisites, with a reason; a person's act, never an agent's (docs/adr/0012 D7)",
+            "type": "boolean"
+          },
+          "reason": {
+            "description": "Required backward, into blocked (the block's text), to dropped, on a reopen, and with override_prerequisites",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/TicketState"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "Urgency": {
+        "enum": [
+          "now",
+          "release",
+          "next",
+          "later",
+          "icebox"
+        ],
+        "type": "string"
+      },
+      "UrgencyOverride": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Urgency"
+          }
+        },
+        "required": [
+          "value",
+          "reason",
+          "at"
+        ],
+        "type": "object"
+      },
+      "UrgencyOverrideSet": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Urgency"
+          }
+        },
+        "required": [
+          "value",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "Version": {
+        "properties": {
+          "build_time": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "commit",
+          "build_time"
+        ],
+        "type": "object"
+      },
+      "WipLimits": {
+        "additionalProperties": false,
+        "description": "Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3)",
+        "properties": {
+          "analysed": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "blocked": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "decided": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "in-progress": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerToken": {
+        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\n",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with a personal access\ntoken, `Authorization: Bearer cwk_…` (docs/adr/0035). A request marked as\nan agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "title": "cowork",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "display_name": "Developer",
+                  "id": "0199a3c2-1d2e-7f00-8000-000000000001",
+                  "memberships": [
+                    {
+                      "role": "admin",
+                      "tenant": {
+                        "name": "Acme",
+                        "slug": "acme"
+                      }
+                    }
+                  ],
+                  "username": "dev"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "The person"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The calling person and their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/tokens": {
+      "get": {
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Creating a token needs a browser session,\nwhich does not exist yet (docs/adr/0038 D6).\n",
+        "operationId": "listMyTokens",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenList"
+                }
+              }
+            },
+            "description": "A page of tokens"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The person's tokens, revoked and expired ones included",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/tokens/{token_id}": {
+      "delete": {
+        "description": "Immediate and recorded; the row stays listed (docs/adr/0035 D6). A\ntoken may always revoke itself; revoking another token of the person\nneeds `write` scope, and an agent may revoke only the token it holds\n(docs/adr/0043 D3). Revoking a revoked token changes nothing.\n",
+        "operationId": "revokeMyToken",
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Revoke one of the person's tokens",
+        "tags": [
+          "me"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "token_id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "description": "Unauthenticated; `info.version` is the backend version (docs/adr/0046 D5).",
+        "operationId": "getOpenAPI",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The OpenAPI document"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "This document",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}": {
+      "get": {
+        "operationId": "getTenant",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                }
+              }
+            },
+            "description": "The tenant",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant and its settings",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "patch": {
+        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n",
+        "operationId": "updateTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "members_create_projects": false
+              },
+              "schema": {
+                "$ref": "#/components/schemas/TenantPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                }
+              }
+            },
+            "description": "The changed tenant",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Change the tenant's name or settings",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/audit": {
+      "get": {
+        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe.\n",
+        "operationId": "listAudit",
+        "parameters": [
+          {
+            "description": "A person's id",
+            "in": "query",
+            "name": "actor",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A token's id",
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "explode": true,
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/AuditAction"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive lower bound of the time",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exclusive upper bound of the time",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditList"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A page of audit rows, newest first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's audit record (docs/adr/0026 D6)",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/events": {
+      "get": {
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3). A reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "operationId": "streamEvents",
+        "parameters": [
+          {
+            "description": "The id of the last event the client received",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stream"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's events the caller may see, as server-sent events",
+        "tags": [
+          "events"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/members": {
+      "get": {
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            },
+            "description": "A page of members"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's members and their roles (docs/adr/0034 D7)",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectList"
+                }
+              }
+            },
+            "description": "A page of projects, by key"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The projects the caller can see",
+        "tags": [
+          "projects"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "`write` scope. A member creates projects while the tenant allows it,\nan administrator always (docs/adr/0034 D9); an agent needs the\n`create-project` capability (docs/adr/0043 D4).\n",
+        "operationId": "createProject",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "description": "The backlog of cowork itself",
+                "key": "COW",
+                "name": "cowork"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "The new project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}": {
+      "get": {
+        "operationId": "getProject",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "The project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One project",
+        "tags": [
+          "projects"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "patch": {
+        "description": "An administrator's act with `admin` scope; `If-Match` is required.",
+        "operationId": "updateProject",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "The changed project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Change a project's name or description",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/archive": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "put": {
+        "description": "An administrator's act with `admin` scope, never an agent's\n(docs/adr/0043 D3). The project keeps its tickets and keys, leaves the\ndefault lists and refuses new tickets (docs/adr/0006 D4). Archiving an\narchived project changes nothing.\n",
+        "operationId": "archiveProject",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "The archived project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Archive a project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets": {
+      "get": {
+        "operationId": "listProjectTickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FilterState"
+          },
+          {
+            "$ref": "#/components/parameters/FilterType"
+          },
+          {
+            "$ref": "#/components/parameters/FilterSeverity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterSecurity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterUrgency"
+          },
+          {
+            "$ref": "#/components/parameters/FilterEffort"
+          },
+          {
+            "$ref": "#/components/parameters/FilterAssignee"
+          },
+          {
+            "$ref": "#/components/parameters/FilterReporter"
+          },
+          {
+            "$ref": "#/components/parameters/FilterParent"
+          },
+          {
+            "$ref": "#/components/parameters/ProgressMin"
+          },
+          {
+            "$ref": "#/components/parameters/ProgressMax"
+          },
+          {
+            "$ref": "#/components/parameters/OpenedAfter"
+          },
+          {
+            "$ref": "#/components/parameters/OpenedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedAfter"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/Query"
+          },
+          {
+            "$ref": "#/components/parameters/IncludeTerminal"
+          },
+          {
+            "$ref": "#/components/parameters/FilterBlocked"
+          },
+          {
+            "$ref": "#/components/parameters/FilterHasOpenQuestions"
+          },
+          {
+            "$ref": "#/components/parameters/FilterInterest"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketList"
+                }
+              }
+            },
+            "description": "A page of tickets",
+            "headers": {
+              "ETag": {
+                "description": "A weak validator of this page for this caller",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The page is unchanged since the If-None-Match ETag",
+            "headers": {
+              "ETag": {
+                "description": "The weak validator of the unchanged page",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The project's tickets, in the order they were filed",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "post": {
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security\nclass makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.\n",
+        "operationId": "createTicket",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "effort": "S",
+                "security": "none",
+                "severity": "medium",
+                "title": "The export drops attachments",
+                "type": "bug"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/TicketCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The new ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "File a ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}": {
+      "get": {
+        "operationId": "getTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One ticket",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "patch": {
+        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9).\n",
+        "operationId": "updateTicket",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The changed ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Change a ticket's fields",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity": {
+      "get": {
+        "description": "A projection of the audit record (docs/adr/0015 D6) without time entries and without data\nleaving the system. An act that names a ticket the caller cannot see shows without its\npayload.\n",
+        "operationId": "listActivity",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Order"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityList"
+                }
+              }
+            },
+            "description": "A page of acts"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's activity, every recorded act",
+        "tags": [
+          "comments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments": {
+      "get": {
+        "operationId": "listAttachments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentList"
+                }
+              }
+            },
+            "description": "A page of attachments"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's attachments",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "post": {
+        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage\n501 `uploads_disabled`.\n",
+        "operationId": "uploadAttachment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "comment_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            },
+            "description": "The new attachment",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Upload a file to the ticket, or to one of its comments",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}": {
+      "get": {
+        "operationId": "getAttachment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            },
+            "description": "The metadata"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "An attachment's metadata",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/AttachmentID"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content": {
+      "get": {
+        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n",
+        "operationId": "downloadAttachment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The bytes",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "The quoted hex SHA-256 of the bytes",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The client holds these bytes",
+            "headers": {
+              "ETag": {
+                "description": "The quoted hex SHA-256 of the bytes",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "An attachment's bytes",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/AttachmentID"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "put": {
+        "description": "The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).",
+        "operationId": "replaceTicketBody",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketBodyReplace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket with its new body",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Replace the ticket's body",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments": {
+      "get": {
+        "operationId": "listComments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Order"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentList"
+                }
+              }
+            },
+            "description": "A page of comments; a withdrawn one without its text"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's comment thread",
+        "tags": [
+          "comments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "post": {
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).",
+        "operationId": "addComment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            },
+            "description": "The new comment",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Comment on the ticket",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}": {
+      "get": {
+        "operationId": "getComment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            },
+            "description": "The comment",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One comment",
+        "tags": [
+          "comments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/CommentID"
+        }
+      ],
+      "patch": {
+        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.\n",
+        "operationId": "editComment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            },
+            "description": "The comment",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Edit a comment",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions": {
+      "get": {
+        "operationId": "listCommentRevisions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentRevisionList"
+                }
+              }
+            },
+            "description": "A page of previous texts"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "A comment's edit history, oldest first; empty once withdrawn",
+        "tags": [
+          "comments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/CommentID"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/CommentID"
+        }
+      ],
+      "put": {
+        "description": "Hides the text and keeps the entry (docs/adr/0015 D3): the author, a person for their\nagents' comments, an agent for comments an agent of the same person wrote, or a tenant\nadministrator. Idempotent.\n",
+        "operationId": "withdrawComment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            },
+            "description": "The withdrawn comment",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Withdraw a comment",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "put": {
+        "description": "A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).\nLifting needs a reason and is recorded (D3).\n",
+        "operationId": "setConfidential",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfidentialSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Set or lift the confidential flag",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest": {
+      "delete": {
+        "description": "Idempotent.",
+        "operationId": "removeInterest",
+        "responses": {
+          "204": {
+            "description": "The caller holds no stake"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove the caller's own stake",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "get": {
+        "operationId": "listInterest",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestList"
+                }
+              }
+            },
+            "description": "A page of stakes"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Who holds a stake in the ticket (docs/adr/0013 D2)",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "put": {
+        "description": "One row per person and ticket (docs/adr/0013 D1): 201 for a new stake, 200 for a changed or\nunchanged one. A viewer registers `watch` only; an agent `watch`, and `need` or `urgent`\nwith the `interest` capability (docs/adr/0043 D4).\n",
+        "operationId": "setInterest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterestSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Interest"
+                }
+              }
+            },
+            "description": "The stake changed, or was already so"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Interest"
+                }
+              }
+            },
+            "description": "The new stake"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Set the caller's own stake",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links": {
+      "get": {
+        "description": "Each link read from this ticket, under its reverse name when the ticket is the target\n(docs/adr/0012 D1). A link whose other end the caller cannot see is absent.\n",
+        "operationId": "listTicketLinks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkList"
+                }
+              }
+            },
+            "description": "A page of links"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's links in both directions",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}": {
+      "delete": {
+        "description": "Idempotent; removing a link that does not exist answers 204 as well.",
+        "operationId": "unlinkTickets",
+        "responses": {
+          "204": {
+            "description": "The link is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a link",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/PathLinkType"
+        },
+        {
+          "$ref": "#/components/parameters/OtherTicketKey"
+        }
+      ],
+      "put": {
+        "description": "Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second\nact for an existing one. A member's act with `write` scope, in the agent baseline\n(docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`\n(docs/adr/0012 D4); `relates-to` is symmetric and stored once.\n",
+        "operationId": "linkTickets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            },
+            "description": "The link existed already"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            },
+            "description": "The new link"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Link this ticket, as the source, to another ticket of the tenant",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown": {
+      "get": {
+        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5).\n",
+        "operationId": "exportTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The document",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The canonical Markdown of the ticket",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions": {
+      "get": {
+        "operationId": "listQuestions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionList"
+                }
+              }
+            },
+            "description": "A page of questions"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's questions by number",
+        "tags": [
+          "questions"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "post": {
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The person\nasked must be a member who can see the ticket; without one the question is open in the\ntenant.\n",
+        "operationId": "askQuestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "The new question",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Ask a question on the ticket",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}": {
+      "get": {
+        "operationId": "getQuestion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "The question",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One question",
+        "tags": [
+          "questions"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/QuestionNumber"
+        }
+      ],
+      "patch": {
+        "description": "The asker's act, agents included, while the question is open; `If-Match` required.",
+        "operationId": "updateQuestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "The question",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Edit an open question",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/answer": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/QuestionNumber"
+        }
+      ],
+      "put": {
+        "description": "Only a person decides an answer (docs/adr/0011 D2): the person asked, or any member when\nthe question is open in the tenant; a person changes their own answer. An agent-marked\nrequest needs `record-answer` and writes its person's answer down, marked as recorded by\nan agent, and changes only an answer an agent of the same person recorded\n(docs/adr/0066 D8). `If-Match` once the question is answered.\n",
+        "operationId": "answerQuestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "The answered question",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Answer a question, or change one's answer",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/QuestionNumber"
+        }
+      ],
+      "put": {
+        "description": "The asker's act; an agent withdraws only a question an agent of the same person asked. Idempotent.",
+        "operationId": "withdrawQuestion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "The withdrawn question",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Withdraw an open question",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries": {
+      "get": {
+        "operationId": "listTicketTime",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryList"
+                }
+              }
+            },
+            "description": "A page of entries with the ticket's visible total"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's time entries the caller may see, and their sum",
+        "tags": [
+          "time"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "post": {
+        "description": "A member's act with `write` scope; never an agent's (docs/adr/0017 D6). A day on or before\nthe tenant's time_locked_until is 409 `period_locked` (D8).\n",
+        "operationId": "bookTime",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeEntryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            },
+            "description": "The new entry",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Book the caller's own time on the ticket",
+        "tags": [
+          "time"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}": {
+      "get": {
+        "operationId": "getTimeEntry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            },
+            "description": "The entry",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One time entry",
+        "tags": [
+          "time"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/TimeEntryID"
+        }
+      ],
+      "patch": {
+        "description": "The author's act; the previous values are kept (docs/adr/0017 D7); the old and the new day are checked against the lock.",
+        "operationId": "editTimeEntry",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeEntryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            },
+            "description": "The entry",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Correct a time entry",
+        "tags": [
+          "time"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions": {
+      "get": {
+        "operationId": "listTimeEntryRevisions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryRevisionList"
+                }
+              }
+            },
+            "description": "A page of previous values"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "A time entry's previous values, oldest first",
+        "tags": [
+          "time"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/TimeEntryID"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/void": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/TimeEntryID"
+        }
+      ],
+      "put": {
+        "description": "The author's act; kept, excluded from every sum (docs/adr/0017 D7). Idempotent.",
+        "operationId": "voidTimeEntry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            },
+            "description": "The voided entry",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Void a time entry",
+        "tags": [
+          "time"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "post": {
+        "description": "The matrix of docs/adr/0009: forward one step, backward and reopens with a reason, into\nblocked from any open state with a block and out of it only to where it came from,\ndropped from any open state with a reason, done from in-progress with a verification\nnote. `from` must be the current state, else 409 `state_conflict` names it (docs/adr/0045\nD2). Done over open prerequisites is 409 `open_prerequisites` unless a person overrides\nwith a reason (docs/adr/0012 D7). An agent needs `decide` for analysed → decided, `close`\nfor done, `drop` for dropped (docs/adr/0043 D4). An Idempotency-Key is recorded on the act,\nnot required (docs/adr/0045 D3, D7).\n",
+        "operationId": "transitionTicket",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "from": "in-progress",
+                "note": "make test-integration passed against PostgreSQL 18.6",
+                "to": "done"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/Transition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket in its new state",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Move the ticket to another state",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override": {
+      "delete": {
+        "operationId": "withdrawUrgencyOverride",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Withdraw the urgency override",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "put": {
+        "description": "The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent\nneeds the override-urgency capability (docs/adr/0043 D4).\n",
+        "operationId": "overrideUrgency",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrgencyOverrideSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Override the derived urgency with a reason",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/tickets": {
+      "get": {
+        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them.\n",
+        "operationId": "listTenantTickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FilterProject"
+          },
+          {
+            "$ref": "#/components/parameters/FilterState"
+          },
+          {
+            "$ref": "#/components/parameters/FilterType"
+          },
+          {
+            "$ref": "#/components/parameters/FilterSeverity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterSecurity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterUrgency"
+          },
+          {
+            "$ref": "#/components/parameters/FilterEffort"
+          },
+          {
+            "$ref": "#/components/parameters/FilterAssignee"
+          },
+          {
+            "$ref": "#/components/parameters/FilterReporter"
+          },
+          {
+            "$ref": "#/components/parameters/FilterParent"
+          },
+          {
+            "$ref": "#/components/parameters/ProgressMin"
+          },
+          {
+            "$ref": "#/components/parameters/ProgressMax"
+          },
+          {
+            "$ref": "#/components/parameters/OpenedAfter"
+          },
+          {
+            "$ref": "#/components/parameters/OpenedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedAfter"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/Query"
+          },
+          {
+            "$ref": "#/components/parameters/IncludeTerminal"
+          },
+          {
+            "$ref": "#/components/parameters/FilterBlocked"
+          },
+          {
+            "$ref": "#/components/parameters/FilterHasOpenQuestions"
+          },
+          {
+            "$ref": "#/components/parameters/FilterInterest"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketList"
+                }
+              }
+            },
+            "description": "A page of tickets",
+            "headers": {
+              "ETag": {
+                "description": "A weak validator of this page for this caller",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The page is unchanged since the If-None-Match ETag",
+            "headers": {
+              "ETag": {
+                "description": "The weak validator of the unchanged page",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's tickets across its projects, newest first",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/time-entries": {
+      "get": {
+        "description": "A table (docs/adr/0048 D2): cursor pages, or numbered pages with a total. `Accept:\ntext/csv` returns the page as CSV, every cell that could start a formula prefixed with an\napostrophe.\n",
+        "operationId": "listTenantTime",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FromDay"
+          },
+          {
+            "$ref": "#/components/parameters/ToDay"
+          },
+          {
+            "$ref": "#/components/parameters/TimeProject"
+          },
+          {
+            "$ref": "#/components/parameters/TimeTicket"
+          },
+          {
+            "$ref": "#/components/parameters/TimePerson"
+          },
+          {
+            "$ref": "#/components/parameters/IncludeVoided"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryList"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A page of entries"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's time entries the caller may see, newest first",
+        "tags": [
+          "time"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/time-report": {
+      "get": {
+        "description": "The visible, not voided entries (docs/adr/0017 D10); `Accept: text/csv` for CSV.",
+        "operationId": "timeReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FromDay"
+          },
+          {
+            "$ref": "#/components/parameters/ToDay"
+          },
+          {
+            "$ref": "#/components/parameters/TimeProject"
+          },
+          {
+            "$ref": "#/components/parameters/TimePerson"
+          },
+          {
+            "$ref": "#/components/parameters/GroupBy"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeReport"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The sums"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Minutes summed per ticket, project, person or for the tenant over a period",
+        "tags": [
+          "time"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tickets/{tenant}/{key}": {
+      "get": {
+        "description": "The same body and ETag as the ticket's own route.",
+        "operationId": "resolveTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "A ticket by its key",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "description": "\u003cPROJECT\u003e-\u003cnumber\u003e",
+          "in": "path",
+          "name": "key",
+          "required": true,
+          "schema": {
+            "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/version": {
+      "get": {
+        "description": "The MCP server compares the major version at start (docs/adr/0040 D5).",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "build_time": "1759363200",
+                  "commit": "540e9df",
+                  "version": "0.4.0"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            },
+            "description": "The build"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "The backend build",
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerToken": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "meta"
+    },
+    {
+      "name": "me"
+    },
+    {
+      "name": "tenants"
+    },
+    {
+      "name": "projects"
+    },
+    {
+      "name": "tickets"
+    },
+    {
+      "name": "questions"
+    },
+    {
+      "name": "comments"
+    },
+    {
+      "name": "time"
+    },
+    {
+      "name": "attachments"
+    },
+    {
+      "name": "events"
+    }
+  ]
+}

@@ -8,7 +8,8 @@ project, over rank only, score only, and score-with-pins. The formula of D4 was 
 the question; the owner chose the option without objecting to it, and it stands as version 1
 until amended.
 
-**Not built.** No `tickets` table exists.
+**Not built.** Phase 2 orders a project's tickets by number until the rank and its moves arrive
+with the board; no rank column exists yet.
 
 ## Context
 

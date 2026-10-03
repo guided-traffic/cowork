@@ -11,9 +11,9 @@ RUN npx ng build --configuration production
 
 # Final stage: nginx, unprivileged, serving the bundle and proxying /api/ to
 # the backend. The image entrypoint renders nginx/default.conf.template with
-# BACKEND_URL and NGINX_LOCAL_RESOLVERS substituted (and nothing else:
-# NGINX_ENVSUBST_FILTER keeps nginx's own $variables intact).
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+# the four variables NGINX_ENVSUBST_FILTER names substituted (and nothing
+# else: the filter keeps nginx's own $variables intact).
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 ARG BUILD_NUMBER
 ARG GIT_COMMIT
@@ -31,10 +31,24 @@ LABEL org.opencontainers.image.title="cowork-frontend" \
 
 # NGINX_ENTRYPOINT_LOCAL_RESOLVERS makes the entrypoint export the nameservers
 # of /etc/resolv.conf as NGINX_LOCAL_RESOLVERS; the template's resolver
-# directive needs them.
-ENV BACKEND_URL=http://localhost:8080 \
+# directive needs them. The body size and the read timeout default to the
+# backend's defaults with headroom (10MiB uploads, 30s requests); the chart
+# sets them from its values (docs/adr/0039 D3). BACKEND_URL names a host the
+# run provides: never localhost:8080, which is nginx itself and would proxy
+# every /api/ request back into the proxy.
+ENV BACKEND_URL=http://backend:8080 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true \
-    NGINX_ENVSUBST_FILTER='^(BACKEND_URL|NGINX_LOCAL_RESOLVERS)$'
+    NGINX_CLIENT_MAX_BODY_SIZE=11m \
+    NGINX_PROXY_READ_TIMEOUT=40s \
+    NGINX_ENVSUBST_FILTER='^(BACKEND_URL|NGINX_LOCAL_RESOLVERS|NGINX_CLIENT_MAX_BODY_SIZE|NGINX_PROXY_READ_TIMEOUT)$'
+
+# The base image is rebuilt upstream on its own schedule. Its Alpine packages
+# are brought to their latest patch level at build time, so a fix Alpine has
+# published reaches the image before the next upstream rebuild; the container
+# scan gates on fixed HIGH and CRITICAL findings. The image runs as 101.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist/frontend/browser/ /usr/share/nginx/html/

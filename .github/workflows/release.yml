@@ -49,6 +49,9 @@ jobs:
       - name: Run linting
         run: make lint
 
+      - name: Check the generated files
+        run: make generate-check
+
   gosec:
     name: GoSec Security Scan
     runs-on: self-hosted
@@ -208,9 +211,9 @@ jobs:
 
   # The integration tier is what only a real PostgreSQL 18 decides: that the
   # embedded migrations apply, that they are idempotent, that the schema relies
-  # on nothing older than 18. The service container is the database; the
-  # variable is required by the tests, so a job that loses it fails instead of
-  # passing on zero tests.
+  # on nothing older than 18. The service container is the database, a MinIO
+  # container the object storage; the variables are required by the tests, so
+  # a job that loses one fails instead of passing on zero tests.
   integration-tests:
     name: Integration Tests (PostgreSQL)
     runs-on: self-hosted
@@ -249,8 +252,20 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
+      # The S3 server of the attachment tests. A service container takes no
+      # command and the Chainguard MinIO image needs `server /data`, so it is
+      # started on the job's Docker daemon with the image the Makefile pins;
+      # the tests read COWORK_TEST_S3_* from make's defaults. It needs
+      # make, so it starts after the build tools.
+      - name: Start the S3 server
+        run: make minio-up
+
       - name: Run integration tests with coverage
         run: make test-integration-coverage
+
+      - name: Stop the S3 server
+        if: always()
+        run: make minio-down
 
       - name: Upload integration coverage artifact
         uses: actions/upload-artifact@v7
@@ -265,6 +280,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      # The runner image has neither make nor libatomic1, which the Node 26
+      # binary loads; both are installed before setup-node (docs/adr/0061 D5).
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make libatomic1
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -288,12 +308,12 @@ jobs:
       - name: Coverage summary
         if: always()
         run: |
-          if [ -f frontend/coverage/coverage-summary.json ]; then
+          if [ -f frontend/coverage/frontend/coverage-summary.json ]; then
             echo "## 🅰️ Frontend Coverage" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Covered | Total | Percent |" >> $GITHUB_STEP_SUMMARY
             echo "|---|---:|---:|---:|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.total | to_entries[] | "| \(.key) | \(.value.covered) | \(.value.total) | \(.value.pct)% |"' frontend/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY
+            jq -r '.total | to_entries[] | "| \(.key) | \(.value.covered) | \(.value.total) | \(.value.pct)% |"' frontend/coverage/frontend/coverage-summary.json >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload frontend coverage artifact
@@ -301,7 +321,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
-          path: frontend/coverage/
+          path: frontend/coverage/frontend/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -316,6 +336,9 @@ jobs:
         uses: azure/setup-helm@v5
         with:
           version: v4.3.0
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Lint the chart with every ci values file
         run: make helm-lint
@@ -674,6 +697,9 @@ jobs:
 
       - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
         run: npm audit signatures
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Verify release tooling renders release notes
         run: make test-release-tooling

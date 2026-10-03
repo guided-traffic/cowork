@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted. Date: 2026-09-30. Decided by the owner as the answer to the catalog question "how
+Accepted, amended 2026-10-02 (D2: a separate owner role is mandatory; D1, D3, D6 made
+concrete by the first implementation: the guarded setting functions, the settings besides the
+tenant, the policy of every named table). Date: 2026-09-30.
+Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
 The owner first chose application filtering alone in order to keep the freedom to open the
@@ -10,8 +13,25 @@ tenant boundary later, and took row-level security once it was clear that a poli
 changed by the same migration that changes a schema and restricts nothing but the forgotten
 filter. D7 records that freedom explicitly.
 
-**Not built.** The `tenants` table has no policy; no application role, no transaction
-middleware.
+The amendment of D2 is the owner's answer of 2026-10-02 to the question of how
+`audit_events` stays append-only when one role migrates and owns every table: a mandatory
+separate owner role from phase 2 of the plan on, over the single owning role revoking its own
+`UPDATE`, `DELETE` and `TRUNCATE` (the recommendation, which stops a defect but not a
+compromised application, because an owner can give itself the privileges back and switch
+`FORCE` off — verified on PostgreSQL 18.6), and over a split that stays optional.
+
+The amendment of D1, D3 and D6 records what the first implementation (2026-10-02) found:
+`current_setting('app.tenant_id', true)::uuid` raises on the empty string a pooled
+connection is left with after its transaction, so the policies read the settings through
+functions that turn an empty value into `NULL`; the visibility predicate and the token lookup
+need settings besides the tenant; and D6's tables needed policies the original sentence only
+sketched.
+
+**Built** (phase 2, 2026-10-02): every rule. Every tenant-bound table of migrations 2–14 is
+forced with a `tenant_isolation` policy, a unit test holds the migration set to it
+(`backend/internal/store/policy_test.go`), and the integration tier proves for every such
+table that an unfiltered query under one tenant sees nothing of another. D5's unions arrive
+with the person-level lists; D7 has not been used.
 
 ## Context
 
@@ -31,26 +51,49 @@ every query, whether or not anyone remembered.
 `ALTER TABLE … ENABLE ROW LEVEL SECURITY; ALTER TABLE … FORCE ROW LEVEL SECURITY;` and one
 policy:
 
+~~`USING (tenant_id = current_setting('app.tenant_id', true)::uuid)`~~ *(amended
+2026-10-02: the setting is read through a function that maps an unset or empty value to
+`NULL`, so an empty context matches no row instead of raising)*:
+
 ```sql
+CREATE FUNCTION app_tenant_id() RETURNS uuid LANGUAGE sql STABLE
+  AS $$ SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid $$;
+
 CREATE POLICY tenant_isolation ON <table>
-  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+  USING (tenant_id = app_tenant_id())
+  WITH CHECK (tenant_id = app_tenant_id());
 ```
 
 `FORCE` makes the policy apply to the table's owner as well; only a superuser or a role with
 `BYPASSRLS` sees past it.
 
 **D2 — The application connects as a role that is neither a superuser nor `BYPASSRLS`.**
-The migrations may run under the same role (it may own the tables; D1's `FORCE` covers that)
+~~The migrations may run under the same role (it may own the tables; D1's `FORCE` covers that)
 or under a separate owner role; [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D5 is unchanged. The integration tier asserts the role's attributes at start and fails when
-the role could bypass the policies.
+D5 is unchanged.~~ *(Amended 2026-10-02: the migrations always run under a separate owner
+role that owns every object of the schema. The application role — the runtime role — owns
+nothing, is not a member of the owner role, and holds only the privileges the migrations
+grant it; on `audit_events` that is `INSERT` and `SELECT`
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D3). An owner
+can switch `FORCE` off and give itself back a revoked privilege, so a role that owns the
+tables is no second line against a compromised application; the split is.)* The integration
+tier asserts the role's attributes at start and fails when the role could bypass the
+policies; `cowork serve` and `cowork migrate` refuse to start when the runtime role is a
+superuser, has `BYPASSRLS`, owns a relation of the schema or is a member of the owner role.
 
 **D3 — The tenant is set once per transaction, by the request layer, after the membership
 check.** Every request that names a tenant (the path, the API record) opens a transaction and
 runs `SET LOCAL app.tenant_id = '<uuid>'` before the first query; `SET LOCAL` dies with the
 transaction, so a pooled connection carries nothing over. An empty or missing setting makes
 every policy evaluate to false: there is no default tenant and no "all tenants" value.
+*(Amended 2026-10-02:)* the same transaction sets, through `set_config(…, true)`, the person
+(`app.user_id`), a token's project restriction (`app.restricted_project_id`, read by the
+visibility predicate of [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D4) and, for a background job, its name (`app.job`); each is read through a guarded function
+like `app_tenant_id()`. A transaction that names no tenant — the token lookup, the tenant
+boundary, the person's own routes — sets the person only. The store opens both kinds
+(`InTenant`, `Installation`) and nothing else opens a transaction
+([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md) D2).
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the
@@ -66,7 +109,15 @@ by the members of the row's tenant, all rows by a global administrator — a pol
 membership), `users` (a row visible to the people who share a tenant with it, and to itself),
 `memberships` (policy by tenant), personal access tokens (by owning user), `schema_migrations`
 (no policy; owned by the migration run). Any new table without `tenant_id` gets its policy or
-its written exemption in the migration that creates it.
+its written exemption in the migration that creates it. *(Made concrete 2026-10-02:)* `tenants`
+is read by its members and in its own transaction and updated only there (the global
+administrator's reading arrives with that role); `memberships` is read in its tenant and by the
+member; `users` by itself and by those who share the current tenant; `tokens` by its person, and
+by the token lookup through the hash of the presented token in `app.token_hash`, updated by its
+person; `idempotency_keys` (which carries an optional `tenant_id`) by the person who stored the
+response, and by the expiry job named in `app.job`; `audit_events` — a tenant's rows in that
+tenant, an installation-level row (no tenant) by the person it names, and every row inserted
+only into the context it belongs to. A unit test holds each named table to having a policy.
 
 **D7 — Widening the boundary is a migration, and this record says how.** When the product
 needs a cross-tenant view, the policy of the tables concerned is amended
@@ -111,6 +162,13 @@ policy, not a bypass.
 - D2 is a deployment property: an installation that connects as a superuser has no second
   line and does not know it. The integration test of D2 and a start-up check in `serve` that
   logs a warning — or refuses, the operations record decides — are the mitigation.
+  *(Amended 2026-10-02: the start-up check refuses, D2.)*
+- *(Added 2026-10-02.)* The split protects against a compromised serving process only while
+  that process does not hold the owner credential. The chart runs the migration in an init
+  container and gives the serving container the runtime credential alone
+  ([ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+  D1); an installation that hands the owner URL to `cowork serve` keeps the split against
+  defects but not against a compromise, and the tenancy security page says so.
 - D5 costs one transaction per tenant of the person; a person in fifty tenants pays fifty
   round trips for "next for me". Acceptable at the expected sizes; a cached union is the
   amendment.

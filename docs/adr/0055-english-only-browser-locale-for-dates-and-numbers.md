@@ -8,7 +8,9 @@ German and English at runtime, and over English now with runtime i18n as the nam
 amendment path. The rules of D3–D4 were put to the owner with the question and not objected
 to.
 
-**Partly built.** The shell's few strings are English literals; no locale configuration.
+**Partly built.** The shell's few strings are English literals; no locale configuration. *(Phase
+2, 2026-10-02:)* D3 and D4 hold for the API — timestamps in RFC 3339 UTC, the vocabularies spelt
+as the API spells them, the Markdown export's dates as UTC dates.
 
 ## Context
 

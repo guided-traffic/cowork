@@ -7,7 +7,15 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 (the recommendation), over JSON, and over a token-budgeted document. The rules of D4–D6 were
 put to the owner with the question and not objected to.
 
-**Not built.** No ticket, no export.
+Amended 2026-10-02 (D1: the key list of grammar v1; D6: the key that lists the attachments).
+D1 named no key for the transition's note or reason, for the block, or for the attachments;
+the first implementation spells them as the tickets page of this repository does, a v1 that
+is reviewed after experience.
+
+**Partly built** (phase 2, 2026-10-02): D1, D5 and D6 for `/markdown`
+([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
+call is recorded, and in phase 2 every caller is a token. D2's `/context` and D4 arrive with
+the MCP server, D3 with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
 
 ## Context
 
@@ -28,7 +36,16 @@ the frontmatter rendered from the columns (`key`, `title`, `type`, `state`, `sev
 `decided`, `done`, and the transition note or reason where the state has one), the body,
 and `## Open questions` with their `**Answer:**` lines, in the fixed order of ADR 0011 D4.
 It is what the importer reads and what a repository file looks like; a round trip through it
-is lossless.
+is lossless. *(Made concrete 2026-10-02, grammar v1:)* the keys in that order, an absent value
+omitted — `threat` only when `security` is not `none`, `urgency` the effective value,
+`assignee` the display name, `parent` the full key, dates as UTC dates — then the state's note:
+`shipped` (the verification note of the `done` act), `dropped-reason`, and for `blocked` the
+keys `blocked-by` (the kind), `blocked-reason` and `blocked-from`; then `attachments` (D6).
+Strings are written plain when YAML reads them back unchanged, otherwise double-quoted. After
+the body, `## Open questions` is always written and is the last heading of that name;
+`### Q<n>: …` in number order, the options verbatim, `**Recommendation:** …` when there is
+one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response is
+`text/markdown; charset=utf-8` with the ticket's `ETag` and is never answered `304`.
 
 **D2 — `GET …/tickets/{number}/context` returns the ticket for reading:** the whole of D1,
 followed by read-only sections in a fixed order — `## Links` (typed, with the reverse view
@@ -53,7 +70,8 @@ D5): data left the system either way.
 
 **D6 — Attachments appear as metadata and a URL in both documents' scope: never as
 content** ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-D5); D1 lists them in the frontmatter as names only, D2 with type, size and URL.
+D5); D1 lists them in the frontmatter as names only, D2 with type, size and URL. *(Made
+concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload order.)*
 
 ## Consequences
 

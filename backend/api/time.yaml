@@ -1,0 +1,204 @@
+# Time booked by people against tickets (docs/adr/0017 D6–D10). Who sees
+# whose time is docs/adr/0034 D5; agents never book (docs/adr/0043 D3).
+ticketTime:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listTicketTime
+    tags: [time]
+    summary: The ticket's time entries the caller may see, and their sum
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of entries with the ticket's visible total
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntryList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: bookTime
+    tags: [time]
+    summary: Book the caller's own time on the ticket
+    description: |
+      A member's act with `write` scope; never an agent's (docs/adr/0017 D6). A day on or before
+      the tenant's time_locked_until is 409 `period_locked` (D8).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TimeEntryCreate'
+    responses:
+      '201':
+        description: The new entry
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntry'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+timeEntry:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/TimeEntryID'
+  get:
+    operationId: getTimeEntry
+    tags: [time]
+    summary: One time entry
+    responses:
+      '200':
+        description: The entry
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntry'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: editTimeEntry
+    tags: [time]
+    summary: Correct a time entry
+    description: The author's act; the previous values are kept (docs/adr/0017 D7); the old and the new day are checked against the lock.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TimeEntryPatch'
+    responses:
+      '200':
+        description: The entry
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntry'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+timeEntryVoid:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/TimeEntryID'
+  put:
+    operationId: voidTimeEntry
+    tags: [time]
+    summary: Void a time entry
+    description: The author's act; kept, excluded from every sum (docs/adr/0017 D7). Idempotent.
+    responses:
+      '200':
+        description: The voided entry
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntry'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+timeEntryRevisions:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/TimeEntryID'
+  get:
+    operationId: listTimeEntryRevisions
+    tags: [time]
+    summary: A time entry's previous values, oldest first
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of previous values
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntryRevisionList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+tenantTime:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listTenantTime
+    tags: [time]
+    summary: The tenant's time entries the caller may see, newest first
+    description: |
+      A table (docs/adr/0048 D2): cursor pages, or numbered pages with a total. `Accept:
+      text/csv` returns the page as CSV, every cell that could start a formula prefixed with an
+      apostrophe.
+    parameters:
+      - $ref: './components/parameters.yaml#/FromDay'
+      - $ref: './components/parameters.yaml#/ToDay'
+      - $ref: './components/parameters.yaml#/TimeProject'
+      - $ref: './components/parameters.yaml#/TimeTicket'
+      - $ref: './components/parameters.yaml#/TimePerson'
+      - $ref: './components/parameters.yaml#/IncludeVoided'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+    responses:
+      '200':
+        description: A page of entries
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeEntryList'
+          text/csv:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'
+timeReport:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: timeReport
+    tags: [time]
+    summary: Minutes summed per ticket, project, person or for the tenant over a period
+    description: 'The visible, not voided entries (docs/adr/0017 D10); `Accept: text/csv` for CSV.'
+    parameters:
+      - $ref: './components/parameters.yaml#/FromDay'
+      - $ref: './components/parameters.yaml#/ToDay'
+      - $ref: './components/parameters.yaml#/TimeProject'
+      - $ref: './components/parameters.yaml#/TimePerson'
+      - $ref: './components/parameters.yaml#/GroupBy'
+    responses:
+      '200':
+        description: The sums
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TimeReport'
+          text/csv:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'

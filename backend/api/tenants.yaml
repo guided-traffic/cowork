@@ -1,0 +1,555 @@
+# Everything under one tenant, /api/v1/tenants/{tenant}/… (docs/adr/0023 D1).
+# An unknown slug, a tenant the person is not a member of, and a token
+# restricted to another tenant answer alike: 404 not_found (D5).
+tenant:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: getTenant
+    tags: [tenants]
+    summary: The tenant and its settings
+    responses:
+      '200':
+        description: The tenant
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Tenant'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateTenant
+    tags: [tenants]
+    summary: Change the tenant's name or settings
+    description: |
+      An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
+      `If-Match` is required (docs/adr/0050 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TenantPatch'
+          example:
+            members_create_projects: false
+    responses:
+      '200':
+        description: The changed tenant
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Tenant'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+members:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listMembers
+    tags: [tenants]
+    summary: The tenant's members and their roles (docs/adr/0034 D7)
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of members
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MemberList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+audit:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listAudit
+    tags: [tenants]
+    summary: The tenant's audit record (docs/adr/0026 D6)
+    description: |
+      For the tenant's administrators. Filters combine with AND; a repeated
+      `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
+      cell that could start a formula prefixed with an apostrophe.
+    parameters:
+      - name: actor
+        in: query
+        description: A person's id
+        schema: {type: string, format: uuid}
+      - name: token
+        in: query
+        description: A token's id
+        schema: {type: string, format: uuid}
+      - name: action
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            $ref: './components/schemas.yaml#/AuditAction'
+      - name: entity_type
+        in: query
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: from
+        in: query
+        description: Inclusive lower bound of the time
+        schema: {type: string, format: date-time}
+      - name: to
+        in: query
+        description: Exclusive upper bound of the time
+        schema: {type: string, format: date-time}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of audit rows, newest first
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AuditList'
+          text/csv:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projects:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listProjects
+    tags: [projects]
+    summary: The projects the caller can see
+    parameters:
+      - name: include_archived
+        in: query
+        schema: {type: boolean, default: false}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of projects, by key
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createProject
+    tags: [projects]
+    summary: Create a project
+    description: |
+      `write` scope. A member creates projects while the tenant allows it,
+      an administrator always (docs/adr/0034 D9); an agent needs the
+      `create-project` capability (docs/adr/0043 D4).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectCreate'
+          example:
+            key: COW
+            name: cowork
+            description: The backlog of cowork itself
+    responses:
+      '201':
+        description: The new project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+project:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: getProject
+    tags: [projects]
+    summary: One project
+    responses:
+      '200':
+        description: The project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateProject
+    tags: [projects]
+    summary: Change a project's name or description
+    description: An administrator's act with `admin` scope; `If-Match` is required.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectPatch'
+    responses:
+      '200':
+        description: The changed project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectArchive:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  put:
+    operationId: archiveProject
+    tags: [projects]
+    summary: Archive a project
+    description: |
+      An administrator's act with `admin` scope, never an agent's
+      (docs/adr/0043 D3). The project keeps its tickets and keys, leaves the
+      default lists and refuses new tickets (docs/adr/0006 D4). Archiving an
+      archived project changes nothing.
+    responses:
+      '200':
+        description: The archived project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+tenantTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listTenantTickets
+    tags: [tickets]
+    summary: The tenant's tickets across its projects, newest first
+    description: |
+      The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
+      value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
+      show only with include_terminal or when state names them.
+    parameters:
+      - $ref: './components/parameters.yaml#/FilterProject'
+      - $ref: './components/parameters.yaml#/FilterState'
+      - $ref: './components/parameters.yaml#/FilterType'
+      - $ref: './components/parameters.yaml#/FilterSeverity'
+      - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterUrgency'
+      - $ref: './components/parameters.yaml#/FilterEffort'
+      - $ref: './components/parameters.yaml#/FilterAssignee'
+      - $ref: './components/parameters.yaml#/FilterReporter'
+      - $ref: './components/parameters.yaml#/FilterParent'
+      - $ref: './components/parameters.yaml#/ProgressMin'
+      - $ref: './components/parameters.yaml#/ProgressMax'
+      - $ref: './components/parameters.yaml#/OpenedAfter'
+      - $ref: './components/parameters.yaml#/OpenedBefore'
+      - $ref: './components/parameters.yaml#/UpdatedAfter'
+      - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/Query'
+      - $ref: './components/parameters.yaml#/IncludeTerminal'
+      - $ref: './components/parameters.yaml#/FilterBlocked'
+      - $ref: './components/parameters.yaml#/FilterHasOpenQuestions'
+      - $ref: './components/parameters.yaml#/FilterInterest'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of tickets
+        headers:
+          ETag:
+            description: A weak validator of this page for this caller
+            schema: {type: string}
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketList'
+      '304':
+        description: The page is unchanged since the If-None-Match ETag
+        headers:
+          ETag:
+            description: The weak validator of the unchanged page
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: listProjectTickets
+    tags: [tickets]
+    summary: The project's tickets, in the order they were filed
+    parameters:
+      - $ref: './components/parameters.yaml#/FilterState'
+      - $ref: './components/parameters.yaml#/FilterType'
+      - $ref: './components/parameters.yaml#/FilterSeverity'
+      - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterUrgency'
+      - $ref: './components/parameters.yaml#/FilterEffort'
+      - $ref: './components/parameters.yaml#/FilterAssignee'
+      - $ref: './components/parameters.yaml#/FilterReporter'
+      - $ref: './components/parameters.yaml#/FilterParent'
+      - $ref: './components/parameters.yaml#/ProgressMin'
+      - $ref: './components/parameters.yaml#/ProgressMax'
+      - $ref: './components/parameters.yaml#/OpenedAfter'
+      - $ref: './components/parameters.yaml#/OpenedBefore'
+      - $ref: './components/parameters.yaml#/UpdatedAfter'
+      - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/Query'
+      - $ref: './components/parameters.yaml#/IncludeTerminal'
+      - $ref: './components/parameters.yaml#/FilterBlocked'
+      - $ref: './components/parameters.yaml#/FilterHasOpenQuestions'
+      - $ref: './components/parameters.yaml#/FilterInterest'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of tickets
+        headers:
+          ETag:
+            description: A weak validator of this page for this caller
+            schema: {type: string}
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketList'
+      '304':
+        description: The page is unchanged since the If-None-Match ETag
+        headers:
+          ETag:
+            description: The weak validator of the unchanged page
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createTicket
+    tags: [tickets]
+    summary: File a ticket
+    description: |
+      A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
+      the project's next; the urgency is derived (docs/adr/0010 D3); a live or boundary security
+      class makes the ticket confidential (docs/adr/0065 D2). An archived project refuses.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketCreate'
+          example:
+            type: bug
+            title: The export drops attachments
+            severity: medium
+            security: none
+            effort: S
+    responses:
+      '201':
+        description: The new ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticket:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicket
+    tags: [tickets]
+    summary: One ticket
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateTicket
+    tags: [tickets]
+    summary: Change a ticket's fields
+    description: |
+      `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
+      assignee (docs/adr/0065 D9).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketPatch'
+    responses:
+      '200':
+        description: The changed ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketBody:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: replaceTicketBody
+    tags: [tickets]
+    summary: Replace the ticket's body
+    description: The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketBodyReplace'
+    responses:
+      '200':
+        description: The ticket with its new body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketUrgencyOverride:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: overrideUrgency
+    tags: [tickets]
+    summary: Override the derived urgency with a reason
+    description: |
+      The override holds until an input of the derivation changes (docs/adr/0010 D3). An agent
+      needs the override-urgency capability (docs/adr/0043 D4).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/UrgencyOverrideSet'
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: withdrawUrgencyOverride
+    tags: [tickets]
+    summary: Withdraw the urgency override
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketConfidential:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: setConfidential
+    tags: [tickets]
+    summary: Set or lift the confidential flag
+    description: |
+      A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
+      Lifting needs a reason and is recorded (D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ConfidentialSet'
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'

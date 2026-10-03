@@ -1,0 +1,271 @@
+# The API
+
+How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
+the pipeline every request runs before its handler, authentication, the tenant boundary,
+authorization, errors, idempotency, versions, paging, filters, and the media types beside JSON.
+The decisions are [ADR 0046] (spec first), [ADR 0047] (errors),
+[ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions);
+the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
+against the tree on 2026-10-02.
+
+## The document
+
+[`backend/api/openapi.yaml`](../../backend/api/openapi.yaml) is the source (OpenAPI 3.1): the
+`info`, the default security (`bearerToken`), the tags, and one `$ref` per path into the file of
+its path family.
+
+| File | Paths |
+|---|---|
+| [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json` — `security: []`, read before a client authenticates |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/tokens`, `/me/tokens/{token_id}` |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | the tenant, its members, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, interest, the Markdown export |
+| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
+| [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
+| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
+| `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
+
+`make generate` turns it into code, in this order (the [`Makefile`](../../Makefile)):
+
+1. [`tools/problemdoc`](../../backend/tools/problemdoc/main.go) writes `problem-codes.yaml` and
+   the table of codes in the root README between `<!-- problem-codes:start -->` and `…:end -->`.
+2. [`tools/specbundle`](../../backend/tools/specbundle/main.go) loads `openapi.yaml` with its
+   external references, internalises each under the last segment of its JSON pointer, validates
+   the result and writes `api/openapi.gen.json`.
+3. oapi-codegen, configured by [`api/oapi-codegen.yaml`](../../backend/api/oapi-codegen.yaml),
+   writes [`internal/api/apigen/api.gen.go`](../../backend/internal/api/apigen/api.gen.go): the
+   models, the strict server interface on `net/http`'s mux, and the Go client the integration
+   tests use. Nullable fields are `nullable.Nullable[T]`; every enum constant carries its type's
+   name (`EffortS`); `streamEvents` is excluded.
+4. `sqlc generate` (the data layer, [data-access.md](data-access.md)).
+
+The generated files are committed and never edited; `make generate-check` fails CI on a diff or
+an untracked generated file. [`api/embed.go`](../../backend/api/embed.go) (package `apispec`)
+embeds `openapi.gen.json`; `api.New` replaces `info.version` with the backend's version — that
+JSON is what `GET /api/v1/openapi.json` serves ([ADR 0046] D5) — and builds the kin-openapi
+router over it with `servers` dropped, so the paths match whatever host a request names.
+
+## The pipeline
+
+[`handler.ServeHTTP`](../../backend/internal/api/api.go), behind the request id, the request
+log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/server.go):
+
+1. `Cache-Control: no-store` on every answer but the event stream's, which sets `no-cache`.
+2. **Route.** The kin router finds the operation in the document. No path: `404 not_found`. The
+   path with other methods: `405 method_not_allowed`, `Allow` listing the methods the document
+   declares there. The document declares no `HEAD`, so a `HEAD` is `405` too.
+3. The `Accept` header is kept in the context for the routes that answer CSV.
+4. **Authentication**, when the operation declares `bearerToken` — all but `getVersion` and
+   `getOpenAPI`. The `auth.Principal` and the `store.Caller` go into the context.
+5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
+   context.
+6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
+   limit, no generated handler ([events.md](events.md)).
+7. **Timeout:** the context gets `COWORK_REQUEST_TIMEOUT` (0 disables), and `bodyDeadline`
+   holds reading the body to the same deadline — a read deadline on the connection, lifted once
+   the body is read, so a body that trickles in fails instead of holding the request.
+8. **Body limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)): a
+   JSON body `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
+   `COWORK_ATTACHMENT_MAX_BYTES` plus 64 KiB of multipart overhead (0 disables). A declared length above it is
+   `413 payload_too_large` before anything is read; a longer body fails while it is read.
+9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
+   `errors[]` entry of `400 validation_failed`; a query parameter the operation does not declare
+   is refused (the validator would let it pass); a path parameter that breaks its schema is
+   `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
+   ids are UUIDv7); defaults are not written into the request — the handlers apply them; a
+   multipart body is left to the handler. The validator sees the route without its security
+   requirement (`unsecured`): step 4 has authenticated the caller, and the validator's own
+   security check would read the whole body into memory before the handler checks anything.
+10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,
+    `serveValidated` holds the response to the document as well ([testing.md](testing.md)); it
+    reads the whole body before the handler runs, so a test of the body's timing switches it
+    off.
+
+A handler returns a `*problem.Error` or an error; `writeError` answers a problem as it is,
+`store.ErrNotFound` as `404`, `store.ErrIdempotencyMismatch` as `422 idempotency_mismatch`, a
+passed deadline as `504 timeout`, and anything else as `500 internal` with the details in the log
+only. A body the strict server cannot decode is `400 validation_failed`.
+
+## Authentication
+
+[`authn.go`](../../backend/internal/api/authn.go) with [`internal/auth`](../../backend/internal/auth/):
+
+- The token is read from `Authorization: Bearer` only ([ADR 0035] D7). A value that does not
+  match `^cwk_[0-9A-Za-z]{43}$` (`auth.WellFormedToken`) is refused before the database is
+  asked; the lookup is by SHA-256 (`auth.HashToken`, `DB.LookupToken`).
+- Missing, malformed or unknown: `401 unauthenticated`; revoked, or its person deactivated:
+  `401 token_revoked`; expired: `401 token_expired`. Every `401` carries
+  `WWW-Authenticate: Bearer realm="cowork"`. A dead token's use is recorded as an
+  installation-level `refused` act, at most once per token, reason and hour ([ADR 0035] D9).
+- `X-Cowork-Agent: name/model/session` — three parts of 1 to 64 printable ASCII characters
+  without a leading or trailing space; a malformed header is `400` on `header:X-Cowork-Agent`,
+  never ignored. `auth.Mark` decides the agent mark: a token with the agent flag is an agent's
+  with or without the header (recorded as the header or `unknown-agent`) and holds the token's
+  capabilities; a plain token with the header is an agent's holding every capability; a plain
+  token without it is the person ([ADR 0036], [ADR 0043] D4).
+- The token's `last_used_on` is written at most once per UTC day (a process-local note, then
+  the column), outside `Mutate`, and a failure never fails the request.
+
+## The tenant boundary
+
+`boundary` in [`tenant.go`](../../backend/internal/api/tenant.go) admits a request to the tenant
+in its path before any handler runs ([ADR 0023] D5). It reads the tenant by slug together with
+the person's highest role there (`GetTenantForPerson`, an `Installation` read). Refused — all
+with the same `404 not_found` "no such tenant", so the answer does not tell whether the tenant
+exists ([ADR 0047] D5):
+
+- an unknown slug, or a person without a membership;
+- a token restricted to another tenant;
+- a token restricted to a project, on a path without `{project}` — except `listProjects`,
+  `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
+  the data layer narrows to the token's project through `app.restricted_project_id`.
+
+Inside the tenant, `visibleProject` and `visibleTicket` read through the visibility predicates
+([data-access.md](data-access.md#visibility-in-sql)): a restricted project or a confidential
+ticket the caller cannot see is the same `404` as one that does not exist. `projectRole` lowers
+the person's role on a restricted project to the role of their entry on its list; tenant
+administrators keep theirs.
+
+## Authorization
+
+Every handler under a tenant calls `auth.Authorize(principal, role, need)`
+([`authorize.go`](../../backend/internal/auth/authorize.go)) with the tenant role or the project
+role it read; the `/me` routes act on the person's own rows and need none, except revoking
+another token. The checks run in this order; the first failure answers:
+
+1. `Need.Role` above the person's role: `403 forbidden` ("the act needs the member role").
+2. `Need.Scope` above the token's scope: `403 insufficient_scope`.
+3. For an agent's request only: `Need.HardOff` set — `403 agent_forbidden`, detail
+   `hard-off: <rule>`; `Need.Capability` not held — `403 agent_forbidden`, detail
+   `missing capability: <name>` ([ADR 0043] D3–D5).
+
+| Need | Role, scope | Agent rule | Defined in |
+|---|---|---|---|
+| `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
+| `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
+| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, an override `override-urgency`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
+| `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
+| `booking` | member, `write` | hard-off `booking time` | [`time.go`](../../backend/internal/api/time.go) |
+| `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
+| `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
+
+The handlers also build a few needs inline: `createProject` (admin, or member while the tenant
+allows it; `write`; `create-project`), `setConfidential` (admin, `admin`, hard-off), the
+prerequisite override of a transition (member, `write`, hard-off), `listAudit` (admin, `read`),
+withdrawing another person's comment (admin, `admin`), and revoking another token of the person
+(`write`, hard-off). Rules about *whose* entity it is —
+the asker, the author, the person asked — are checked after `Authorize`, in the handler.
+
+## Problem details
+
+[`internal/problem`](../../backend/internal/problem/problem.go) is the one place a code is
+defined: `Code{Code, Status, Title, Meaning}`, listed in `Catalogue` in the order of the README
+table ([ADR 0047] D4). A handler returns `problem.New(code, detail)`, `problem.Field(pointer,
+message)` for one field, or a `&problem.Error{…}` with `Errors` and `Headers`. `problem.Write`
+renders `application/problem+json; charset=utf-8` with `type`
+(`https://cowork.dev/problems/<code-with-hyphens>`), `title`, `status`, `detail`, `instance`
+(the path), `code`, `request_id` and `errors[]`. A field pointer is a JSON pointer into the body,
+or `query:<name>`, `header:<name>`, `path:<name>`; on a `412` an entry carries `current`. The
+`detail` never carries a secret, SQL or an internal path; the cause goes to the log under the
+request id.
+
+## Idempotency
+
+A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addComment`, `bookTime`,
+`uploadAttachment` — calls `keyed(ctx, key, op, scope, body)` in
+[`server.go`](../../backend/internal/api/server.go):
+
+- No `Idempotency-Key`: a person's request goes on unkeyed; an agent's is
+  `400 idempotency_key_required` ([ADR 0045] D3).
+- With a key: the fingerprint is SHA-256 over the operation, the scope (the path's identities)
+  and the JSON body — for an upload, the file's SHA-256, name and comment instead of its bytes.
+  `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
+  `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
+  replay comes back as `*store.Result`, decoded
+  with `replayed[T]` and `header`. The same key with another request is
+  `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours.
+
+`PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
+transition carries its `from` state instead; a key sent with it is recorded on the act, not
+stored ([ADR 0045] D2, D7).
+
+## Versions, ETag, If-Match
+
+A mutable entity carries a `version`; its strong `ETag` is `"<version>"` (`etag`), on reads and
+on write answers ([ADR 0050]). `ifMatch` reads the version an overwriting write was based on:
+missing, empty or `*` is `428 precondition_required`; a weak or unreadable tag is
+`412 precondition_failed`. The write is a compare-and-set in SQL (`WHERE … AND version = $n
+RETURNING version`); a moved version is `stale(version, current)`: `412` with the current `ETag`
+header and, per field the request tried to change, its current value in `errors[].current`,
+`null` for an empty field ([ADR 0050] D5). A write that changes nothing answers as one that did, with the current state,
+and records no act.
+
+`If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
+`replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
+`updateQuestion`, `answerQuestion` (changing an answer given), `editComment` and
+`editTimeEntry`. Links, interest and attachments are written without it and carry no version
+([ADR 0050] D4).
+
+The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
+page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
+attachment's content answers its quoted hex SHA-256 and `304` likewise.
+
+## Paging
+
+[`cursor.go`](../../backend/internal/api/cursor.go): a cursor is
+`base64url(payload).base64url(HMAC-SHA256)` with a key derived from `COWORK_SESSION_KEY` by HKDF
+under the label `cowork cursor v1`. The payload binds the position to the operation and the scope
+(the path's identities and, where it matters, the order); an altered cursor, or one from another
+list or scope, is `400 invalid_cursor` ([ADR 0048] D5). Rotating the server key invalidates the
+cursors clients hold.
+
+- `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
+  fetches one row more than the page, which says whether `next_cursor` is set.
+- `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
+  `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
+  per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
+  `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
+- The sort is fixed per list ([ADR 0048] D6): a project's tickets by number; the tenant's
+  tickets and time entries, the audit record and the person's tokens newest first; comments and
+  activity oldest first unless `order=desc`; projects by key; questions by number; members and
+  interest by person id; the other lists by id.
+
+## Filters
+
+`parseTicketQuery` in [`ticketlist.go`](../../backend/internal/api/ticketlist.go) turns the
+query of the two ticket lists into a `store.TicketFilter` ([ADR 0049]). A repeated parameter
+combines with OR and `!` negates a value. Vocabulary values are checked against the generated
+enums (`apigen.TicketState(v).Valid()` …); `assignee` and `reporter` take a person id or `me`,
+`assignee` also `none`; `parent` takes a ticket key or `none`, resolved under the predicate —
+a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `blocked`,
+`has_open_questions` and `include_terminal` are booleans; `q` is capped at
+`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`.
+
+## Media types beside JSON
+
+- **CSV.** `listAudit`, `listTenantTime` and `timeReport` answer `text/csv` when `Accept` names
+  it (`wantsCSV` in [`content.go`](../../backend/internal/api/content.go)); a cell starting with
+  `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'` (`neutralise`).
+- **Uploads** are `multipart/form-data`, read by the handler, not by the validator
+  ([storage.md](storage.md)).
+- **The Markdown export** returns `markdownResponse` from
+  [`export.go`](../../backend/internal/api/export.go), which implements the generated
+  `VisitExportTicketResponse` itself: the generated response would send `text/markdown` without
+  its charset. It sends `text/markdown; charset=utf-8`, the ticket's `ETag` and
+  `Content-Length`, never `304`, and records every call as `exported`
+  ([markdown-grammar.md](markdown-grammar.md)). The validator reads `text/markdown` with the
+  plain-text body decoder registered in `validate.go`.
+- **The event stream** is no response a handler returns: oapi-codegen excludes `streamEvents`,
+  and the pipeline calls `serveEvents` in [`events.go`](../../backend/internal/api/events.go)
+  ([events.md](events.md)).
+
+[ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
+[ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
+[ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
+[ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
+[ADR 0047]: ../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md
+[ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
+[ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
+[ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md

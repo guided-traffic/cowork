@@ -9,7 +9,11 @@ git remote, whatever mix of SSH and HTTPS URLs is in use, and when none exists t
 proposes a project and a tenant and creates them once the owner says so. The owner also
 granted the `create-project` capability this needs and, in the same breath, decided that
 answers to open questions given in chat may be recorded and updated by the agent; both
-amend earlier records (D7, D8).
+amend earlier records (D7, D8). Amended 2026-10-02 (D5: the person must be allowed to create
+projects by the tenant setting of
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D9, not necessarily be its administrator), the owner's answer to the question whether an
+agent's `write` token may create a project.
 
 **Not built.** No projects, no repositories table, no MCP server.
 
@@ -69,9 +73,10 @@ offers to write the file; the default is no. The API serves a JSON schema for th
 `/api/v1/schemas/cowork-yaml.json`.
 
 **D5 — `create_project` is idempotent over the remote:** a second call with the same
-identity returns the existing project and binds nothing twice. It requires the person to be
+identity returns the existing project and binds nothing twice. It requires the person to ~~be
 `admin` of the tenant ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D1) — the agent inherits that — and the token's `create-project` capability (D7). It never
+D1)~~ *(amended 2026-10-02)* be allowed to create projects in the tenant (ADR 0034 D9) — the
+agent inherits that — and the token's `create-project` capability (D7). It never
 archives, restricts or deletes.
 
 **D6 — A repository is still in at most one project** (ADR 0006 D3). A lookup with several
