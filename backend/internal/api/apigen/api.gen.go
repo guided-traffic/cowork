@@ -1051,6 +1051,9 @@ type AuthOptions struct {
 
 	// Oidc An identity provider is configured; none is built yet, so false
 	Oidc bool `json:"oidc"`
+
+	// PasswordMinLength The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+	PasswordMinLength int `json:"password_min_length"`
 }
 
 // Block defines model for Block.
@@ -3493,7 +3496,8 @@ type ClientInterface interface {
 	//
 	// The local form is offered when at least one active local account exists,
 	// the identity provider's button when one is configured (docs/adr/0033 D8).
-	// No identity provider exists yet, so `oidc` is always false.
+	// No identity provider exists yet, so `oidc` is always false. The minimum
+	// password length is the policy every password form follows (D3).
 	//
 	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 	GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5331,7 +5335,8 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 //
 // The local form is offered when at least one active local account exists,
 // the identity provider's button when one is configured (docs/adr/0033 D8).
-// No identity provider exists yet, so `oidc` is always false.
+// No identity provider exists yet, so `oidc` is always false. The minimum
+// password length is the policy every password form follows (D3).
 //
 // Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 func (c *Client) GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -11533,7 +11538,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// The local form is offered when at least one active local account exists,
 	// the identity provider's button when one is configured (docs/adr/0033 D8).
-	// No identity provider exists yet, so `oidc` is always false.
+	// No identity provider exists yet, so `oidc` is always false. The minimum
+	// password length is the policy every password form follows (D3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -17111,7 +17117,8 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 //
 // The local form is offered when at least one active local account exists,
 // the identity provider's button when one is configured (docs/adr/0033 D8).
-// No identity provider exists yet, so `oidc` is always false.
+// No identity provider exists yet, so `oidc` is always false. The minimum
+// password length is the policy every password form follows (D3).
 //
 // Returns a wrapper object for the known response body format(s).
 //

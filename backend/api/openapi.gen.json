@@ -1071,11 +1071,17 @@
           "oidc": {
             "description": "An identity provider is configured; none is built yet, so false",
             "type": "boolean"
+          },
+          "password_min_length": {
+            "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": [
           "local",
-          "oidc"
+          "oidc",
+          "password_min_length"
         ],
         "type": "object"
       },
@@ -6395,7 +6401,7 @@
     },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists,\nthe identity provider's button when one is configured (docs/adr/0033 D8).\nNo identity provider exists yet, so `oidc` is always false.\n",
+        "description": "The local form is offered when at least one active local account exists,\nthe identity provider's button when one is configured (docs/adr/0033 D8).\nNo identity provider exists yet, so `oidc` is always false. The minimum\npassword length is the policy every password form follows (D3).\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -6403,7 +6409,8 @@
               "application/json": {
                 "example": {
                   "local": true,
-                  "oidc": false
+                  "oidc": false,
+                  "password_min_length": 12
                 },
                 "schema": {
                   "$ref": "#/components/schemas/AuthOptions"

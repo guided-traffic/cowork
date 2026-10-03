@@ -464,7 +464,7 @@ full.
 | `GET /api/v1/openapi.json` | the API document; no authentication |
 | a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
 | any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
-| `GET /auth/options` | `200 {"local": bool, "oidc": false}` — what the login page offers: the local form while an active local account exists; no authentication |
+| `GET /auth/options` | `200 {"local": bool, "oidc": false, "password_min_length": int}` — what the login page offers: the local form while an active local account exists, and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
 | `POST /auth/local` | `{"username","password"}` → `200 {"password_change_required": bool}` and the session cookie; every failure is `401 invalid_credentials`, the same answer in the same time for an unknown username, a wrong password, a locked or a deactivated account; `429 too_many_attempts` from the address throttle; `403 not_initialised` for a person who is not a global administrator while no tenant exists; `403 csrf` unless the `Origin` is `COWORK_BASE_URL`; no authentication |
 | `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` |
 | `GET /api/v1/me` | the calling person and their memberships, whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |

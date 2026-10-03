@@ -947,7 +947,7 @@ TicketList:
     per_page: {type: integer}
 AuthOptions:
   type: object
-  required: [local, oidc]
+  required: [local, oidc, password_min_length]
   properties:
     local:
       type: boolean
@@ -955,6 +955,10 @@ AuthOptions:
     oidc:
       type: boolean
       description: An identity provider is configured; none is built yet, so false
+    password_min_length:
+      type: integer
+      minimum: 1
+      description: The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
 LocalLoginRequest:
   type: object
   additionalProperties: false

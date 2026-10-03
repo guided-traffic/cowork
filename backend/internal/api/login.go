@@ -93,7 +93,7 @@ func (s *Server) GetAuthOptions(ctx context.Context, _ apigen.GetAuthOptionsRequ
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetAuthOptions200JSONResponse{Local: local, Oidc: false}, nil
+	return apigen.GetAuthOptions200JSONResponse{Local: local, Oidc: false, PasswordMinLength: s.h.opts.PasswordMinLength}, nil
 }
 
 func invalidCredentials() *problem.Error {

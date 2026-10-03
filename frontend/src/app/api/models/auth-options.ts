@@ -12,4 +12,9 @@ export interface AuthOptions {
    * An identity provider is configured; none is built yet, so false
    */
   oidc: boolean;
+
+  /**
+   * The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+   */
+  password_min_length: number;
 }

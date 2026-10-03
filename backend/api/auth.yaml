@@ -12,7 +12,8 @@ options:
     description: |
       The local form is offered when at least one active local account exists,
       the identity provider's button when one is configured (docs/adr/0033 D8).
-      No identity provider exists yet, so `oidc` is always false.
+      No identity provider exists yet, so `oidc` is always false. The minimum
+      password length is the policy every password form follows (D3).
     security: []
     responses:
       '200':
@@ -24,6 +25,7 @@ options:
             example:
               local: true
               oidc: false
+              password_min_length: 12
       default:
         $ref: './components/responses.yaml#/Problem'
 local:
