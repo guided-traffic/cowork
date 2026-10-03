@@ -443,6 +443,34 @@ describe('Backlog', () => {
         expect(listParams()).toMatchObject({ page: 1, q: 'flicker' });
       });
 
+      it('keeps a page chosen right after opening, while the text stays the same', () => {
+        const { fixture } = renderNow();
+
+        lazyLoad(fixture, { first: 100, rows: 50 });
+        fixture.detectChanges();
+        vi.advanceTimersByTime(300);
+        fixture.detectChanges();
+
+        expect(listParams()).toMatchObject({ page: 3, per_page: 50 });
+        const table = fixture.debugElement.query(By.directive(Table)).componentInstance as Table;
+        expect(table.first()).toBe(100);
+      });
+
+      it('lets a text typed and taken back within the wait change nothing', () => {
+        const { fixture, page } = renderNow();
+        lazyLoad(fixture, { first: 50, rows: 25 });
+
+        type(page, 'flicker');
+        fixture.detectChanges();
+        vi.advanceTimersByTime(100);
+        type(page, '');
+        fixture.detectChanges();
+        vi.advanceTimersByTime(300);
+
+        expect(listParams()?.page).toBe(3);
+        expect(listParams()?.q).toBeUndefined();
+      });
+
       it('leaves out spaces around the text and asks for no text that is only spaces', () => {
         const { fixture, page } = renderNow();
 

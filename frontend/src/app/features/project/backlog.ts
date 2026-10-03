@@ -7,6 +7,7 @@ import {
   input,
   linkedSignal,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -130,8 +131,13 @@ export class Backlog {
   );
 
   constructor() {
+    // A text that is what the list already asks for has nothing to wait for — also the first run,
+    // which would otherwise send a page chosen in the first 250 ms back to the first one.
     effect((onCleanup) => {
       const query = this.query();
+      if (query === untracked(this.debouncedQuery)) {
+        return;
+      }
       const timer = setTimeout(() => {
         this.debouncedQuery.set(query);
         this.page.set(1);
