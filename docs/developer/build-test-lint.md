@@ -126,7 +126,7 @@ stay manual.
 |---|---|---|
 | Go | `backend/go.mod`, `backend/Containerfile`, `GO_VERSION` in `release.yml`, the badge in `release-template.hbs` | Renovate, one grouped PR ("Go version") |
 | Node.js | `NODE_VERSION` in `release.yml`, `node:26-alpine` in `frontend/Containerfile` | Renovate |
-| nginx | `nginxinc/nginx-unprivileged:1.30-alpine` in `frontend/Containerfile` | Renovate (dockerfile manager) |
+| nginx | `nginxinc/nginx-unprivileged:1.30-alpine` in `frontend/Containerfile`; its Alpine packages are upgraded at build time (`apk upgrade`), so a published Alpine fix does not wait for the upstream rebuild | Renovate (dockerfile manager) |
 | Go tools, sqlc, oapi-codegen | `*_VERSION` in the `Makefile` with `# renovate:` comments | Renovate (custom regex manager) |
 | PostgreSQL test image | `POSTGRES_IMAGE` in the `Makefile`, the service in `release.yml` | Renovate, held on the 18 line: the Makefile manager captures the tag without the image name, so the hold rule sees `18` |
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |

@@ -42,6 +42,14 @@ ENV BACKEND_URL=http://backend:8080 \
     NGINX_PROXY_READ_TIMEOUT=40s \
     NGINX_ENVSUBST_FILTER='^(BACKEND_URL|NGINX_LOCAL_RESOLVERS|NGINX_CLIENT_MAX_BODY_SIZE|NGINX_PROXY_READ_TIMEOUT)$'
 
+# The base image is rebuilt upstream on its own schedule. Its Alpine packages
+# are brought to their latest patch level at build time, so a fix Alpine has
+# published reaches the image before the next upstream rebuild; the container
+# scan gates on fixed HIGH and CRITICAL findings. The image runs as 101.
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist/frontend/browser/ /usr/share/nginx/html/
 
