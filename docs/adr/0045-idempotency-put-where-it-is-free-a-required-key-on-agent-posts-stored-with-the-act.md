@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+Accepted, amended 2026-10-03 (D3: a session's key is scoped to the person; D6: a stored
+response never holds a secret; D4: the fingerprint is an HMAC under a key derived from the
+server key). Date: 2026-10-01. Decided by the owner as the answer to the catalog question
 "idempotency for agent writes?": idempotency by semantics where it is free and by a stored
 key where `POST` is unavoidable — over a stored key on every unsafe request, over natural
 idempotency alone with client-generated ids, and over nothing. The rules of D5–D7 were put
@@ -53,7 +55,12 @@ before; the unique index is on the person, the token and the key, with an absent
 value of its own.)*
 
 **D4 — The key is stored with the act, in the act's transaction.** The row holds the
-caller, the key, a hash of the request body, and the response (status and body) for
+caller, the key, a hash of the request body *(amended 2026-10-03: an HMAC-SHA-256 under a key
+derived from the server key, over the operation, its scope and the body — the body of a creation
+can carry a local account's temporary password, and a plain hash of it in a backup could be
+guessed far faster than the Argon2id hash the password is kept as; a key replayed across a
+change of the server key meets `422 idempotency_mismatch` until its row expires)*, and the
+response (status and body) for
 twenty-four hours. The same key with the same body returns the stored response without
 repeating the act; the same key with a different body answers `422 idempotency_mismatch`.
 Because the row is written by the same `Mutate` as the act ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)

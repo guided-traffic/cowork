@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -145,7 +147,7 @@ func stale(version int32, current map[string]any) *problem.Error {
 // POST must carry a key; with a key, the context makes store.Mutate store the
 // response with the act and replay it for a repetition. The fingerprint binds
 // the key to the operation, its scope and its body.
-func keyed(ctx context.Context, key *uuid.UUID, op, scope string, body any) (context.Context, *problem.Error) {
+func (s *Server) keyed(ctx context.Context, key *uuid.UUID, op, scope string, body any) (context.Context, *problem.Error) {
 	if key == nil {
 		if principal(ctx).IsAgent() {
 			return ctx, &problem.Error{Code: problem.IdempotencyKeyRequired, Detail: "an agent's POST needs an Idempotency-Key",
@@ -157,12 +159,31 @@ func keyed(ctx context.Context, key *uuid.UUID, op, scope string, body any) (con
 	if err != nil {
 		return ctx, problem.New(problem.Internal, "internal error")
 	}
-	h := sha256.New()
-	h.Write([]byte(op + "\n" + scope + "\n"))
-	h.Write(encoded)
+	return store.WithIdempotency(ctx, store.Idempotency{Key: *key, Fingerprint: s.fingerprint(op, scope, encoded)}), nil
+}
+
+// fingerprint is what the database keeps of a keyed request for a day: an
+// HMAC under a key derived from the server key, not a plain hash. The body of
+// a creation can carry a secret — a local account's temporary password — and
+// a plain hash of it in a backup could be guessed at the speed of SHA-256,
+// against the Argon2id the password is stored with (docs/adr/0045 D4).
+func (s *Server) fingerprint(op, scope string, body []byte) [sha256.Size]byte {
+	mac := hmac.New(sha256.New, s.h.fingerprintKey)
+	mac.Write([]byte(op + "\n" + scope + "\n"))
+	mac.Write(body)
 	var fp [sha256.Size]byte
-	copy(fp[:], h.Sum(nil))
-	return store.WithIdempotency(ctx, store.Idempotency{Key: *key, Fingerprint: fp}), nil
+	copy(fp[:], mac.Sum(nil))
+	return fp
+}
+
+// newFingerprintKey derives the key of the fingerprints from the server key,
+// apart from every other key derived from it.
+func newFingerprintKey(sessionKey []byte) []byte {
+	key, err := hkdf.Key(sha256.New, sessionKey, nil, "cowork idempotency fingerprint v1", sha256.Size)
+	if err != nil {
+		panic(err) // only an impossible key length fails
+	}
+	return key
 }
 
 // stored returns the response a keyed creation stores: 201 with its JSON

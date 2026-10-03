@@ -162,7 +162,7 @@ func explain(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, 
 func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObject) (apigen.AddCommentResponseObject, error) {
 	t := tenantFrom(ctx)
 	body := *req.Body
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "addComment", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "addComment", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
 	if perr != nil {
 		return nil, perr
 	}

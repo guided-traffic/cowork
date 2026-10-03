@@ -50,7 +50,11 @@ D2).
   message names the bound ("must be at least 12 characters"), never the value; a configuration
   error names the variable. `TestNoPasswordCookieOrTokenIsLoggedOrRecorded` records every log
   level through the whole flow and searches the log, every answer and every table of the login
-  for each password it used.
+  for each password it used. The fingerprint a creation with an `Idempotency-Key` keeps for a
+  day covers the body, temporary password included, as an HMAC under a key derived from the
+  server key ([ADR 0045](../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)
+  D4): a backup of the database alone gives nobody a hash to test guesses against
+  (`TestIdempotencyFingerprintIsKeyedByTheServerKey`).
 
 ## What the login answers
 

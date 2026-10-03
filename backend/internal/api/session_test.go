@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/sha256"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,6 +154,25 @@ func TestAddressHash(t *testing.T) {
 	assert.NotEqual(t, v6, a.addressHash("[2001:db8:1:3::5]:443"), "another /64 is another bucket")
 	assert.NotContains(t, string(h1), "203.0.113.7", "the address is not in the hash")
 	assert.Equal(t, a.addressHash("no-port"), a.addressHash("no-port"), "a peer without a port is still hashed")
+}
+
+// What the database keeps of a keyed request is an HMAC under a key derived
+// from the server key: bound to the operation, its scope and its body, and no
+// plain hash of a body that can carry a temporary password (docs/adr/0045 D4).
+func TestIdempotencyFingerprintIsKeyedByTheServerKey(t *testing.T) {
+	serverKey := []byte("0123456789abcdef0123456789abcdef")
+	a := &Server{h: &handler{fingerprintKey: newFingerprintKey(serverKey)}}
+	b := &Server{h: &handler{fingerprintKey: newFingerprintKey([]byte("fedcba9876543210fedcba9876543210"))}}
+	body := []byte(`{"display_name":"Sam","role":"member","temporary_password":"Welcome-2026!","username":"sam"}`)
+
+	fp := a.fingerprint("createAccount", "tenant", body)
+	assert.Equal(t, fp, a.fingerprint("createAccount", "tenant", body), "one request, one fingerprint")
+	assert.NotEqual(t, fp, a.fingerprint("createAccount", "tenant", append(body, ' ')), "bound to the body")
+	assert.NotEqual(t, fp, a.fingerprint("createAccount", "other", body), "bound to the scope")
+	assert.NotEqual(t, fp, a.fingerprint("createTenant", "tenant", body), "bound to the operation")
+	assert.NotEqual(t, fp, b.fingerprint("createAccount", "tenant", body), "keyed by the server key")
+	assert.NotEqual(t, sha256.Sum256(append([]byte("createAccount\ntenant\n"), body...)), fp, "no plain hash")
+	assert.NotEqual(t, newAddressKey(serverKey), newFingerprintKey(serverKey), "apart from the address key")
 }
 
 func TestOptionDefaults(t *testing.T) {

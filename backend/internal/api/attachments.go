@@ -157,7 +157,7 @@ func (s *Server) UploadAttachment(ctx context.Context, req apigen.UploadAttachme
 	if perr != nil {
 		return nil, perr
 	}
-	ctx, perr = keyed(ctx, req.Params.IdempotencyKey, "uploadAttachment", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number),
+	ctx, perr = s.keyed(ctx, req.Params.IdempotencyKey, "uploadAttachment", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number),
 		map[string]any{"sha256": hex.EncodeToString(f.sum[:]), "name": f.name, "comment": f.comment})
 	if perr != nil {
 		return nil, perr

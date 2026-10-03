@@ -249,8 +249,10 @@ A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addCommen
   scoped to the person (`token_id` is `NULL`; migration 16); `createMyToken`, `createTenant` and
   `createAccount` take keys too, and `createMyToken` stores its answer **without the plaintext**,
   so a replay answers without `token`.
-- With a key: the fingerprint is SHA-256 over the operation, the scope (the path's identities)
-  and the JSON body — for an upload, the file's SHA-256, name and comment instead of its bytes.
+- With a key: the fingerprint is an HMAC-SHA-256 under a key derived from the server key
+  (`Server.fingerprint`, `newFingerprintKey`) over the operation, the scope (the path's identities)
+  and the JSON body — a body can carry a temporary password, and the row must be no plain hash of
+  it; a key replayed after the server key changed meets `422 idempotency_mismatch` — for an upload, the file's SHA-256, name and comment instead of its bytes.
   `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
   `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
   replay comes back as `*store.Result`, decoded

@@ -146,7 +146,7 @@ func (s *Server) BookTime(ctx context.Context, req apigen.BookTimeRequestObject)
 	if perr := auth.Authorize(principal(ctx), t.Role, booking); perr != nil {
 		return nil, perr
 	}
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "bookTime", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "bookTime", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
 	if perr != nil {
 		return nil, perr
 	}

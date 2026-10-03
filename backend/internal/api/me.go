@@ -189,7 +189,7 @@ func (s *Server) CreateMyToken(ctx context.Context, req apigen.CreateMyTokenRequ
 	if perr != nil {
 		return nil, perr
 	}
-	ctx, perr = keyed(ctx, req.Params.IdempotencyKey, "createMyToken", p.PersonID.String(), body)
+	ctx, perr = s.keyed(ctx, req.Params.IdempotencyKey, "createMyToken", p.PersonID.String(), body)
 	if perr != nil {
 		return nil, perr
 	}

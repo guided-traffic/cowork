@@ -120,6 +120,8 @@ type handler struct {
 	// a password is verified against when the username names no usable account.
 	addressKey []byte
 	dummyHash  string
+	// fingerprintKey keys the fingerprint of an idempotent request.
+	fingerprintKey []byte
 	// trusted are the proxies the client address is walked through.
 	trusted trustedProxies
 }
@@ -155,9 +157,10 @@ func New(opts Options) (http.Handler, error) {
 		logger:  opts.Logger,
 		touched: map[uuid.UUID]string{},
 
-		addressKey: newAddressKey(opts.SessionKey),
-		dummyHash:  dummy,
-		trusted:    newTrustedProxies(opts.TrustedProxies),
+		addressKey:     newAddressKey(opts.SessionKey),
+		dummyHash:      dummy,
+		fingerprintKey: newFingerprintKey(opts.SessionKey),
+		trusted:        newTrustedProxies(opts.TrustedProxies),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
 		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes))}

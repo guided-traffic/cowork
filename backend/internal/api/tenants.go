@@ -393,7 +393,7 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 	if name == "" {
 		return nil, problem.Field("/name", "must not be blank")
 	}
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "createTenant", p.PersonID.String(), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createTenant", p.PersonID.String(), body)
 	if perr != nil {
 		return nil, perr
 	}

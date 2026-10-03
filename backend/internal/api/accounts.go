@@ -100,7 +100,7 @@ func (s *Server) CreateAccount(ctx context.Context, req apigen.CreateAccountRequ
 	if err != nil {
 		return nil, err
 	}
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "createAccount", t.ID.String(), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createAccount", t.ID.String(), body)
 	if perr != nil {
 		return nil, perr
 	}

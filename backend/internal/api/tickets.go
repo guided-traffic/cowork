@@ -213,7 +213,7 @@ func (s *Server) readTicket(ctx context.Context, t tenantScope, projectKey strin
 func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketRequestObject) (apigen.CreateTicketResponseObject, error) {
 	t := tenantFrom(ctx)
 	body := *req.Body
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "createTicket", t.ID.String()+"/"+req.Project, body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createTicket", t.ID.String()+"/"+req.Project, body)
 	if perr != nil {
 		return nil, perr
 	}

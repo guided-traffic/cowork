@@ -228,8 +228,8 @@ with `400 idempotency_key_required` ([`api/server.go`](../../backend/internal/ap
 time, which is refused earlier. A transition is idempotent by the state it names as `from`; a
 key sent with one is recorded on the act and not stored
 ([ADR 0045](../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)
-D2, D7). The key belongs to the token and is bound to a fingerprint of the operation, its path
-and its body — for an upload the file's SHA-256, its name and its comment. The response is
+D2, D7). The key belongs to the token and is bound to a fingerprint — an HMAC under a key derived from
+the server key — of the operation, its path and its body — for an upload the file's SHA-256, its name and its comment. The response is
 stored with the act in the same transaction for twenty-four hours; a repetition replays it,
 and the same key with a different request answers `422 idempotency_mismatch` (ADR 0045 D3,
 D4). A person's `POST` may carry a key and need not. A key sent in a browser session has no
