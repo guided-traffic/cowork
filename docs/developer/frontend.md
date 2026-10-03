@@ -86,9 +86,32 @@ its administrator), so `me` loaded again with the same role leaves the list alon
 
 **A secret cowork shows once** — a new token's plaintext, a temporary password — lives in one
 signal of the page that asked for it and is shown by
-[`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts): every way of closing it sets the
-signal to `null`, and nothing writes the secret anywhere else (no storage, no URL, no log, no
-toast). The services return it and forget it.
+[`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts), which only its "I have stored
+it" button closes — no Escape, no cross, no click beside it, because what it shows cannot be shown
+again; closing sets the signal to `null`, and nothing writes the secret anywhere else (no storage,
+no URL, no log, no toast). The services return it and forget it. A temporary password is typed or
+generated in a plain text field with `autocomplete="off"` and the attributes the common password
+managers read as "leave this alone"
+([`temporary-password.ts`](../../frontend/src/app/features/tenant/temporary-password.ts)): as a
+password field it would be offered for saving, or filled, as the administrator's own login. The
+generator makes `max(24, password_min_length)` characters from `/auth/options`.
+
+**Signing in and out replaces the document**
+([`HARD_NAVIGATION`](../../frontend/src/app/core/hard-navigation.ts), `window.location.assign`):
+the services are root singletons that keep the last person's tokens, accounts and cached tickets,
+and a router navigation would leave them for whoever signs in next in the same tab. The target is
+always `/login` or a path `safeReturn` has checked.
+
+**A creating form holds one `Idempotency-Key` per content** where a lost answer must not become a
+second creation: the first tenant and a new local account keep a key in a `linkedSignal` over
+their fields, reuse it on a retry and make a new one when a field changes (ADR 0045 D3). The other
+creating calls still send a fresh key per call.
+
+**A form dialog stays open while its request runs**: no cross, no click beside it, Cancel disabled,
+and [`keepOpenWhile`](../../frontend/src/app/shared/keep-open.ts) stops Escape in the capture phase,
+because PrimeNG binds a dialog's Escape once when it opens. Field errors from the server carry
+`aria-invalid` and `aria-describedby`; PrimeNG's select and number input take them through the
+pass-through of [`field-aria.ts`](../../frontend/src/app/shared/field-aria.ts).
 
 `resource().value()` throws while the resource is in its error state: templates read through
 `hasValue()` or `snapshot()`, and every page says when a part failed instead of showing it

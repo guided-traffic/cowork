@@ -32,21 +32,26 @@ The foundation is on the branch of phase 3, not merged:
   session, projects, tickets with the entity cache, problem details, the event stream with the
   polling fallback and the hidden-tab deferral (ADR 0054 D7, D8) — [`core/`](../../frontend/src/app/core/).
 - The shell; the tenant overview, the backlog as a table in number order, the ticket detail
-  (read only) and the member list, all following the event stream; the design preview at
+  and the member list, all following the event stream; the design preview at
   `/dev/design`, development builds only.
-- `make dev`, `make dev-reset` and the dev proxy that presents the seeded token until T27.
+- `make dev` over HTTPS with the real login and `make dev-reset`; the dev proxy holds no credential.
 - The PrimeUI license key wired through `--define`, a BuildKit secret and the release
   workflow's `PRIMEUI_LICENSE` secret (ADR 0052 D9).
 
 ## Required changes
 
-1. The owner registers the Community key and puts it in `.dev/primeui-license` and in the
-   repository secret `PRIMEUI_LICENSE`; a release image shows no license notice.
+1. The owner puts the Community key into the repository secret `PRIMEUI_LICENSE` (the local
+   `.dev/primeui-license` is in place); a release image shows no license notice.
 2. The polling fallback sends `If-None-Match` with each list's weak `ETag` and keeps the list on
    `304` (ADR 0054 D7); today a poll reloads the lists in full.
 3. Unit tests for every service and page, line coverage reported per pull request (ADR 0056 D6).
 4. The production bundle within the budget of ADR 0052 D6, measured in CI.
 5. Both images run together read-only with the new nginx icon location, verified as
    [build-test-lint.md](../developer/build-test-lint.md#run-the-images-together) says.
-6. Documentation: a developer page for the frontend, `make dev` in the build page and the
+6. One `Idempotency-Key` per form content in every form that creates — a ticket, a comment, a
+   question, a project, an attachment, a time entry — reused on a retry and new when the content
+   changes, as the first tenant and a new local account do
+   ([frontend.md](../developer/frontend.md#where-state-lives)). Today these send a fresh key per
+   call, so a retry after a lost answer creates the thing twice.
+7. Documentation: a developer page for the frontend, `make dev` in the build page and the
    README, the security note on the dev proxy, the Status of ADR 0046, 0052, 0053, 0054, 0055.

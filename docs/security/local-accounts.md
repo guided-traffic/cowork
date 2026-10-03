@@ -163,7 +163,11 @@ lock is refused whatever its password and counts as one more failure.
 ## Temporary passwords, changes and resets
 
 - An administrator creates the account with a temporary password and the person changes it at
-  the first login before anything else ([sessions.md](sessions.md) "What a session may do"):
+  the first login before anything else. The UI shows the temporary password in a plain text
+  field that password managers are told to leave alone, so none offers to save it as the
+  administrator's own login or fills the administrator's password into it, and it generates
+  `max(24, COWORK_PASSWORD_MIN_LENGTH)` characters
+  ([frontend.md](../developer/frontend.md#where-state-lives)) ([sessions.md](sessions.md) "What a session may do"):
   `PUT /api/v1/me/password` verifies the current password, applies the length policy, refuses
   a new password equal to the current one, ends every other session of the account and clears
   the flag (ADR 0033 D4).

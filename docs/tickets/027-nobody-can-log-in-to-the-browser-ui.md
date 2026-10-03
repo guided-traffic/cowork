@@ -40,8 +40,17 @@ All of it is decided and unbuilt; the records are the specification. The routes 
 details below are this ticket's design within them, written into the API document first
 ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md)).
 
-**Still to do:** the person's tokens page, the tenant's accounts page and "create the first
-tenant" in the UI (being built); Q1 below; the e2e paths of T29. The table below is the shape that was built.
+**Still to do:** the review fixes of the tokens page, the accounts page and "create the first
+tenant" (being built; the pages themselves are built and pass in Chromium and WebKit against the
+running stack); Q1 below; the e2e paths of T29; and three small gaps the UI met:
+
+- A token names its project restriction by id (`restricted_project_id`) while it names its
+  tenant by slug; the tokens page looks the key up per tenant. A `restricted_project` key in
+  `Token` removes the lookup.
+- The UI cannot learn `COWORK_TOKEN_MAX_LIFETIME`: the form accepts up to the schema's 3650 days
+  and the server shortens the request, which the dialog's expiry then shows.
+- "Create the first tenant" is offered to a global administrator without a membership, also
+  when tenants exist that they do not belong to; no route says whether a tenant exists. The table below is the shape that was built.
 
 **The routes.** The browser flows live outside `/api/v1`, as ADR 0037 D5 names them, and nginx
 and the dev proxy get a location `^~ /auth/` to the backend:

@@ -97,7 +97,10 @@ D3, [tokens.md](tokens.md)). No agent rule applies to it: the session path does 
 ## How a session ends
 
 Revocation is a delete and is immediate: the next request with the cookie is `401`
-([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D4).
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D4). In the browser, a
+sign-in and a sign-out replace the document, so nothing the previous person loaded — their tokens,
+a tenant's accounts, cached tickets — stays in memory for the next person in the same tab
+([frontend.md](../developer/frontend.md#where-state-lives)).
 
 | What | Which sessions | Where |
 |---|---|---|
