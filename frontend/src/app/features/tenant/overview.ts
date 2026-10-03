@@ -13,8 +13,15 @@ import { ago, Clock, count } from '../../shared/time';
 /** The interim front page reads one page of open tickets; the dashboard counts them all. */
 export const pageSize = 100;
 
-/** The open states in board order (docs/adr/0009 D1). */
-export const openStates: TicketState[] = ['filed', 'analysed', 'decided', 'in-progress', 'blocked'];
+/** The open states in the order of docs/adr/0009 D1. */
+export const openStates: TicketState[] = [
+  'filed',
+  'analysed',
+  'decided',
+  'in-progress',
+  'review',
+  'blocked',
+];
 
 export interface ProjectSummary {
   key: string;

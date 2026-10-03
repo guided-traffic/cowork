@@ -1,30 +1,32 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MenuItem } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
-import { Checkbox } from 'primeng/checkbox';
-import { Dialog } from 'primeng/dialog';
-import { InputText } from 'primeng/inputtext';
 import { Menu } from 'primeng/menu';
-import { Select } from 'primeng/select';
-import { Textarea } from 'primeng/textarea';
-import { BlockKind, Ticket } from '../../api/models';
+import { Ticket } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { TicketActions } from '../../core/ticket-actions.service';
-import { Move, movesFrom } from '../../shared/transitions';
+import { Move, MoveKind, movesOf } from '../../shared/transitions';
+import { MoveDialog, MoveRequest } from './move-dialog';
 
-const blockKinds: BlockKind[] = ['decision', 'human', 'product', 'release', 'external', 'ticket'];
+/** The moves that may stand on the main button, in the order the matrix lists them. */
+const mainKinds: ReadonlySet<MoveKind> = new Set([
+  'forward',
+  'done',
+  'unblock',
+  'reopen',
+  'withdraw',
+]);
 
 /**
  * The state machine on the detail page (docs/adr/0009): the main move as a button, the others in a
- * menu, and a dialog for what a move requires — a reason, the verification note of `done`, a
- * block — and for the person's override of open prerequisites (docs/adr/0012 D7).
+ * menu, and {@link MoveDialog} for what a move requires — a reason, the verification note of done
+ * by hand, a block — and for the person's override of open prerequisites (docs/adr/0012 D7). A
+ * ticket done by its stages has no move here: lowering a stage reopens it.
  */
 @Component({
   selector: 'app-ticket-moves',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, Checkbox, Dialog, FormsModule, InputText, Menu, Select, Textarea],
+  imports: [ButtonDirective, Menu, MoveDialog],
   templateUrl: './ticket-moves.html',
   styleUrl: './ticket-moves.scss',
 })
@@ -34,112 +36,36 @@ export class TicketMoves {
   private readonly actions = inject(TicketActions);
   private readonly problems = inject(ProblemService);
 
-  protected readonly blockKinds = blockKinds;
-  protected readonly moves = computed(() =>
-    movesFrom(this.ticket().state, this.ticket().block?.from),
-  );
-  /** The forward step, `done`, the unblock or the reopen — whichever the state has. */
-  protected readonly main = computed(() =>
-    this.moves().find((move) => ['forward', 'done', 'unblock', 'reopen'].includes(move.kind)),
-  );
+  protected readonly moves = computed(() => movesOf(this.ticket()));
+  /** The forward step, done by hand, the unblock, the withdrawal or the reopen — whichever comes first. */
+  protected readonly main = computed(() => this.moves().find((move) => mainKinds.has(move.kind)));
   protected readonly others = computed<MenuItem[]>(() =>
     this.moves()
       .filter((move) => move !== this.main())
       .map((move) => ({ label: move.label, command: () => this.start(move) })),
   );
 
-  protected readonly pending = signal<Move | null>(null);
-  protected readonly text = signal('');
-  protected readonly blockKind = signal<BlockKind>('decision');
-  protected readonly blockTicket = signal('');
-  protected readonly prerequisitesOpen = signal(false);
-  protected readonly override = signal(false);
-  protected readonly overrideReason = signal('');
-  protected readonly busy = signal(false);
-  protected readonly error = signal('');
-
-  protected readonly dialogTitle = computed(() => {
-    const move = this.pending();
-    if (!move) {
-      return '';
-    }
-    return move.kind === 'done' ? 'Done: how was it verified?' : move.label;
-  });
-  protected readonly canSend = computed(() => {
-    const move = this.pending();
-    if (!move || this.busy()) {
-      return false;
-    }
-    if (
-      move.input === 'block' &&
-      this.blockKind() === 'ticket' &&
-      this.blockTicket().trim() === ''
-    ) {
-      return false;
-    }
-    if (this.override() && this.overrideReason().trim() === '') {
-      return false;
-    }
-    return move.input === 'none' || this.text().trim() !== '';
-  });
+  /** The move whose input the dialog asks for. */
+  protected readonly request = signal<MoveRequest | null>(null);
+  /** A move that needs no input is on its way. */
+  protected readonly sending = signal(false);
 
   protected start(move: Move): void {
     if (move.input === 'none') {
       void this.send(move);
-      return;
+    } else {
+      this.request.set({ kind: 'move', move });
     }
-    this.text.set('');
-    this.blockKind.set('decision');
-    this.blockTicket.set('');
-    this.prerequisitesOpen.set(false);
-    this.override.set(false);
-    this.overrideReason.set('');
-    this.error.set('');
-    this.pending.set(move);
   }
 
-  protected close(): void {
-    this.pending.set(null);
-  }
-
-  protected async send(move = this.pending()): Promise<void> {
-    if (!move) {
-      return;
-    }
-    const text = this.text().trim();
-    this.busy.set(true);
-    this.error.set('');
+  private async send(move: Move): Promise<void> {
+    this.sending.set(true);
     try {
-      await this.actions.transition(this.ticket().key, {
-        to: move.to,
-        ...(move.input === 'reason' ? { reason: text } : {}),
-        ...(move.input === 'note' ? { note: text } : {}),
-        ...(move.input === 'block'
-          ? {
-              reason: text,
-              block: {
-                kind: this.blockKind(),
-                ...(this.blockKind() === 'ticket' ? { ticket: this.blockTicket().trim() } : {}),
-              },
-            }
-          : {}),
-        ...(this.override()
-          ? { override_prerequisites: true, reason: this.overrideReason().trim() }
-          : {}),
-      });
-      this.pending.set(null);
+      await this.actions.transition(this.ticket().key, { to: move.to });
     } catch (error) {
-      const problem = this.problems.read(error);
-      if (error instanceof HttpErrorResponse && problem.code === 'open_prerequisites') {
-        this.prerequisitesOpen.set(true);
-        this.error.set(problem.detail);
-      } else if (this.pending()) {
-        this.error.set(problem.detail || problem.title);
-      } else {
-        this.problems.report(error);
-      }
+      this.problems.report(error);
     } finally {
-      this.busy.set(false);
+      this.sending.set(false);
     }
   }
 }

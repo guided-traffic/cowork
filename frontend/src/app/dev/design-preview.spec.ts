@@ -169,6 +169,7 @@ describe('DesignPreview', () => {
           'analysed',
           'decided',
           'in-progress',
+          'review',
           'blocked',
           'done',
           'dropped',

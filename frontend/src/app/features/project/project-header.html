@@ -1,0 +1,50 @@
+<header class="head">
+  <div class="title">
+    <span class="key" data-testid="project-key">{{ project() }}</span>
+    <h1 data-testid="project-name">{{ details()?.name ?? project() }}</h1>
+    <span class="spacer"></span>
+    @if (session.tenant(); as tenant) {
+      <a
+        pButton
+        [text]="true"
+        [rounded]="true"
+        severity="secondary"
+        [routerLink]="['/t', tenant, 'p', project(), 'settings']"
+        data-testid="project-settings"
+        [iconOnly]="true"
+        aria-label="Project settings"
+        ><i class="pi pi-cog"></i
+      ></a>
+      <button pButton type="button" data-testid="new-ticket" (click)="creating.set(true)">
+        <i class="pi pi-plus"></i>New ticket
+      </button>
+      <app-new-ticket-dialog
+        [tenant]="tenant"
+        [project]="project()"
+        [(visible)]="creating"
+        (filed)="onFiled($event)"
+      />
+    }
+  </div>
+  @if (details()?.description; as description) {
+    <p class="muted" data-testid="project-description">{{ description }}</p>
+  }
+  @if (session.tenant(); as tenant) {
+    <nav class="tabs" aria-label="Views of the project">
+      <a
+        [routerLink]="['/t', tenant, 'p', project(), 'backlog']"
+        routerLinkActive="active"
+        ariaCurrentWhenActive="page"
+        data-testid="tab-backlog"
+        >Backlog</a
+      >
+      <a
+        [routerLink]="['/t', tenant, 'p', project(), 'board']"
+        routerLinkActive="active"
+        ariaCurrentWhenActive="page"
+        data-testid="tab-board"
+        >Board</a
+      >
+    </nav>
+  }
+</header>

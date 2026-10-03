@@ -5,6 +5,7 @@ import {
   DestroyRef,
   inject,
   input,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -18,8 +19,20 @@ import { Effort, SecurityClass, Severity, Ticket, TicketPatch, TicketType } from
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
+import { StageBar } from '../../shared/stage-bar';
+import {
+  currentStage,
+  effectOfStages,
+  Stage,
+  stageFields,
+  stageNames,
+  stages,
+  Stages,
+  stagesOf,
+} from '../../shared/stages';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { meanings } from '../../shared/vocabulary';
+import { MoveDialog, MoveRequest, StagePatch } from './move-dialog';
 
 /** A field's value as the merge prompt shows it. */
 export function shown(value: unknown): string {
@@ -32,12 +45,16 @@ export function shown(value: unknown): string {
 /**
  * The editable frontmatter of the detail page (docs/adr/0018 D2): each change is one `PATCH`
  * with the cached `ETag` (docs/adr/0050 D3). A `412` asks the person: the server's value, theirs,
- * and whether to write theirs over it (D5) — the server never merges.
+ * and whether to write theirs over it (D5) — the server never merges. The three progress stages
+ * (docs/adr/0017 D2) each have a slider; a parent shows its stages, which its children make, as
+ * bars. A slider move that would fill the last stage is the done act and asks for the verification
+ * note first, and one that lowers a stage of a ticket done by its stages reopens it and asks for
+ * the reason first (docs/adr/0009 D5), both in {@link MoveDialog}.
  */
 @Component({
   selector: 'app-ticket-fields',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Select, SelectButton, Slider, Textarea, Tooltip],
+  imports: [FormsModule, MoveDialog, Select, SelectButton, Slider, StageBar, Textarea, Tooltip],
   templateUrl: './ticket-fields.html',
   styleUrl: './ticket-fields.scss',
 })
@@ -65,13 +82,30 @@ export class TicketFields {
   protected readonly pendingSecurity = signal<SecurityClass | null>(null);
   protected readonly savingSecurity = signal(false);
   protected readonly threat = signal('');
-  protected readonly progress = signal<number | null>(null);
 
-  protected readonly progressShown = computed(() => this.progress() ?? this.ticket().progress);
-  private progressTimer: ReturnType<typeof setTimeout> | null = null;
+  protected readonly stages = stages;
+  protected readonly stageNames = stageNames;
+  private readonly key = computed(() => this.ticket().key);
+  /**
+   * The stages a slider moved and that are not written yet: they wait for the slider to rest, for
+   * their write, or for the dialog that asks what the write needs. They belong to the ticket they
+   * were moved on; another ticket starts without them, and a newer version of the same keeps them.
+   */
+  private readonly moved = linkedSignal<string, Partial<Stages>>({
+    source: this.key,
+    computation: () => ({}),
+  });
+  protected readonly stagesShown = computed<Stages>(() => ({
+    ...stagesOf(this.ticket()),
+    ...this.moved(),
+  }));
+  protected readonly current = computed(() => currentStage(this.ticket()));
+  /** The write of the stages that waits for the verification note or the reason. */
+  protected readonly stageRequest = signal<MoveRequest | null>(null);
+  private stageTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.flushProgress());
+    inject(DestroyRef).onDestroy(() => this.flushStages(true));
   }
 
   protected ago(iso: string): string {
@@ -108,25 +142,74 @@ export class TicketFields {
     ).finally(() => this.savingSecurity.set(false));
   }
 
-  /** A drag or the arrow keys move the slider; the value is written once it rests for 400 ms. */
-  protected moveProgress(value: number): void {
-    this.progress.set(value);
-    if (this.progressTimer) {
-      clearTimeout(this.progressTimer);
+  /**
+   * A drag or the arrow keys move a stage's slider; what the sliders moved is written once they
+   * rest for 400 ms, in one `PATCH`.
+   */
+  protected moveStage(stage: Stage, value: number): void {
+    if (this.stageRequest()) {
+      return;
     }
-    this.progressTimer = setTimeout(() => this.flushProgress(), 400);
+    this.moved.update((moved) => ({ ...moved, [stage]: value }));
+    if (this.stageTimer) {
+      clearTimeout(this.stageTimer);
+    }
+    this.stageTimer = setTimeout(() => this.flushStages(), 400);
   }
 
-  private flushProgress(): void {
-    if (this.progressTimer) {
-      clearTimeout(this.progressTimer);
-      this.progressTimer = null;
+  /**
+   * Writes the stages that moved. A write that changes the stages only goes at once; one that
+   * closes or reopens the ticket waits for the dialog, and the sliders show it meanwhile. When the
+   * page goes away (`leaving`), nobody is left to ask, and such a write is not made.
+   */
+  private flushStages(leaving = false): void {
+    if (this.stageTimer) {
+      clearTimeout(this.stageTimer);
+      this.stageTimer = null;
     }
-    const value = this.progress();
-    this.progress.set(null);
-    if (value !== null && value !== this.ticket().progress) {
-      void this.write({ progress: value });
+    const ticket = this.ticket();
+    const before = stagesOf(ticket);
+    const moved = this.moved();
+    const changed = stages.filter(
+      (stage) => moved[stage] !== undefined && moved[stage] !== before[stage],
+    );
+    const pending: Partial<Stages> = {};
+    const patch: StagePatch = {};
+    for (const stage of changed) {
+      pending[stage] = moved[stage];
+      patch[stageFields[stage]] = moved[stage];
     }
+    this.moved.set(pending);
+    if (changed.length === 0) {
+      return;
+    }
+    const effect = effectOfStages(ticket, { ...before, ...moved });
+    if (effect === 'keep') {
+      void this.write(patch).finally(() => this.settle(patch));
+    } else if (leaving) {
+      this.moved.set({});
+    } else {
+      this.stageRequest.set({ kind: effect, patch });
+    }
+  }
+
+  /** A written stage follows the ticket again, unless its slider moved on meanwhile. */
+  private settle(patch: StagePatch): void {
+    this.moved.update((moved) => {
+      const rest = { ...moved };
+      for (const stage of stages) {
+        if (rest[stage] !== undefined && rest[stage] === patch[stageFields[stage]]) {
+          delete rest[stage];
+        }
+      }
+      return rest;
+    });
+  }
+
+  /** The dialog is over: the cache holds what it wrote, or the sliders go back to the ticket. */
+  protected stageClosed(): void {
+    this.stageRequest.set(null);
+    this.moved.set({});
   }
 
   /**

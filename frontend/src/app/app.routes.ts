@@ -35,9 +35,15 @@ export const routes: Routes = [
             pathMatch: 'full',
             loadComponent: () => import('./features/tenant/overview').then((m) => m.TenantOverview),
           },
+          // A project's address without a view opens its backlog (docs/adr/0018 D1).
+          { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/backlog' },
           {
             path: 'p/:project/backlog',
             loadComponent: () => import('./features/project/backlog').then((m) => m.Backlog),
+          },
+          {
+            path: 'p/:project/board',
+            loadComponent: () => import('./features/project/board').then((m) => m.Board),
           },
           {
             path: 'p/:project/settings',

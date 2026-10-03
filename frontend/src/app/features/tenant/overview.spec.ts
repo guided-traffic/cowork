@@ -35,6 +35,8 @@ function ticket(project: string, number: number, overrides: Partial<Ticket> = {}
     effort: 'M',
     progress: 0,
     progress_derived: false,
+    progress_refinement: 0,
+    progress_review: 0,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,
@@ -44,6 +46,9 @@ function ticket(project: string, number: number, overrides: Partial<Ticket> = {}
     updated_at: '2026-10-03T11:55:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version: 1,
     ...overrides,
   };
@@ -98,9 +103,10 @@ describe('summarise', () => {
     });
   });
 
-  it('lists the states in board order whatever the order of the tickets', () => {
+  it('lists the states in the order of docs/adr/0009 D1 whatever the order of the tickets', () => {
     const tickets = [
       withState('blocked'),
+      withState('review'),
       withState('in-progress'),
       withState('filed'),
       withState('decided'),
@@ -108,7 +114,14 @@ describe('summarise', () => {
     ];
 
     expect(summarise([cow], tickets)[0].byState.map((part) => part.state)).toEqual(openStates);
-    expect(openStates).toEqual(['filed', 'analysed', 'decided', 'in-progress', 'blocked']);
+    expect(openStates).toEqual([
+      'filed',
+      'analysed',
+      'decided',
+      'in-progress',
+      'review',
+      'blocked',
+    ]);
   });
 
   it('counts the tickets of each state and drops the states without tickets', () => {
@@ -383,7 +396,7 @@ describe('TenantOverview', () => {
       );
     });
 
-    it('shows each state with its count in board order', async () => {
+    it('shows each state with its count in the order of the states', async () => {
       projects.list.set([project('COW', 'Cowork')]);
       load(
         ticket('COW', 1, { state: 'blocked' }),

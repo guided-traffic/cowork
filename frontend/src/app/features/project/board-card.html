@@ -1,0 +1,128 @@
+@let t = ticket();
+<div class="top">
+  @if (!compact()) {
+    <app-type [value]="t.type" />
+  }
+  <a
+    class="key tabular"
+    [routerLink]="['/t', tenant(), 'tickets', shortKey()]"
+    (click)="$event.stopPropagation()"
+    data-testid="card-key"
+    >{{ shortKey() }}</a
+  >
+  <span class="spacer"></span>
+  @if (compact()) {
+    <app-size [value]="t.effort" />
+  } @else if (movable()) {
+    <button
+      pButton
+      type="button"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
+      size="small"
+      [iconOnly]="true"
+      class="menu-button"
+      aria-haspopup="menu"
+      [attr.aria-label]="'Move ' + shortKey()"
+      [attr.data-testid]="'card-menu-' + t.key"
+      (click)="$event.stopPropagation(); menu.emit($event)"
+    >
+      <i class="pi pi-ellipsis-v"></i>
+    </button>
+  }
+</div>
+
+<p class="title" data-testid="card-title">{{ t.title }}</p>
+
+@if (compact()) {
+  <div class="foot">
+    <app-state [value]="t.state" />
+    <button
+      pButton
+      type="button"
+      size="small"
+      severity="secondary"
+      [outlined]="true"
+      class="now"
+      [attr.aria-label]="'Make ' + shortKey() + ' now'"
+      pTooltip="Set its urgency to now; it moves to the column of its state"
+      [showDelay]="400"
+      [attr.data-testid]="'card-now-' + t.key"
+      (click)="$event.stopPropagation(); now.emit()"
+    >
+      <i class="pi pi-arrow-right"></i>Now
+    </button>
+  </div>
+} @else {
+  <div class="badges">
+    @if (t.urgency === 'release') {
+      <span
+        class="pill outline release"
+        [pTooltip]="meanings.urgency.release"
+        [showDelay]="400"
+        data-testid="card-release"
+        >release</span
+      >
+    }
+    @if (showsState()) {
+      <app-state [value]="t.state" />
+    }
+    <app-severity [value]="t.severity" />
+    <app-security [value]="t.security" />
+  </div>
+
+  @if (stage(); as stage) {
+    <app-stage-bar
+      class="stage"
+      [stage]="stage"
+      [value]="stageValue()"
+      [derived]="t.progress_derived"
+    />
+  }
+
+  @if (t.block; as block) {
+    <p class="block" data-testid="card-block" [pTooltip]="block.reason" [showDelay]="400">
+      <i class="pi pi-ban" aria-hidden="true"></i>
+      <span
+        ><strong>{{ block.kind }}:</strong> {{ block.reason }}</span
+      >
+    </p>
+  }
+
+  @if (t.open_prerequisites > 0) {
+    <p
+      class="prerequisites"
+      data-testid="card-prerequisites"
+      pTooltip="Tickets that block this one and are not done yet"
+      [showDelay]="400"
+    >
+      <i class="pi pi-link" aria-hidden="true"></i>{{ prerequisites() }}
+    </p>
+  }
+
+  <div class="foot">
+    <app-size [value]="t.effort" />
+    @if (t.assignee; as assignee) {
+      <span class="assignee" data-testid="card-assignee"
+        ><i class="pi pi-user" aria-hidden="true"></i>{{ assignee.display_name }}</span
+      >
+    }
+    <span class="spacer"></span>
+    @if (action(); as move) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        severity="secondary"
+        [outlined]="true"
+        class="action"
+        [attr.aria-label]="'Move ' + shortKey() + ' to ' + move.to"
+        [attr.data-testid]="'card-action-' + t.key"
+        (click)="$event.stopPropagation(); act.emit(move)"
+      >
+        <i class="pi pi-arrow-right"></i>{{ move.to }}
+      </button>
+    }
+  </div>
+}

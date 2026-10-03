@@ -31,7 +31,8 @@ function refusal(status: number, title: string, detail: string) {
   return new HttpErrorResponse({ status, statusText: title, error: body });
 }
 
-const columns = ['analysed', 'decided', 'in-progress', 'blocked'];
+/** The limits by their key, in the order of the board's columns. */
+const columns = ['analysed', 'decided', 'in-progress', 'blocked', 'review'];
 
 describe('ProjectSettings', () => {
   let list: WritableSignal<Project[]>;
@@ -138,17 +139,37 @@ describe('ProjectSettings', () => {
       expect((el(fixture, 'settings-description') as HTMLTextAreaElement).value).toBe(
         'The tool itself',
       );
-      expect(columns.map((column) => limitShown(fixture, column))).toEqual(['', '', '3', '2']);
+      expect(columns.map((column) => limitShown(fixture, column))).toEqual(['', '', '3', '2', '']);
     });
 
-    it('offers a limit for the four columns that can hold one, in board order', async () => {
+    it('offers a limit for each column of the board, named as the board names it, with the states it counts', async () => {
       const fixture = await render();
 
-      const labels = [...host(fixture).querySelectorAll('.limit > span.muted')].map(
-        (label) => label.textContent,
-      );
-      expect(labels).toEqual(columns);
+      const limits = [...host(fixture).querySelectorAll('.limit')].map((limit) => [
+        limit.querySelector('.column')?.textContent,
+        limit.querySelector('.counts')?.textContent,
+      ]);
+      expect(limits).toEqual([
+        ['Refinement', 'filed and analysed'],
+        ['Ready', 'decided'],
+        ['In Progress', 'in-progress'],
+        ['Blocked', 'blocked'],
+        ['Review', 'review'],
+      ]);
       expect(el(fixture, 'wip-analysed')?.querySelector('input')?.placeholder).toBe('none');
+    });
+
+    it('names each limit field by its column and the states it counts', async () => {
+      const fixture = await render();
+
+      const field = fixture.debugElement.query(By.css('[data-testid="wip-analysed"]'));
+      expect((field.componentInstance as { ariaLabelledBy(): string }).ariaLabelledBy()).toBe(
+        'wip-analysed wip-counts-analysed',
+      );
+      expect(host(fixture).querySelector('#wip-analysed')?.textContent).toBe('Refinement');
+      expect(host(fixture).querySelector('#wip-counts-analysed')?.textContent).toBe(
+        'filed and analysed',
+      );
     });
 
     it('follows the project when it is replaced by a newer version', async () => {
@@ -161,7 +182,7 @@ describe('ProjectSettings', () => {
 
       expect((el(fixture, 'settings-name') as HTMLInputElement).value).toBe('Cowork 2');
       expect((el(fixture, 'settings-description') as HTMLTextAreaElement).value).toBe('');
-      expect(columns.map((column) => limitShown(fixture, column))).toEqual(['5', '', '', '']);
+      expect(columns.map((column) => limitShown(fixture, column))).toEqual(['5', '', '', '', '']);
     });
 
     it('follows the project of the path', async () => {
@@ -211,11 +232,16 @@ describe('ProjectSettings', () => {
       setLimit(fixture, 'analysed', 4);
       setLimit(fixture, 'in-progress', 5);
       setLimit(fixture, 'blocked', null);
+      setLimit(fixture, 'review', 2);
 
       submit(fixture);
       await settle(fixture);
 
-      expect(update.mock.calls[0][1].wip_limits).toStrictEqual({ analysed: 4, 'in-progress': 5 });
+      expect(update.mock.calls[0][1].wip_limits).toStrictEqual({
+        analysed: 4,
+        'in-progress': 5,
+        review: 2,
+      });
     });
 
     it('writes no limits when every limit is emptied', async () => {

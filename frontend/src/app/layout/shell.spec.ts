@@ -1,3 +1,4 @@
+import { ScrollDispatcher } from '@angular/cdk/scrolling';
 import { provideLocationMocks } from '@angular/common/testing';
 import { Component, computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -232,6 +233,20 @@ describe('Shell', () => {
     expect(page.querySelector('main.content [data-testid="page"]')?.textContent).toBe(
       'a routed page',
     );
+  });
+
+  it('makes the content area the scroll container a drag in the routed page scrolls and follows', async () => {
+    const { fixture, page } = await render();
+
+    await TestBed.inject(Router).navigateByUrl('/somewhere');
+    await fixture.whenStable();
+
+    // What a drop list asks for when it measures itself as a drag starts.
+    const routed = page.querySelector<HTMLElement>('[data-testid="page"]')!;
+    const scrolled = TestBed.inject(ScrollDispatcher)
+      .getAncestorScrollContainers(routed)
+      .map((scrollable) => scrollable.getElementRef().nativeElement);
+    expect(scrolled).toEqual([page.querySelector('main.content')]);
   });
 
   it('hosts the toasts that services add through the message service', async () => {

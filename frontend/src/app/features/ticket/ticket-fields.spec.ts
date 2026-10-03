@@ -12,7 +12,9 @@ import { Member, Problem, Ticket } from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { ProblemView } from '../../core/problem.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
+import { Stage, stages } from '../../shared/stages';
 import { Clock, dateTime } from '../../shared/time';
+import { MoveDialog } from './move-dialog';
 import { shown, TicketFields } from './ticket-fields';
 
 const now = Date.parse('2026-10-03T12:00:00Z');
@@ -40,6 +42,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     effort: 'M',
     progress: 25,
     progress_derived: false,
+    progress_refinement: 0,
+    progress_review: 0,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -49,6 +53,9 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     updated_at: '2026-10-03T11:55:00Z',
     decided_at: null,
     done_at: null,
+    done_from: null,
+    done_by_hand: false,
+    open_prerequisites: 0,
     version: 3,
     ...overrides,
   };
@@ -156,6 +163,12 @@ describe('TicketFields', () => {
       ]),
     );
 
+  /** The value each stage shows: `{ refinement: '100%', … }`. */
+  const stageShown = (fixture: ComponentFixture<TicketFields>) =>
+    Object.fromEntries(
+      stages.map((stage) => [stage, el(fixture, `stage-value-${stage}`)?.textContent]),
+    ) as Record<Stage, string | undefined>;
+
   describe('what it shows', () => {
     it('shows the current value of each field it edits', async () => {
       const fixture = await render(ticket({ security: 'hardening', effort: 'L' }));
@@ -253,32 +266,98 @@ describe('TicketFields', () => {
       expect(fields(fixture)).not.toHaveProperty('Parent');
     });
 
-    it('shows the progress and where it comes from', async () => {
-      const fixture = await render(ticket({ progress: 50, progress_derived: true }));
-      expect(fields(fixture)['Progress']).toBe('50% from its children');
+    it('shows the three progress stages with their values, and names the one the ticket works on', async () => {
+      const fixture = await render(
+        ticket({ state: 'review', progress_refinement: 100, progress: 75, progress_review: 25 }),
+      );
 
-      fixture.componentRef.setInput('ticket', ticket({ progress: 75, progress_derived: false }));
-      await settle(fixture);
-      expect(fields(fixture)['Progress']).toBe('75%');
+      expect(stageShown(fixture)).toEqual({
+        refinement: '100%',
+        implementation: '75%',
+        review: '25%',
+      });
+      expect(
+        [...host(fixture).querySelectorAll('.stage .stage-name')].map((name) => name.textContent),
+      ).toEqual(['Refinement', 'Implementation', 'Review']);
+      expect(el(fixture, 'stage-review')?.classList).toContain('current');
+      expect(host(fixture).querySelectorAll('.stage.current')).toHaveLength(1);
+    });
+
+    it('names no stage for a decided ticket, which waits', async () => {
+      const fixture = await render(ticket({ state: 'decided' }));
+
+      expect(host(fixture).querySelectorAll('.stage.current')).toHaveLength(0);
+    });
+
+    it('gives each stage of a ticket without children a slider, named by its stage', async () => {
+      const fixture = await render();
+
+      const sliders = fixture.debugElement.queryAll(By.directive(Slider));
+      expect(sliders.map((slider) => (slider.componentInstance as Slider).ariaLabel())).toEqual([
+        'Refinement',
+        'Implementation',
+        'Review',
+      ]);
+      expect(host(fixture).querySelector('app-stage-bar')).toBeNull();
+    });
+
+    it('shows the stages of a parent as bars from its children, without a slider', async () => {
+      const fixture = await render(
+        ticket({
+          progress_derived: true,
+          progress_refinement: 50,
+          progress: 25,
+          progress_review: 0,
+        }),
+      );
+
+      expect(fixture.debugElement.queryAll(By.directive(Slider))).toHaveLength(0);
+      const bars = [...host(fixture).querySelectorAll('app-stage-bar')];
+      expect(bars.map((bar) => bar.getAttribute('aria-label'))).toEqual([
+        'Refinement 50%, from its children',
+        'Implementation 25%, from its children',
+        'Review 0%, from its children',
+      ]);
+      expect(el(fixture, 'stages-note')?.textContent).toBe('From its children');
     });
 
     it.each([
-      [
-        'a progress of its own',
-        { progress: 25, progress_derived: false, state: 'in-progress' },
-        false,
-      ],
-      ['a progress derived from its children', { progress_derived: true }, true],
-      ['a ticket that is done', { state: 'done', progress: 100 }, true],
+      ['in-progress', {}, false],
+      ['done by hand', { state: 'done', done_by_hand: true }, false],
+      ['done by its stages', { state: 'done', progress: 100, progress_review: 100 }, false],
+      ['dropped', { state: 'dropped' }, true],
     ] as [string, Partial<Ticket>, boolean][])(
-      'lets the person move the slider of %s: %s',
+      'lets the person move the sliders of a ticket that is %s: disabled %s',
       async (_, overrides, disabled) => {
         const fixture = await render(ticket(overrides));
 
-        const slider = fixture.debugElement.query(By.directive(Slider)).componentInstance as Slider;
-        expect(slider.$disabled()).toBe(disabled);
+        for (const slider of fixture.debugElement.queryAll(By.directive(Slider))) {
+          expect((slider.componentInstance as Slider).$disabled()).toBe(disabled);
+        }
       },
     );
+
+    it('says how a done ticket is done, and what its stages do then', async () => {
+      const fixture = await render(ticket({ state: 'done', done_by_hand: true }));
+      expect(el(fixture, 'stages-note')?.textContent).toBe(
+        'Done by hand: the stages stay editable.',
+      );
+
+      fixture.componentRef.setInput(
+        'ticket',
+        ticket({ state: 'done', progress_refinement: 100, progress: 100, progress_review: 100 }),
+      );
+      await settle(fixture);
+      expect(el(fixture, 'stages-note')?.textContent).toBe(
+        'Done by its stages: lowering one reopens it.',
+      );
+    });
+
+    it('says nothing about the stages of an open ticket', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'stages-note')).toBeNull();
+    });
   });
 
   describe('changing a field', () => {
@@ -509,33 +588,30 @@ describe('TicketFields', () => {
 
       // A second press while the first write is on its way would send a second PATCH over the same
       // `ETag`, which the server answers with a 412 for the person's own write: Save waits.
-      it(
-        'writes once when Save is pressed again while the first write is on its way',
-        async () => {
-          let finish: (written: Ticket) => void = () => undefined;
-          update.mockReturnValue(
-            new Promise<Ticket>((resolve) => {
-              finish = resolve;
-            }),
-          );
-          const fixture = await render();
-          change(fixture, 'field-security', 'boundary');
-          await settle(fixture);
-          const threat = el(fixture, 'field-threat') as HTMLTextAreaElement;
-          threat.value = typed;
-          threat.dispatchEvent(new Event('input'));
-          fixture.detectChanges();
-          const saveButton = el(fixture, 'field-threat-save') as HTMLButtonElement;
+      it('writes once when Save is pressed again while the first write is on its way', async () => {
+        let finish: (written: Ticket) => void = () => undefined;
+        update.mockReturnValue(
+          new Promise<Ticket>((resolve) => {
+            finish = resolve;
+          }),
+        );
+        const fixture = await render();
+        change(fixture, 'field-security', 'boundary');
+        await settle(fixture);
+        const threat = el(fixture, 'field-threat') as HTMLTextAreaElement;
+        threat.value = typed;
+        threat.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        const saveButton = el(fixture, 'field-threat-save') as HTMLButtonElement;
 
-          saveButton.click();
-          saveButton.click();
-          await settle(fixture);
-          finish(ticket());
-          await settle(fixture);
+        saveButton.click();
+        saveButton.click();
+        await settle(fixture);
+        finish(ticket());
+        await settle(fixture);
 
-          expect(update).toHaveBeenCalledOnce();
-        },
-      );
+        expect(update).toHaveBeenCalledOnce();
+      });
 
       // 'Write mine' runs the write again from the confirmation; when that one goes through, the
       // editor closes as after a first write that went through.
@@ -557,7 +633,7 @@ describe('TicketFields', () => {
     });
   });
 
-  describe('the progress', () => {
+  describe('the progress stages', () => {
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -574,12 +650,32 @@ describe('TicketFields', () => {
       return fixture;
     }
 
+    /** Lets the answer of a write arrive, and what follows it run. */
+    async function answered(fixture: ComponentFixture<TicketFields>) {
+      for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+      }
+      fixture.detectChanges();
+    }
+
+    const request = (fixture: ComponentFixture<TicketFields>) =>
+      (
+        fixture.debugElement.query(By.directive(MoveDialog)).componentInstance as MoveDialog
+      ).request();
+
+    const end = (fixture: ComponentFixture<TicketFields>, written: boolean) => {
+      (
+        fixture.debugElement.query(By.directive(MoveDialog)).componentInstance as MoveDialog
+      ).closed.emit(written);
+      fixture.detectChanges();
+    };
+
     it('shows the new value at once and writes it once the slider has rested for 400 ms', () => {
       const fixture = renderNow();
 
-      change(fixture, 'field-progress', 50);
+      change(fixture, 'field-implementation', 50);
       fixture.detectChanges();
-      expect(fields(fixture)['Progress']).toBe('50%');
+      expect(stageShown(fixture).implementation).toBe('50%');
       vi.advanceTimersByTime(399);
       expect(update).not.toHaveBeenCalled();
 
@@ -587,49 +683,155 @@ describe('TicketFields', () => {
       expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress: 50 });
     });
 
+    it.each([
+      ['ArrowRight', '30%', 30],
+      ['ArrowLeft', '20%', 20],
+      ['PageUp', '75%', 75],
+    ])(
+      'moves a stage in steps of five: %s takes 25 to %s (docs/adr/0017 D2)',
+      async (code, shown, written) => {
+        const fixture = renderNow();
+        // The slider takes its value from the model a moment after the first render.
+        await answered(fixture);
+
+        el(fixture, 'field-implementation')
+          ?.querySelector('input')
+          ?.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+        fixture.detectChanges();
+        expect(stageShown(fixture).implementation).toBe(shown);
+
+        vi.advanceTimersByTime(400);
+        expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress: written });
+      },
+    );
+
+    it.each([
+      ['field-refinement', { progress_refinement: 75 }],
+      ['field-implementation', { progress: 75 }],
+      ['field-review', { progress_review: 75 }],
+    ])('writes the slider %s as the field of its stage', (testId, patch) => {
+      const fixture = renderNow();
+
+      change(fixture, testId, 75);
+      vi.advanceTimersByTime(400);
+
+      expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', patch);
+    });
+
     it('writes only where the slider came to rest, however far it moved', () => {
       const fixture = renderNow();
 
-      change(fixture, 'field-progress', 50);
+      change(fixture, 'field-implementation', 50);
       vi.advanceTimersByTime(300);
-      change(fixture, 'field-progress', 75);
+      change(fixture, 'field-implementation', 75);
       vi.advanceTimersByTime(300);
-      change(fixture, 'field-progress', 100);
+      change(fixture, 'field-implementation', 90);
       vi.advanceTimersByTime(400);
 
-      expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress: 100 });
+      expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress: 90 });
+    });
+
+    it('writes the stages moved before the sliders rested in one patch', () => {
+      const fixture = renderNow();
+
+      change(fixture, 'field-refinement', 100);
+      vi.advanceTimersByTime(200);
+      change(fixture, 'field-implementation', 50);
+      vi.advanceTimersByTime(400);
+
+      expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', {
+        progress_refinement: 100,
+        progress: 50,
+      });
     });
 
     it('writes nothing when the slider comes back to where the ticket is', () => {
       const fixture = renderNow(ticket({ progress: 25 }));
 
-      change(fixture, 'field-progress', 50);
+      change(fixture, 'field-implementation', 50);
       vi.advanceTimersByTime(200);
-      change(fixture, 'field-progress', 25);
+      change(fixture, 'field-implementation', 25);
       vi.advanceTimersByTime(400);
       fixture.detectChanges();
 
       expect(update).not.toHaveBeenCalled();
-      expect(fields(fixture)['Progress']).toBe('25%');
+      expect(stageShown(fixture).implementation).toBe('25%');
     });
 
-    it('follows the ticket again after it wrote', () => {
+    it('leaves out of the patch a stage that came back, and follows the ticket for it', () => {
       const fixture = renderNow(ticket({ progress: 25 }));
-      change(fixture, 'field-progress', 50);
-      vi.advanceTimersByTime(400);
 
-      fixture.componentRef.setInput('ticket', ticket({ progress: 50, version: 4 }));
+      change(fixture, 'field-review', 50);
+      change(fixture, 'field-implementation', 50);
+      change(fixture, 'field-implementation', 25);
+      vi.advanceTimersByTime(400);
+      fixture.componentRef.setInput('ticket', ticket({ progress: 40, version: 4 }));
       fixture.detectChanges();
-      expect(fields(fixture)['Progress']).toBe('50%');
+
+      expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress_review: 50 });
+      expect(stageShown(fixture).implementation).toBe('40%');
+    });
+
+    it('keeps the value it wrote on the slider until the answer is in, then follows the ticket again', async () => {
+      let finish: (value: Ticket) => void = () => undefined;
+      update.mockReturnValueOnce(
+        new Promise<Ticket>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const fixture = renderNow(ticket({ progress: 25 }));
+      change(fixture, 'field-implementation', 50);
+      vi.advanceTimersByTime(400);
+      fixture.detectChanges();
+      expect(stageShown(fixture).implementation).toBe('50%');
+
+      finish(ticket({ progress: 50, version: 4 }));
+      fixture.componentRef.setInput('ticket', ticket({ progress: 50, version: 4 }));
+      await answered(fixture);
+      expect(stageShown(fixture).implementation).toBe('50%');
 
       fixture.componentRef.setInput('ticket', ticket({ progress: 75, version: 5 }));
       fixture.detectChanges();
-      expect(fields(fixture)['Progress']).toBe('75%');
+      expect(stageShown(fixture).implementation).toBe('75%');
+    });
+
+    it('keeps a slider that moved on while its write was on the way', async () => {
+      let finish: (value: Ticket) => void = () => undefined;
+      update.mockReturnValueOnce(
+        new Promise<Ticket>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const fixture = renderNow(ticket({ progress: 25 }));
+      change(fixture, 'field-implementation', 50);
+      vi.advanceTimersByTime(400);
+      change(fixture, 'field-implementation', 75);
+      fixture.detectChanges();
+      expect(stageShown(fixture).implementation).toBe('75%');
+
+      finish(ticket({ progress: 50, version: 4 }));
+      fixture.componentRef.setInput('ticket', ticket({ progress: 50, version: 4 }));
+      await answered(fixture);
+
+      expect(stageShown(fixture).implementation).toBe('75%');
+      vi.advanceTimersByTime(400);
+      expect(update).toHaveBeenLastCalledWith('acme/COW-12', { progress: 75 });
+    });
+
+    it('goes back to the ticket when the write is refused', async () => {
+      update.mockRejectedValueOnce(refused());
+      const fixture = renderNow(ticket({ progress: 25 }));
+
+      change(fixture, 'field-implementation', 50);
+      vi.advanceTimersByTime(400);
+      await answered(fixture);
+
+      expect(stageShown(fixture).implementation).toBe('25%');
     });
 
     it('writes what was moved and not yet written when the page goes away', () => {
       const fixture = renderNow();
-      change(fixture, 'field-progress', 75);
+      change(fixture, 'field-implementation', 75);
       vi.advanceTimersByTime(100);
       expect(update).not.toHaveBeenCalled();
 
@@ -646,6 +848,134 @@ describe('TicketFields', () => {
       fixture.destroy();
 
       expect(update).not.toHaveBeenCalled();
+    });
+
+    it('drops a move made on another ticket that the page showed before', () => {
+      const fixture = renderNow();
+      change(fixture, 'field-implementation', 75);
+
+      fixture.componentRef.setInput('ticket', ticket({ key: 'acme/COW-13', number: 13 }));
+      fixture.detectChanges();
+      vi.advanceTimersByTime(400);
+
+      expect(update).not.toHaveBeenCalled();
+      expect(stageShown(fixture).implementation).toBe('25%');
+    });
+
+    describe('a move that fills the last stage (docs/adr/0009 D5)', () => {
+      const almost = () =>
+        ticket({ state: 'review', progress_refinement: 100, progress: 100, progress_review: 75 });
+
+      it('is not written; the done dialog asks for the verification note first', () => {
+        const fixture = renderNow(almost());
+
+        change(fixture, 'field-review', 100);
+        vi.advanceTimersByTime(400);
+        fixture.detectChanges();
+
+        expect(update).not.toHaveBeenCalled();
+        expect(request(fixture)).toEqual({ kind: 'complete', patch: { progress_review: 100 } });
+        expect(stageShown(fixture).review).toBe('100%');
+      });
+
+      it('goes back to the ticket when the person cancels the dialog', () => {
+        const fixture = renderNow(almost());
+        change(fixture, 'field-review', 100);
+        vi.advanceTimersByTime(400);
+
+        end(fixture, false);
+
+        expect(request(fixture)).toBeNull();
+        expect(stageShown(fixture).review).toBe('75%');
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('follows the ticket the dialog wrote once it ends', () => {
+        const fixture = renderNow(almost());
+        change(fixture, 'field-review', 100);
+        vi.advanceTimersByTime(400);
+
+        fixture.componentRef.setInput(
+          'ticket',
+          ticket({ state: 'done', progress_refinement: 100, progress: 100, progress_review: 100 }),
+        );
+        end(fixture, true);
+
+        expect(request(fixture)).toBeNull();
+        expect(stageShown(fixture).review).toBe('100%');
+        expect(el(fixture, 'stages-note')?.textContent).toBe(
+          'Done by its stages: lowering one reopens it.',
+        );
+      });
+
+      it('takes no other slider move while the dialog is open', () => {
+        const fixture = renderNow(almost());
+        change(fixture, 'field-review', 100);
+        vi.advanceTimersByTime(400);
+
+        change(fixture, 'field-refinement', 50);
+        vi.advanceTimersByTime(400);
+        fixture.detectChanges();
+
+        expect(stageShown(fixture).refinement).toBe('100%');
+        expect(request(fixture)).toEqual({ kind: 'complete', patch: { progress_review: 100 } });
+      });
+
+      it('is not made when the page goes away before the dialog asked', () => {
+        const fixture = renderNow(almost());
+        change(fixture, 'field-review', 100);
+
+        fixture.destroy();
+
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('writes a ticket whose stages were all full already at once: it is closed by hand', () => {
+        const fixture = renderNow(
+          ticket({
+            state: 'review',
+            progress_refinement: 100,
+            progress: 100,
+            progress_review: 100,
+          }),
+        );
+
+        change(fixture, 'field-review', 75);
+        vi.advanceTimersByTime(400);
+
+        expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress_review: 75 });
+      });
+    });
+
+    describe('a move that lowers a stage of a ticket done by its stages', () => {
+      const doneByStages = () =>
+        ticket({
+          state: 'done',
+          done_from: 'review',
+          progress_refinement: 100,
+          progress: 100,
+          progress_review: 100,
+        });
+
+      it('asks for the reason first, in the dialog that reopens it', () => {
+        const fixture = renderNow(doneByStages());
+
+        change(fixture, 'field-implementation', 75);
+        vi.advanceTimersByTime(400);
+        fixture.detectChanges();
+
+        expect(update).not.toHaveBeenCalled();
+        expect(request(fixture)).toEqual({ kind: 'reopen', patch: { progress: 75 } });
+      });
+
+      it('is written at once for a ticket done by hand, which stays done', () => {
+        const fixture = renderNow(ticket({ ...doneByStages(), done_by_hand: true }));
+
+        change(fixture, 'field-implementation', 75);
+        vi.advanceTimersByTime(400);
+
+        expect(update).toHaveBeenCalledExactlyOnceWith('acme/COW-12', { progress: 75 });
+      });
     });
   });
 
