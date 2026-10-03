@@ -5,7 +5,8 @@ What every change in this repository follows.
 - **Commits:** conventional commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`),
   a scope where one exists (`backend`, `frontend`, `chart`, `ci`, …); **no apostrophe anywhere
   in a commit message**; a `!` or `BREAKING CHANGE:` footer for a breaking change.
-  semantic-release reads them.
+  semantic-release reads them. A pull request is squashed under its title, so the title
+  follows the same rules ([ci-and-release.md](ci-and-release.md)).
 - **Go:** `gofmt -s`, `goimports` with the module as local prefix, the golangci-lint set in
   [`backend/.golangci.yml`](../../backend/.golangci.yml); errors wrapped with `%w` and a verb ("parse
   database url: …"); `log/slog` with key-value pairs; no global state beyond the linker

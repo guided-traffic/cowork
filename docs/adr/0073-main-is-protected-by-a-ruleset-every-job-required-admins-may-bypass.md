@@ -8,11 +8,12 @@ same ruleset without any bypass (the recommendation), over classic branch protec
 over leaving `main` unprotected. The rules of D4–D7 were put to the owner with the question
 and not objected to.
 
-**Not built.** Verified read-only on 2026-10-01: `main` has no protection and no ruleset;
-merge commits, squash and rebase are all allowed; auto-merge and delete-on-merge are off.
-The ruleset and the three repository switches are an administrator's act in GitHub; they are
-part of the first pipeline ticket ([ADR 0061](0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
-D5) unless the owner has them applied earlier.
+**Built** on 2026-10-03, at the owner's request: the ruleset `main` (D1, D2), the ruleset
+`release tags` (D4) and the repository switches of D3, applied through the GitHub API and read
+back. The required checks are bound to the GitHub Actions app, so a status of the same name
+from anything else does not satisfy them. Amended 2026-10-03 (D2): the GitHub App
+semantic-release runs as is on the bypass list of `main` as well — the owner's answer when
+the first release showed that semantic-release pushes its release commit to `main`.
 
 ## Context
 
@@ -37,7 +38,15 @@ D4); the branch must be up to date; linear history; no force push; no deletion.
 **D2 — The organisation's administrators are on the bypass list.** A bypass is for an
 emergency; it is not the way work lands. Every bypass is recorded by GitHub on the pull
 request and in the repository's audit log, and the owner reads those as exceptions to
-explain, not as routine.
+explain, not as routine. *(Amended 2026-10-03: the GitHub App `guided-traffic-automation`
+is on the list too, because semantic-release, which runs as that App, pushes the commit
+`chore(release): <version> [skip ci]` with the coverage badge to `main` after every release;
+without the bypass the release would stop at that push. The same App opens Renovate's pull
+requests, which merge through the platform after the checks (`automergeType: pr`). The cost:
+whoever obtains the App's token pushes to `main` without a pull request or a check; the
+token is minted only in the release job on `main` and in the scheduled Renovate run. Over
+removing the release commit, which would have moved the coverage badge off `main`, and over
+no bypass, which would have stopped every release.)*
 
 **D3 — Repository settings:** squash merge only (merge commits and rebase disabled), the
 squash commit's title taken from the pull request title so semantic-release reads a
