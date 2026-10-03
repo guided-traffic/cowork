@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,4 +201,266 @@ func TestStorageIsAllOrNone(t *testing.T) {
 	_, err = with(map[string]string{EnvS3Endpoint: "ftp://key:s3cr3t@minio", EnvS3Bucket: "b", EnvS3AccessKeyID: "i", EnvS3SecretAccessKey: "s"})
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "s3cr3t", "an endpoint may carry credentials; it is never echoed")
+}
+
+const (
+	adminPassword = "a long enough password"
+	baseURL       = "https://cowork.example.com"
+)
+
+// loginEnv is a configuration with the local administrator and what it needs.
+func loginEnv(extra map[string]string) func(string) (string, bool) {
+	values := map[string]string{
+		EnvDatabaseURL: dbURL, EnvLocalAdminUsername: "ada", EnvLocalAdminPassword: adminPassword, EnvBaseURL: baseURL,
+	}
+	for k, v := range extra {
+		values[k] = v
+	}
+	return envOf(values)
+}
+
+func TestLoadLoginDefaults(t *testing.T) {
+	cfg, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL}))
+	require.NoError(t, err)
+	assert.Equal(t, 12*time.Hour, cfg.SessionLifetime)
+	assert.Equal(t, 2*time.Hour, cfg.SessionIdle)
+	assert.Equal(t, 12, cfg.PasswordMinLength)
+	assert.Equal(t, LockoutWindow, cfg.LoginLockout)
+	assert.Equal(t, 5, cfg.LoginMaxFailures)
+	assert.Equal(t, 20, cfg.LoginAddressLimit)
+	assert.Equal(t, 90*24*time.Hour, cfg.TokenDefaultLifetime)
+	assert.Equal(t, 365*24*time.Hour, cfg.TokenMaxLifetime)
+	assert.Empty(t, cfg.LocalAdminUsername, "no local administrator unless configured")
+	assert.Empty(t, cfg.BootstrapTenantSlug)
+	assert.Empty(t, cfg.BaseOrigin)
+}
+
+func TestLoadLoginOverrides(t *testing.T) {
+	cfg, err := Load(loginEnv(map[string]string{
+		EnvSessionLifetime: "8h", EnvSessionIdle: "30m", EnvPasswordMinLength: "16", EnvLoginLockout: "Admin",
+		EnvLoginMaxFailures: "3", EnvLoginAddressLimit: "0", EnvTokenDefaultLifetime: "720h", EnvTokenMaxLifetime: "2160h",
+		EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme Corp", EnvBaseURL: "HTTPS://Cowork.Example.com:443/",
+		EnvLocalAdminPassword: "sixteen characters+",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, 8*time.Hour, cfg.SessionLifetime)
+	assert.Equal(t, 30*time.Minute, cfg.SessionIdle)
+	assert.Equal(t, 16, cfg.PasswordMinLength)
+	assert.Equal(t, LockoutAdmin, cfg.LoginLockout)
+	assert.Equal(t, 3, cfg.LoginMaxFailures)
+	assert.Zero(t, cfg.LoginAddressLimit, "0 switches the throttle off (docs/adr/0039 D6)")
+	assert.Equal(t, 720*time.Hour, cfg.TokenDefaultLifetime)
+	assert.Equal(t, "ada", cfg.LocalAdminUsername)
+	assert.Equal(t, "sixteen characters+", cfg.LocalAdminPassword)
+	assert.Equal(t, "acme", cfg.BootstrapTenantSlug)
+	assert.Equal(t, "Acme Corp", cfg.BootstrapTenantName)
+	assert.Equal(t, "https://cowork.example.com", cfg.BaseOrigin, "the origin as a browser writes it")
+
+	// A password shorter than the configured minimum refuses the start.
+	_, err = Load(loginEnv(map[string]string{EnvPasswordMinLength: "30"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvLocalAdminPassword+" must be at least 30 characters")
+}
+
+// docs/adr/0032 D2: both variables or neither; one alone refuses the start and
+// names the variable that is missing, never a value.
+func TestLoadLocalAdminIsAllOrNone(t *testing.T) {
+	_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvLocalAdminUsername: "ada", EnvBaseURL: baseURL}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvLocalAdminPassword+" is required while "+EnvLocalAdminUsername+" is set")
+
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvLocalAdminPassword: adminPassword, EnvBaseURL: baseURL}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvLocalAdminUsername+" is required while "+EnvLocalAdminPassword+" is set")
+	assert.NotContains(t, err.Error(), adminPassword)
+
+	for name, env := range map[string]map[string]string{
+		"both empty": {EnvLocalAdminUsername: "", EnvLocalAdminPassword: ""},
+		"unset":      {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env[EnvDatabaseURL] = dbURL
+			cfg, err := Load(envOf(env))
+			require.NoError(t, err, "both empty is the deactivated state, not an error")
+			assert.Empty(t, cfg.LocalAdminUsername)
+		})
+	}
+
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvLocalAdminUsername: "ada", EnvLocalAdminPassword: "", EnvBaseURL: baseURL}))
+	require.Error(t, err, "one set and one empty is refused")
+}
+
+func TestLoadLocalAdminRules(t *testing.T) {
+	// The password is length only (docs/adr/0033 D3), and never echoed.
+	_, err := Load(loginEnv(map[string]string{EnvLocalAdminPassword: "too short"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvLocalAdminPassword+" must be at least 12 characters")
+	assert.NotContains(t, err.Error(), "too short")
+
+	_, err = Load(loginEnv(map[string]string{EnvLocalAdminPassword: "12345678", EnvPasswordMinLength: "8"}))
+	require.NoError(t, err, "the floor is 8")
+
+	// Spaces are part of a password and are not trimmed away.
+	cfg, err := Load(loginEnv(map[string]string{EnvLocalAdminPassword: "  spaces around it  "}))
+	require.NoError(t, err)
+	assert.Equal(t, "  spaces around it  ", cfg.LocalAdminPassword)
+
+	_, err = Load(loginEnv(map[string]string{EnvLocalAdminUsername: "Ada Lovelace"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvLocalAdminUsername+" must be 1 to 63 characters")
+}
+
+// docs/adr/0033 D3: a configured minimum below eight refuses the start.
+func TestLoadPasswordMinLength(t *testing.T) {
+	for _, bad := range []string{"7", "0", "-1", "twelve", "1025"} {
+		_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvPasswordMinLength: bad}))
+		require.Error(t, err, bad)
+		assert.Contains(t, err.Error(), EnvPasswordMinLength, bad)
+	}
+	cfg, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvPasswordMinLength: "8"}))
+	require.NoError(t, err)
+	assert.Equal(t, 8, cfg.PasswordMinLength)
+}
+
+func TestLoadRejectsBadLoginValues(t *testing.T) {
+	_, err := Load(envOf(map[string]string{
+		EnvDatabaseURL: dbURL, EnvLoginLockout: "forever", EnvLoginMaxFailures: "-1", EnvLoginAddressLimit: "x",
+		EnvSessionLifetime: "0s", EnvSessionIdle: "soon", EnvTokenDefaultLifetime: "-1h", EnvTokenMaxLifetime: "x",
+	}))
+	require.Error(t, err)
+	msg := err.Error()
+	for _, want := range []string{EnvLoginLockout, EnvLoginMaxFailures, EnvLoginAddressLimit, EnvSessionLifetime, EnvSessionIdle,
+		EnvTokenDefaultLifetime, EnvTokenMaxLifetime} {
+		assert.Contains(t, msg, want)
+	}
+
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvTokenDefaultLifetime: "17520h"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvTokenDefaultLifetime+" must not exceed "+EnvTokenMaxLifetime, "a default beyond the maximum")
+}
+
+// docs/adr/0037 D6: COWORK_BASE_URL is required while a cookie login exists, and
+// it is the origin a browser sends: an error names the variable, never the URL.
+func TestLoadBaseURL(t *testing.T) {
+	_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvLocalAdminUsername: "ada", EnvLocalAdminPassword: adminPassword}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvBaseURL+" is required while "+EnvLocalAdminUsername+" is set")
+
+	for in, want := range map[string]string{
+		"https://cowork.example.com":      "https://cowork.example.com",
+		"https://cowork.example.com/":     "https://cowork.example.com",
+		"HTTPS://COWORK.example.com":      "https://cowork.example.com",
+		"https://cowork.example.com:443":  "https://cowork.example.com",
+		"http://cowork.example.com:80":    "http://cowork.example.com",
+		"http://localhost:4200":           "http://localhost:4200",
+		"https://cowork.example.com:8443": "https://cowork.example.com:8443",
+		"http://[::1]:8080":               "http://[::1]:8080",
+	} {
+		origin, err := Origin(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, origin, in)
+	}
+	for _, bad := range []string{"cowork.example.com", "ftp://cowork.example.com", "https://", "https://user@cowork.example.com",
+		"https://cowork.example.com/app", "https://cowork.example.com?x=1", "https://cowork.example.com#x", "://"} {
+		_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvBaseURL: bad}))
+		require.Error(t, err, bad)
+		assert.Contains(t, err.Error(), EnvBaseURL, bad)
+		assert.NotContains(t, err.Error(), bad, "the error never echoes the URL")
+	}
+}
+
+// docs/adr/0032 D6, D7: the bootstrap tenant needs both variables and the
+// administrator who becomes its first administrator.
+func TestLoadBootstrapTenant(t *testing.T) {
+	cfg, err := Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"}))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", cfg.BootstrapTenantSlug)
+
+	_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: "acme"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvBootstrapTenantName+" is required while "+EnvBootstrapTenantSlug+" is set")
+	_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantName: "Acme"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvBootstrapTenantSlug+" is required while "+EnvBootstrapTenantName+" is set")
+
+	for _, slug := range []string{"A", "Acme", "-acme", "acme corp", "a"} {
+		_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: slug, EnvBootstrapTenantName: "Acme"}))
+		require.Error(t, err, slug)
+		assert.Contains(t, err.Error(), EnvBootstrapTenantSlug, slug)
+	}
+
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"}))
+	require.Error(t, err, "a tenant without an administrator cannot come to exist")
+	assert.Contains(t, err.Error(), EnvLocalAdminUsername)
+}
+
+// docs/adr/0035 D2: COWORK_TRUSTED_PROXIES is a list of CIDRs, IPv4 and IPv6,
+// empty by default — and then no header is ever read.
+func TestLoadTrustedProxies(t *testing.T) {
+	cfg, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL}))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.TrustedProxies, "default: none")
+
+	for name, tc := range map[string]struct {
+		value string
+		want  []string
+	}{
+		"empty value keeps the default": {"", nil},
+		"only blanks":                   {" , ,", nil},
+		"one IPv4 network":              {"10.0.0.0/8", []string{"10.0.0.0/8"}},
+		"one IPv6 network":              {"fd00::/8", []string{"fd00::/8"}},
+		"both families, spaced":         {" 10.244.0.0/16 , fd00:10::/48 ", []string{"10.244.0.0/16", "fd00:10::/48"}},
+		"single hosts":                  {"192.0.2.7/32,2001:db8::7/128", []string{"192.0.2.7/32", "2001:db8::7/128"}},
+		"host bits are masked":          {"10.1.2.3/16", []string{"10.1.0.0/16"}},
+		"a trailing comma":              {"10.0.0.0/8,", []string{"10.0.0.0/8"}},
+		"the whole of a family":         {"0.0.0.0/0,::/0", []string{"0.0.0.0/0", "::/0"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvTrustedProxies: tc.value}))
+			require.NoError(t, err)
+			got := make([]string, 0, len(cfg.TrustedProxies))
+			for _, p := range cfg.TrustedProxies {
+				got = append(got, p.String())
+			}
+			if tc.want == nil {
+				assert.Empty(t, got)
+				return
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// The error names the variable and quotes the offending entry — every one of
+// them — and nothing else of the value.
+func TestLoadRejectsBadTrustedProxies(t *testing.T) {
+	for name, bad := range map[string]string{
+		"a bare address":       "192.0.2.7",
+		"a bad length":         "10.0.0.0/33",
+		"an IPv6 bad length":   "fd00::/129",
+		"a name":               "proxy.example.com",
+		"a zone":               "fe80::1%eth0/64",
+		"a URL":                "http://10.0.0.1/8",
+		"a negative length":    "10.0.0.0/-1",
+		"two networks at once": "10.0.0.0/8 192.168.0.0/16",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvTrustedProxies: "172.16.0.0/12," + bad + ",2001:db8:abcd::/48"}))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), EnvTrustedProxies)
+			assert.Contains(t, err.Error(), bad, "the offending entry is quoted")
+			assert.NotContains(t, err.Error(), "172.16.0.0/12", "no other entry is echoed")
+			assert.NotContains(t, err.Error(), "2001:db8:abcd", "no other entry is echoed")
+		})
+	}
+
+	_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvTrustedProxies: "one,10.0.0.0/8,two"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"one"`)
+	assert.Contains(t, err.Error(), `"two"`, "every offending entry is reported at once")
+
+	long := strings.Repeat("x", 500)
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvTrustedProxies: long}))
+	require.Error(t, err)
+	assert.Less(t, len(err.Error()), 300, "a long entry is clipped")
 }

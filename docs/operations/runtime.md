@@ -29,18 +29,28 @@ logs. The variables named here are explained one by one in
    `pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`. Each
    ends the process with `database check failed` and exit code 1. A schema newer than the
    binary is served, with the warning `database schema is ahead of this binary; serving it`.
-5. **The event listener** starts: one connection of its own, outside the pool, listening on
+5. **The bootstrap**: the local administrator the variables name is created or brought in step,
+   and the bootstrap tenant is created while no tenant exists — as `system:bootstrap`, under an
+   advisory lock that makes replicas wait for each other
+   ([installation.md](installation.md#the-local-administrator)). With neither variable set it
+   deactivates an account it kept before and otherwise does nothing; a failure ends the process
+   with `bootstrap failed` and exit code 1.
+6. **The event listener** starts: one connection of its own, outside the pool, listening on
    the channel `cowork_events`; it reconnects by itself when the connection drops
    ([the event stream](#the-event-stream)).
-6. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
+7. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
    not contact the storage. Without them the log warns `no object storage configured;
    attachments cannot be uploaded` ([attachments](#attachments)).
-7. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
+8. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
    address, the version and the commit.
 
-From then on each replica removes the idempotency records older than a day, at start and
-once an hour; a transaction-level advisory lock lets one replica at a time do it, and the log
-says `expired idempotency keys removed` with the count when there were any.
+From then on each replica, at start and once an hour, removes the idempotency records older
+than a day, the sessions past their absolute or their idle limit, and the login's failed
+attempts and ended locks older than fifteen minutes; each job holds a transaction-level
+advisory lock of its own that lets one replica at a time do it, and the log says
+`job removed expired rows` with the job and the count when there were any. A session past a
+limit is refused at its next request whether or not the job has run; the job only keeps the
+table small.
 
 ## The migration run
 
@@ -128,11 +138,65 @@ an alert or a look:
 | `the event listener lost its connection` | warn | event streams are refused until it reconnects ([the event stream](#the-event-stream)) |
 | `slow query` | warn | a query took longer than 500 ms; the line names the query, never its arguments |
 | `token refused` | info | a presented token was expired or revoked; the line names the token id and the reason |
+| `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
+| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
+| `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
 
 There is no metrics endpoint yet; [ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
 decides one, and it is not built.
+
+## The login
+
+Behaviour an operator meets once people log in. The mechanisms are in
+[docs/security](../security/local-accounts.md); the settings are in
+[README.md, Configuration](../../README.md#configuration).
+
+**`403 csrf` on every write, with the UI otherwise working** is the first thing to check:
+`COWORK_BASE_URL` must be exactly the origin the browser shows — scheme, host and port, no
+path. The backend compares the `Origin` header (or the `Referer`) of every write of a session
+and of the login with it, and the `detail` of the problem says which half failed: the origin,
+or the `X-Requested-With` header the UI sets. Common causes: the URL was changed in the
+Ingress and not in `backend.config.baseURL`; `http` where the browser shows `https`; a
+`www.` host. Without a `COWORK_BASE_URL` no write of a cookie passes at all; the backend
+refuses to start without one while the local administrator is configured
+([CSRF](../security/csrf.md)). Tokens are not affected: a script's token request carries no
+cookie and no check.
+
+**The browser keeps no session** — the login answers `200` and the next request is `401`: the
+cookie is `Secure` and has the `__Host-` prefix, so a browser stores it only over HTTPS (or on
+`localhost`). A page reached over plain `http://` on another host cannot log in; terminate TLS
+in front of the frontend.
+
+**Sessions** live in the database: a restart of every pod ends none of them, and a changed
+server key neither. The absolute lifetime is `COWORK_SESSION_LIFETIME` (12 hours), the idle
+limit `COWORK_SESSION_IDLE` (2 hours); a request moves the idle clock at most once a minute.
+An administrator ends an account's sessions with `DELETE …/accounts/{username}/sessions`;
+a person's other sessions end when they change their password.
+
+**Failed logins.** Every refusal is `401 invalid_credentials`, and a username nobody has is
+counted and locked like one somebody has, so the answer does not help a guesser. Five failures
+of a username within fifteen minutes lock it — until the window passes, or until a tenant
+administrator unlocks it with `COWORK_LOGIN_LOCKOUT=admin`; the local administrator is
+recovered by rotating its Secret and restarting
+([installation.md](installation.md#the-local-administrator)). More than
+`COWORK_LOGIN_ADDRESS_LIMIT` (20) attempts a minute from one client address — an IPv6 client by
+its /64 — are `429` with
+`Retry-After: 60`. The client address is the TCP peer's unless the peer is inside
+`COWORK_TRUSTED_PROXIES`, in which case it is the first address of `X-Forwarded-For`, from the
+right, that is not a proxy of ours. **With the list empty — the default — the address behind the
+frontend is nginx's**, so the limit is one for the whole installation and one client's failing
+logins can use it up for everybody; a list that is too wide lets a client choose its address
+([H-17](../security/local-accounts.md#h-17);
+[installation.md](installation.md#the-client-address-and-the-trusted-proxies) says what to set).
+`COWORK_LOGIN_ADDRESS_LIMIT=0` and `COWORK_LOGIN_MAX_FAILURES=0` switch the throttle and the
+lockout off. The failures, the locks and the unlocks are audit rows of the system actor
+`system:login` — installation-level, readable in the database; no route shows them yet.
+
+**The request log** carries the login like any request — method, path, status, duration, the
+request id — and never the username, the password or the cookie.
 
 ## Limits
 
@@ -276,6 +340,7 @@ What nginx does with a request:
 | `/healthz` | `{"status":"ok"}` from nginx itself — the frontend's liveness and readiness probes; it says nothing about the backend |
 | `/api/v1/tenants/<slug>/events` | proxied unbuffered and uncached, with a read timeout of one hour |
 | `/api/…` | proxied to `BACKEND_URL` with the path unchanged and `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP` set; the errors nginx answers itself are problem bodies ([above](#what-nginx-answers-itself)). An API path that ends like a static file (`….png`) still goes to the backend |
+| `/auth/…` | the same, for the login flows: `/auth/options`, `/auth/local`, `/auth/logout`; the cookie and the backend's `Set-Cookie` pass through, and the errors nginx answers itself are the same problem bodies |
 | hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `index.html` with `Cache-Control: no-store` — the Angular router resolves the path |
 

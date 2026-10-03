@@ -1,0 +1,131 @@
+<p-confirmdialog />
+<app-new-token-dialog [(visible)]="creating" (created)="created($event)" />
+<app-secret-dialog [(secret)]="secret" header="Your new token" label="Token">
+  <strong>Shown once.</strong> This token is a bearer credential: whoever holds it acts as you, with
+  {{ issued()?.scope }} scope, until {{ expiry() }}. cowork keeps only a hash and cannot show it
+  again, so put it where the tool that will use it reads it now. If you lose it, revoke it and make
+  another.
+</app-secret-dialog>
+
+<section class="page">
+  <header class="head">
+    <h1>Your tokens</h1>
+    <span class="spacer"></span>
+    <button pButton type="button" size="small" data-testid="new-token" (click)="creating.set(true)">
+      <i class="pi pi-plus"></i>New token
+    </button>
+  </header>
+  <p class="muted lead">
+    A token lets a tool — an agent, a script — act as you, within the scope and the reach you give
+    it. It is a password: cowork shows it once, when you make it, and never again.
+  </p>
+
+  <div class="panel">
+    <p-table
+      [value]="tokens.list()"
+      [loading]="tokens.tokens.isLoading()"
+      [showLoader]="false"
+      size="small"
+      data-testid="tokens"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Name</th>
+          <th>Scope</th>
+          <th>Agent</th>
+          <th>Restriction</th>
+          <th>Created</th>
+          <th>Expires</th>
+          <th>Last used</th>
+          <th>State</th>
+          <th class="col-actions" aria-label="Actions"></th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-token>
+        <tr [attr.data-testid]="'token-' + token.id" [class.dead]="token.state !== 'active'">
+          <td class="name">{{ token.name }}</td>
+          <td>
+            <span
+              class="pill outline"
+              [style.--accent]="scopeAccent(token.scope)"
+              [pTooltip]="scopeMeaning(token.scope)"
+              [showDelay]="400"
+              >{{ token.scope }}</span
+            >
+          </td>
+          <td>
+            @if (token.agent) {
+              <span class="agent">
+                <span
+                  class="pill outline"
+                  data-testid="agent"
+                  pTooltip="Every request of this token counts as an agent's and is marked so in the audit trail."
+                  [showDelay]="400"
+                  ><i class="pi pi-microchip-ai"></i>agent</span
+                >
+                <span class="muted capabilities" data-testid="capabilities">{{
+                  capabilitiesText(token)
+                }}</span>
+              </span>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <td data-testid="restriction">
+            @if (token.restricted_tenant; as tenant) {
+              {{ tenant }}
+              @if (token.restricted_project_id; as id) {
+                <span class="muted"> / </span
+                ><span class="key" [attr.title]="id">{{ projectKey(id) }}</span>
+              }
+            } @else {
+              <span class="muted">none</span>
+            }
+          </td>
+          <td class="when">{{ dateTime(token.created_at) }}</td>
+          <td class="when">{{ dateTime(token.expires_at) }}</td>
+          <td class="when" data-testid="last-used">
+            @if (token.last_used_on) {
+              {{ day(token.last_used_on) }}
+            } @else {
+              <span class="muted">never</span>
+            }
+          </td>
+          <td>
+            <span
+              class="pill"
+              data-testid="state"
+              [style.--accent]="stateAccent(token.state)"
+              [pTooltip]="stateMeaning(token.state)"
+              [showDelay]="400"
+              ><span class="dot"></span>{{ token.state }}</span
+            >
+          </td>
+          <td class="col-actions">
+            @if (token.state === 'active') {
+              <button
+                pButton
+                type="button"
+                [text]="true"
+                severity="danger"
+                size="small"
+                [attr.aria-label]="'Revoke ' + token.name"
+                [attr.data-testid]="'token-revoke-' + token.id"
+                (click)="revoke(token)"
+              >
+                Revoke
+              </button>
+            }
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="9" class="muted empty" data-testid="tokens-empty">
+            {{ failure() ?? 'You have no tokens yet.' }}
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+</section>

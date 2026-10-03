@@ -75,6 +75,28 @@ server {
         }
     }
 
+    # The browser's login flows, /auth/options, /auth/local and /auth/logout
+    # (docs/adr/0037 D5), proxied exactly like the API: the path unchanged, the
+    # cookie and Set-Cookie passed through, the same problem bodies for what
+    # nginx answers itself. The OIDC callback of phase 4 will be a path under it.
+    location ^~ /auth/ {
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+        set $backend ${BACKEND_URL};
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
+        proxy_read_timeout ${NGINX_PROXY_READ_TIMEOUT};
+
+        error_page 413 @payload_too_large;
+        error_page 502 @backend_unreachable;
+        error_page 503 @not_ready;
+        error_page 504 @timeout;
+    }
+
     location @payload_too_large {
         default_type "application/problem+json; charset=utf-8";
         return 413 '{"type":"https://cowork.dev/problems/payload-too-large","title":"Payload too large","status":413,"detail":"the request is larger than the proxy passes","code":"payload_too_large"}';
@@ -92,9 +114,9 @@ server {
         return 504 '{"type":"https://cowork.dev/problems/timeout","title":"Timeout","status":504,"detail":"the backend did not answer in time","code":"timeout"}';
     }
 
-    # The icon from public/ keeps its name across builds: revalidated, never
+    # The icons from public/ keep their names across builds: revalidated, never
     # immutable.
-    location = /favicon.ico {
+    location ~ ^/(?:favicon\.(?:ico|svg)|apple-touch-icon\.png)$ {
         try_files $uri =404;
         add_header Cache-Control "no-cache";
     }

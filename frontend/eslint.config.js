@@ -5,6 +5,8 @@ const tseslint = require('typescript-eslint');
 const angular = require('angular-eslint');
 
 module.exports = defineConfig([
+  // The generated API client (docs/adr/0046 D3) is never edited, so it is not linted.
+  { ignores: ['src/app/api/**'] },
   {
     files: ['**/*.ts'],
     extends: [
@@ -36,6 +38,13 @@ module.exports = defineConfig([
   {
     files: ['**/*.html'],
     extends: [angular.configs.templateRecommended, angular.configs.templateAccessibility],
-    rules: {},
+    rules: {
+      // These PrimeNG components render a native input, which a wrapping label names. A
+      // p-select renders a combobox span instead: it is named with ariaLabelledBy, not wrapped.
+      '@angular-eslint/template/label-has-associated-control': [
+        'error',
+        { controlComponents: ['p-password', 'p-checkbox', 'p-toggleswitch'] },
+      ],
+    },
   },
 ]);

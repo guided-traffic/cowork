@@ -10,9 +10,16 @@ info:
   description: |
     A multi-tenant backlog for people and the agents that work for them.
 
-    Every route that names a person is authenticated with a personal access
-    token, `Authorization: Bearer cwk_…` (docs/adr/0035). A request marked as
-    an agent's — by the token's agent flag, or by an `X-Cowork-Agent:
+    Every route that names a person is authenticated with one of two
+    credentials. A personal access token, `Authorization: Bearer cwk_…`
+    (docs/adr/0035), is for scripts and agents; the session cookie of a
+    browser login (docs/adr/0031, `POST /auth/local`) is for the UI. Each
+    operation says which it takes: most take either, a few — creating a token,
+    a tenant or a local account, resetting or changing a password, logging out
+    — a session only. A request
+    of a session that writes must come from the installation's origin and
+    carry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an
+    agent's — by the token's agent flag, or by an `X-Cowork-Agent:
     name/model/session` header — is bound by the agent rules
     (docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable
     `code` (docs/adr/0047).
@@ -20,9 +27,12 @@ servers:
   - url: /
 security:
   - bearerToken: []
+  - sessionCookie: []
 tags:
   - name: meta
+  - name: auth
   - name: me
+  - name: accounts
   - name: tenants
   - name: projects
   - name: tickets
@@ -36,14 +46,34 @@ paths:
     $ref: './meta.yaml#/version'
   /api/v1/openapi.json:
     $ref: './meta.yaml#/document'
+  /auth/options:
+    $ref: './auth.yaml#/options'
+  /auth/local:
+    $ref: './auth.yaml#/local'
+  /auth/logout:
+    $ref: './auth.yaml#/logout'
   /api/v1/me:
     $ref: './me.yaml#/me'
+  /api/v1/me/password:
+    $ref: './me.yaml#/password'
   /api/v1/me/tokens:
     $ref: './me.yaml#/tokens'
   /api/v1/me/tokens/{token_id}:
     $ref: './me.yaml#/token'
+  /api/v1/tenants:
+    $ref: './tenants.yaml#/tenants'
   /api/v1/tenants/{tenant}:
     $ref: './tenants.yaml#/tenant'
+  /api/v1/tenants/{tenant}/accounts:
+    $ref: './accounts.yaml#/accounts'
+  /api/v1/tenants/{tenant}/accounts/{username}/password:
+    $ref: './accounts.yaml#/accountPassword'
+  /api/v1/tenants/{tenant}/accounts/{username}/lockout:
+    $ref: './accounts.yaml#/accountLockout'
+  /api/v1/tenants/{tenant}/accounts/{username}/deactivation:
+    $ref: './accounts.yaml#/accountDeactivation'
+  /api/v1/tenants/{tenant}/accounts/{username}/sessions:
+    $ref: './accounts.yaml#/accountSessions'
   /api/v1/tenants/{tenant}/members:
     $ref: './tenants.yaml#/members'
   /api/v1/tenants/{tenant}/audit:
@@ -126,3 +156,17 @@ components:
         (docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the
         request as an agent's; a token with the agent flag is an agent's
         with or without it, and no header removes the flag (docs/adr/0036).
+        A request that carries an `Authorization` header is a token's, and
+        its cookie, if any, is not looked at.
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-cowork-session
+      description: |
+        The session of a browser login: an opaque id of 256 random bits, set
+        by `POST /auth/local` as `HttpOnly; Secure; SameSite=Lax; Path=/`
+        (docs/adr/0031 D2). A session acts as its person with no agent flag
+        and with the whole of the person's role: it has no scope of its own.
+        Its writes are held to the CSRF check of docs/adr/0037 D1: `Origin`
+        (or `Referer`) equal to the installation's `COWORK_BASE_URL` and
+        `X-Requested-With: cowork`.

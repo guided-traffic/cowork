@@ -1,0 +1,91 @@
+<p-confirmdialog />
+
+<section class="page">
+  @if (current(); as p) {
+    <header class="title">
+      <span class="key">{{ p.key }}</span>
+      <h1>Settings</h1>
+    </header>
+
+    <form class="card form" (ngSubmit)="save()">
+      <label class="field">
+        <span>Name</span>
+        <input
+          pInputText
+          name="name"
+          [ngModel]="name()"
+          (ngModelChange)="name.set($event)"
+          data-testid="settings-name"
+        />
+      </label>
+      <label class="field">
+        <span>Description</span>
+        <textarea
+          pTextarea
+          name="description"
+          rows="3"
+          [ngModel]="description()"
+          (ngModelChange)="description.set($event)"
+          data-testid="settings-description"
+        ></textarea>
+      </label>
+      <div class="field">
+        <span id="wip-label">Work-in-progress limits</span>
+        <div class="limits" aria-labelledby="wip-label">
+          @for (column of columns; track column) {
+            <div class="limit">
+              <span class="muted" [id]="'wip-' + column">{{ column }}</span>
+              <p-inputnumber
+                [ngModel]="limits()[column] ?? null"
+                (ngModelChange)="setLimit(column, $event)"
+                [name]="'wip-' + column"
+                [min]="1"
+                [max]="999"
+                [showButtons]="false"
+                placeholder="none"
+                size="small"
+                [ariaLabelledBy]="'wip-' + column"
+                [attr.data-testid]="'wip-' + column"
+              />
+            </div>
+          }
+        </div>
+        <small class="muted"
+          >Empty means no limit; a full column still takes a ticket and is marked
+          (docs/adr/0019).</small
+        >
+      </div>
+      <div class="actions">
+        <button pButton type="submit" data-testid="settings-save" [disabled]="saving()">
+          @if (saving()) {
+            <i class="pi pi-spinner pi-spin"></i>
+          }
+          Save
+        </button>
+      </div>
+    </form>
+
+    @if (tenant.isAdmin() && !p.archived_at) {
+      <section class="card danger">
+        <div>
+          <h2>Archive this project</h2>
+          <p class="muted">
+            Its tickets and keys stay; it leaves the lists and takes no new ticket.
+          </p>
+        </div>
+        <button
+          pButton
+          type="button"
+          severity="danger"
+          [outlined]="true"
+          data-testid="settings-archive"
+          (click)="archive()"
+        >
+          Archive
+        </button>
+      </section>
+    }
+  } @else {
+    <p class="muted">No such project.</p>
+  }
+</section>

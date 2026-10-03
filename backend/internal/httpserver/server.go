@@ -1,6 +1,7 @@
-// Package httpserver assembles the HTTP handler — the health endpoints and
-// the API under /api/ — and runs the server. The web UI is not served here;
-// it is the frontend container's job, which proxies /api/ to this one.
+// Package httpserver assembles the HTTP handler — the health endpoints, the
+// API under /api/ and the browser's login flows under /auth/ — and runs the
+// server. The web UI is not served here; it is the frontend container's job,
+// which proxies /api/ and /auth/ to this one.
 // Every request gets an id (X-Request-Id), a recovery from panics and one
 // line in the request log; every error is an RFC 9457 problem details body
 // (docs/adr/0047).
@@ -24,7 +25,7 @@ type Options struct {
 	// Ready reports whether the server can do work, typically a database
 	// ping. nil means always ready.
 	Ready func(ctx context.Context) error
-	// API serves every path under /api/. nil answers them with 404.
+	// API serves every path under /api/ and /auth/. nil answers them with 404.
 	API http.Handler
 	// Logger receives one line per request. nil discards them.
 	Logger *slog.Logger
@@ -40,6 +41,7 @@ func New(opts Options) http.Handler {
 	handleGet(mux, "/readyz", handleReadyz(opts.Ready, opts.Logger))
 	if opts.API != nil {
 		mux.Handle("/api/", opts.API)
+		mux.Handle("/auth/", opts.API)
 	}
 	mux.HandleFunc("/", handleNotFound)
 	return withRequestID(requestLog(opts.Logger, recoverer(opts.Logger, mux)))

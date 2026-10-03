@@ -5,8 +5,8 @@ policies read, the visibility predicates and the lint that holds every query to 
 place SQL is built at run time, the advisory locks, the background jobs and the publication of
 acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
-audit record) and [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate). Read against the
-tree on 2026-10-02.
+audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate) and [ADR 0031] (the
+sessions). Read against the tree on 2026-10-03.
 
 ## Two database roles
 
@@ -28,12 +28,19 @@ setting fails, on purpose. `cowork serve` then calls `DB.CheckRuntimeRole` on it
 refuses a dirty or a pending schema and warns about one that is ahead.
 
 The grants are per table and per column: `SELECT`, `INSERT` where rows are created, `UPDATE`
-on the columns a route may change — table-wide only on `ticket_counters` and
-`idempotency_keys` — and `DELETE` only on `ticket_links`, `ticket_interest` and
-`idempotency_keys`. `audit_events` gets `SELECT, INSERT` and nothing else — append-only is a
-grant ([ADR 0026] D3). `users`, `memberships` and `project_access` have no write grant: no
-route writes them yet; the tests and `make dev-seed` write them over the administrative
-connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
+on the columns a route may change — table-wide only on `ticket_counters`, `idempotency_keys`
+and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
+`idempotency_keys`, `sessions`, `login_attempts` and `login_locks`. `audit_events` gets
+`SELECT, INSERT` and nothing else — append-only is a grant ([ADR 0026] D3). `users`,
+`tenants`, `memberships` and `tokens` are inserted by routes now — a person by an account's
+creation or the bootstrap, a tenant by its creation, a grant by both, a token by its person —
+and each insert has a policy that names who may (migration 15), with the columns a grant lists
+(`global_admin` is the bootstrap's alone: the policy refuses it to a request); the application
+makes the ids of the persons, tenants and grants it inserts (`uuid.NewV7`), because an
+`INSERT … RETURNING` would have to pass the read policy of a row its writer has no membership of
+yet. `project_access` has no write grant: no route writes it yet; the tests and `make dev-seed`
+write persons, tenants, grants and tokens over the administrative connection too
+([testing.md](testing.md#fixtures-of-the-integration-tier)).
 
 ## The wrappers
 
@@ -60,9 +67,11 @@ authentication: the person or a `system:<name>` actor, the token, the token's pr
 restriction, the agent mark, the agent's capabilities and the request id. The person is never a
 call-site argument. `Mutate` refuses a context with neither or both of person and system actor.
 
-Outside the wrappers, deliberately: `LookupToken` (reads one token by the hash the request
-presents, see below), `TouchTokenLastUsed` (the last-used date, bookkeeping and not an act,
-[ADR 0035] D2), `CheckRuntimeRole`, `SchemaState`, `Ping`, and `Listen`.
+Outside the wrappers, deliberately: `LookupToken` and `LookupSession` (read one token or session
+by the hash the request presents, see below), `TouchTokenLastUsed` and `TouchSession` (the
+last-used date and the idle clock, bookkeeping and not acts, [ADR 0035] D2,
+[ADR 0031] D3), the login's own transactions ([below](#the-login-and-the-sessions)),
+`CheckRuntimeRole`, `SchemaState`, `Ping`, and `Listen`.
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments. A missing or invisible row
@@ -81,8 +90,9 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry` |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migration 15 and 16 name `login`, `bootstrap`, `session-expiry` and `login-expiry` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
+| `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 
 A transaction-local setting reads `''`, not `NULL`, on a pooled connection after its
 transaction ended, and a bare `''::uuid` raises. Every policy therefore reads a setting through
@@ -95,9 +105,16 @@ that.
 Every table the migrations create has row-level security enabled and forced, a policy and a
 grant; every table outside the named list carries `tenant_id` and the canonical
 `tenant_isolation` policy (`USING` and `WITH CHECK` on `tenant_id = app_tenant_id()`). The named
-list — `tenants`, `users`, `memberships`, `tokens`, `idempotency_keys`, `audit_events` — has
-policies of its own, because those rows are read across tenants by their person or have no
-tenant ([ADR 0021] D6). `TestEveryTableHasItsPolicyAndGrant` checks all of it on the migration
+list — `tenants`, `users`, `memberships`, `tokens`, `idempotency_keys`, `audit_events`,
+`local_accounts`, `sessions`, `login_attempts`, `login_locks` — has policies of its own, because
+those rows are read across tenants by their person or have no tenant ([ADR 0021] D6). The
+policies of the last four, and the new write policies on the others, use five more functions
+(migration 15): `app_job()` and `app_session_hash()`, which read the settings,
+`app_is_global_admin()`, and `app_manages_account(user)` and `app_manages_username(name)` — the
+current person is an administrator of the current tenant **and the account is one that tenant
+manages** (`local_accounts.managing_tenant_id`). That last rule is where an account, which
+belongs to the whole installation, meets a tenant: see
+[docs/security/local-accounts.md](../security/local-accounts.md). `TestEveryTableHasItsPolicyAndGrant` checks all of it on the migration
 files, without a database; application queries still filter by `tenant_id` as well
 ([ADR 0021] D4).
 
@@ -212,6 +229,35 @@ never meets it. Two orderings are row locks, not advisory: the `ticket_counters`
 updates (`NextTicketNumber`) and the tenant row the time lock is read from `FOR SHARE`
 (`TimeLockedUntil`).
 
+## The login and the sessions
+
+Three groups of store code run outside `Mutate`, by design, and each is small
+([`login.go`](../../backend/internal/store/login.go), [`sessions.go`](../../backend/internal/store/sessions.go)):
+
+- **Reads that name the login as their job** (`loginRead`: `LookupLogin`, `LocalLoginAvailable`,
+  `AddressAttempts`). The login looks an account up by the username it was given, before it
+  knows a person; the transaction sets `app.job = 'login'`, which the policies of `users`,
+  `local_accounts`, `tenants` — the init state asks whether any exists — and the two login tables
+  admit.
+- **`RecordLoginAttempt`**, one write transaction under the system actor `system:login` and an
+  advisory lock on the username (`cowl`, `hashtext(username)`): it reads the lock, counts the
+  attempt in `login_attempts`, locks the username at the limit, and writes the audit rows of the
+  failures and the lock through `Writer.writeEvents`. It commits **without** an act when it has
+  none (a login that goes on, an attempt against a lock noted within the hour), which `Mutate`
+  refuses: a counted attempt is bookkeeping, like the token's last-used day. The password has
+  been verified before the call — Argon2id is never computed inside a transaction — and only its
+  result goes in.
+- **`LookupSession` and `TouchSession`**, as `LookupToken` and `TouchTokenLastUsed` are for
+  tokens: the first finds the row of a cookie's hash through `app.session_hash` and reads its
+  person; the second moves `last_seen_at` at most once per `SessionTouchInterval`.
+
+Everything else of the login is `Mutate`: `CreateSession` ends the session the login presented,
+inserts the new one and records `logged_in` as the person, whose `Caller` carries the replaced
+cookie's hash; logout, the password change, the account routes and the creation of a token and a
+tenant are handlers' `Mutate` calls like any other. The session's timestamps and the login's
+windows come from the backend's clock (`Options.Now`) passed in as parameters, not from `now()`,
+so a test moves one clock.
+
 ## Jobs
 
 `DB.RunJob(ctx, name, lockKey, fn)` runs a job's work in one transaction under
@@ -219,10 +265,16 @@ updates (`NextTicketNumber`) and the tenant row the time lock is read from `FOR 
 `system:<name>`, and the transaction sets `app.job = <name>`, which the policies of the job's
 tables admit. A job that records no act commits nothing and is no error; so is `ErrNoChange`.
 
-The one job is the idempotency expiry, lock key `1`: `ExpireIdempotencyKeys` deletes the stored
+The jobs are the idempotency expiry, lock key `1` (`ExpireIdempotencyKeys` deletes the stored
 responses past their twenty-four hours and records one `expired` act on `idempotency_keys` when
-it removed any. `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go) runs it at start and
-then every hour, on every replica; the lock lets one of them work.
+it removed any), the session expiry, key `2` (`ExpireSessions`: past the absolute or the idle
+limit, an `expired` act on `sessions`) and the login expiry, key `3` (`ExpireLoginState`: the
+attempts older than the lockout window and the locks of the `window` mode that ended, an
+`expired` act on `login_attempts`). `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
+runs them at start and then every hour, on every replica; each lock lets one of them work. The
+bootstrap of [`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go) is a `RunJob`
+too — key `4`, `system:bootstrap` — run once at start, and retried until the lock is free
+(`bootstrap.Sync`).
 
 ## Publication
 
@@ -234,6 +286,7 @@ PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB
 one connection outside the pool on the channel. The rest is [events.md](events.md).
 
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md
+[ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0025]: ../adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md

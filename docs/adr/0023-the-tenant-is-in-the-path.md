@@ -15,7 +15,11 @@ contains ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-d
 **Partly built** (phase 2, 2026-10-02): D1–D3 and D5 — every tenant-bound route is under
 `/api/v1/tenants/{tenant}/`, `/api/v1/me` and `/api/v1/me/tokens` serve the person, the
 resolver answers with the canonical route's body and `ETag`, and an unknown tenant answers
-like a missing membership. D2's person-level lists and D4's UI arrive with their phases.
+like a missing membership. D2's person-level lists arrive with their phase. *(Phase 3,
+2026-10-03:)* D4's routes `/t/{slug}`, `/t/{slug}/p/{KEY}/backlog`,
+`/t/{slug}/tickets/{KEY}-{number}` and `/t/{slug}/members`, and the single membership's
+redirect to `/t/{slug}` without a tenant switcher —
+[`app.routes.ts`](../../frontend/src/app/app.routes.ts).
 
 ## Context
 

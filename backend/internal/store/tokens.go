@@ -76,9 +76,9 @@ func (db *DB) RecordTokenRefusal(ctx context.Context, rec TokenRecord, reason st
 	return err
 }
 
-// TouchTokenLastUsed sets a token's last-used date to day (UTC). It is the
-// one write outside Mutate: bookkeeping, not an act (docs/adr/0035 D2,
-// docs/adr/0027 D3), at most one write per token and day.
+// TouchTokenLastUsed sets a token's last-used date to day (UTC). It is
+// bookkeeping, not an act, and one of the three writes outside Mutate
+// (docs/adr/0035 D2, docs/adr/0027 D3), at most one write per token and day.
 func (db *DB) TouchTokenLastUsed(ctx context.Context, userID, tokenID uuid.UUID, day time.Time) error {
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {

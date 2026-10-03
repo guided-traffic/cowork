@@ -45,6 +45,14 @@ const (
 	AuditActionConfidentialSet    AuditAction = "confidential_set"
 	AuditActionConfidentialLifted AuditAction = "confidential_lifted"
 	AuditActionExpired            AuditAction = "expired"
+	AuditActionLoggedIn           AuditAction = "logged_in"
+	AuditActionLoggedOut          AuditAction = "logged_out"
+	AuditActionLoginFailed        AuditAction = "login_failed"
+	AuditActionUnlocked           AuditAction = "unlocked"
+	AuditActionPasswordChanged    AuditAction = "password_changed"
+	AuditActionPasswordReset      AuditAction = "password_reset"
+	AuditActionDeactivated        AuditAction = "deactivated"
+	AuditActionReactivated        AuditAction = "reactivated"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -722,7 +730,7 @@ type CommentRevision struct {
 
 type IdempotencyKey struct {
 	ID              uuid.UUID
-	TokenID         uuid.UUID
+	TokenID         *uuid.UUID
 	UserID          uuid.UUID
 	TenantID        *uuid.UUID
 	Key             uuid.UUID
@@ -732,6 +740,31 @@ type IdempotencyKey struct {
 	ResponseBody    []byte
 	CreatedAt       time.Time
 	ExpiresAt       time.Time
+}
+
+type LocalAccount struct {
+	UserID                 uuid.UUID
+	PasswordHash           string
+	PasswordChangeRequired bool
+	Origin                 string
+	ManagingTenantID       *uuid.UUID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type LoginAttempt struct {
+	ID        uuid.UUID
+	Username  string
+	Address   []byte
+	Failed    bool
+	CreatedAt time.Time
+}
+
+type LoginLock struct {
+	Username string
+	LockedAt time.Time
+	Sticky   bool
+	NotedAt  *time.Time
 }
 
 type Membership struct {
@@ -790,6 +823,16 @@ type Question struct {
 	Version         int32
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type Session struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	TokenHash     []byte
+	UserAgentHash []byte
+	CreatedAt     time.Time
+	LastSeenAt    time.Time
+	ExpiresAt     time.Time
 }
 
 type Tenant struct {
@@ -920,4 +963,5 @@ type User struct {
 	DeactivatedAt *time.Time
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	GlobalAdmin   bool
 }

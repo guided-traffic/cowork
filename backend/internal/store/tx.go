@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -142,8 +143,10 @@ func setContext(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, caller Calle
 	_, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true),
 		set_config('app.user_id', $2, true),
 		set_config('app.restricted_project_id', $3, true),
-		set_config('app.job', $4, true)`,
-		uuidText(tenantID), uuidText(caller.UserID), uuidText(caller.RestrictedProjectID), job)
+		set_config('app.job', $4, true),
+		set_config('app.session_hash', $5, true)`,
+		uuidText(tenantID), uuidText(caller.UserID), uuidText(caller.RestrictedProjectID), job,
+		hex.EncodeToString(caller.SessionHash))
 	if err != nil {
 		return fmt.Errorf("set transaction context: %w", err)
 	}
@@ -174,8 +177,8 @@ func (db *DB) Mutate(ctx context.Context, tenantID uuid.UUID, fn func(w *Writer)
 		return nil, errors.New("store: Mutate needs a person or a system caller")
 	}
 	idem, keyed := idempotencyFrom(ctx)
-	if keyed && caller.TokenID == uuid.Nil {
-		return nil, errors.New("store: an idempotency key needs a token caller")
+	if keyed && caller.UserID == uuid.Nil {
+		return nil, errors.New("store: an idempotency key needs a person")
 	}
 	for attempt := 0; ; attempt++ {
 		if keyed {
@@ -302,7 +305,7 @@ func (w *Writer) storeResult(ctx context.Context, tenantID uuid.UUID, caller Cal
 		return false, fmt.Errorf("encode stored headers: %w", err)
 	}
 	_, err = w.StoreIdempotencyKey(ctx, writeq.StoreIdempotencyKeyParams{
-		TokenID:         caller.TokenID,
+		TokenID:         uuidPtr(caller.TokenID),
 		UserID:          caller.UserID,
 		TenantID:        uuidPtr(tenantID),
 		Key:             idem.Key,
@@ -329,7 +332,7 @@ func (db *DB) replay(ctx context.Context, caller Caller, idem Idempotency) (*Res
 	)
 	err := db.Installation(ctx, func(r *Reader) error {
 		var err error
-		row, err = r.GetIdempotencyKey(ctx, readq.GetIdempotencyKeyParams{TokenID: caller.TokenID, Key: idem.Key})
+		row, err = r.GetIdempotencyKey(ctx, readq.GetIdempotencyKeyParams{UserID: caller.UserID, TokenID: uuidPtr(caller.TokenID), Key: idem.Key})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}

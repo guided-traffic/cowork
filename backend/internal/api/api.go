@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ import (
 	apispec "github.com/guided-traffic/cowork/backend/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
@@ -69,6 +71,37 @@ type Options struct {
 	ValidateResponses bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+
+	// BaseOrigin is COWORK_BASE_URL as the origin a browser sends
+	// (config.Origin): what the CSRF check compares the Origin header with.
+	// Empty refuses every write of a session cookie and the login
+	// (docs/adr/0037 D1, D6).
+	BaseOrigin string
+	// SessionLifetime and SessionIdle are the absolute and the idle limit of a
+	// session; zero means the defaults (docs/adr/0031 D3).
+	SessionLifetime time.Duration
+	SessionIdle     time.Duration
+	// PasswordMinLength is the shortest password; zero means the default
+	// (docs/adr/0033 D3).
+	PasswordMinLength int
+	// LoginLockout is config.LockoutWindow, or config.LockoutAdmin for a lock
+	// that stays until an administrator unlocks; empty means the window.
+	// LoginMaxFailures failures of a username within the window lock it, and
+	// LoginAddressLimit attempts of an address within a minute are answered
+	// 429; 0 switches each off (docs/adr/0033 D6, docs/adr/0039 D6).
+	LoginLockout      string
+	LoginMaxFailures  int
+	LoginAddressLimit int
+	// TokenDefaultLifetime and TokenMaxLifetime bound the lifetime of a token
+	// a person creates; zero means the defaults (docs/adr/0035 D4).
+	TokenDefaultLifetime time.Duration
+	TokenMaxLifetime     time.Duration
+	// TrustedProxies are the networks of the proxies in front of the backend
+	// (COWORK_TRUSTED_PROXIES): the client address of a request, which the
+	// login throttle counts, is found by walking X-Forwarded-For from the
+	// right through them. Empty: the TCP peer is the client and the header is
+	// never read (docs/adr/0035 D2, docs/adr/0033 D6).
+	TrustedProxies []netip.Prefix
 }
 
 // handler is the API: the router over the document, the generated mux and
@@ -83,6 +116,14 @@ type handler struct {
 	logger    *slog.Logger
 	touchedMu sync.Mutex
 	touched   map[uuid.UUID]string
+	// addressKey keys the hash of a login's client address; dummyHash is what
+	// a password is verified against when the username names no usable account.
+	addressKey []byte
+	dummyHash  string
+	// fingerprintKey keys the fingerprint of an idempotent request.
+	fingerprintKey []byte
+	// trusted are the proxies the client address is walked through.
+	trusted trustedProxies
 }
 
 // New builds the API handler. It fails only when the embedded document does
@@ -94,7 +135,12 @@ func New(opts Options) (http.Handler, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	withDefaults(&opts)
 	doc, served, err := loadDocument(opts.Version)
+	if err != nil {
+		return nil, err
+	}
+	dummy, err := auth.DummyHash(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +156,11 @@ func New(opts Options) (http.Handler, error) {
 		mux:     http.NewServeMux(),
 		logger:  opts.Logger,
 		touched: map[uuid.UUID]string{},
+
+		addressKey:     newAddressKey(opts.SessionKey),
+		dummyHash:      dummy,
+		fingerprintKey: newFingerprintKey(opts.SessionKey),
+		trusted:        newTrustedProxies(opts.TrustedProxies),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
 		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes))}
@@ -126,6 +177,28 @@ func New(opts Options) (http.Handler, error) {
 		},
 	})
 	return h, nil
+}
+
+// withDefaults fills what a zero value leaves to the configuration's defaults.
+func withDefaults(o *Options) {
+	if o.SessionLifetime <= 0 {
+		o.SessionLifetime = config.DefaultSessionLifetime
+	}
+	if o.SessionIdle <= 0 {
+		o.SessionIdle = config.DefaultSessionIdle
+	}
+	if o.PasswordMinLength <= 0 {
+		o.PasswordMinLength = config.DefaultPasswordMinLength
+	}
+	if o.LoginLockout == "" {
+		o.LoginLockout = config.LockoutWindow
+	}
+	if o.TokenDefaultLifetime <= 0 {
+		o.TokenDefaultLifetime = config.DefaultTokenDefaultLifetime
+	}
+	if o.TokenMaxLifetime <= 0 {
+		o.TokenMaxLifetime = config.DefaultTokenMaxLifetime
+	}
 }
 
 // loadDocument loads the embedded document and returns it with the backend
@@ -162,15 +235,25 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeRouteError(w, r, err)
 		return
 	}
-	ctx := withAccept(r.Context(), r.Header.Get("Accept"))
-	if requiresBearer(h.doc, route.Operation) {
-		p, perr := h.authenticate(r)
+	ctx := withClient(withAccept(r.Context(), r.Header.Get("Accept")), r, h.trusted)
+	opID := route.Operation.OperationID
+	if accepts := credentialsOf(h.doc, route.Operation); accepts.any() {
+		p, perr := h.authenticate(r, accepts)
 		if perr != nil {
+			problem.Write(w, r, perr)
+			return
+		}
+		if perr := h.sessionRules(r, p, opID); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
 		ctx = auth.WithPrincipal(ctx, p)
 		ctx = store.WithCaller(ctx, callerOf(p, requestid.UUID(ctx)))
+	} else if originChecked(route.Operation) {
+		if perr := h.checkOrigin(r); perr != nil {
+			problem.Write(w, r, perr)
+			return
+		}
 	}
 	if slug, ok := pathParams["tenant"]; ok {
 		scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
@@ -238,26 +321,38 @@ func joinMethods(methods []string) string {
 	return strings.Join(methods, ", ")
 }
 
-// requiresBearer reports whether an operation declares the bearer scheme,
-// on itself or through the document's default.
-func requiresBearer(doc *openapi3.T, op *openapi3.Operation) bool {
-	reqs := doc.Security
-	if op.Security != nil {
-		reqs = *op.Security
-	}
-	for _, req := range reqs {
-		if _, ok := req["bearerToken"]; ok {
-			return true
-		}
-	}
-	return false
+// originChecked reports whether a public operation says it is origin-checked:
+// the login, which no session protects yet (docs/adr/0037 D5).
+func originChecked(op *openapi3.Operation) bool {
+	v, _ := op.Extensions["x-cowork-origin-check"].(bool)
+	return v
 }
 
-// callerOf turns the principal into what the store records on its acts.
+// sessionRules are what holds a request authenticated by a session and no
+// other: the CSRF check on its writes (docs/adr/0037 D1), and the temporary
+// password that has to be changed before anything else (docs/adr/0033 D4). A
+// token's request has no cookie, and neither applies (docs/adr/0035 D7).
+func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string) *problem.Error {
+	if !p.Session {
+		return nil
+	}
+	if perr := h.csrf(r); perr != nil {
+		return perr
+	}
+	if p.PasswordChangeRequired && !whileChangingPassword[opID] {
+		return problem.New(problem.PasswordChangeRequired, "the password of this account is temporary: change it with PUT /api/v1/me/password first")
+	}
+	return nil
+}
+
+// callerOf turns the principal into what the store records on its acts. The
+// session's hash is what finds its row again; the audit rows never carry it
+// (docs/adr/0031 D7).
 func callerOf(p auth.Principal, requestID uuid.UUID) store.Caller {
 	return store.Caller{
 		UserID:              p.PersonID,
 		TokenID:             p.TokenID,
+		SessionHash:         p.SessionHash,
 		RestrictedProjectID: p.RestrictedProjectID,
 		Agent:               p.Agent,
 		Capabilities:        p.Capabilities,

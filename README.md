@@ -11,13 +11,13 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 2 — the core domain and its API.** Tenants, projects and tickets — with
-> links, state transitions, open questions, comments, interest, progress, time entries and
-> attachments — the audit record and the event stream exist behind a token-authenticated JSON
-> API, tested against PostgreSQL 18 and MinIO. There is no login and no UI beyond the shell
-> yet: persons, tenants and tokens come from `make dev-seed` in development, and an
-> installation has no way to create them until the login arrives. What comes next is
-> [the project plan](docs/planning/project-plan.md).
+> **Status: phase 3 in progress — the UI on the core domain.** Tenants, projects and tickets —
+> with links, state transitions, open questions, comments, interest, progress, time entries and
+> attachments — the audit record and the event stream exist behind a JSON API, tested against
+> PostgreSQL 18 and MinIO. A person logs in with a local account: the local administrator the
+> installation's Secret names creates the first tenant and the accounts of its people, and each
+> person makes their own personal access tokens in the session. There is no identity provider
+> yet. What comes next is [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,8 @@ flowchart LR
 
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
 - 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
-- 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, the only way in until the login exists; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 🔐 **A login that needs no identity provider** — a local administrator kept in step with a Secret, local accounts created by tenant administrators, Argon2id, sessions in the database behind an `HttpOnly` `__Host-` cookie, an account lockout and an address throttle that answer every failure alike, and an origin-plus-header CSRF check on every write of a session.
 - 🛡️ **Tenants isolated twice** — every query names its tenant, and forced row-level security under a runtime role that owns nothing backs it; the backend refuses a role that could bypass it.
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; `ETag` and `If-Match` keep two writers from overwriting each other.
@@ -65,11 +66,13 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Backend Deployment and Service | `<fullname>-backend` | `<fullname>` is `<release>-cowork`, or the release name itself when it contains `cowork`; `fullnameOverride` replaces it |
 | Frontend Deployment and Service | `<fullname>-frontend` | the Ingress targets this Service |
 | Ingress | `<fullname>` | only with `ingress.enabled` |
+| NetworkPolicy | `<fullname>-backend` | admits ingress to the backend pods from the frontend pods only, on the backend's port; `networkPolicy.enabled`, on by default |
 | ServiceAccount | `<fullname>` | shared by both pods, no token mounted |
 | Init container of the backend pod | `migrate` | runs `cowork migrate` as the owner role; only with `backend.config.migrateOnStart` |
 | Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url` |
 | Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while `backend.config.migrateOnStart` is true |
-| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret` | only with the inline URLs (the owner's while `migrateOnStart` is true); a changed URL rolls the pods |
+| Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
+| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while `migrateOnStart` is true); a changed value rolls the pods |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with `storage.endpoint` and `storage.tls.caConfigMap` |
 | Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
 | Container ports | `http`, `8080` on both containers | `backend.containerPort`; the frontend's is fixed by the nginx configuration |
@@ -85,6 +88,9 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Question | its number within the ticket, from 1 | `…/tickets/42/questions/1` |
 | Every other id | a UUIDv7 | `0199a3c2-1d2e-7f00-8000-000000000001` |
 | Personal access token | `cwk_` and 43 base62 characters; cowork stores its SHA-256 only | — |
+| Session cookie | `__Host-cowork-session`, 43 base64url characters (256 random bits); cowork stores its SHA-256 only | `HttpOnly; Secure; SameSite=Lax; Path=/`, no `Domain` |
+| Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>` | `ada.lovelace` |
+| Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Request id | `X-Request-Id`, a UUIDv7 the backend makes (an inbound one is ignored); the same value is `request_id` in a problem body and in the request log | — |
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
@@ -101,6 +107,7 @@ The frontend container substitutes four variables into its nginx configuration, 
 | MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
 | Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; the database is dropped at the end, the bucket stays until `make minio-down` |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
+| Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
 
 ### Files and images
 
@@ -121,6 +128,7 @@ The frontend container substitutes four variables into its nginx configuration, 
 | `/healthz` | liveness | nginx's own health, `{"status":"ok"}` |
 | `/readyz` | readiness: a database ping | not proxied: nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend — the backend's `/readyz` is reached through the backend Service |
 | `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged; the `413`, `502`, `503` and `504` nginx answers itself are problem bodies without a `request_id` |
+| `/auth/options`, `/auth/local`, `/auth/logout` | the browser's login flows, in the API document | proxied like `/api/`, cookies in both directions |
 | `/api/v1/tenants/<slug>/events` | the event stream | proxied unbuffered and uncached, with a read timeout of one hour |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
@@ -155,6 +163,16 @@ Helm 3 or 4, `openssl`. `make help` lists every target.
 
 ### Run it locally
 
+The quickest way to see cowork, with demo data and the UI reloading as you edit:
+
+```bash
+make dev                # PostgreSQL, MinIO, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
+```
+
+Sign in as `dev` with the development-only password `dev-only-cowork`. The dev server uses a
+self-signed certificate — HTTPS, because Safari stores no `Secure` session cookie from
+`http://localhost` — so the browser asks about it once. The parts by hand:
+
 ```bash
 make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves)
 make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
@@ -163,9 +181,8 @@ make frontend-serve     # the Angular dev server on :4200, /api proxied to :8080
 ```
 
 `make run` needs no server key: it makes a throw-away one per start, so list cursors from an
-earlier run answer `invalid_cursor`. Until the login exists a token is the only way in, and
-`make dev-seed` makes one: an agent's token with scope `write` and every capability, so its
-creating `POST`s carry an `Idempotency-Key`.
+earlier run answer `invalid_cursor`. `make dev-seed` makes a token: an agent's token with scope
+`write` and every capability, so its creating `POST`s carry an `Idempotency-Key`.
 
 ```bash
 TOKEN=cwk_…             # the token make dev-seed printed
@@ -179,8 +196,28 @@ curl -s -H "$AUTH" -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: applicatio
   localhost:8080/api/v1/tenants/dev/projects/COW/tickets   # the ticket dev/COW-1
 curl -s -H "$AUTH" localhost:8080/api/v1/tickets/dev/COW-1                       # by its key
 curl -s -H "$AUTH" localhost:8080/api/v1/tenants/dev/projects/COW/tickets/1/markdown
-open http://localhost:4200                             # the UI shell
+open https://localhost:4200                            # the UI, after make dev; sign in as dev
 ```
+
+To try the login — a person in a browser session — start the backend with a local
+administrator and the origin the browser sees (`make dev` uses `https://localhost:4200`).
+Both variables are required together, the password is at least twelve characters, and the first
+thing the administrator does is create the first tenant:
+
+```bash
+COWORK_BASE_URL=http://localhost:4200 COWORK_LOCAL_ADMIN_USERNAME=admin \
+  COWORK_LOCAL_ADMIN_PASSWORD='a long development password' make run
+curl -si -H 'Origin: http://localhost:4200' -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"a long development password"}' localhost:8080/auth/local
+# 200 {"password_change_required":false} and  Set-Cookie: __Host-cowork-session=…; HttpOnly; Secure; SameSite=Lax; Path=/
+COOKIE='__Host-cowork-session=…'   # the value of that cookie
+curl -s -H "Cookie: $COOKIE" localhost:8080/api/v1/me                      # the person; global_admin is true
+curl -s -H "Cookie: $COOKIE" -H 'Origin: http://localhost:4200' -H 'X-Requested-With: cowork' \
+  -H 'Content-Type: application/json' -d '{"slug":"acme","name":"Acme"}' localhost:8080/api/v1/tenants
+```
+
+Every write of a session carries the `Origin` of `COWORK_BASE_URL` and `X-Requested-With: cowork`
+([CSRF](docs/security/csrf.md)); a token's request carries neither.
 
 Without object storage the backend refuses uploads (`501 uploads_disabled`). To try
 attachments, start MinIO, create a bucket with any S3 client — no target creates one — and
@@ -230,9 +267,26 @@ helm upgrade --install cowork cowork/cowork --version 0.1.0 -n cowork \
 kubectl -n cowork port-forward svc/cowork-frontend 8080:80     # the UI, /api/ proxied
 ```
 
+The login needs a local administrator and the public URL: a Secret with its username and
+password, and the origin the browser shows. The administrator logs in, creates the first tenant
+(or `bootstrap.tenant.slug` and `.name` create it at start) and the accounts of its people:
+
+```bash
+kubectl -n cowork create secret generic cowork-local-admin \
+  --from-literal=username=admin --from-literal=password="$(openssl rand -base64 24)"
+helm upgrade cowork cowork/cowork -n cowork --reuse-values \
+  --set localAdmin.existingSecret=cowork-local-admin \
+  --set backend.config.baseURL=https://cowork.example.com \
+  --set bootstrap.tenant.slug=acme --set bootstrap.tenant.name="Acme Corp"
+```
+
+Behind the frontend and an Ingress the login throttle has to be told which networks are the
+proxies, or it counts one address for every browser:
+`--set backend.config.trustedProxies=<the pod network that holds the frontend and the Ingress
+controller>` ([the client address](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
+
 Attachments need an S3-compatible bucket and three more values; without them uploads are
-refused. Nobody can sign in to an installation yet: persons, tenants and tokens arrive with the
-login. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
+refused. Without a local administrator nobody can log in. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
 `guidedtraffic/cowork-frontend` on Docker Hub) with one version; the chart's image tags follow
 its `appVersion`. Details — the roles, the Secrets,
 the object storage, the Ingress annotations, the CloudNativePG note:
@@ -272,12 +326,36 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_DATABASE_URL` | — (required) | `postgres://cowork_app:…@postgres:5432/cowork?sslmode=require` `# example` | The runtime role's connection URL; every request runs as this role. It must not be a superuser, have `BYPASSRLS`, own a relation of the schema or be a member of the owner role — `serve` and `migrate` refuse it otherwise. `pool_max_conns=<n>` in the URL sizes the connection pool. **Security:** a credential: from a Secret. cowork never logs it; a URL pgx cannot parse appears in the startup error with its password masked, which pgx does on a best-effort basis |
 | `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the `migrate` init container only |
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container |
-| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key; it signs the list cursors. Every replica needs the same key, and a new key invalidates the cursors clients hold (`400 invalid_cursor`). **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. `make run` makes a throw-away one |
+| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key; it signs the list cursors and keys the hash of a login's source address. Every replica needs the same key, and a new key invalidates the cursors clients hold (`400 invalid_cursor`). It signs no session: sessions are rows in the database, and a new key logs nobody out. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
 | `COWORK_LOG_FORMAT` | `json` `# default` | `json`, `text` | `text` for a terminal |
 | `COWORK_SHUTDOWN_TIMEOUT` | `15s` `# default` | a positive duration | Drain bound after `SIGTERM`; the event streams end as the drain begins. A drain that outlasts it ends the process with exit 1. Keep it below the pod's grace period |
-| `COWORK_BASE_URL` | empty `# default` | `https://cowork.example.com` `# example` | The public URL. Read by nothing today; OIDC redirects will need it |
+| `COWORK_BASE_URL` | empty `# default` | `https://cowork.example.com` `# example` | The public URL, as the browser shows it: an origin — `http` or `https`, a host, an optional port, no path, no query. **Required while `COWORK_LOCAL_ADMIN_USERNAME` is set.** The CSRF check compares the `Origin` (or `Referer`) of every write of a session, and of the login, with it exactly ([CSRF](docs/security/csrf.md)); a URL the browser does not show makes every such write `403 csrf`, and without one no write of a cookie passes. **Security:** nothing secret; a wrong value locks the browser out, never lets another origin in |
+
+**Login, sessions and accounts** ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md),
+[0032](docs/adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md),
+[0033](docs/adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md),
+[0035](docs/adr/0035-personal-access-tokens.md) D4, [0037](docs/adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)).
+Chart values are in [Helm chart values](#helm-chart-values); the pages are
+[sessions](docs/security/sessions.md), [local accounts](docs/security/local-accounts.md) and
+[CSRF](docs/security/csrf.md).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_LOCAL_ADMIN_USERNAME` | empty `# default` | `admin` `# example` | With `COWORK_LOCAL_ADMIN_PASSWORD`: the one account the configuration keeps, a global administrator — it creates tenants and holds no role in any until it grants itself one — and a full account (`local:<username>`). Synchronised at every start, after the migrations, under an advisory lock: created; re-hashed with all its sessions ended when the password changed; deactivated, its tokens revoked and its sessions ended, when both variables are empty; never deleted. Both set or both empty — one alone refuses the start, naming the missing variable. Needs `COWORK_BASE_URL`. 1–63 characters of `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or a digit |
+| `COWORK_LOCAL_ADMIN_PASSWORD` | empty `# default` | at least `COWORK_PASSWORD_MIN_LENGTH` characters | The account's password, read as it is — spaces included. **Security:** a secret: from a Secret, never echoed or logged; anyone who can read the pod spec or the Secret can read it. A leaked one stays valid until the Secret is rotated **and** the backend restarted; that rotation also unlocks a locked administrator and ends its sessions. The account's password cannot be changed in the UI: this is its source |
+| `COWORK_BOOTSTRAP_TENANT_SLUG` | empty `# default` | `acme` `# example` | With `COWORK_BOOTSTRAP_TENANT_NAME`: while no tenant exists, a start creates this tenant and gives the local administrator a marked grant as its `admin`; once a tenant exists these variables do nothing, whatever they say. Both or neither, and only with the local administrator |
+| `COWORK_BOOTSTRAP_TENANT_NAME` | empty `# default` | `Acme Corp` `# example` | The tenant's name, 1–200 characters |
+| `COWORK_PASSWORD_MIN_LENGTH` | `12` `# default` | `8` to `1024` | The shortest password of a local account, counted in characters; the policy is length only — no character classes, no history — and it holds for the local administrator too. Below `8` the start is refused |
+| `COWORK_LOGIN_LOCKOUT` | `window` `# default` | `window`, `admin` | `window`: a username locked by failures is free again when the 15-minute window passes. `admin`: it stays locked until a tenant administrator unlocks it (`DELETE …/accounts/{username}/lockout`) — or, for the local administrator, until the Secret is rotated and the backend restarted. **Security:** `admin` lets anyone who knows a username keep its account locked |
+| `COWORK_LOGIN_MAX_FAILURES` | `5` `# default` | a count; `0` never locks | Failed attempts of one username within fifteen minutes that lock it — a username nobody has too, so neither the answer nor the lock says whether an account exists |
+| `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind the frontend's nginx the peer is nginx and the limit holds for the whole installation |
+| `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; an empty list leaves one address for the whole installation ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
+| `COWORK_SESSION_LIFETIME` | `12h` `# default` | a positive duration | The absolute lifetime of a session; it is also the cookie's `Max-Age` |
+| `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; a request within it extends the session up to the lifetime. The idle clock moves at most once a minute |
+| `COWORK_TOKEN_DEFAULT_LIFETIME` | `2160h` (90 days) `# default` | a positive duration, not above the maximum | The lifetime of a token whose creator named none |
+| `COWORK_TOKEN_MAX_LIFETIME` | `8760h` (one year) `# default` | a positive duration | The longest lifetime a token may have; a longer request is shortened to it and the answer says what the token got |
 
 **Limits** ([ADR 0039](docs/adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md))
 
@@ -327,7 +405,7 @@ nothing else:
 
 | Command | Does |
 |---|---|
-| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; listen until `SIGINT`/`SIGTERM` |
+| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
 | `cowork migrate` | Load the configuration (`COWORK_DATABASE_URL` names the runtime role the migrations grant to, `COWORK_DATABASE_OWNER_URL` is the role they run as); apply pending migrations; exit 0. Exit 1 on a dirty or failing schema or a runtime role that could bypass row-level security |
 | `cowork version` | Print `cowork <version> (commit <sha>, built <epoch>)` |
 | `cowork help` | Print the usage (also `-h`, `--help`) |
@@ -343,11 +421,22 @@ every request against it. What this section says in one line per route, the docu
 full.
 
 - **Authentication.** Every route under `/api/v1/` except `version` and `openapi.json` takes
-  a personal access token, `Authorization: Bearer cwk_…`; without a valid one the answer is
-  `401` (`unauthenticated`, `token_expired`, `token_revoked`) with
-  `WWW-Authenticate: Bearer realm="cowork"`. No route creates a token yet — that needs the
-  browser login. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an agent's; a
-  token with the agent flag makes it one with or without the header.
+  one of two credentials, and the document says which per operation (`bearerToken`,
+  `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
+  agents; the session cookie `__Host-cowork-session` of `POST /auth/local` is for the browser. A
+  request with an `Authorization` header is a token's, whatever cookie it carries. Without a
+  valid credential the answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`) with
+  `WWW-Authenticate: Bearer realm="cowork"`. Six routes take a **session only** and answer a
+  token `403 session_required`: creating a token, a tenant or a local account, resetting or
+  changing a password, logging out ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
+  [ADR 0033](docs/adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
+  D1, D5). A **write of a session** must come
+  from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
+  `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
+  ([CSRF](docs/security/csrf.md)). A session whose account has a temporary password can only read
+  `GET /api/v1/me`, change the password and log out; everything else is
+  `403 password_change_required`. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an
+  agent's; a token with the agent flag makes it one with or without the header.
 - **Tenants.** A route under `/api/v1/tenants/{tenant}` answers `404 not_found` alike for an
   unknown slug, a tenant the person does not belong to and a token restricted to another.
 - **Writes.** An entity's `ETag` is its version; an overwriting write needs it in `If-Match`
@@ -375,13 +464,42 @@ full.
 | `GET /api/v1/openapi.json` | the API document; no authentication |
 | a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
 | any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
-| `GET /api/v1/me` | the calling person and their memberships |
+| `GET /auth/options` | `200 {"local": bool, "oidc": false, "password_min_length": int}` — what the login page offers: the local form while an active local account exists, and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
+| `POST /auth/local` | `{"username","password"}` → `200 {"password_change_required": bool}` and the session cookie; every failure is `401 invalid_credentials`, the same answer in the same time for an unknown username, a wrong password, a locked or a deactivated account; `429 too_many_attempts` from the address throttle; `403 not_initialised` for a person who is not a global administrator while no tenant exists; `403 csrf` unless the `Origin` is `COWORK_BASE_URL`; no authentication |
+| `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` |
+| `GET /api/v1/me` | the calling person and their memberships, whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
+| `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's (`403 forbidden`) |
 | `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
+| `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
+| `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
 
 The routes of a tenant start with `/api/v1/tenants/{tenant}`, written `…` below; `…/{number}`
 stands for `/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}`.
+
+<details>
+<summary>Local accounts — 6 routes</summary>
+
+For the tenant's administrators with `admin` scope, never an agent. **Creating an account and
+resetting a password take a browser session only** — a token, an administrator's included, is
+`403 session_required` — because an account or a password made with a leaked token would outlive
+its revocation; the other four routes work with an `admin`-scope token. A tenant manages the local
+accounts **its own administrators created** and no others: another tenant's account, a global
+administrator and the local administrator answer `404 not_found`, like a username nobody has.
+An administrator's own account is off limits for a password reset, an unlock and a deactivation
+(`403 forbidden`).
+
+| Method and path | Does |
+|---|---|
+| `GET …/accounts` | the accounts the tenant manages, by person id: username, display name, role, `password_change_required`, `locked`, `deactivated_at` |
+| `POST …/accounts` | a session only: create one: `{"username","display_name","temporary_password","role"}`; the person changes the password at the first login; a marked grant with that role; `409 username_taken` (the installation has one namespace) |
+| `PUT …/accounts/{username}/password` | a session only: set a new temporary password; every session of the account ends |
+| `DELETE …/accounts/{username}/lockout` | forget the failures and the lock of the username |
+| `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay |
+| `DELETE …/accounts/{username}/sessions` | end every session of the account, at once; tokens are not affected |
+
+</details>
 
 <details>
 <summary>Tenant and projects — 10 routes</summary>
@@ -487,14 +605,21 @@ every error body carries one of these as `code`.
 | `idempotency_key_required` | 400 | An agent's `POST` that creates something came without an `Idempotency-Key`; a transition needs none (docs/adr/0045 D2, D3) |
 | `invalid_cursor` | 400 | The cursor was altered, belongs to another list, or comes from another installation |
 | `page_too_deep` | 400 | A numbered page beyond the depth cap; follow the cursor instead |
-| `unauthenticated` | 401 | No token, a malformed one, or one cowork does not know |
+| `unauthenticated` | 401 | No token or session, a malformed one, or one cowork does not know; a session that expired or was ended answers the same |
 | `token_expired` | 401 | The token is past its expiry (docs/adr/0035 D4) |
 | `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
+| `invalid_credentials` | 401 | The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6) |
 | `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
 | `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
 | `agent_forbidden` | 403 | The act is on the agent hard-off list or needs a capability the token lacks; `detail` names which (docs/adr/0043 D5) |
+| `session_required` | 403 | The route is for a person in a browser session; a personal access token cannot call it (docs/adr/0035 D5) |
+| `password_change_required` | 403 | The session's account has a temporary password, which has to be changed before anything else (docs/adr/0033 D4) |
+| `not_initialised` | 403 | The installation has no tenant yet and the person is not a global administrator (docs/adr/0032 D5) |
+| `csrf` | 403 | A cookie-authenticated write, or the login, did not come from COWORK_BASE_URL or lacks `X-Requested-With: cowork` (docs/adr/0037 D1) |
 | `not_found` | 404 | No such route, or a tenant, project or ticket the caller cannot see — the answer does not say which (docs/adr/0047 D5) |
 | `method_not_allowed` | 405 | The path exists with other methods; `Allow` names them |
+| `username_taken` | 409 | The installation has a person with this username; usernames are unique (docs/adr/0033 D2) |
+| `tenant_slug_taken` | 409 | The installation has a tenant with this slug; slugs are never reused (docs/adr/0005 D4) |
 | `project_key_taken` | 409 | The tenant has a project with this key; keys are never reused (docs/adr/0007 D4) |
 | `project_archived` | 409 | An archived project refuses new tickets (docs/adr/0006 D4) |
 | `state_conflict` | 409 | The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2) |
@@ -509,6 +634,7 @@ every error body carries one of these as `code`.
 | `unsupported_media_type` | 415 | The body's type is not one the route accepts |
 | `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
 | `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
+| `too_many_attempts` | 429 | More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
 | `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
 | `not_ready` | 503 | The backend cannot reach its database |
 | `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
@@ -540,6 +666,25 @@ session:                              # COWORK_SESSION_KEY, from a Secret only
   existingSecret: ""                  # required: rendering fails without it
   keys:
     key: sessionKey
+  lifetime: 12h                       # COWORK_SESSION_LIFETIME, the absolute lifetime of a browser session
+  idle: 2h                            # COWORK_SESSION_IDLE, how long a session may lie unused
+localAdmin:                           # the local administrator of docs/adr/0032: a global administrator kept in step with this Secret at every start
+  existingSecret: ""                  # preferred; with the inline values empty there is no local administrator and nobody can log in
+  keys:
+    username: username                # COWORK_LOCAL_ADMIN_USERNAME
+    password: password                # COWORK_LOCAL_ADMIN_PASSWORD
+  username: ""                        # renders <fullname>-local-admin; plain text in the release and in `helm get values`
+  password: ""                        # both inline values or neither; the existing Secret wins; needs backend.config.baseURL
+bootstrap:
+  tenant:                             # created at start while no tenant exists; once one does, these do nothing; needs localAdmin
+    slug: ""                          # COWORK_BOOTSTRAP_TENANT_SLUG
+    name: ""                          # COWORK_BOOTSTRAP_TENANT_NAME; both or neither
+auth:
+  local:
+    passwordMinLength: 12             # COWORK_PASSWORD_MIN_LENGTH, characters; below 8 the backend refuses to start
+    lockout: window                   # COWORK_LOGIN_LOCKOUT: window | admin
+    maxFailures: 5                    # COWORK_LOGIN_MAX_FAILURES within fifteen minutes; 0 never locks
+    addressLimit: 20                  # COWORK_LOGIN_ADDRESS_LIMIT attempts per client address (IPv6: per /64) and minute; 0 disables
 storage:                              # S3-compatible object storage; without an endpoint uploads are refused
   existingSecret: ""                  # required with an endpoint: the key of a bucket-scoped policy, never root
   keys:
@@ -553,6 +698,8 @@ storage:                              # S3-compatible object storage; without an
     caConfigMap: ""                   # ConfigMap with a private authority's PEM, mounted at /etc/cowork/s3-ca
     keys:
       ca: ca.crt                      # the ConfigMap's key; COWORK_S3_CA=/etc/cowork/s3-ca/<key>
+networkPolicy:                        # which pods may reach the backend
+  enabled: true                       # ingress to the backend pods from the frontend pods only; enforced only by a network plugin that implements NetworkPolicy
 ingress:                              # targets the frontend Service
   enabled: false
   className: ""
@@ -578,7 +725,8 @@ backend:
     logLevel: info                    # COWORK_LOG_LEVEL, also for the init container
     logFormat: json                   # COWORK_LOG_FORMAT, also for the init container
     shutdownTimeout: 15s              # COWORK_SHUTDOWN_TIMEOUT; keep below terminationGracePeriodSeconds
-    baseURL: ""                       # COWORK_BASE_URL, set only when non-empty
+    baseURL: ""                       # COWORK_BASE_URL, set only when non-empty: the origin the browser shows; required with localAdmin
+    trustedProxies: ""                # COWORK_TRUSTED_PROXIES, set only when non-empty: the networks of the proxies in front of the backend, comma-separated CIDRs
     maxJsonBody: 1048576              # COWORK_MAX_JSON_BODY, bytes; 0 disables
     attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (nginx then has no body limit either)
     attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
@@ -664,8 +812,11 @@ frontend:
 
 Rendering fails, naming the value, without `database.existingSecret` or `database.url`;
 without `database.owner.existingSecret` or `database.owner.url` while
-`backend.config.migrateOnStart` is `true`; without `session.existingSecret`; and with a
-`storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`. `helm lint` reports
+`backend.config.migrateOnStart` is `true`; without `session.existingSecret`; with a
+`storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`; with one of
+`localAdmin.username` and `localAdmin.password` alone, or a local administrator without
+`backend.config.baseURL`; and with `bootstrap.tenant.slug` and `.name` apart or without a local
+administrator. `helm lint` reports
 these as info lines, `helm template` and `helm install` fail. Where a Secret reference and its
 inline URL are both set, the reference wins and the URL is ignored.
 
@@ -684,6 +835,21 @@ The modes that change what is exposed:
   refuses to start until `cowork migrate` has run.
 - **The server key has no inline path.** One Secret gives every replica the same key;
   rotating it invalidates the cursors clients hold.
+- **The local administrator: a Secret or inline values.** `localAdmin.existingSecret` names a
+  Secret whose keys `localAdmin.keys.username` and `.password` hold the account; the chart never
+  sees the password. `localAdmin.username` and `.password` render `<fullname>-local-admin` for
+  a throw-away installation: plain text in the release Secret and in `helm get values`, like
+  `database.url`, with a warning in the notes. The account follows the Secret at every start —
+  a changed value reaches the pods when they restart; rotate the Secret **and** restart to end a
+  leaked password ([operations](docs/operations/installation.md#the-local-administrator)).
+- **`backend.config.trustedProxies` and the NetworkPolicy.** Empty, the login throttle counts the
+  frontend pod as the one client of every browser; set to the proxies' networks it counts the
+  browser. Too wide a list lets a client choose its address. The NetworkPolicy
+  (`networkPolicy.enabled`, on by default) admits only the frontend pods to the backend, so no
+  other pod can write `X-Forwarded-For` to it; it also refuses an in-cluster script or an Ingress
+  that calls the backend Service directly, and a network plugin without NetworkPolicy support
+  ignores it. The chart's notes warn about the empty list and about the policy switched off
+  while the list is set ([operations](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
 - **The storage key comes from a Secret only**; endpoint, bucket and region are plain values.
   Without `storage.endpoint` the backend runs without object storage and refuses uploads.
 - **`0` in `backend.config`** switches a backend limit off and opens nginx along with it —
@@ -697,7 +863,9 @@ The modes that change what is exposed:
 
 ```bash
 make help                 # every target, grouped
+make dev                  # the whole stack with demo data; the UI on :4200 with live reload
 make generate             # after a change to backend/api/, the SQL queries or the problem catalogue; CI fails on drift
+make frontend-generate    # after make generate changed the API document: the Angular client; CI fails on drift
 make lint cyclo gosec vuln
 make postgres-up minio-up # what the integration tier needs
 make test test-integration
@@ -713,3 +881,9 @@ process.
 ## 📄 License
 
 [Apache License 2.0](LICENSE).
+
+The UI uses PrimeNG, PrimeIcons and `@primeuix/themes`, which since version 22 are under the
+PrimeUI License: free under its Community License with a key, which the released images carry.
+A build without a key works and shows PrimeNG's license notice; a fork needs a key of its own
+([ADR 0052](docs/adr/0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md)
+D9).

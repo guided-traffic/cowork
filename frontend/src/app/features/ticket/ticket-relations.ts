@@ -1,0 +1,119 @@
+import { DestroyRef, inject, Injectable, Injector, resource, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Api } from '../../api/api';
+import {
+  listActivity,
+  listAttachments,
+  listComments,
+  listInterest,
+  listQuestions,
+  listTicketLinks,
+  listTicketTime,
+} from '../../api/functions';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
+import { refresh } from '../../core/refresh';
+
+/** Where a ticket lives: the tenant, the project's key and the number. */
+export interface TicketAddress {
+  tenant: string;
+  project: string;
+  number: number;
+}
+
+/** `acme`, `VKO-12` → the address; undefined for a key that is not `<PROJECT>-<number>`. */
+export function address(tenant: string | null, key: string): TicketAddress | undefined {
+  const match = /^([A-Z][A-Z0-9]{1,9})-([1-9][0-9]*)$/.exec(key);
+  return tenant && match ? { tenant, project: match[1], number: Number(match[2]) } : undefined;
+}
+
+/**
+ * What surrounds a ticket on its detail page — comments, activity, questions, links, interest,
+ * attachments, time — loaded through the API and reloaded when the event stream names the ticket
+ * (docs/adr/0054 D2): an event says which part changed, and only that part and the activity are
+ * fetched again; an upload is a `ticket.changed`. Time entries are not published (D4): the page
+ * that books reloads them, and `resync` and `poll` do. A part that is loading when its event
+ * arrives loads once more afterwards (`refresh`). Provided by the page, so it lives exactly as
+ * long as the page.
+ */
+@Injectable()
+export class TicketRelations {
+  private readonly api = inject(Api);
+  private readonly injector = inject(Injector);
+  readonly at = signal<TicketAddress | undefined>(undefined);
+
+  readonly comments = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listComments, { ...params, limit: 200 }),
+  });
+  readonly activity = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listActivity, { ...params, order: 'desc', limit: 100 }),
+  });
+  readonly questions = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listQuestions, { ...params, limit: 200 }),
+  });
+  readonly links = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listTicketLinks, { ...params, limit: 200 }),
+  });
+  readonly interest = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listInterest, { ...params, limit: 200 }),
+  });
+  readonly attachments = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listAttachments, { ...params, limit: 200 }),
+  });
+  readonly time = resource({
+    params: () => this.at(),
+    loader: ({ params }) => this.api.invoke(listTicketTime, { ...params, limit: 200 }),
+  });
+
+  constructor() {
+    inject(EventStreamService)
+      .events.pipe(takeUntilDestroyed(inject(DestroyRef)))
+      .subscribe((event) => this.react(event));
+  }
+
+  private react(event: StreamEvent): void {
+    const at = this.at();
+    if (!at) {
+      return;
+    }
+    if (event.name === 'resync' || event.name === 'poll') {
+      for (const part of [
+        this.comments,
+        this.questions,
+        this.links,
+        this.interest,
+        this.attachments,
+        this.time,
+        this.activity,
+      ]) {
+        refresh(part, this.injector);
+      }
+      return;
+    }
+    if (event.key !== `${at.tenant}/${at.project}-${at.number}`) {
+      return;
+    }
+    if (event.name === 'comment.changed') {
+      refresh(this.comments, this.injector);
+    } else if (event.name === 'question.changed') {
+      refresh(this.questions, this.injector);
+    } else if (event.name === 'link.changed') {
+      refresh(this.links, this.injector);
+    } else if (event.name === 'interest.changed') {
+      refresh(this.interest, this.injector);
+    } else {
+      refresh(this.attachments, this.injector);
+    }
+    refresh(this.activity, this.injector);
+  }
+
+  /** After the person booked or corrected time: no event says so. */
+  reloadTime(): void {
+    refresh(this.time, this.injector);
+  }
+}

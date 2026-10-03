@@ -1,0 +1,36 @@
+# Trusted proxies and the backend's NetworkPolicy (docs/adr/0035 D2): the pod
+# network that holds the frontend and the Ingress controller is trusted, and
+# only the frontend's pods may reach the backend. The default values render
+# the NetworkPolicy too; this file names the shape an installation behind an
+# Ingress sets.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+
+session:
+  existingSecret: cowork-session
+
+localAdmin:
+  existingSecret: cowork-local-admin
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: cowork.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: cowork-tls
+      hosts:
+        - cowork.example.com
+
+backend:
+  config:
+    baseURL: https://cowork.example.com
+    trustedProxies: "10.244.0.0/16,fd00:10:244::/48"
+
+networkPolicy:
+  enabled: true

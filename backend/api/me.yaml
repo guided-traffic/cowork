@@ -15,6 +15,9 @@ me:
               id: 0199a3c2-1d2e-7f00-8000-000000000001
               username: dev
               display_name: Developer
+              global_admin: false
+              local: true
+              password_change_required: false
               memberships:
                 - tenant: {slug: acme, name: Acme}
                   role: admin
@@ -27,8 +30,7 @@ tokens:
     summary: The person's tokens, revoked and expired ones included
     description: |
       Metadata only; a token's plaintext is shown once, at creation
-      (docs/adr/0035 D1, D6). Creating a token needs a browser session,
-      which does not exist yet (docs/adr/0038 D6).
+      (docs/adr/0035 D1, D6).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -39,6 +41,57 @@ tokens:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TokenList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createMyToken
+    tags: [me]
+    summary: Create a personal access token
+    description: |
+      Only the person themselves, in a browser session: no token creates a
+      token (`403 session_required`) and no administrator creates one for
+      another person (docs/adr/0035 D5). The answer carries the plaintext
+      `token` once; cowork stores its SHA-256 only (D1).
+
+      The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+      (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+      one is shortened to the maximum, and `expires_at` in the answer says what
+      the token got (D4). An agent token has at most `write` scope
+      (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+      every capability when `capabilities` is left out; an empty list is no
+      capability, the baseline only (docs/adr/0043 D4). A tenant
+      restriction needs a tenant the person belongs to, a project restriction a
+      project of it the person sees; either, if not, is `validation_failed`
+      without saying which of the two it was.
+
+      An `Idempotency-Key` makes a retry create nothing twice, but the stored
+      answer never holds the plaintext (docs/adr/0045 D6): the repetition
+      answers the token without `token`, and the person revokes it and makes
+      another.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TokenCreate'
+          example:
+            name: Claude Code on the laptop
+            scope: write
+            agent: true
+            tenant: acme
+            project: COW
+            lifetime_days: 90
+    responses:
+      '201':
+        description: The token, with its plaintext once
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TokenCreated'
       default:
         $ref: './components/responses.yaml#/Problem'
 token:
@@ -59,5 +112,30 @@ token:
     responses:
       '204':
         description: Revoked
+      default:
+        $ref: './components/responses.yaml#/Problem'
+password:
+  put:
+    operationId: changeMyPassword
+    tags: [me]
+    summary: Change the password of the person's local account
+    description: |
+      Needs the current password, which counts like a login attempt towards
+      the lockout of the account (docs/adr/0033 D6). The new one must be as long
+      as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+      other session of the account ends (D4), and a temporary password is no
+      longer temporary. The local administrator's password is set by the
+      configuration and cannot be changed here (`403 forbidden`).
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/PasswordChange'
+    responses:
+      '204':
+        description: Changed
       default:
         $ref: './components/responses.yaml#/Problem'

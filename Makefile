@@ -198,7 +198,22 @@ migrate: ## Apply the pending migrations to the development database as cowork_o
 dev-seed: migrate ## Create a development person, tenant, admin membership and token, and print the token once (docs/adr/0038 D7).
 	cd $(BACKEND_DIR) && COWORK_DEV_SEED_DATABASE_URL="$${COWORK_DEV_SEED_DATABASE_URL:-$(DEV_ADMIN_URL)}" $(GOCMD) run ./test/devseed
 
+.PHONY: dev
+dev: ## Run the whole development stack in this terminal to watch the UI: PostgreSQL, MinIO, the backend, demo data and the Angular dev server on https://localhost:4200 (hack/dev.sh).
+	./hack/dev.sh
+
+.PHONY: dev-reset
+dev-reset: ## Drop the development database of make dev and its token; the next make dev seeds a fresh one with demo data.
+	@docker exec $(POSTGRES_CONTAINER) psql -U postgres -q -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS cowork WITH (FORCE)" -c "CREATE DATABASE cowork OWNER cowork_owner"
+	rm -f .dev/token
+	@echo "the development database is empty; make dev seeds it again"
+
 ##@ Frontend
+
+# The PrimeUI license key (docs/adr/0052 D9), from PRIMEUI_LICENSE or the untracked file
+# .dev/primeui-license; without one the build works and shows PrimeNG's license notice.
+PRIMEUI_DEFINE = $$(node scripts/primeui-define.mjs ../.dev/primeui-license)
+PRIMEUI_SECRET = $$([ -f .dev/primeui-license ] && echo --secret id=primeui_license,src=.dev/primeui-license)
 
 # npm ci runs only when the lockfile changed; npm writes this marker on success.
 $(FRONTEND_DIR)/node_modules/.package-lock.json: $(FRONTEND_DIR)/package-lock.json
@@ -206,6 +221,15 @@ $(FRONTEND_DIR)/node_modules/.package-lock.json: $(FRONTEND_DIR)/package-lock.js
 
 .PHONY: frontend-install
 frontend-install: $(FRONTEND_DIR)/node_modules/.package-lock.json ## Install the frontend dependencies (npm ci, when the lockfile changed).
+
+.PHONY: frontend-generate
+frontend-generate: frontend-install ## Regenerate the Angular API client in frontend/src/app/api from backend/api/openapi.gen.json (docs/adr/0046 D3).
+	cd $(FRONTEND_DIR) && npx ng-openapi-gen -c ng-openapi-gen.json
+
+.PHONY: frontend-generate-check
+frontend-generate-check: frontend-generate ## Fail when the generated Angular API client differs from what make frontend-generate writes.
+	@git diff --exit-code -- $(FRONTEND_DIR)/src/app/api || { echo "frontend/src/app/api is stale: run make frontend-generate and commit the result"; exit 1; }
+	@test -z "$$(git ls-files --others --exclude-standard -- $(FRONTEND_DIR)/src/app/api)" || { echo "untracked files in frontend/src/app/api: run make frontend-generate and commit the result"; exit 1; }
 
 .PHONY: frontend-lint
 frontend-lint: frontend-install ## Run ESLint on the frontend.
@@ -221,11 +245,11 @@ frontend-test-coverage: frontend-install ## Run the frontend unit tests with cov
 
 .PHONY: frontend-build
 frontend-build: frontend-install ## Build the frontend for production into frontend/dist/frontend/browser.
-	cd $(FRONTEND_DIR) && npx ng build --configuration production
+	cd $(FRONTEND_DIR) && npx ng build --configuration production $(PRIMEUI_DEFINE)
 
 .PHONY: frontend-serve
-frontend-serve: frontend-install ## Run the Angular dev server on :4200, proxying /api to the backend on :8080.
-	cd $(FRONTEND_DIR) && npx ng serve
+frontend-serve: frontend-install ## Run the Angular dev server on :4200, proxying /api and /auth to the backend on :8080; NG_SERVE_FLAGS=--ssl serves HTTPS.
+	cd $(FRONTEND_DIR) && npx ng serve $(PRIMEUI_DEFINE) $(NG_SERVE_FLAGS)
 
 .PHONY: frontend-clean
 frontend-clean: ## Remove the frontend build output.
@@ -303,7 +327,7 @@ docker-build-backend: ## Build the backend image from backend/Containerfile.
 
 .PHONY: docker-build-frontend
 docker-build-frontend: ## Build the frontend image from frontend/Containerfile.
-	docker build -f $(FRONTEND_DIR)/Containerfile --build-arg BUILD_NUMBER=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_TIME) -t $(FRONTEND_IMG) $(FRONTEND_DIR)
+	docker build -f $(FRONTEND_DIR)/Containerfile $(PRIMEUI_SECRET) --build-arg BUILD_NUMBER=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_TIME) -t $(FRONTEND_IMG) $(FRONTEND_DIR)
 
 .PHONY: docker-push
 docker-push: ## Push both container images.

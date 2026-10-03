@@ -12,6 +12,12 @@
         "schema": {
           "type": "string"
         }
+      },
+      "SetCookie": {
+        "description": "The session cookie `__Host-cowork-session`: `HttpOnly; Secure; SameSite=Lax;\nPath=/`, no `Domain` (docs/adr/0031 D2). A logout clears it with `Max-Age=0`.\n",
+        "schema": {
+          "type": "string"
+        }
       }
     },
     "parameters": {
@@ -486,6 +492,16 @@
           "format": "date-time",
           "type": "string"
         }
+      },
+      "Username": {
+        "description": "A local account's username (docs/adr/0033 D2)",
+        "in": "path",
+        "name": "username",
+        "required": true,
+        "schema": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
+          "type": "string"
+        }
       }
     },
     "responses": {
@@ -518,6 +534,127 @@
       }
     },
     "schemas": {
+      "Account": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "locked": {
+            "description": "Failed logins locked the account at the moment (docs/adr/0033 D6)",
+            "type": "boolean"
+          },
+          "password_change_required": {
+            "description": "The password is temporary and its person has not changed it yet",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "The person's highest role in this tenant; null when they have none any more",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "password_change_required",
+          "locked",
+          "deactivated_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "AccountCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "temporary_password": {
+            "description": "At least `COWORK_PASSWORD_MIN_LENGTH` characters; the person changes it at the first login (docs/adr/0033 D3, D4)",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "The account's identity is `local:\u003cusername\u003e`, unique in the installation (docs/adr/0033 D2)",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "display_name",
+          "temporary_password",
+          "role"
+        ],
+        "type": "object"
+      },
+      "AccountList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "AccountPasswordReset": {
+        "additionalProperties": false,
+        "properties": {
+          "temporary_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "temporary_password"
+        ],
+        "type": "object"
+      },
       "Activity": {
         "properties": {
           "action": {
@@ -776,7 +913,15 @@
           "archived",
           "confidential_set",
           "confidential_lifted",
-          "expired"
+          "expired",
+          "logged_in",
+          "logged_out",
+          "login_failed",
+          "unlocked",
+          "password_changed",
+          "password_reset",
+          "deactivated",
+          "reactivated"
         ],
         "type": "string"
       },
@@ -914,6 +1059,29 @@
         "required": [
           "items",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "AuthOptions": {
+        "properties": {
+          "local": {
+            "description": "An active local account exists, so the login page shows the local form (docs/adr/0033 D8)",
+            "type": "boolean"
+          },
+          "oidc": {
+            "description": "An identity provider is configured; none is built yet, so false",
+            "type": "boolean"
+          },
+          "password_min_length": {
+            "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "local",
+          "oidc",
+          "password_min_length"
         ],
         "type": "object"
       },
@@ -1365,20 +1533,65 @@
         ],
         "type": "string"
       },
+      "LocalLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "Trimmed and lower-cased by the server; a value that cannot be a username is a failed login like any other",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      "LocalLoginResult": {
+        "properties": {
+          "password_change_required": {
+            "description": "The password is temporary and has to be changed before anything else (docs/adr/0033 D4)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password_change_required"
+        ],
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "display_name": {
             "type": "string"
           },
+          "global_admin": {
+            "description": "The person is a global administrator: they create tenants and hold no role\nin any of them until they grant themselves one (docs/adr/0004 D4,\ndocs/adr/0034 D2)\n",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
+          },
+          "local": {
+            "description": "The person has a local account, a password of their own (docs/adr/0033)",
+            "type": "boolean"
           },
           "memberships": {
             "items": {
               "$ref": "#/components/schemas/Membership"
             },
             "type": "array"
+          },
+          "password_change_required": {
+            "description": "The account's password is temporary: a session can do nothing but change\nit, read this answer and log out until it has (docs/adr/0033 D4)\n",
+            "type": "boolean"
           },
           "username": {
             "type": [
@@ -1390,6 +1603,9 @@
         "required": [
           "id",
           "display_name",
+          "global_admin",
+          "local",
+          "password_change_required",
           "memberships"
         ],
         "type": "object"
@@ -1442,6 +1658,27 @@
         "required": [
           "tenant",
           "role"
+        ],
+        "type": "object"
+      },
+      "PasswordChange": {
+        "additionalProperties": false,
+        "properties": {
+          "current_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "new_password": {
+            "description": "At least `COWORK_PASSWORD_MIN_LENGTH` characters, and not the current password (docs/adr/0033 D3)",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
         ],
         "type": "object"
       },
@@ -1516,11 +1753,18 @@
           "unauthenticated",
           "token_expired",
           "token_revoked",
+          "invalid_credentials",
           "forbidden",
           "insufficient_scope",
           "agent_forbidden",
+          "session_required",
+          "password_change_required",
+          "not_initialised",
+          "csrf",
           "not_found",
           "method_not_allowed",
+          "username_taken",
+          "tenant_slug_taken",
           "project_key_taken",
           "project_archived",
           "state_conflict",
@@ -1535,6 +1779,7 @@
           "unsupported_media_type",
           "idempotency_mismatch",
           "precondition_required",
+          "too_many_attempts",
           "internal",
           "not_ready",
           "timeout",
@@ -1940,6 +2185,26 @@
           "members_create_projects",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TenantCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "slug": {
+            "description": "The tenant's public identifier, immutable and never reused (docs/adr/0005 D4)",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
         ],
         "type": "object"
       },
@@ -2673,6 +2938,70 @@
         ],
         "type": "object"
       },
+      "TokenCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "default": false,
+            "description": "The agent flag; it cannot be changed afterwards (docs/adr/0036 D2)",
+            "type": "boolean"
+          },
+          "capabilities": {
+            "description": "Only with `agent`; omitted, an agent token gets every capability, and an empty list gives it none, the baseline only (docs/adr/0043 D4)",
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "lifetime_days": {
+            "description": "Days until the token expires; by default `COWORK_TOKEN_DEFAULT_LIFETIME`,\nshortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)\n",
+            "maximum": 3650,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "description": "The key of the project of that tenant the token is restricted to; needs `tenant`",
+            "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "tenant": {
+            "description": "The slug of the tenant the token is restricted to",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "TokenCreated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Token"
+          },
+          {
+            "properties": {
+              "token": {
+                "description": "The plaintext, `cwk_` and 43 base62 characters, shown once: cowork\nkeeps its SHA-256 only (docs/adr/0035 D1). An answer replayed for an\n`Idempotency-Key` leaves it out.\n",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "A token as listed, and its plaintext in the answer that created it"
+      },
       "TokenList": {
         "properties": {
           "items": {
@@ -2846,14 +3175,20 @@
     },
     "securitySchemes": {
       "bearerToken": {
-        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\n",
+        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\nA request that carries an `Authorization` header is a token's, and\nits cookie, if any, is not looked at.\n",
         "scheme": "bearer",
         "type": "http"
+      },
+      "sessionCookie": {
+        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` as `HttpOnly; Secure; SameSite=Lax; Path=/`\n(docs/adr/0031 D2). A session acts as its person with no agent flag\nand with the whole of the person's role: it has no scope of its own.\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
+        "in": "cookie",
+        "name": "__Host-cowork-session",
+        "type": "apiKey"
       }
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with a personal access\ntoken, `Authorization: Bearer cwk_…` (docs/adr/0035). A request marked as\nan agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031, `POST /auth/local`) is for the UI. Each\noperation says which it takes: most take either, a few — creating a token,\na tenant or a local account, resetting or changing a password, logging out\n— a session only. A request\nof a session that writes must come from the installation's origin and\ncarry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an\nagent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -2868,7 +3203,9 @@
               "application/json": {
                 "example": {
                   "display_name": "Developer",
+                  "global_admin": false,
                   "id": "0199a3c2-1d2e-7f00-8000-000000000001",
+                  "local": true,
                   "memberships": [
                     {
                       "role": "admin",
@@ -2878,6 +3215,7 @@
                       }
                     }
                   ],
+                  "password_change_required": false,
                   "username": "dev"
                 },
                 "schema": {
@@ -2897,9 +3235,42 @@
         ]
       }
     },
+    "/api/v1/me/password": {
+      "put": {
+        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account (docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
+        "operationId": "changeMyPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change the password of the person's local account",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/tokens": {
       "get": {
-        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Creating a token needs a browser session,\nwhich does not exist yet (docs/adr/0038 D6).\n",
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
         "operationId": "listMyTokens",
         "parameters": [
           {
@@ -2925,6 +3296,57 @@
           }
         },
         "summary": "The person's tokens, revoked and expired ones included",
+        "tags": [
+          "me"
+        ]
+      },
+      "post": {
+        "description": "Only the person themselves, in a browser session: no token creates a\ntoken (`403 session_required`) and no administrator creates one for\nanother person (docs/adr/0035 D5). The answer carries the plaintext\n`token` once; cowork stores its SHA-256 only (D1).\n\nThe lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`\n(90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer\none is shortened to the maximum, and `expires_at` in the answer says what\nthe token got (D4). An agent token has at most `write` scope\n(docs/adr/0036 D5), carries capabilities and nothing else does, and gets\nevery capability when `capabilities` is left out; an empty list is no\ncapability, the baseline only (docs/adr/0043 D4). A tenant\nrestriction needs a tenant the person belongs to, a project restriction a\nproject of it the person sees; either, if not, is `validation_failed`\nwithout saying which of the two it was.\n\nAn `Idempotency-Key` makes a retry create nothing twice, but the stored\nanswer never holds the plaintext (docs/adr/0045 D6): the repetition\nanswers the token without `token`, and the person revokes it and makes\nanother.\n",
+        "operationId": "createMyToken",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "agent": true,
+                "lifetime_days": 90,
+                "name": "Claude Code on the laptop",
+                "project": "COW",
+                "scope": "write",
+                "tenant": "acme"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            },
+            "description": "The token, with its plaintext once"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a personal access token",
         "tags": [
           "me"
         ]
@@ -2982,6 +3404,63 @@
         "summary": "This document",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/api/v1/tenants": {
+      "post": {
+        "description": "A global administrator, in a browser session: no token creates a tenant\n(`403 session_required`), and a person who is not a global administrator\nis `403 forbidden`. The creator becomes the tenant's first administrator\nby a marked grant, recorded with the tenant (docs/adr/0032 D7); a global\nadministrator has no other role in it (docs/adr/0034 D2). The slug is\nimmutable and never reused (docs/adr/0005 D4).\n",
+        "operationId": "createTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "Acme Corp",
+                "slug": "acme"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/TenantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                }
+              }
+            },
+            "description": "The tenant",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a tenant",
+        "tags": [
+          "tenants"
         ]
       }
     },
@@ -3064,6 +3543,214 @@
           "tenants"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountList"
+                }
+              }
+            },
+            "description": "A page of accounts, by person id"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The local accounts the tenant manages",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "The administrator sets a temporary password; the person changes it at the\nfirst login, before anything else (docs/adr/0033 D4). The account gets a\nmarked grant with the given role in this tenant (docs/adr/0030 D3) and\nis managed by this tenant. There is no registration and no invitation:\nthis route is the gate (D1). A username is unique in the installation,\nso `409 username_taken` also tells an administrator that another tenant\nhas the name.\n\nA browser session only: a token, an administrator's included, answers\n`403 session_required`. An account made with a leaked token would\nsurvive the token's revocation, and so would the password the\nadministrator chose.\n",
+        "operationId": "createAccount",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "display_name": "Sam Rivera",
+                "role": "member",
+                "temporary_password": "change-me-at-first-login",
+                "username": "sam"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "The account"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a local account in the tenant",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/accounts/{username}/deactivation": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "description": "The person can no longer log in, their tokens are revoked and their\nsessions end (docs/adr/0024 D5); the person and every act they made stay.\nNot for the administrator's own account (`403 forbidden`). Deactivating a\ndeactivated account changes nothing.\n",
+        "operationId": "deactivateAccount",
+        "responses": {
+          "204": {
+            "description": "Deactivated"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deactivate an account",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/accounts/{username}/lockout": {
+      "delete": {
+        "description": "Forgets the failed attempts and the lock of the username\n(docs/adr/0033 D6). Not for the administrator's own account\n(`403 forbidden`). Unlocking an account that is not locked changes\nnothing.\n",
+        "operationId": "unlockAccount",
+        "responses": {
+          "204": {
+            "description": "Unlocked"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Lift the lockout of an account",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/accounts/{username}/password": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "description": "The person must change it at the next login (docs/adr/0033 D5), and every\nsession of the account ends. Not for the administrator's own account: an\nadministrator changes theirs with `PUT /api/v1/me/password`, which asks\nfor the current one (`403 forbidden`).\n\nA browser session only, like creating an account (`403 session_required`\nfor a token): a password reset with a leaked token would be access that\nsurvives the token's revocation.\n",
+        "operationId": "resetAccountPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "temporary_password": "change-me-at-first-login"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AccountPasswordReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Reset"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Set a new temporary password",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/accounts/{username}/sessions": {
+      "delete": {
+        "description": "Immediate: the next request with such a session's cookie is\nunauthenticated (docs/adr/0031 D4). Tokens are not affected.\n",
+        "operationId": "endAccountSessions",
+        "responses": {
+          "204": {
+            "description": "Ended"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "End every session of an account",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
@@ -5634,11 +6321,122 @@
           "meta"
         ]
       }
+    },
+    "/auth/local": {
+      "post": {
+        "description": "Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;\nSameSite=Lax; Path=/`) and answers whether the password is temporary\nand must be changed before anything else (docs/adr/0033 D4). A new\nsession is made at every login, and the one the request presented is\nended (docs/adr/0031 D5).\n\nEvery failure is the same `401 invalid_credentials` in the same time —\nan unknown username, a wrong password, a locked or a deactivated\naccount — so neither the answer nor the lockout says whether an account\nexists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one\nusername within fifteen minutes lock it; more attempts from one client\naddress within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are\n`429 too_many_attempts` — the client being the TCP peer, or behind\n`COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the\nright, that is not one of them (docs/adr/0035 D2). While no\ntenant exists, only a global administrator may log in: anyone else, with\nthe right password, gets `403 not_initialised` and no session\n(docs/adr/0032 D5).\n\nThere is no session yet to carry a CSRF check, so the request must come\nfrom `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has\nto equal it, else `403 csrf` (docs/adr/0037 D5).\n",
+        "operationId": "loginLocal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "password": "correct horse battery staple",
+                "username": "ada"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/LocalLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "password_change_required": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLoginResult"
+                }
+              }
+            },
+            "description": "Logged in; the cookie is set",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetCookie"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "Log in with a local account",
+        "tags": [
+          "auth"
+        ],
+        "x-cowork-origin-check": true
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Deletes the session's row and clears the cookie (docs/adr/0031 D4). A\nwrite of a session, so the CSRF check applies: a page of another site\ncannot log a person out (docs/adr/0037 D5).\n",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Logged out; the cookie is cleared",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetCookie"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "End the session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/options": {
+      "get": {
+        "description": "The local form is offered when at least one active local account exists,\nthe identity provider's button when one is configured (docs/adr/0033 D8).\nNo identity provider exists yet, so `oidc` is always false. The minimum\npassword length is the policy every password form follows (D3).\n",
+        "operationId": "getAuthOptions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "local": true,
+                  "oidc": false,
+                  "password_min_length": 12
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AuthOptions"
+                }
+              }
+            },
+            "description": "The ways to log in"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "What the login page offers",
+        "tags": [
+          "auth"
+        ]
+      }
     }
   },
   "security": [
     {
       "bearerToken": []
+    },
+    {
+      "sessionCookie": []
     }
   ],
   "servers": [
@@ -5651,7 +6449,13 @@
       "name": "meta"
     },
     {
+      "name": "auth"
+    },
+    {
       "name": "me"
+    },
+    {
+      "name": "accounts"
     },
     {
       "name": "tenants"

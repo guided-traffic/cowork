@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted, amended 2026-10-02 (D2 until a login exists; D6, D7 added). Date: 2026-10-01.
+Accepted, amended 2026-10-02 (D2 until a login exists; D6, D7 added) and 2026-10-03 (D2: the
+Angular dev server's proxy holds the seeded token until the login of phase 3; D2, D6 and the
+consequence of the seeded token: the local login now exists in the backend). Date: 2026-10-01.
 Decided by the owner as the answer to the catalog question "local development login?": no
 development-only authentication code, over a `COWORK_DEV_LOGIN` switch and over a test-only
 build tag. The rules of D3–D5 were put to the owner with the question and not objected to.
@@ -17,7 +19,22 @@ bootstrap token from configuration.
 [`backend/test/fixture`](../../backend/test/fixture/) over the administrative connection (a test
 holds the binary free of it) and `make dev-seed`; D2's small start is `make postgres-up`,
 `make dev-seed` and `make run`, with `make minio-up` for attachments. The compose file,
-`make dev-up`, the local administrator and Dex arrive with the login.
+`make dev-up` and Dex arrive with the identity provider.
+
+**Partly built** (phase 3, 2026-10-03): the local administrator of
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+exists in the backend, so D2's small start is real: `make postgres-up`, then `make run` with
+`COWORK_LOCAL_ADMIN_USERNAME`, `COWORK_LOCAL_ADMIN_PASSWORD` and
+`COWORK_BASE_URL=http://localhost:4200` in the shell's environment, which `make run` passes on —
+neither it nor `make dev` sets them. The routes D6 said would arrive with the sessions are
+built: `POST /api/v1/tenants`, `POST /api/v1/me/tokens` and the accounts routes of a tenant. The
+fixture stays for the tests and for `make dev-seed` (D7). `make dev` keeps the dev proxy's seeded
+token until the UI has its login page, and in that setup a browser login does not act: a request
+that carries an `Authorization` header is a token's and its cookie is not looked at
+([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), so the proxy's token
+decides, and the routes that take a session only answer `403 session_required`. Not built: Dex,
+the compose file, `make dev-up`, `.env.dev` and D3's fixture identities, which are the identity
+provider's.
 
 ## Context
 
@@ -42,7 +59,16 @@ creates the first tenant. The full one: `make dev-up` starts PostgreSQL 18, MinI
 and the minimal Dex from one `compose.yaml` at the repository root, and `make run` reads
 `.env.dev`. *(Amended 2026-10-02: until the login of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 exists, the small start is `make postgres-up`, `make dev-seed` (D7) and `make run`, and the
-seeded token is the credential.)*
+seeded token is the credential.)* *(Amended 2026-10-03: `make dev` runs the whole stack —
+PostgreSQL, MinIO, the backend, demo data, the Angular dev server with live reload on
+`https://localhost:4200` — and the browser logs in through the real login as the local
+administrator `dev` with the development-only password `dev-only-cowork` (D4), which the start of
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+attaches to the seeded person `dev`. The dev server holds no credential
+([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)); a seeded token feeds only the demo data,
+straight to the backend. HTTPS, because Safari stores no `Secure` cookie from `http://localhost`
+([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D2). Until the login existed, the
+dev server's proxy presented a seeded token for a few hours of 2026-10-03; it is gone.)*
 
 **D3 — The fixture identities live in the Dex configuration and are documented.** Static
 users with passwords and groups that together cover the test matrix of the earlier records:
@@ -62,7 +88,13 @@ to `127.0.0.1` and is for development only.
 configuration files, so what a developer logs in with is what CI logs in with.
 
 **D6 — Until a login exists, persons, tenants, memberships and tokens come from a test-only
-fixture over the administrative connection.** *(Added 2026-10-02.)* No route creates a
+fixture over the administrative connection.** *(Added 2026-10-02. Amended 2026-10-03: the local
+login exists, so the routes this rule waited for are built — `POST /api/v1/tenants`,
+`POST /api/v1/me/tokens` and the accounts routes — and the fixture stays for the tests, which
+need persons the routes cannot make, such as a global administrator or a person without an
+account, and for `make dev-seed`. The sentence below that no installation can create a person,
+a tenant or a token except by writing to its database holds for the releases before this
+one.)* No route creates a
 person, a tenant or a token before the login does: [ADR 0035](0035-personal-access-tokens.md)
 D5 (a token is created by its person in a session) and
 [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D5 (a tenant
@@ -94,7 +126,10 @@ an installation step; the README's fast start shows it as such.
 - *(Added 2026-10-02.)* Until the login exists, Claude works with a seeded token in
   development and in the tests only; an installation of such a release has no way to issue
   a token through cowork. The UI cannot log in with a token either, because the browser
-  never holds one (ADR 0035 D7), so the UI needs the login first.
+  never holds one (ADR 0035 D7), so the UI needs the login first. *(Amended 2026-10-03: a
+  person creates a token through `POST /api/v1/me/tokens` with a session cookie from
+  `/auth/local`, which is how Claude's token comes to exist on an installation; the UI has no
+  page for it yet.)*
 
 ## Alternatives Considered
 

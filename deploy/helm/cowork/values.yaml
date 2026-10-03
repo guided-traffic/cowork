@@ -42,13 +42,64 @@ database:
     url: ""
 
 # The server key, COWORK_SESSION_KEY: standard base64 of at least 32 bytes
-# (`openssl rand -base64 32`). It signs the list cursors; rotating it
-# invalidates the cursors clients hold (docs/adr/0048). Only a Secret
-# reference is accepted (docs/adr/0058 D3); the chart fails without one.
+# (`openssl rand -base64 32`). It signs the list cursors and keys the hash of a
+# login's source address; rotating it invalidates the cursors clients hold
+# (docs/adr/0048). Only a Secret reference is accepted (docs/adr/0058 D3); the
+# chart fails without one. The browser sessions are rows in the database, not
+# signed by this key: a new key logs nobody out.
 session:
   existingSecret: ""
   keys:
     key: sessionKey
+  # COWORK_SESSION_LIFETIME: the absolute lifetime of a browser session, a Go
+  # duration (docs/adr/0031 D3).
+  lifetime: 12h
+  # COWORK_SESSION_IDLE: how long a session may lie unused; a request within
+  # it extends the session up to the lifetime.
+  idle: 2h
+
+# The local administrator (docs/adr/0032 D1): a global administrator account
+# kept in step with this Secret at every start — created, re-hashed with its
+# sessions ended when the password changed, deactivated when both values are
+# empty. Preferred: an existing Secret, the key names yours to choose
+# (docs/adr/0058 D3). username and password are for throw-away installations:
+# plain text in the release Secret and in every `helm get values`, like
+# database.url. A cookie login needs backend.config.baseURL, the origin the
+# browser sees; rendering fails without it.
+localAdmin:
+  existingSecret: ""
+  keys:
+    username: username
+    password: password
+  username: ""
+  password: ""
+
+# The bootstrap tenant (docs/adr/0032 D6): created at start while no tenant
+# exists, with the local administrator as its first administrator; once a
+# tenant exists these values do nothing. Both, and localAdmin, or neither.
+bootstrap:
+  tenant:
+    slug: ""
+    name: ""
+
+# Local accounts (docs/adr/0033): administrators create them, nobody registers.
+auth:
+  local:
+    # COWORK_PASSWORD_MIN_LENGTH: length only, no character classes; the floor
+    # is 8, and below it the backend refuses to start (D3).
+    passwordMinLength: 12
+    # COWORK_LOGIN_LOCKOUT: window — five failures of a username within fifteen
+    # minutes lock it until the window passes; admin — until an administrator
+    # unlocks it (D6).
+    lockout: window
+    # COWORK_LOGIN_MAX_FAILURES: failures within the window that lock a
+    # username; 0 never locks (docs/adr/0039 D6).
+    maxFailures: 5
+    # COWORK_LOGIN_ADDRESS_LIMIT: login attempts per client address (an IPv6
+    # client by its /64) and minute before 429; 0 switches the throttle off. Without
+    # backend.config.trustedProxies the client is the frontend pod, so this is
+    # a limit for the whole installation (docs/security/local-accounts.md).
+    addressLimit: 20
 
 # S3-compatible object storage for the attachments (docs/adr/0016,
 # docs/adr/0058 D3). Without an endpoint the backend refuses uploads.
@@ -71,6 +122,16 @@ storage:
     caConfigMap: ""
     keys:
       ca: ca.crt
+
+# Which pods may reach the backend (docs/adr/0001 D3, docs/adr/0035 D2). With
+# the policy on, only the frontend pods of this release do, on the backend's
+# port: the backend trusts X-Forwarded-For from the networks of
+# backend.config.trustedProxies, and a pod that is no proxy of ours must not
+# be able to write that header itself. The kubelet's probes are not affected.
+# Only a network plugin that implements NetworkPolicy enforces it; without one
+# the object does nothing.
+networkPolicy:
+  enabled: true
 
 ingress:
   enabled: false
@@ -113,9 +174,21 @@ backend:
     # COWORK_SHUTDOWN_TIMEOUT: graceful shutdown bound after SIGTERM; keep it
     # below terminationGracePeriodSeconds.
     shutdownTimeout: 15s
-    # COWORK_BASE_URL: the public URL of the UI, e.g. https://cowork.example.com.
-    # Empty until a feature needs it.
+    # COWORK_BASE_URL: the public URL of the UI, e.g. https://cowork.example.com
+    # — an origin: scheme, host, optional port, no path. The CSRF check compares
+    # the Origin of every write of a session with it (docs/adr/0037 D1), so it
+    # is the URL the browser shows; required with localAdmin.
     baseURL: ""
+    # COWORK_TRUSTED_PROXIES: the networks of the proxies in front of the
+    # backend, comma-separated CIDRs (IPv4 and IPv6), set only when non-empty.
+    # The login throttle counts the client address, found by walking
+    # X-Forwarded-For from the right through these networks (docs/adr/0035 D2).
+    # Empty: the TCP peer is the client, which behind the frontend is the
+    # frontend pod — one address for every browser. Name the proxies and no
+    # more, e.g. "10.244.0.0/16" for a pod network that holds the frontend and
+    # the Ingress controller: a client inside a trusted network chooses its
+    # own address (docs/operations/installation.md).
+    trustedProxies: ""
     # The limits of docs/adr/0039 D2; 0 disables each. nginx is sized from
     # them with headroom (docs/adr/0039 D3).
     # COWORK_MAX_JSON_BODY, in bytes.

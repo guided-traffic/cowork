@@ -8,7 +8,7 @@ over hand-written `pgx`, over an ORM, and over a query builder for the list endp
 rules of D6–D8 were put to the owner with the question and not objected to.
 
 Amended 2026-10-02 (D2, D3: the wrappers' shape as built; D5: a transaction-level lock; D7:
-`sqlc compile` and the visibility lint). The first implementation found that a session-level
+`sqlc compile` and the visibility lint) and 2026-10-03 (D3: the writes that are no acts). The first implementation found that a session-level
 advisory lock outlives the job on an idle pooled connection, that `sqlc vet` needs a database
 the lint job does not have, and that the mutation wrapper is also where idempotency and the
 event publication belong.
@@ -59,6 +59,13 @@ into a separate `Reader` type with no mutating methods; a handler that only read
 a `Writer`. *(Added 2026-10-02:)* the same wrapper replays a stored response and stores the new
 one for a keyed request ([ADR 0045](0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)
 D4) and publishes each act of a ticket with `NOTIFY` ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D4).
+*(Added 2026-10-03:)* three writes are bookkeeping, not acts of a person, and have store methods
+of their own outside `Mutate`: a token's last-used day (`TouchTokenLastUsed`, at most one write
+per token and day), a session's idle clock (`TouchSession`, at most one a minute) and the login's
+attempt count (`RecordLoginAttempt`, which still writes the audit rows of a failure, a lock or a
+refusal, as `system:login`, through the same `Writer`, and commits without an act when it has
+none to record). Each opens its own transaction with the settings its policies read, so none
+writes past row-level security.
 
 **D4 — Dynamic list filters are the one place sqlc is not enough, and they get a small,
 typed builder of their own,** used only by the list endpoints, producing SQL that runs inside

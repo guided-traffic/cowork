@@ -1,3 +1,78 @@
 import { Routes } from '@angular/router';
+import { devRoutes } from './dev/dev.routes';
+import { Shell } from './layout/shell';
+import { TenantScope } from './layout/tenant-scope';
 
-export const routes: Routes = [];
+/** The UI mirrors the API (docs/adr/0023 D4); the login page stands outside the shell. */
+export const routes: Routes = [
+  {
+    path: 'login',
+    loadComponent: () => import('./features/auth/login').then((m) => m.Login),
+  },
+  {
+    path: 'password',
+    loadComponent: () => import('./features/auth/change-password').then((m) => m.ChangePassword),
+  },
+  {
+    path: '',
+    component: Shell,
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () => import('./features/home/home').then((m) => m.Home),
+      },
+      {
+        path: 'me/tokens',
+        loadComponent: () => import('./features/me/tokens').then((m) => m.Tokens),
+      },
+      {
+        path: 't/:tenant',
+        component: TenantScope,
+        children: [
+          {
+            path: '',
+            pathMatch: 'full',
+            loadComponent: () => import('./features/tenant/overview').then((m) => m.TenantOverview),
+          },
+          {
+            path: 'p/:project/backlog',
+            loadComponent: () => import('./features/project/backlog').then((m) => m.Backlog),
+          },
+          {
+            path: 'p/:project/settings',
+            loadComponent: () =>
+              import('./features/project/project-settings').then((m) => m.ProjectSettings),
+          },
+          {
+            path: 'settings',
+            loadComponent: () =>
+              import('./features/tenant/tenant-settings').then((m) => m.TenantSettings),
+          },
+          {
+            path: 'tickets/:key',
+            loadComponent: () =>
+              import('./features/ticket/ticket-detail').then((m) => m.TicketDetail),
+          },
+          {
+            path: 'members',
+            loadComponent: () => import('./features/tenant/members').then((m) => m.Members),
+          },
+          {
+            path: 'accounts',
+            loadComponent: () => import('./features/tenant/accounts').then((m) => m.Accounts),
+          },
+          {
+            path: 'time',
+            loadComponent: () => import('./features/time/time-report').then((m) => m.TimeReport),
+          },
+        ],
+      },
+      ...devRoutes,
+      {
+        path: '**',
+        loadComponent: () => import('./features/home/not-found').then((m) => m.NotFound),
+      },
+    ],
+  },
+];

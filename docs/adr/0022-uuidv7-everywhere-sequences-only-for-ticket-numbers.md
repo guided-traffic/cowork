@@ -3,7 +3,7 @@
 ## Status
 
 Accepted, amended 2026-10-02 (D1: two tables whose ids the application makes; D4: questions
-are addressed by their number). Date: 2026-09-30. Decided by the owner as the answer to the
+are addressed by their number) and 2026-10-03 (D1: three more). Date: 2026-09-30. Decided by the owner as the answer to the
 catalog question "identifiers?": database-generated UUIDv7 for every entity, over bigint
 sequences with an external UUID and over UUIDv4.
 
@@ -16,7 +16,7 @@ stable number per ticket ([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first
 D4) that reads better in an address than its id.
 
 **Built** (phase 2, 2026-10-02): every table's primary key is `uuid DEFAULT uuidv7()` except
-the two of D1's amendment; the ticket number is the `ticket_counters` row of D2; every foreign
+the two of D1's amendment and the three of its amendment of 2026-10-03; the ticket number is the `ticket_counters` row of D2; every foreign
 key references a UUID; lists ordered by time order by id.
 
 ## Context
@@ -37,7 +37,9 @@ counts and need a second identifier at the API edge.
 insert; the row's id is what the insert returns. *(Amended 2026-10-02: two exceptions, both
 UUIDv7 made by the application with the same time order — an audit row, whose insert cannot
 return what its read policy hides, and an attachment, whose object key is needed before the
-row and the bytes are written.)*
+row and the bytes are written. Amended 2026-10-03: three more, for the same reason as the audit
+row — a person, a tenant and a membership, whose `INSERT … RETURNING` would have to pass the
+table's read policy, which the person who is creating the row does not yet pass.)*
 
 **D2 — The only sequence is the ticket number per project** (ADR 0007 D4), implemented as a
 counter row per project updated in the ticket's insert transaction, never a PostgreSQL

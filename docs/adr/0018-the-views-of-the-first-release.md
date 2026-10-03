@@ -11,7 +11,12 @@ recommendation was the minimum plus saved filters without the swimlane board and
 dashboards. The dashboard's fixed tile set (D6) and the board's drag rules (D4) are this
 record's proposal for implementing the choice.
 
-**Not built.** The frontend is a shell with a version footer.
+**Partly built** (phase 3, 2026-10-03): D1's backlog as a table in number order with filing
+(rank and its drag arrive with rank); D2's detail page with its fields to edit, the progress
+slider, the moves, questions with the answer form, links, interest, comments, activity,
+attachments and time (the body as text until it is rendered; the prerequisite tree missing);
+the time report; and as the tenant's front page, until D6's dashboard, each project's open
+tickets by state with the tickets updated last.
 
 ## Context
 

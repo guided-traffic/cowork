@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
-"metrics?": Prometheus on a separate port with `client_golang`, together with the
+Accepted, amended 2026-10-03 (D2: the chart's backend NetworkPolicy). Date: 2026-10-01. Decided
+by the owner as the answer to the catalog question "metrics?": Prometheus on a separate port with `client_golang`, together with the
 kube-prometheus custom resources (`ServiceMonitor`/`PodMonitor`, `PrometheusRule`) rendered
 by the chart, over metrics on the main port behind authentication, over OpenTelemetry push,
 and over OpenTelemetry instruments with a Prometheus exporter. The rules of D5–D8 were put to
@@ -34,7 +34,12 @@ probes stay on `:8080`.
 **D2 — The chart exposes the port on the pod, not on the Service.** `metrics.enabled`
 (default `true`) adds the container port `metrics`; the backend Service does not list it. The
 operations page names the NetworkPolicy an installation should add: port 8081 reachable from
-the monitoring namespace only.
+the monitoring namespace only. *(Amended 2026-10-03: the chart now renders a NetworkPolicy of its
+own for the backend pods, which admits the frontend's pods on the API port and nothing else
+([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3). Policies add up, so the rule for port 8081 is a policy beside it — and with the chart's in
+place it is needed, not only advisable: a scrape of the metrics port is refused where policies
+are enforced until the monitoring namespace is admitted.)*
 
 **D3 — The chart renders the kube-prometheus resources, each behind a switch, default off:**
 

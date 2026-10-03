@@ -14,11 +14,13 @@ import (
 const getIdempotencyKey = `-- name: GetIdempotencyKey :one
 SELECT fingerprint, response_status, response_headers, response_body
 FROM idempotency_keys
-WHERE token_id = $1 AND key = $2 AND expires_at > now()
+WHERE user_id = $1 AND token_id IS NOT DISTINCT FROM $2::uuid
+  AND key = $3 AND expires_at > now()
 `
 
 type GetIdempotencyKeyParams struct {
-	TokenID uuid.UUID
+	UserID  uuid.UUID
+	TokenID *uuid.UUID
 	Key     uuid.UUID
 }
 
@@ -29,8 +31,10 @@ type GetIdempotencyKeyRow struct {
 	ResponseBody    []byte
 }
 
+// A key is scoped to its caller: the token that sent it, or — for a browser
+// session, which has no token — the person (docs/adr/0045 D3).
 func (q *Queries) GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (GetIdempotencyKeyRow, error) {
-	row := q.db.QueryRow(ctx, getIdempotencyKey, arg.TokenID, arg.Key)
+	row := q.db.QueryRow(ctx, getIdempotencyKey, arg.UserID, arg.TokenID, arg.Key)
 	var i GetIdempotencyKeyRow
 	err := row.Scan(
 		&i.Fingerprint,

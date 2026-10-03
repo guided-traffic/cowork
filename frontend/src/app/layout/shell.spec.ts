@@ -1,0 +1,614 @@
+import { provideLocationMocks } from '@angular/common/testing';
+import { Component, computed, signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { provideRouter, Router } from '@angular/router';
+import { MenuItem, MessageService } from 'primeng/api';
+import { Menu } from 'primeng/menu';
+import { Select } from 'primeng/select';
+import { Observable, of, throwError } from 'rxjs';
+import type { MockInstance } from 'vitest';
+import { Me, Membership, Project } from '../api/models';
+import { AuthService } from '../core/auth.service';
+import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
+import { EventStreamService, StreamStatus } from '../core/event-stream.service';
+import { ProjectsService } from '../core/projects.service';
+import { SessionService } from '../core/session.service';
+import { TenantService } from '../core/tenant.service';
+import { VersionInfo, VersionService } from '../core/version.service';
+import { NewProjectDialog } from '../features/project/new-project-dialog';
+import { ThemePreference, ThemeService } from '../theme/theme.service';
+import { initials, Shell } from './shell';
+
+const acme: Membership = { role: 'admin', tenant: { name: 'Acme Corp', slug: 'acme' } };
+const globex: Membership = { role: 'member', tenant: { name: 'Globex', slug: 'globex' } };
+const ada: Me = {
+  id: 'p1',
+  display_name: 'Ada Lovelace',
+  username: 'local:ada',
+  memberships: [acme],
+  global_admin: false,
+  local: true,
+  password_change_required: false,
+};
+const backend: VersionInfo = {
+  version: '1.0.0',
+  commit: 'abc',
+  build_time: '2026-10-03T09:00:00Z',
+};
+
+function project(key: string, name: string): Project {
+  return {
+    id: `id-${key}`,
+    key,
+    name,
+    description: '',
+    restricted: false,
+    wip_limits: {},
+    version: 1,
+    created_at: '2026-10-01T09:00:00Z',
+    updated_at: '2026-10-01T09:00:00Z',
+  };
+}
+
+@Component({ template: '<p data-testid="page">a routed page</p>' })
+class Page {}
+
+describe('Shell', () => {
+  let memberships: WritableSignal<Membership[]>;
+  let tenant: WritableSignal<string | null>;
+  let person: WritableSignal<Me | undefined>;
+  let projects: {
+    list: WritableSignal<Project[]>;
+    projects: { isLoading: WritableSignal<boolean> };
+  };
+  let status: WritableSignal<StreamStatus>;
+  let canCreateProjects: WritableSignal<boolean>;
+  let isAdmin: WritableSignal<boolean>;
+  let logout: MockInstance<AuthService['logout']>;
+  let preference: WritableSignal<ThemePreference>;
+  let cycle: MockInstance<() => void>;
+  let version: MockInstance<() => Observable<VersionInfo>>;
+  let navigate: MockInstance<Router['navigate']>;
+  let hardNavigate: MockInstance<HardNavigation>;
+
+  beforeEach(() => {
+    memberships = signal<Membership[]>([acme]);
+    tenant = signal<string | null>('acme');
+    person = signal<Me | undefined>(ada);
+    projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
+    status = signal<StreamStatus>('idle');
+    canCreateProjects = signal(false);
+    isAdmin = signal(false);
+    logout = vi.fn<AuthService['logout']>().mockResolvedValue(undefined);
+    preference = signal<ThemePreference>('system');
+    cycle = vi.fn<() => void>();
+    version = vi.fn<() => Observable<VersionInfo>>(() => of(backend));
+    hardNavigate = vi.fn<HardNavigation>();
+  });
+
+  function configure() {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([{ path: '**', component: Page }]),
+        provideLocationMocks(),
+        MessageService,
+        {
+          provide: SessionService,
+          useValue: {
+            person,
+            memberships,
+            tenant,
+            membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
+          },
+        },
+        { provide: ProjectsService, useValue: projects },
+        { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
+        { provide: AuthService, useValue: { logout } },
+        { provide: HARD_NAVIGATION, useValue: hardNavigate },
+        { provide: EventStreamService, useValue: { status } },
+        { provide: ThemeService, useValue: { preference, cycle } },
+        { provide: VersionService, useValue: { get: version } },
+      ],
+    });
+    navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+  }
+
+  async function render(): Promise<{ fixture: ComponentFixture<Shell>; page: HTMLElement }> {
+    configure();
+    const fixture = TestBed.createComponent(Shell);
+    await fixture.whenStable();
+    return { fixture, page: fixture.nativeElement as HTMLElement };
+  }
+
+  const text = (page: HTMLElement, testId: string) =>
+    page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
+
+  describe("the person's own menu", () => {
+    const items = (fixture: ComponentFixture<Shell>): MenuItem[] =>
+      (fixture.debugElement.query(By.directive(Menu)).componentInstance as Menu).model() ?? [];
+    const labels = (fixture: ComponentFixture<Shell>) =>
+      items(fixture)
+        .filter((item) => !item.separator)
+        .map((item) => item.label);
+    const item = (fixture: ComponentFixture<Shell>, label: string) =>
+      items(fixture).find((entry) => entry.label === label) as MenuItem;
+
+    it('names the person and offers their tokens, their password and the way out', async () => {
+      const { fixture, page } = await render();
+
+      expect(labels(fixture)).toEqual([
+        'Ada Lovelace',
+        'Your tokens',
+        'Change password',
+        'Sign out',
+      ]);
+      expect(item(fixture, 'Ada Lovelace').disabled).toBe(true);
+      expect(item(fixture, 'Your tokens').routerLink).toBe('/me/tokens');
+      expect(item(fixture, 'Change password').routerLink).toBe('/password');
+      expect(text(page, 'me')).toBe('AL');
+    });
+
+    it('offers no password to a person whose login is not a local account', async () => {
+      person.set({ ...ada, local: false });
+
+      const { fixture } = await render();
+
+      expect(labels(fixture)).toEqual(['Ada Lovelace', 'Your tokens', 'Sign out']);
+    });
+
+    it('signs out and loads the login page as a new document, which empties what the application holds', async () => {
+      const { fixture } = await render();
+
+      item(fixture, 'Sign out').command?.({});
+      await fixture.whenStable();
+
+      expect(logout).toHaveBeenCalledTimes(1);
+      expect(hardNavigate).toHaveBeenCalledExactlyOnceWith('/login');
+      expect(navigate).not.toHaveBeenCalledWith(['/login']);
+    });
+
+    it('loads the login page only after the backend has ended the session', async () => {
+      let finish: () => void = () => undefined;
+      logout.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+      const { fixture } = await render();
+
+      item(fixture, 'Sign out').command?.({});
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(hardNavigate).not.toHaveBeenCalled();
+      finish();
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(hardNavigate).toHaveBeenCalledExactlyOnceWith('/login');
+    });
+
+    it('stays and says so when the sign-out fails', async () => {
+      logout.mockRejectedValueOnce(new Error('the backend is away'));
+      const { fixture } = await render();
+      const toasts = vi.spyOn(TestBed.inject(MessageService), 'add');
+
+      item(fixture, 'Sign out').command?.({});
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(toasts).toHaveBeenCalledTimes(1);
+      expect(hardNavigate).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalledWith(['/login']);
+    });
+  });
+
+  describe('a temporary password', () => {
+    it('sends the person to the password page first, and back to where they were going', async () => {
+      person.set({ ...ada, password_change_required: true });
+
+      await render();
+
+      expect(navigate).toHaveBeenCalledWith(['/password'], { queryParams: { return: '/' } });
+    });
+
+    it('lets a person with a password of their own stay where they are', async () => {
+      await render();
+
+      expect(navigate).not.toHaveBeenCalledWith(['/password'], expect.anything());
+    });
+  });
+
+  it('links the brand to the start page', async () => {
+    const { page } = await render();
+
+    const brand = page.querySelector('a.brand');
+    expect(brand?.getAttribute('href')).toBe('/');
+    expect(brand?.getAttribute('aria-label')).toBe('cowork, home');
+    expect(brand?.querySelector('app-wordmark')).not.toBeNull();
+  });
+
+  it('shows the routed page in the content area', async () => {
+    const { fixture, page } = await render();
+
+    await TestBed.inject(Router).navigateByUrl('/somewhere');
+    await fixture.whenStable();
+
+    expect(page.querySelector('main.content [data-testid="page"]')?.textContent).toBe(
+      'a routed page',
+    );
+  });
+
+  it('hosts the toasts that services add through the message service', async () => {
+    const { fixture, page } = await render();
+    expect(page.querySelector('p-toast')).not.toBeNull();
+
+    TestBed.inject(MessageService).add({
+      severity: 'warn',
+      summary: 'Ticket not found',
+      detail: 'COW-9',
+    });
+    await fixture.whenStable();
+
+    expect(page.querySelector('p-toast')?.textContent).toContain('Ticket not found');
+  });
+
+  describe('the tenant in the top bar', () => {
+    it('shows the name of the only tenant and no switch', async () => {
+      const { page } = await render();
+
+      expect(text(page, 'tenant-name')).toBe('Acme Corp');
+      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
+    });
+
+    it('shows neither the name nor a switch on a page that belongs to no tenant', async () => {
+      tenant.set(null);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
+      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
+    });
+
+    it('offers a switch over the tenants of the person when there are several', async () => {
+      memberships.set([acme, globex]);
+
+      const { fixture, page } = await render();
+
+      expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
+      const select = fixture.debugElement.query(By.directive(Select));
+      expect((select.componentInstance as Select).options()).toEqual([acme.tenant, globex.tenant]);
+      expect(select.nativeElement).toBe(page.querySelector('[data-testid="tenant-switch"]'));
+      expect(select.nativeElement.querySelector('.p-select-label').textContent.trim()).toBe(
+        'Acme Corp',
+      );
+    });
+
+    it('asks to choose a tenant while the page belongs to none', async () => {
+      memberships.set([acme, globex]);
+      tenant.set(null);
+
+      const { page } = await render();
+
+      expect(
+        page.querySelector('[data-testid="tenant-switch"] .p-select-label')?.textContent?.trim(),
+      ).toBe('Choose a tenant');
+    });
+
+    it('goes to the tenant that is chosen in the switch', async () => {
+      memberships.set([acme, globex]);
+      const { fixture } = await render();
+
+      fixture.debugElement
+        .query(By.directive(Select))
+        .triggerEventHandler('ngModelChange', 'globex');
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'globex']);
+    });
+
+    it('follows the tenant of the page', async () => {
+      memberships.set([acme, globex]);
+      const { fixture, page } = await render();
+
+      tenant.set('globex');
+      await fixture.whenStable();
+
+      expect(
+        page.querySelector('[data-testid="tenant-switch"] .p-select-label')?.textContent?.trim(),
+      ).toBe('Globex');
+    });
+  });
+
+  describe('the live indicator', () => {
+    it('shows nothing outside a tenant', async () => {
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="live-indicator"]')).toBeNull();
+    });
+
+    it('is handed the status of the event stream', async () => {
+      status.set('connecting');
+      const { fixture, page } = await render();
+      const state = () =>
+        page.querySelector('[data-testid="live-indicator"]')?.getAttribute('data-status');
+      expect(state()).toBe('connecting');
+
+      status.set('live');
+      await fixture.whenStable();
+      expect(state()).toBe('live');
+
+      status.set('polling');
+      await fixture.whenStable();
+      expect(state()).toBe('polling');
+    });
+  });
+
+  describe('the theme button', () => {
+    it.each([
+      ['system', 'Theme: follows the system', 'pi-desktop'],
+      ['light', 'Theme: light', 'pi-sun'],
+      ['dark', 'Theme: dark', 'pi-moon'],
+    ] as const)('is labelled for the %s preference', async (value, label, icon) => {
+      preference.set(value);
+
+      const { page } = await render();
+
+      const button = page.querySelector('[data-testid="theme-toggle"]');
+      expect(button?.tagName).toBe('BUTTON');
+      expect(button?.getAttribute('aria-label')).toBe(label);
+      expect(button?.querySelector('i')?.classList).toContain(icon);
+    });
+
+    it('changes its label when the preference changes', async () => {
+      const { fixture, page } = await render();
+
+      preference.set('dark');
+      await fixture.whenStable();
+
+      const button = page.querySelector('[data-testid="theme-toggle"]');
+      expect(button?.getAttribute('aria-label')).toBe('Theme: dark');
+      expect(button?.querySelector('i')?.classList).toContain('pi-moon');
+    });
+
+    it('cycles the theme when it is clicked', async () => {
+      const { page } = await render();
+      expect(cycle).not.toHaveBeenCalled();
+
+      page.querySelector<HTMLButtonElement>('[data-testid="theme-toggle"]')?.click();
+
+      expect(cycle).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('the person', () => {
+    it('shows the initials of the person in the avatar', async () => {
+      const { page } = await render();
+
+      expect(text(page, 'me')).toBe('AL');
+    });
+
+    it('shows no avatar before the person is known', async () => {
+      person.set(undefined);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="me"]')).toBeNull();
+    });
+  });
+
+  describe('the version in the footer', () => {
+    it('shows the version and the commit of the backend', async () => {
+      const { page } = await render();
+
+      expect(version).toHaveBeenCalledOnce();
+      expect(text(page, 'version')).toBe('1.0.0 (abc)');
+    });
+
+    it('says the backend is unreachable when its version cannot be read', async () => {
+      version.mockReturnValue(throwError(() => new Error('connection refused')));
+
+      const { page } = await render();
+
+      expect(text(page, 'version')).toBe('backend unreachable');
+    });
+  });
+
+  describe('the navigation', () => {
+    it('links the overview, the members, the time and the settings of the tenant', async () => {
+      const { page } = await render();
+
+      const links = ['nav-overview', 'nav-members', 'nav-time', 'nav-settings'].map((testId) => [
+        page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
+        page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
+      ]);
+      expect(links).toEqual([
+        ['/t/acme', 'Overview'],
+        ['/t/acme/members', 'Members'],
+        ['/t/acme/time', 'Time'],
+        ['/t/acme/settings', 'Settings'],
+      ]);
+    });
+
+    it('lists the projects of the tenant, each linked to its backlog', async () => {
+      projects.list.set([project('COW', 'Cowork'), project('OPS', 'Operations')]);
+
+      const { page } = await render();
+
+      const cow = page.querySelector('[data-testid="nav-project-COW"]');
+      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(cow?.querySelector('.key')?.textContent).toBe('COW');
+      expect(cow?.querySelector('.name')?.textContent).toBe('Cowork');
+      expect(page.querySelector('[data-testid="nav-project-OPS"]')?.getAttribute('href')).toBe(
+        '/t/acme/p/OPS/backlog',
+      );
+      expect(page.querySelector('.empty')).toBeNull();
+    });
+
+    it('says there are no projects yet when the tenant has none', async () => {
+      const { page } = await render();
+
+      expect(page.querySelector('.item.empty')?.textContent).toBe('No projects yet');
+    });
+
+    it('does not say there are no projects while they still load', async () => {
+      projects.projects.isLoading.set(true);
+
+      const { page } = await render();
+
+      expect(page.querySelector('.item.empty')).toBeNull();
+    });
+
+    it('offers the accounts page to an administrator of the tenant only', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      expect(page.querySelector('[data-testid="nav-accounts"]')?.getAttribute('href')).toBe(
+        '/t/acme/accounts',
+      );
+    });
+
+    it('has no tenant navigation on a page that belongs to no tenant', async () => {
+      tenant.set(null);
+      canCreateProjects.set(true);
+      isAdmin.set(true);
+      projects.list.set([project('COW', 'Cowork')]);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="nav-overview"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-members"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-project-COW"]')).toBeNull();
+    });
+
+    it('links the design preview in a development build', async () => {
+      const { page } = await render();
+
+      const link = page.querySelector('[data-testid="nav-design"]');
+      expect(link?.getAttribute('href')).toBe('/dev/design');
+      expect(link?.textContent).toContain('Design preview');
+    });
+
+    it('marks only the link of the page that is open as active', async () => {
+      projects.list.set([project('COW', 'Cowork')]);
+      const { fixture, page } = await render();
+      const active = () =>
+        [...page.querySelectorAll('a.item.active')].map((link) => link.getAttribute('data-testid'));
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-overview']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/members');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-members']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/time');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-time']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/settings');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-settings']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/backlog');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-project-COW']);
+    });
+  });
+});
+
+describe('Shell, creating a project', () => {
+  let canCreateProjects: WritableSignal<boolean>;
+
+  beforeEach(() => {
+    canCreateProjects = signal(false);
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([{ path: '**', component: Page }]),
+        provideLocationMocks(),
+        MessageService,
+        {
+          provide: SessionService,
+          useValue: {
+            person: signal<Me | undefined>(ada),
+            memberships: signal<Membership[]>([acme]),
+            tenant: signal<string | null>('acme'),
+            membership: signal<Membership | undefined>(acme),
+          },
+        },
+        {
+          provide: ProjectsService,
+          useValue: { list: signal<Project[]>([]), projects: { isLoading: signal(false) } },
+        },
+        { provide: TenantService, useValue: { canCreateProjects, isAdmin: signal(false) } },
+        { provide: EventStreamService, useValue: { status: signal<StreamStatus>('idle') } },
+        {
+          provide: ThemeService,
+          useValue: { preference: signal<ThemePreference>('system'), cycle: vi.fn() },
+        },
+        { provide: VersionService, useValue: { get: () => of(backend) } },
+      ],
+    });
+  });
+
+  async function render() {
+    const fixture = TestBed.createComponent(Shell);
+    await fixture.whenStable();
+    return { fixture, page: fixture.nativeElement as HTMLElement };
+  }
+
+  const plus = (page: HTMLElement) =>
+    page.querySelector<HTMLButtonElement>('[data-testid="nav-new-project"]');
+
+  it('offers a plus next to the projects only to a person who may create one', async () => {
+    const { fixture, page } = await render();
+    expect(plus(page)).toBeNull();
+
+    canCreateProjects.set(true);
+    await fixture.whenStable();
+
+    expect(plus(page)?.getAttribute('aria-label')).toBe('New project');
+    expect(plus(page)?.closest('.heading')?.textContent).toContain('Projects');
+  });
+
+  it('opens the dialog for a new project from the plus', async () => {
+    canCreateProjects.set(true);
+    const { fixture, page } = await render();
+    const dialog = fixture.debugElement.query(By.directive(NewProjectDialog));
+    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(false);
+
+    plus(page)?.click();
+    await fixture.whenStable();
+
+    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(true);
+  });
+
+  it('closes the dialog when it asks to be closed', async () => {
+    canCreateProjects.set(true);
+    const { fixture, page } = await render();
+    const dialog = fixture.debugElement.query(By.directive(NewProjectDialog));
+    plus(page)?.click();
+    await fixture.whenStable();
+
+    dialog.componentInstance.visible.set(false);
+    await fixture.whenStable();
+
+    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(false);
+  });
+});
+
+describe('initials', () => {
+  it.each([
+    ['Ada Lovelace', 'AL'],
+    ['Developer', 'DE'],
+    ['', '?'],
+    ['   ', '?'],
+    ['x', 'X'],
+    ['Ada Augusta King Lovelace', 'AL'],
+    ['  grace   hopper ', 'GH'],
+  ])('turns %j into %j', (name, expected) => {
+    expect(initials(name)).toBe(expected);
+  });
+});

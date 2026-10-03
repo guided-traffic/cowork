@@ -86,6 +86,10 @@ jobs:
             BUILD_NUMBER=${{ steps.version.outputs.version }}
             GIT_COMMIT=${{ github.sha }}
             BUILD_TIME=${{ steps.time.outputs.epoch }}
+          # The PrimeUI license key of the released frontend (docs/adr/0052 D9); the backend
+          # build does not read it.
+          secrets: |
+            primeui_license=${{ secrets.PRIMEUI_LICENSE }}
           platforms: linux/amd64  # ,linux/arm64
           push: true
           tags: ${{ steps.tag_names.outputs.tags }}

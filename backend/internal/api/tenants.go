@@ -375,3 +375,77 @@ func uuidString(id *uuid.UUID) string {
 	}
 	return id.String()
 }
+
+// CreateTenant creates a tenant and makes the global administrator who asks its
+// first administrator, by a marked grant, in the same transaction and recorded
+// with it (docs/adr/0005 D5, docs/adr/0032 D7): a tenant without an
+// administrator cannot come to exist. The pipeline has refused a token; the
+// person must be a global administrator, who has no other role anywhere
+// (docs/adr/0034 D2). Both acts are installation-level rows, as ADR 0026 D1
+// says of a tenant's creation.
+func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantRequestObject) (apigen.CreateTenantResponseObject, error) {
+	p := principal(ctx)
+	if !p.GlobalAdmin {
+		return nil, problem.New(problem.Forbidden, "creating a tenant needs a global administrator")
+	}
+	body := *req.Body
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		return nil, problem.Field("/name", "must not be blank")
+	}
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createTenant", p.PersonID.String(), body)
+	if perr != nil {
+		return nil, perr
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+	grantID, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+	var created readq.GetTenantRow
+	replay, err := s.db.Mutate(ctx, uuid.Nil, func(w *store.Writer) error {
+		if err := w.InsertTenant(ctx, writeq.InsertTenantParams{ID: id, Slug: body.Slug, Name: name}); err != nil {
+			if isUnique(err, "tenants_slug_key") {
+				return &problem.Error{Code: problem.TenantSlugTaken, Detail: "the installation has a tenant with this slug",
+					Errors: []problem.FieldError{{Pointer: "/slug", Message: messageTaken}}}
+			}
+			return err
+		}
+		if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: grantID, TenantID: id, UserID: p.PersonID, Role: domain.RoleAdmin}); err != nil {
+			return err
+		}
+		w.Record(store.Event{EntityType: entityTenant, EntityID: id, Action: actionCreated,
+			After: map[string]any{"slug": body.Slug, fieldName: name}})
+		w.Record(store.Event{EntityType: entityMembership, EntityID: grantID, Action: actionCreated,
+			After: map[string]any{"tenant": body.Slug, "user": p.PersonID, "role": domain.RoleAdmin, fieldSource: sourceGrant}})
+		var err error
+		if created, err = w.GetTenant(ctx, id); err != nil {
+			return err
+		}
+		res, err := stored(tenantView(created), map[string]string{headerETag: *etag(created.Version), headerLocation: tenantURL(created.Slug)})
+		if err != nil {
+			return err
+		}
+		w.Respond(res)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		replayedView, err := replayed[apigen.Tenant](replay)
+		if err != nil {
+			return nil, err
+		}
+		return apigen.CreateTenant201JSONResponse{Body: replayedView, Headers: apigen.CreateTenant201ResponseHeaders{
+			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
+	}
+	location := tenantURL(created.Slug)
+	return apigen.CreateTenant201JSONResponse{Body: tenantView(created), Headers: apigen.CreateTenant201ResponseHeaders{
+		ETag: etag(created.Version), Location: &location}}, nil
+}
+
+func tenantURL(slug string) string { return "/api/v1/tenants/" + slug }

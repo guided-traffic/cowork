@@ -10,9 +10,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 )
 
 // The environment variables the server reads.
@@ -43,6 +49,20 @@ const (
 
 	EnvSSEReplayWindow        = "COWORK_SSE_REPLAY_WINDOW"
 	EnvSSEMaxStreamsPerPerson = "COWORK_SSE_MAX_STREAMS_PER_PERSON"
+
+	EnvLocalAdminUsername   = "COWORK_LOCAL_ADMIN_USERNAME"
+	EnvLocalAdminPassword   = "COWORK_LOCAL_ADMIN_PASSWORD" // #nosec G101 -- the variable's name, not a credential
+	EnvBootstrapTenantSlug  = "COWORK_BOOTSTRAP_TENANT_SLUG"
+	EnvBootstrapTenantName  = "COWORK_BOOTSTRAP_TENANT_NAME"
+	EnvPasswordMinLength    = "COWORK_PASSWORD_MIN_LENGTH"
+	EnvLoginLockout         = "COWORK_LOGIN_LOCKOUT"
+	EnvLoginMaxFailures     = "COWORK_LOGIN_MAX_FAILURES"
+	EnvLoginAddressLimit    = "COWORK_LOGIN_ADDRESS_LIMIT"
+	EnvSessionLifetime      = "COWORK_SESSION_LIFETIME"
+	EnvSessionIdle          = "COWORK_SESSION_IDLE"
+	EnvTokenDefaultLifetime = "COWORK_TOKEN_DEFAULT_LIFETIME" // #nosec G101 -- the variable's name, not a credential
+	EnvTokenMaxLifetime     = "COWORK_TOKEN_MAX_LIFETIME"     // #nosec G101 -- the variable's name, not a credential
+	EnvTrustedProxies       = "COWORK_TRUSTED_PROXIES"
 )
 
 // Defaults and the accepted log formats.
@@ -65,6 +85,20 @@ const (
 	MinSessionKeyBytes = 32
 	LogFormatJSON      = "json"
 	LogFormatText      = "text"
+
+	// The login's defaults (docs/adr/0031 D3, docs/adr/0033 D3, D6,
+	// docs/adr/0035 D4).
+	DefaultSessionLifetime      = 12 * time.Hour
+	DefaultSessionIdle          = 2 * time.Hour
+	DefaultPasswordMinLength    = 12
+	DefaultLoginMaxFailures     = 5
+	DefaultLoginAddressLimit    = 20
+	DefaultTokenDefaultLifetime = 90 * 24 * time.Hour
+	DefaultTokenMaxLifetime     = 365 * 24 * time.Hour
+	// LockoutWindow and LockoutAdmin are the values of COWORK_LOGIN_LOCKOUT:
+	// a lock ends with its window, or stays until an administrator unlocks.
+	LockoutWindow = "window"
+	LockoutAdmin  = "admin"
 )
 
 // Config is the complete server configuration.
@@ -118,6 +152,44 @@ type Config struct {
 	// replica, 0 for no limit (docs/adr/0054 D5, D8).
 	SSEReplayWindow        time.Duration
 	SSEMaxStreamsPerPerson int
+
+	// BaseOrigin is BaseURL as a browser writes it into an Origin header:
+	// scheme, host and a port that is not the scheme's default
+	// (docs/adr/0037 D1). Empty when BaseURL is.
+	BaseOrigin string
+	// LocalAdminUsername and LocalAdminPassword are the one local account the
+	// configuration keeps (docs/adr/0032 D1); both set or both empty. The
+	// password is a secret, never echoed.
+	LocalAdminUsername string
+	LocalAdminPassword string
+	// BootstrapTenantSlug and BootstrapTenantName name the tenant a start
+	// creates while none exists (docs/adr/0032 D6); both or neither.
+	BootstrapTenantSlug string
+	BootstrapTenantName string
+	// PasswordMinLength is the shortest password a local account may have
+	// (docs/adr/0033 D3).
+	PasswordMinLength int
+	// LoginLockout is LockoutWindow or LockoutAdmin; LoginMaxFailures failures
+	// of one username within the lockout window lock it, 0 never; and
+	// LoginAddressLimit attempts of one address within a minute are answered
+	// 429, 0 never (docs/adr/0033 D6, docs/adr/0039 D6).
+	LoginLockout      string
+	LoginMaxFailures  int
+	LoginAddressLimit int
+	// SessionLifetime is the absolute lifetime of a browser session and
+	// SessionIdle the time it may lie unused (docs/adr/0031 D3).
+	SessionLifetime time.Duration
+	SessionIdle     time.Duration
+	// TokenDefaultLifetime and TokenMaxLifetime are the lifetime a new
+	// personal access token gets and the longest one it may be given
+	// (docs/adr/0035 D4).
+	TokenDefaultLifetime time.Duration
+	TokenMaxLifetime     time.Duration
+	// TrustedProxies are the networks of the proxies in front of the backend
+	// (docs/adr/0035 D2): the client address of a request is found by walking
+	// X-Forwarded-For from the right through them. Empty — the default — means
+	// the TCP peer is the client and the header is never read.
+	TrustedProxies []netip.Prefix
 }
 
 // Storage is the object storage the attachments' bytes live in. Endpoint,
@@ -156,6 +228,15 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		AttachmentMaxPerTicket: DefaultAttachmentMaxPerTicket,
 		SSEReplayWindow:        DefaultSSEReplayWindow,
 		SSEMaxStreamsPerPerson: DefaultSSEMaxStreamsPerPerson,
+
+		PasswordMinLength:    DefaultPasswordMinLength,
+		LoginLockout:         LockoutWindow,
+		LoginMaxFailures:     DefaultLoginMaxFailures,
+		LoginAddressLimit:    DefaultLoginAddressLimit,
+		SessionLifetime:      DefaultSessionLifetime,
+		SessionIdle:          DefaultSessionIdle,
+		TokenDefaultLifetime: DefaultTokenDefaultLifetime,
+		TokenMaxLifetime:     DefaultTokenMaxLifetime,
 	}
 	l := &loader{lookup: lookup}
 	l.server(&cfg)
@@ -164,6 +245,8 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	l.sessionKey(&cfg)
 	l.limits(&cfg)
 	l.storage(&cfg)
+	l.login(&cfg)
+	l.trustedProxies(&cfg)
 	return cfg, errors.Join(l.errs...)
 }
 
@@ -385,4 +468,230 @@ func nonEmpty(lookup func(string) (string, bool), key string) (string, bool) {
 	v, ok := lookup(key)
 	v = strings.TrimSpace(v)
 	return v, ok && v != ""
+}
+
+// slugPattern is the tenant slug rule of docs/adr/0005 D4.
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
+
+// login reads everything the browser login needs: the public URL, the
+// sessions, the passwords, the lockout, the local administrator, the
+// bootstrap tenant and the lifetime of a new token (docs/adr/0031–0033,
+// docs/adr/0035 D4, docs/adr/0037 D6). Where a value is a secret the error
+// names the variable and never the value.
+func (l *loader) login(cfg *Config) {
+	l.passwordPolicy(cfg)
+	l.lockout(cfg)
+	for _, d := range []struct {
+		env string
+		dst *time.Duration
+	}{{EnvSessionLifetime, &cfg.SessionLifetime}, {EnvSessionIdle, &cfg.SessionIdle},
+		{EnvTokenDefaultLifetime, &cfg.TokenDefaultLifetime}, {EnvTokenMaxLifetime, &cfg.TokenMaxLifetime}} {
+		if v, ok := l.get(d.env); ok {
+			n, err := time.ParseDuration(v)
+			switch {
+			case err != nil:
+				l.fail("%s: %q is not a duration such as 12h", d.env, v)
+			case n <= 0:
+				l.fail("%s: must be positive, got %s", d.env, n)
+			default:
+				*d.dst = n
+			}
+		}
+	}
+	if cfg.TokenDefaultLifetime > cfg.TokenMaxLifetime {
+		l.fail("%s must not exceed %s", EnvTokenDefaultLifetime, EnvTokenMaxLifetime)
+	}
+	l.localAdmin(cfg)
+	l.bootstrapTenant(cfg)
+	l.baseURL(cfg)
+}
+
+// trustedProxies reads the networks of the proxies in front of the backend
+// (docs/adr/0035 D2): a comma-separated list of CIDRs, IPv4 and IPv6, a single
+// host written /32 or /128. An entry that is none is an error that names the
+// variable and quotes that entry and nothing else of the value; every such
+// entry is reported. An empty entry, such as a trailing comma, trusts nothing
+// and is skipped.
+func (l *loader) trustedProxies(cfg *Config) {
+	v, ok := l.get(EnvTrustedProxies)
+	if !ok {
+		return
+	}
+	for _, entry := range strings.Split(v, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			l.fail("%s: %q is not a CIDR such as 10.0.0.0/8 or fd00::/8; a single host is written 10.0.0.5/32 or fd00::5/128",
+				EnvTrustedProxies, clip(entry, 64))
+			continue
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, prefix.Masked())
+	}
+}
+
+// clip shortens a value an error quotes, so that a long one in the wrong
+// variable does not fill the log.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+func (l *loader) passwordPolicy(cfg *Config) {
+	v, ok := l.get(EnvPasswordMinLength)
+	if !ok {
+		return
+	}
+	n, err := strconv.Atoi(v)
+	switch {
+	case err != nil:
+		l.fail("%s: %q is not a number of characters such as 12", EnvPasswordMinLength, v)
+	case n < auth.MinPasswordLengthFloor:
+		l.fail("%s: must be at least %d, got %d (docs/adr/0033 D3)", EnvPasswordMinLength, auth.MinPasswordLengthFloor, n)
+	case n > auth.MaxPasswordLength:
+		l.fail("%s: must be at most %d, got %d", EnvPasswordMinLength, auth.MaxPasswordLength, n)
+	default:
+		cfg.PasswordMinLength = n
+	}
+}
+
+func (l *loader) lockout(cfg *Config) {
+	if v, ok := l.get(EnvLoginLockout); ok {
+		switch strings.ToLower(v) {
+		case LockoutWindow, LockoutAdmin:
+			cfg.LoginLockout = strings.ToLower(v)
+		default:
+			l.fail("%s: %q is not one of %s, %s", EnvLoginLockout, v, LockoutWindow, LockoutAdmin)
+		}
+	}
+	for _, c := range []struct {
+		env string
+		dst *int
+	}{{EnvLoginMaxFailures, &cfg.LoginMaxFailures}, {EnvLoginAddressLimit, &cfg.LoginAddressLimit}} {
+		if v, ok := l.get(c.env); ok {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				l.fail("%s: %q is not a count such as 5 or 0", c.env, v)
+			} else {
+				*c.dst = n
+			}
+		}
+	}
+}
+
+// localAdmin reads the one account the configuration keeps (docs/adr/0032 D1,
+// D2, D3): both variables or neither. The password is read as it is — a
+// trimmed password would be another password — and never echoed.
+func (l *loader) localAdmin(cfg *Config) {
+	username, haveUser := l.get(EnvLocalAdminUsername)
+	password, havePassword := l.lookup(EnvLocalAdminPassword)
+	havePassword = havePassword && password != ""
+	switch {
+	case haveUser && !havePassword:
+		l.fail("%s is required while %s is set", EnvLocalAdminPassword, EnvLocalAdminUsername)
+		return
+	case havePassword && !haveUser:
+		l.fail("%s is required while %s is set", EnvLocalAdminUsername, EnvLocalAdminPassword)
+		return
+	case !haveUser:
+		return
+	}
+	if !auth.ValidUsername(username) {
+		l.fail("%s must be 1 to 63 characters of a-z, 0-9, '.', '_' and '-', starting with a letter or a digit", EnvLocalAdminUsername)
+		return
+	}
+	if err := auth.CheckPassword(password, cfg.PasswordMinLength); err != nil {
+		// The error names the bound, never the password.
+		l.fail("%s %s (%s)", EnvLocalAdminPassword, strings.TrimPrefix(err.Error(), auth.ErrPasswordLength.Error()+": "), EnvPasswordMinLength)
+		return
+	}
+	cfg.LocalAdminUsername, cfg.LocalAdminPassword = username, password
+}
+
+// bootstrapTenant reads the tenant a start creates while none exists
+// (docs/adr/0032 D6): both variables or neither, and only with a local
+// administrator, who becomes its first administrator — a tenant without an
+// administrator cannot come to exist (D7), and the group mapping that would
+// be the other way to one arrives with the identity provider.
+func (l *loader) bootstrapTenant(cfg *Config) {
+	slug, haveSlug := l.get(EnvBootstrapTenantSlug)
+	name, haveName := l.get(EnvBootstrapTenantName)
+	switch {
+	case haveSlug && !haveName:
+		l.fail("%s is required while %s is set", EnvBootstrapTenantName, EnvBootstrapTenantSlug)
+		return
+	case haveName && !haveSlug:
+		l.fail("%s is required while %s is set", EnvBootstrapTenantSlug, EnvBootstrapTenantName)
+		return
+	case !haveSlug:
+		return
+	}
+	if !slugPattern.MatchString(slug) {
+		l.fail("%s must be 2 to 63 characters of a-z, 0-9 and '-', not starting with '-' (docs/adr/0005 D4)", EnvBootstrapTenantSlug)
+		return
+	}
+	if n := utf8.RuneCountInString(name); n > 200 {
+		l.fail("%s must be at most 200 characters", EnvBootstrapTenantName)
+		return
+	}
+	if cfg.LocalAdminUsername == "" {
+		l.fail("%s needs %s and %s: the local administrator becomes the first administrator of the tenant (docs/adr/0032 D7)",
+			EnvBootstrapTenantSlug, EnvLocalAdminUsername, EnvLocalAdminPassword)
+		return
+	}
+	cfg.BootstrapTenantSlug, cfg.BootstrapTenantName = slug, name
+}
+
+// baseURL checks the public URL and derives the origin the CSRF check
+// compares against (docs/adr/0037 D1). A cookie login needs it: it is required
+// while the local administrator is configured (docs/adr/0037 D6).
+func (l *loader) baseURL(cfg *Config) {
+	if cfg.BaseURL == "" {
+		if cfg.LocalAdminUsername != "" {
+			l.fail("%s is required while %s is set: a cookie login needs the origin the browser sees (docs/adr/0037 D6)",
+				EnvBaseURL, EnvLocalAdminUsername)
+		}
+		return
+	}
+	origin, err := Origin(cfg.BaseURL)
+	if err != nil {
+		l.fail("%s %v", EnvBaseURL, err)
+		return
+	}
+	cfg.BaseOrigin = origin
+}
+
+// Origin returns the origin a browser sends for a public URL: the lower-case
+// scheme and host, and a port only when it is not the scheme's default. The
+// URL must be an origin of its own — a scheme, a host, an optional port — as
+// the Origin header never carries more (docs/adr/0037 D1). The error never
+// quotes the URL.
+func Origin(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	switch {
+	case err != nil:
+		return "", errors.New("is not a URL")
+	case u.Scheme != "http" && u.Scheme != "https":
+		return "", errors.New("must start with http:// or https://")
+	case u.Hostname() == "":
+		return "", errors.New("names no host")
+	case u.User != nil, u.RawQuery != "", u.Fragment != "", (u.Path != "" && u.Path != "/"):
+		return "", errors.New("must be an origin such as https://cowork.example.com: no user, path, query or fragment")
+	}
+	host, port := strings.ToLower(u.Hostname()), u.Port()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	origin := u.Scheme + "://" + host
+	if port != "" {
+		origin += ":" + port
+	}
+	return origin, nil
 }

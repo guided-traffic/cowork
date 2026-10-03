@@ -7,7 +7,8 @@ Accepted, amended 2026-10-01 (D5: no down files, see
 amended 2026-10-02 (D5, D7, D8: migrations run under a separate owner role, see
 [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2; D3: four
 substituted nginx variables, see [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
-D3). Date:
+D3), amended 2026-10-03 (D3: `/auth/` is proxied too, and the chart admits only the frontend's pods
+to the backend). Date:
 2026-09-29. The stack was set by the owner in the founding brief; the cut into
 two containers and the "latest release" policy (D2, D9) are the owner's explicit instructions
 of the same day, given after a first skeleton had embedded the UI into the Go binary — that
@@ -80,11 +81,21 @@ configuration at container start; the image substitutes that variable and the re
 the entrypoint reads from `/etc/resolv.conf`, and no other (`NGINX_ENVSUBST_FILTER`)
 *(amended 2026-10-02: and the body size and the read timeout, `NGINX_CLIENT_MAX_BODY_SIZE` and
 `NGINX_PROXY_READ_TIMEOUT`, which the chart sets from the backend's limits — four variables;
-`/api/` is a `^~` prefix so no static-file rule takes an API path)*. nginx
+`/api/` is a `^~` prefix so no static-file rule takes an API path)* *(amended 2026-10-03: the
+browser's login routes, `/auth/options`, `/auth/local` and `/auth/logout`, are proxied exactly
+like the API by a second `^~` prefix, `/auth/`, with the same settings and problem bodies; the
+OIDC callback will be a path under it)*. nginx
 resolves the backend per request through that resolver, so the frontend starts before the
 backend Service exists and follows it when its address changes. The Ingress targets the
 frontend Service only. The backend Service exists beside it for scripts, tokens and a
-port-forward; nothing outside the cluster needs it.
+port-forward; nothing outside the cluster needs it. *(Amended 2026-10-03: the chart's
+NetworkPolicy, `networkPolicy.enabled`, on by default, admits ingress to the backend's pods from
+the frontend's pods only, on the backend's port — the backend reads `X-Forwarded-For` from the
+networks of `COWORK_TRUSTED_PROXIES` ([ADR 0035](0035-personal-access-tokens.md) D2), and no other
+pod may write it. A script inside the cluster therefore goes through the frontend Service, which
+proxies `/api/` with the same tokens; the kubelet's probes come from the pod's node, which
+Kubernetes always allows; a port-forward reaches the pod through its own network namespace, not
+tried in a cluster. A network plugin that does not implement NetworkPolicy ignores the object.)*
 
 **D4 — The backend serves no UI.** A path it does not know is a JSON `404`; a known path with
 the wrong method is a `405` with `Allow`. The browser talks to one origin, so there is no CORS
@@ -136,7 +147,7 @@ what the framework supports: TypeScript stays inside Angular's peer range.
   headers, the proxy headers, the template variable. Its correctness is proven by running the
   image, not by a unit test.
 - Local development mirrors production: `ng serve` proxies `/api` to the backend exactly as
-  nginx does (`frontend/proxy.conf.json`).
+  nginx does (`frontend/proxy.conf.json`, since 2026-10-03 `frontend/proxy.conf.mjs`).
 - Migrations run under the application's database role, so that role needs DDL rights. A
   split into a migration role and a runtime role is possible later through D5's off switch and
   a Job.

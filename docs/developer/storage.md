@@ -46,7 +46,8 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
    second `file` or any other part is `400`. With the maximum at 0 the file is read whole.
 4. The type is detected from the bytes (below); an unknown one is `415 unsupported_media_type`,
    naming what was detected. The name is sanitised and given an extension of the detected type.
-5. The idempotency fingerprint is the file's SHA-256, the name and the comment.
+5. The idempotency fingerprint covers the file's SHA-256, the name and the comment, keyed like
+   every fingerprint ([api.md](api.md)).
 6. In `Mutate`: the ticket through the predicate; the ticket's attachment lock
    (`Writer.LockAttachments`), so simultaneous uploads to it count one after the other; the
    project role; a `comment_id` must name a comment of this ticket written by the caller's

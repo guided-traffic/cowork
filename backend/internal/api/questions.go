@@ -135,7 +135,7 @@ func (s *Server) GetQuestion(ctx context.Context, req apigen.GetQuestionRequestO
 func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestObject) (apigen.AskQuestionResponseObject, error) {
 	t := tenantFrom(ctx)
 	body := *req.Body
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "askQuestion", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "askQuestion", fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number), body)
 	if perr != nil {
 		return nil, perr
 	}

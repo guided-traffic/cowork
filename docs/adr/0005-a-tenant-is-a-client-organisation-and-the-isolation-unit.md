@@ -9,8 +9,17 @@ while some will create several to keep their tickets apart.
 
 **Partly built** (phase 2, 2026-10-02): D1–D4 and D6 — the tenant as the isolation unit in the
 path and in row-level security, memberships (migration 2), nothing crossing the boundary (links
-and parents by composite keys), the slug immutable and the name editable. D5's creation by a
-global administrator arrives with that role; tenants come from the fixture until then.
+and parents by composite keys), the slug immutable and the name editable.
+
+**Built** (phase 3, 2026-10-03): D5's creation — `POST /api/v1/tenants`
+([`api/tenants.go`](../../backend/internal/api/tenants.go) `CreateTenant`), and the bootstrap
+tenant of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D6. Until the identity provider exists a global administrator is the one local administrator
+the configuration names: `users.global_admin` is set by the start-up synchronisation, by no route,
+and no policy lets a tenant's administrator set it. Not built: members joining through the
+identity provider's group mapping, and an administrator's grant of an existing person into a
+tenant — members come in as the local accounts a tenant's administrators create
+([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1).
 
 ## Context
 
@@ -46,7 +55,13 @@ rename would break every one of them. The slug rule is the one migration `000001
 
 **D5 — Tenants are created by a global administrator only**, which under ADR 0004 D4 is an
 explicit grant. Members join a tenant through the identity provider's group mapping or an
-administrator's explicit grant; the mechanics are the identity records' to decide.
+administrator's explicit grant; the mechanics are the identity records' to decide. *(Built
+2026-10-03: the route takes a browser session only — a token, a global administrator's
+included, answers `403 session_required` — and a creator who is not a global administrator
+answers `403`. The tenant and its creator's marked `admin` grant are written in one transaction
+with both acts, so no tenant exists without an administrator
+([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D7); a slug that is taken answers `409 tenant_slug_taken`, and a slug is never reused.)*
 
 **D6 — One tenant is the common installation, and it gets no special mode.** The data model
 and the API always carry the tenant; there is no flag that turns tenancy off and no second

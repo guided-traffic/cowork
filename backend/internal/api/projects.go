@@ -98,7 +98,7 @@ func (s *Server) CreateProject(ctx context.Context, req apigen.CreateProjectRequ
 	t := tenantFrom(ctx)
 	p := principal(ctx)
 	body := *req.Body
-	ctx, perr := keyed(ctx, req.Params.IdempotencyKey, "createProject", t.ID.String(), body)
+	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createProject", t.ID.String(), body)
 	if perr != nil {
 		return nil, perr
 	}

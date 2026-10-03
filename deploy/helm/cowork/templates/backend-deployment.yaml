@@ -19,6 +19,9 @@ spec:
         {{- if and .Values.backend.config.migrateOnStart .Values.database.owner.url (not .Values.database.owner.existingSecret) }}
         checksum/database-owner-secret: {{ .Values.database.owner.url | sha256sum }}
         {{- end }}
+        {{- if and (not .Values.localAdmin.existingSecret) .Values.localAdmin.username .Values.localAdmin.password }}
+        checksum/local-admin-secret: {{ printf "%s:%s" .Values.localAdmin.username .Values.localAdmin.password | sha256sum }}
+        {{- end }}
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -91,6 +94,39 @@ spec:
                 secretKeyRef:
                   name: {{ include "cowork.sessionSecretName" . }}
                   key: {{ .Values.session.keys.key }}
+            - name: COWORK_SESSION_LIFETIME
+              value: {{ .Values.session.lifetime | quote }}
+            - name: COWORK_SESSION_IDLE
+              value: {{ .Values.session.idle | quote }}
+            - name: COWORK_PASSWORD_MIN_LENGTH
+              value: {{ .Values.auth.local.passwordMinLength | int64 | toString | quote }}
+            - name: COWORK_LOGIN_LOCKOUT
+              value: {{ .Values.auth.local.lockout | quote }}
+            - name: COWORK_LOGIN_MAX_FAILURES
+              value: {{ .Values.auth.local.maxFailures | int64 | toString | quote }}
+            - name: COWORK_LOGIN_ADDRESS_LIMIT
+              value: {{ .Values.auth.local.addressLimit | int64 | toString | quote }}
+            {{- if include "cowork.localAdminEnabled" . }}
+            - name: COWORK_LOCAL_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.localAdminSecretName" . }}
+                  key: {{ include "cowork.localAdminUsernameKey" . }}
+            - name: COWORK_LOCAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.localAdminSecretName" . }}
+                  key: {{ include "cowork.localAdminPasswordKey" . }}
+            {{- end }}
+            {{- if or .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
+            {{- if not (include "cowork.localAdminEnabled" .) }}
+            {{- fail "bootstrap.tenant needs the local administrator: it becomes the tenant's first administrator (docs/adr/0032 D7); set localAdmin" }}
+            {{- end }}
+            - name: COWORK_BOOTSTRAP_TENANT_SLUG
+              value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.slug | quote }}
+            - name: COWORK_BOOTSTRAP_TENANT_NAME
+              value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.name | quote }}
+            {{- end }}
             - name: COWORK_MAX_JSON_BODY
               value: {{ .Values.backend.config.maxJsonBody | int64 | toString | quote }}
             - name: COWORK_ATTACHMENT_MAX_BYTES
@@ -142,6 +178,10 @@ spec:
             {{- if .Values.backend.config.baseURL }}
             - name: COWORK_BASE_URL
               value: {{ .Values.backend.config.baseURL | quote }}
+            {{- end }}
+            {{- if .Values.backend.config.trustedProxies }}
+            - name: COWORK_TRUSTED_PROXIES
+              value: {{ .Values.backend.config.trustedProxies | quote }}
             {{- end }}
             {{- with .Values.backend.extraEnv }}
             {{- toYaml . | nindent 12 }}

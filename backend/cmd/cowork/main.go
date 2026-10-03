@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/guided-traffic/cowork/backend/internal/api"
+	"github.com/guided-traffic/cowork/backend/internal/bootstrap"
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
@@ -118,6 +119,16 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 
+	// The configured administrator and bootstrap tenant, after the migrations and
+	// before the first request (docs/adr/0032 D2, D8).
+	if err := bootstrap.Sync(ctx, db, bootstrap.Params{
+		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
+		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
+	}, logger); err != nil {
+		logger.Error("bootstrap failed", "error", err)
+		return 1
+	}
+
 	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson)
 	go db.Listen(ctx, hub.Publish, hub.SetUp)
 	var objects *storage.Client
@@ -128,6 +139,9 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		}
 	} else {
 		logger.Warn("no object storage configured; attachments cannot be uploaded", "variable", config.EnvS3Endpoint)
+	}
+	if len(cfg.TrustedProxies) > 0 {
+		logger.Info("client addresses are read through trusted proxies", "variable", config.EnvTrustedProxies, "networks", cfg.TrustedProxies)
 	}
 	apiHandler, err := api.New(api.Options{
 		DB:                     db,
@@ -144,13 +158,24 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		AttachmentMaxBytes:     cfg.AttachmentMaxBytes,
 		AttachmentMaxPerTicket: cfg.AttachmentMaxPerTicket,
 		Events:                 hub,
+
+		BaseOrigin:           cfg.BaseOrigin,
+		SessionLifetime:      cfg.SessionLifetime,
+		SessionIdle:          cfg.SessionIdle,
+		PasswordMinLength:    cfg.PasswordMinLength,
+		LoginLockout:         cfg.LoginLockout,
+		LoginMaxFailures:     cfg.LoginMaxFailures,
+		LoginAddressLimit:    cfg.LoginAddressLimit,
+		TokenDefaultLifetime: cfg.TokenDefaultLifetime,
+		TokenMaxLifetime:     cfg.TokenMaxLifetime,
+		TrustedProxies:       cfg.TrustedProxies,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
 		return 1
 	}
 	handler := httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
-	go runJobs(ctx, db, logger)
+	go runJobs(ctx, db, logger, cfg.SessionIdle)
 
 	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
 	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, handler, cfg.ShutdownTimeout, hub.Close); err != nil {
@@ -177,14 +202,29 @@ func requireForServe(cfg config.Config) error {
 
 // runJobs runs the background jobs on their tickers until ctx ends; each job
 // holds its own advisory lock, so every replica may tick (docs/adr/0027 D5).
-func runJobs(ctx context.Context, db *store.DB, logger *slog.Logger) {
+// The sessions and the login's attempts are cleaned up here; neither is
+// enforced by the cleanup — a session past a limit is refused at its next
+// request, a lock that ended holds nothing at the next attempt.
+func runJobs(ctx context.Context, db *store.DB, logger *slog.Logger, sessionIdle time.Duration) {
 	expiry := time.NewTicker(time.Hour)
 	defer expiry.Stop()
+	jobs := []struct {
+		name string
+		run  func(ctx context.Context) (int64, error)
+	}{
+		{"idempotency expiry", db.ExpireIdempotencyKeys},
+		{"session expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
+		{"login expiry", func(ctx context.Context) (int64, error) {
+			return db.ExpireLoginState(ctx, time.Now(), store.LoginWindow)
+		}},
+	}
 	for {
-		if removed, err := db.ExpireIdempotencyKeys(ctx); err != nil && ctx.Err() == nil {
-			logger.Error("idempotency expiry failed", "error", err)
-		} else if removed > 0 {
-			logger.Info("expired idempotency keys removed", "removed", removed)
+		for _, job := range jobs {
+			if removed, err := job.run(ctx); err != nil && ctx.Err() == nil {
+				logger.Error("job failed", "job", job.name, "error", err)
+			} else if removed > 0 {
+				logger.Info("job removed expired rows", "job", job.name, "removed", removed)
+			}
 		}
 		select {
 		case <-ctx.Done():

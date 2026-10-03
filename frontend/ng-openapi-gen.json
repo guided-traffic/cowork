@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/ng-openapi-gen/ng-openapi-gen-schema.json",
+  "input": "../backend/api/openapi.gen.json",
+  "output": "src/app/api",
+  "ignoreUnusedModels": false,
+  "skipJsonSuffix": true,
+  "endOfLineStyle": "lf",
+  "silent": true
+}

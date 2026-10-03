@@ -7,8 +7,13 @@ management?": Angular signals and services, over NgRx SignalStore, over classic 
 over a query-cache library. The rules of D4–D7 were put to the owner with the question and
 not objected to.
 
-**Partly built.** The shell uses `toSignal` over `HttpClient` for the version footer
-([`frontend/src/app/app.ts`](../../frontend/src/app/app.ts)); no service holds domain state.
+**Partly built** (phase 3, 2026-10-03): D1 with `SessionService`, `ProjectsService`,
+`TicketsService`, `EventStreamService` and `ThemeService` (the board, inbox and filter services
+arrive with their views), D2 (`EntityCache` keyed by the ticket's canonical key, the `ETag`
+derived from the version as [ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
+D2 defines it), D3, D4 (a tenant switch clears the ticket cache), D5 (`ProblemService`; the
+`401` redirect arrives with the login), D6, D7 —
+[`frontend/src/app/core/`](../../frontend/src/app/core/).
 
 ## Context
 

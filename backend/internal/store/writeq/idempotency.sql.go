@@ -32,7 +32,7 @@ INSERT INTO idempotency_keys (
     $6, $7, $8,
     now() + interval '24 hours'
 )
-ON CONFLICT (token_id, key) DO UPDATE
+ON CONFLICT (user_id, token_id, key) DO UPDATE
 SET user_id = EXCLUDED.user_id, tenant_id = EXCLUDED.tenant_id, fingerprint = EXCLUDED.fingerprint,
     response_status = EXCLUDED.response_status, response_headers = EXCLUDED.response_headers,
     response_body = EXCLUDED.response_body, created_at = now(), expires_at = EXCLUDED.expires_at
@@ -41,7 +41,7 @@ RETURNING id
 `
 
 type StoreIdempotencyKeyParams struct {
-	TokenID         uuid.UUID
+	TokenID         *uuid.UUID
 	UserID          uuid.UUID
 	TenantID        *uuid.UUID
 	Key             uuid.UUID

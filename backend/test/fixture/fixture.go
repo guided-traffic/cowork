@@ -117,6 +117,38 @@ func (f *DB) Member(ctx context.Context, tenantID, userID uuid.UUID, role domain
 	return nil
 }
 
+// Account gives a person a local account with the password
+// (docs/adr/0033). The account is managed by the tenant — the way the route
+// that creates one makes it — or, with uuid.Nil, belongs to the configuration,
+// like the local administrator (docs/adr/0032 D1). changeRequired makes the
+// password temporary.
+func (f *DB) Account(ctx context.Context, userID uuid.UUID, password string, managingTenant uuid.UUID, changeRequired bool) error {
+	hash, err := auth.HashPassword(ctx, password)
+	if err != nil {
+		return err
+	}
+	origin := "config"
+	if managingTenant != uuid.Nil {
+		origin = "tenant"
+	}
+	_, err = f.pool.Exec(ctx,
+		`INSERT INTO local_accounts (user_id, password_hash, password_change_required, origin, managing_tenant_id)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash,
+		     password_change_required = EXCLUDED.password_change_required`,
+		userID, hash, changeRequired, origin, nilIfZero(managingTenant))
+	if err != nil {
+		return fmt.Errorf("create local account: %w", err)
+	}
+	return nil
+}
+
+// GlobalAdmin makes a person a global administrator (docs/adr/0004 D4).
+func (f *DB) GlobalAdmin(ctx context.Context, userID uuid.UUID) error {
+	_, err := f.pool.Exec(ctx, `UPDATE users SET global_admin = true WHERE id = $1`, userID)
+	return err
+}
+
 // Project creates a project with its ticket counter.
 func (f *DB) Project(ctx context.Context, tenantID uuid.UUID, key, name string) (uuid.UUID, error) {
 	var id uuid.UUID

@@ -15,9 +15,17 @@ FROM tenants
 WHERE id = sqlc.arg(tenant_id);
 
 -- name: GetUser :one
-SELECT id, username, display_name, deactivated_at, created_at
-FROM users
-WHERE id = sqlc.arg(user_id);
+-- The person with what the resolvers and GET /api/v1/me need: whether they are
+-- a global administrator, whether they have a local account, and whether its
+-- password must be changed before anything else (docs/adr/0033 D4). The
+-- account row is the person's own to read, so another person's flags are not
+-- this query's to answer.
+SELECT u.id, u.username, u.display_name, u.deactivated_at, u.created_at, u.global_admin,
+       (a.user_id IS NOT NULL)::boolean AS local,
+       COALESCE(a.password_change_required, false)::boolean AS password_change_required
+FROM users u
+LEFT JOIN local_accounts a ON a.user_id = u.id
+WHERE u.id = sqlc.arg(user_id);
 
 -- name: ListMembershipsOfUser :many
 -- The person's tenants with the highest role in each (GET /api/v1/me).

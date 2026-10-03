@@ -6,8 +6,13 @@ database:
     url: postgres://cowork_owner:cowork_owner@postgres:5432/cowork?sslmode=disable
 session:
   existingSecret: cowork-session
+# The throw-away local administrator: rendered into <fullname>-local-admin.
+localAdmin:
+  username: admin
+  password: change-me-before-use
 backend:
   config:
+    baseURL: http://localhost:4200
     logFormat: text
     logLevel: debug
     attachmentMaxBytes: 0

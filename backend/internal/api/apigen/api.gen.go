@@ -67,6 +67,7 @@ const (
 	AuditActionConfidentialLifted AuditAction = "confidential_lifted"
 	AuditActionConfidentialSet    AuditAction = "confidential_set"
 	AuditActionCreated            AuditAction = "created"
+	AuditActionDeactivated        AuditAction = "deactivated"
 	AuditActionDeleted            AuditAction = "deleted"
 	AuditActionDownloaded         AuditAction = "downloaded"
 	AuditActionEdited             AuditAction = "edited"
@@ -75,14 +76,21 @@ const (
 	AuditActionInterest           AuditAction = "interest"
 	AuditActionLinked             AuditAction = "linked"
 	AuditActionLocked             AuditAction = "locked"
+	AuditActionLoggedIn           AuditAction = "logged_in"
+	AuditActionLoggedOut          AuditAction = "logged_out"
+	AuditActionLoginFailed        AuditAction = "login_failed"
 	AuditActionOverridden         AuditAction = "overridden"
+	AuditActionPasswordChanged    AuditAction = "password_changed"
+	AuditActionPasswordReset      AuditAction = "password_reset"
 	AuditActionPurged             AuditAction = "purged"
 	AuditActionRanked             AuditAction = "ranked"
+	AuditActionReactivated        AuditAction = "reactivated"
 	AuditActionRefused            AuditAction = "refused"
 	AuditActionRestored           AuditAction = "restored"
 	AuditActionRevoked            AuditAction = "revoked"
 	AuditActionTransitioned       AuditAction = "transitioned"
 	AuditActionUnlinked           AuditAction = "unlinked"
+	AuditActionUnlocked           AuditAction = "unlocked"
 	AuditActionUpdated            AuditAction = "updated"
 	AuditActionUploaded           AuditAction = "uploaded"
 	AuditActionVoided             AuditAction = "voided"
@@ -110,6 +118,8 @@ func (e AuditAction) Valid() bool {
 		return true
 	case AuditActionCreated:
 		return true
+	case AuditActionDeactivated:
+		return true
 	case AuditActionDeleted:
 		return true
 	case AuditActionDownloaded:
@@ -126,11 +136,23 @@ func (e AuditAction) Valid() bool {
 		return true
 	case AuditActionLocked:
 		return true
+	case AuditActionLoggedIn:
+		return true
+	case AuditActionLoggedOut:
+		return true
+	case AuditActionLoginFailed:
+		return true
 	case AuditActionOverridden:
+		return true
+	case AuditActionPasswordChanged:
+		return true
+	case AuditActionPasswordReset:
 		return true
 	case AuditActionPurged:
 		return true
 	case AuditActionRanked:
+		return true
+	case AuditActionReactivated:
 		return true
 	case AuditActionRefused:
 		return true
@@ -141,6 +163,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionTransitioned:
 		return true
 	case AuditActionUnlinked:
+		return true
+	case AuditActionUnlocked:
 		return true
 	case AuditActionUpdated:
 		return true
@@ -316,32 +340,40 @@ const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
 	ProblemCodeBackendUnreachable     ProblemCode = "backend_unreachable"
+	ProblemCodeCsrf                   ProblemCode = "csrf"
 	ProblemCodeForbidden              ProblemCode = "forbidden"
 	ProblemCodeIdempotencyKeyRequired ProblemCode = "idempotency_key_required"
 	ProblemCodeIdempotencyMismatch    ProblemCode = "idempotency_mismatch"
 	ProblemCodeInsufficientScope      ProblemCode = "insufficient_scope"
 	ProblemCodeInternal               ProblemCode = "internal"
+	ProblemCodeInvalidCredentials     ProblemCode = "invalid_credentials"
 	ProblemCodeInvalidCursor          ProblemCode = "invalid_cursor"
 	ProblemCodeLinkCycle              ProblemCode = "link_cycle"
 	ProblemCodeMethodNotAllowed       ProblemCode = "method_not_allowed"
 	ProblemCodeNotFound               ProblemCode = "not_found"
+	ProblemCodeNotInitialised         ProblemCode = "not_initialised"
 	ProblemCodeNotReady               ProblemCode = "not_ready"
 	ProblemCodeOpenPrerequisites      ProblemCode = "open_prerequisites"
 	ProblemCodePageTooDeep            ProblemCode = "page_too_deep"
 	ProblemCodeParentCycle            ProblemCode = "parent_cycle"
+	ProblemCodePasswordChangeRequired ProblemCode = "password_change_required"
 	ProblemCodePayloadTooLarge        ProblemCode = "payload_too_large"
 	ProblemCodePeriodLocked           ProblemCode = "period_locked"
 	ProblemCodePreconditionFailed     ProblemCode = "precondition_failed"
 	ProblemCodePreconditionRequired   ProblemCode = "precondition_required"
 	ProblemCodeProjectArchived        ProblemCode = "project_archived"
 	ProblemCodeProjectKeyTaken        ProblemCode = "project_key_taken"
+	ProblemCodeSessionRequired        ProblemCode = "session_required"
 	ProblemCodeStateConflict          ProblemCode = "state_conflict"
+	ProblemCodeTenantSlugTaken        ProblemCode = "tenant_slug_taken"
 	ProblemCodeTimeout                ProblemCode = "timeout"
 	ProblemCodeTokenExpired           ProblemCode = "token_expired"
 	ProblemCodeTokenRevoked           ProblemCode = "token_revoked"
+	ProblemCodeTooManyAttempts        ProblemCode = "too_many_attempts"
 	ProblemCodeUnauthenticated        ProblemCode = "unauthenticated"
 	ProblemCodeUnsupportedMediaType   ProblemCode = "unsupported_media_type"
 	ProblemCodeUploadsDisabled        ProblemCode = "uploads_disabled"
+	ProblemCodeUsernameTaken          ProblemCode = "username_taken"
 	ProblemCodeValidationFailed       ProblemCode = "validation_failed"
 )
 
@@ -354,6 +386,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeBackendUnreachable:
 		return true
+	case ProblemCodeCsrf:
+		return true
 	case ProblemCodeForbidden:
 		return true
 	case ProblemCodeIdempotencyKeyRequired:
@@ -364,6 +398,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeInternal:
 		return true
+	case ProblemCodeInvalidCredentials:
+		return true
 	case ProblemCodeInvalidCursor:
 		return true
 	case ProblemCodeLinkCycle:
@@ -372,6 +408,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeNotFound:
 		return true
+	case ProblemCodeNotInitialised:
+		return true
 	case ProblemCodeNotReady:
 		return true
 	case ProblemCodeOpenPrerequisites:
@@ -379,6 +417,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodePageTooDeep:
 		return true
 	case ProblemCodeParentCycle:
+		return true
+	case ProblemCodePasswordChangeRequired:
 		return true
 	case ProblemCodePayloadTooLarge:
 		return true
@@ -392,7 +432,11 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeProjectKeyTaken:
 		return true
+	case ProblemCodeSessionRequired:
+		return true
 	case ProblemCodeStateConflict:
+		return true
+	case ProblemCodeTenantSlugTaken:
 		return true
 	case ProblemCodeTimeout:
 		return true
@@ -400,11 +444,15 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeTokenRevoked:
 		return true
+	case ProblemCodeTooManyAttempts:
+		return true
 	case ProblemCodeUnauthenticated:
 		return true
 	case ProblemCodeUnsupportedMediaType:
 		return true
 	case ProblemCodeUploadsDisabled:
+		return true
+	case ProblemCodeUsernameTaken:
 		return true
 	case ProblemCodeValidationFailed:
 		return true
@@ -845,6 +893,49 @@ func (e TimeReportParamsGroupBy) Valid() bool {
 	}
 }
 
+// Account defines model for Account.
+type Account struct {
+	CreatedAt     time.Time                    `json:"created_at"`
+	DeactivatedAt nullable.Nullable[time.Time] `json:"deactivated_at"`
+	DisplayName   string                       `json:"display_name"`
+	Id            openapi_types.UUID           `json:"id"`
+
+	// Locked Failed logins locked the account at the moment (docs/adr/0033 D6)
+	Locked bool `json:"locked"`
+
+	// PasswordChangeRequired The password is temporary and its person has not changed it yet
+	PasswordChangeRequired bool `json:"password_change_required"`
+
+	// Role The person's highest role in this tenant; null when they have none any more
+	Role     nullable.Nullable[Role] `json:"role"`
+	Username string                  `json:"username"`
+}
+
+// AccountCreate defines model for AccountCreate.
+type AccountCreate struct {
+	DisplayName string `json:"display_name"`
+
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+
+	// TemporaryPassword At least `COWORK_PASSWORD_MIN_LENGTH` characters; the person changes it at the first login (docs/adr/0033 D3, D4)
+	TemporaryPassword string `json:"temporary_password"`
+
+	// Username The account's identity is `local:<username>`, unique in the installation (docs/adr/0033 D2)
+	Username string `json:"username"`
+}
+
+// AccountList defines model for AccountList.
+type AccountList struct {
+	Items      []Account                 `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// AccountPasswordReset defines model for AccountPasswordReset.
+type AccountPasswordReset struct {
+	TemporaryPassword string `json:"temporary_password"`
+}
+
 // Activity defines model for Activity.
 type Activity struct {
 	Action      AuditAction               `json:"action"`
@@ -951,6 +1042,18 @@ type AuditEvent struct {
 type AuditList struct {
 	Items      []AuditEvent              `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// AuthOptions defines model for AuthOptions.
+type AuthOptions struct {
+	// Local An active local account exists, so the login page shows the local form (docs/adr/0033 D8)
+	Local bool `json:"local"`
+
+	// Oidc An identity provider is configured; none is built yet, so false
+	Oidc bool `json:"oidc"`
+
+	// PasswordMinLength The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+	PasswordMinLength int `json:"password_min_length"`
 }
 
 // Block defines model for Block.
@@ -1116,12 +1219,38 @@ type LinkList struct {
 // LinkType docs/adr/0012 D1
 type LinkType string
 
+// LocalLoginRequest defines model for LocalLoginRequest.
+type LocalLoginRequest struct {
+	Password string `json:"password"`
+
+	// Username Trimmed and lower-cased by the server; a value that cannot be a username is a failed login like any other
+	Username string `json:"username"`
+}
+
+// LocalLoginResult defines model for LocalLoginResult.
+type LocalLoginResult struct {
+	// PasswordChangeRequired The password is temporary and has to be changed before anything else (docs/adr/0033 D4)
+	PasswordChangeRequired bool `json:"password_change_required"`
+}
+
 // Me defines model for Me.
 type Me struct {
-	DisplayName string                    `json:"display_name"`
-	Id          openapi_types.UUID        `json:"id"`
-	Memberships []Membership              `json:"memberships"`
-	Username    nullable.Nullable[string] `json:"username,omitempty"`
+	DisplayName string `json:"display_name"`
+
+	// GlobalAdmin The person is a global administrator: they create tenants and hold no role
+	// in any of them until they grant themselves one (docs/adr/0004 D4,
+	// docs/adr/0034 D2)
+	GlobalAdmin bool               `json:"global_admin"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Local The person has a local account, a password of their own (docs/adr/0033)
+	Local       bool         `json:"local"`
+	Memberships []Membership `json:"memberships"`
+
+	// PasswordChangeRequired The account's password is temporary: a session can do nothing but change
+	// it, read this answer and log out until it has (docs/adr/0033 D4)
+	PasswordChangeRequired bool                      `json:"password_change_required"`
+	Username               nullable.Nullable[string] `json:"username,omitempty"`
 }
 
 // Member defines model for Member.
@@ -1143,6 +1272,14 @@ type Membership struct {
 	// Role A tenant role, lowest first (docs/adr/0034 D1)
 	Role   Role      `json:"role"`
 	Tenant TenantRef `json:"tenant"`
+}
+
+// PasswordChange defines model for PasswordChange.
+type PasswordChange struct {
+	CurrentPassword string `json:"current_password"`
+
+	// NewPassword At least `COWORK_PASSWORD_MIN_LENGTH` characters, and not the current password (docs/adr/0033 D3)
+	NewPassword string `json:"new_password"`
 }
 
 // Person defines model for Person.
@@ -1303,6 +1440,14 @@ type Tenant struct {
 	TimeVisibleToMembers bool      `json:"time_visible_to_members"`
 	UpdatedAt            time.Time `json:"updated_at"`
 	Version              int       `json:"version"`
+}
+
+// TenantCreate defines model for TenantCreate.
+type TenantCreate struct {
+	Name string `json:"name"`
+
+	// Slug The tenant's public identifier, immutable and never reused (docs/adr/0005 D4)
+	Slug string `json:"slug"`
 }
 
 // TenantPatch defines model for TenantPatch.
@@ -1548,6 +1693,57 @@ type Token struct {
 	State TokenState `json:"state"`
 }
 
+// TokenCreate defines model for TokenCreate.
+type TokenCreate struct {
+	// Agent The agent flag; it cannot be changed afterwards (docs/adr/0036 D2)
+	Agent *bool `json:"agent,omitempty"`
+
+	// Capabilities Only with `agent`; omitted, an agent token gets every capability, and an empty list gives it none, the baseline only (docs/adr/0043 D4)
+	Capabilities *[]Capability `json:"capabilities,omitempty"`
+
+	// LifetimeDays Days until the token expires; by default `COWORK_TOKEN_DEFAULT_LIFETIME`,
+	// shortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)
+	LifetimeDays *int   `json:"lifetime_days,omitempty"`
+	Name         string `json:"name"`
+
+	// Project The key of the project of that tenant the token is restricted to; needs `tenant`
+	Project *string `json:"project,omitempty"`
+
+	// Scope A token's scope (docs/adr/0035 D3)
+	Scope Scope `json:"scope"`
+
+	// Tenant The slug of the tenant the token is restricted to
+	Tenant *string `json:"tenant,omitempty"`
+}
+
+// TokenCreated A token as listed, and its plaintext in the answer that created it
+type TokenCreated struct {
+	// Agent The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+	Agent        bool                                  `json:"agent"`
+	Capabilities []Capability                          `json:"capabilities"`
+	CreatedAt    time.Time                             `json:"created_at"`
+	ExpiresAt    time.Time                             `json:"expires_at"`
+	Id           openapi_types.UUID                    `json:"id"`
+	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
+	Name         string                                `json:"name"`
+
+	// RestrictedProjectId The id of the project the token is restricted to
+	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
+
+	// RestrictedTenant The slug of the tenant the token is restricted to
+	RestrictedTenant nullable.Nullable[string]    `json:"restricted_tenant,omitempty"`
+	RevokedAt        nullable.Nullable[time.Time] `json:"revoked_at,omitempty"`
+
+	// Scope A token's scope (docs/adr/0035 D3)
+	Scope Scope      `json:"scope"`
+	State TokenState `json:"state"`
+
+	// Token The plaintext, `cwk_` and 43 base62 characters, shown once: cowork
+	// keeps its SHA-256 only (docs/adr/0035 D1). An answer replayed for an
+	// `Idempotency-Key` leaves it out.
+	Token *string `json:"token,omitempty"`
+}
+
 // TokenList defines model for TokenList.
 type TokenList struct {
 	Items      []Token                   `json:"items"`
@@ -1748,6 +1944,9 @@ type UpdatedAfter = time.Time
 // UpdatedBefore defines model for UpdatedBefore.
 type UpdatedBefore = time.Time
 
+// Username defines model for Username.
+type Username = string
+
 // ListMyTokensParams defines parameters for ListMyTokens.
 type ListMyTokensParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -1757,11 +1956,41 @@ type ListMyTokensParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// CreateMyTokenParams defines parameters for CreateMyToken.
+type CreateMyTokenParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CreateTenantParams defines parameters for CreateTenant.
+type CreateTenantParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
 // UpdateTenantParams defines parameters for UpdateTenant.
 type UpdateTenantParams struct {
 	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
 	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// ListAccountsParams defines parameters for ListAccounts.
+type ListAccountsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateAccountParams defines parameters for CreateAccount.
+type CreateAccountParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // ListAuditParams defines parameters for ListAudit.
@@ -2199,8 +2428,23 @@ type TimeReportParams struct {
 // TimeReportParamsGroupBy defines parameters for TimeReport.
 type TimeReportParamsGroupBy string
 
+// ChangeMyPasswordJSONRequestBody defines body for ChangeMyPassword for application/json ContentType.
+type ChangeMyPasswordJSONRequestBody = PasswordChange
+
+// CreateMyTokenJSONRequestBody defines body for CreateMyToken for application/json ContentType.
+type CreateMyTokenJSONRequestBody = TokenCreate
+
+// CreateTenantJSONRequestBody defines body for CreateTenant for application/json ContentType.
+type CreateTenantJSONRequestBody = TenantCreate
+
 // UpdateTenantJSONRequestBody defines body for UpdateTenant for application/json ContentType.
 type UpdateTenantJSONRequestBody = TenantPatch
+
+// CreateAccountJSONRequestBody defines body for CreateAccount for application/json ContentType.
+type CreateAccountJSONRequestBody = AccountCreate
+
+// ResetAccountPasswordJSONRequestBody defines body for ResetAccountPassword for application/json ContentType.
+type ResetAccountPasswordJSONRequestBody = AccountPasswordReset
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectCreate
@@ -2252,6 +2496,9 @@ type TransitionTicketJSONRequestBody = Transition
 
 // OverrideUrgencyJSONRequestBody defines body for OverrideUrgency for application/json ContentType.
 type OverrideUrgencyJSONRequestBody = UrgencyOverrideSet
+
+// LoginLocalJSONRequestBody defines body for LoginLocal for application/json ContentType.
+type LoginLocalJSONRequestBody = LocalLoginRequest
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -2332,14 +2579,97 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ChangeMyPasswordWithBody Change the password of the person's local account
+	//
+	// Needs the current password, which counts like a login attempt towards
+	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+	// other session of the account ends (D4), and a temporary password is no
+	// longer temporary. The local administrator's password is set by the
+	// configuration and cannot be changed here (`403 forbidden`).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+	ChangeMyPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangeMyPassword Change the password of the person's local account
+	//
+	// Needs the current password, which counts like a login attempt towards
+	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+	// other session of the account ends (D4), and a temporary password is no
+	// longer temporary. The local administrator's password is set by the
+	// configuration and cannot be changed here (`403 forbidden`).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+	ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6). Creating a token needs a browser session,
-	// which does not exist yet (docs/adr/0038 D6).
+	// (docs/adr/0035 D1, D6).
 	//
 	// Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 	ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMyTokenWithBody Create a personal access token
+	//
+	// Only the person themselves, in a browser session: no token creates a
+	// token (`403 session_required`) and no administrator creates one for
+	// another person (docs/adr/0035 D5). The answer carries the plaintext
+	// `token` once; cowork stores its SHA-256 only (D1).
+	//
+	// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+	// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+	// one is shortened to the maximum, and `expires_at` in the answer says what
+	// the token got (D4). An agent token has at most `write` scope
+	// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+	// every capability when `capabilities` is left out; an empty list is no
+	// capability, the baseline only (docs/adr/0043 D4). A tenant
+	// restriction needs a tenant the person belongs to, a project restriction a
+	// project of it the person sees; either, if not, is `validation_failed`
+	// without saying which of the two it was.
+	//
+	// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+	// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+	// answers the token without `token`, and the person revokes it and makes
+	// another.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+	CreateMyTokenWithBody(ctx context.Context, params *CreateMyTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMyToken Create a personal access token
+	//
+	// Only the person themselves, in a browser session: no token creates a
+	// token (`403 session_required`) and no administrator creates one for
+	// another person (docs/adr/0035 D5). The answer carries the plaintext
+	// `token` once; cowork stores its SHA-256 only (D1).
+	//
+	// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+	// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+	// one is shortened to the maximum, and `expires_at` in the answer says what
+	// the token got (D4). An agent token has at most `write` scope
+	// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+	// every capability when `capabilities` is left out; an empty list is no
+	// capability, the baseline only (docs/adr/0043 D4). A tenant
+	// restriction needs a tenant the person belongs to, a project restriction a
+	// project of it the person sees; either, if not, is `validation_failed`
+	// without saying which of the two it was.
+	//
+	// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+	// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+	// answers the token without `token`, and the person revokes it and makes
+	// another.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+	CreateMyToken(ctx context.Context, params *CreateMyTokenParams, body CreateMyTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RevokeMyToken Revoke one of the person's tokens
 	//
@@ -2357,6 +2687,34 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTenantWithBody Create a tenant
+	//
+	// A global administrator, in a browser session: no token creates a tenant
+	// (`403 session_required`), and a person who is not a global administrator
+	// is `403 forbidden`. The creator becomes the tenant's first administrator
+	// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+	// administrator has no other role in it (docs/adr/0034 D2). The slug is
+	// immutable and never reused (docs/adr/0005 D4).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+	CreateTenantWithBody(ctx context.Context, params *CreateTenantParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTenant Create a tenant
+	//
+	// A global administrator, in a browser session: no token creates a tenant
+	// (`403 session_required`), and a person who is not a global administrator
+	// is `403 forbidden`. The creator becomes the tenant's first administrator
+	// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+	// administrator has no other role in it (docs/adr/0034 D2). The slug is
+	// immutable and never reused (docs/adr/0005 D4).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+	CreateTenant(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTenant The tenant and its settings
 	//
@@ -2382,6 +2740,111 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
 	UpdateTenant(ctx context.Context, tenant TenantSlug, params *UpdateTenantParams, body UpdateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAccounts The local accounts the tenant manages
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/accounts (the `ListAccounts` operationId).
+	ListAccounts(ctx context.Context, tenant TenantSlug, params *ListAccountsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAccountWithBody Create a local account in the tenant
+	//
+	// The administrator sets a temporary password; the person changes it at the
+	// first login, before anything else (docs/adr/0033 D4). The account gets a
+	// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+	// is managed by this tenant. There is no registration and no invitation:
+	// this route is the gate (D1). A username is unique in the installation,
+	// so `409 username_taken` also tells an administrator that another tenant
+	// has the name.
+	//
+	// A browser session only: a token, an administrator's included, answers
+	// `403 session_required`. An account made with a leaked token would
+	// survive the token's revocation, and so would the password the
+	// administrator chose.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+	CreateAccountWithBody(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAccount Create a local account in the tenant
+	//
+	// The administrator sets a temporary password; the person changes it at the
+	// first login, before anything else (docs/adr/0033 D4). The account gets a
+	// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+	// is managed by this tenant. There is no registration and no invitation:
+	// this route is the gate (D1). A username is unique in the installation,
+	// so `409 username_taken` also tells an administrator that another tenant
+	// has the name.
+	//
+	// A browser session only: a token, an administrator's included, answers
+	// `403 session_required`. An account made with a leaked token would
+	// survive the token's revocation, and so would the password the
+	// administrator chose.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+	CreateAccount(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, body CreateAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeactivateAccount Deactivate an account
+	//
+	// The person can no longer log in, their tokens are revoked and their
+	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
+	// Not for the administrator's own account (`403 forbidden`). Deactivating a
+	// deactivated account changes nothing.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
+	DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnlockAccount Lift the lockout of an account
+	//
+	// Forgets the failed attempts and the lock of the username
+	// (docs/adr/0033 D6). Not for the administrator's own account
+	// (`403 forbidden`). Unlocking an account that is not locked changes
+	// nothing.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
+	UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetAccountPasswordWithBody Set a new temporary password
+	//
+	// The person must change it at the next login (docs/adr/0033 D5), and every
+	// session of the account ends. Not for the administrator's own account: an
+	// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+	// for the current one (`403 forbidden`).
+	//
+	// A browser session only, like creating an account (`403 session_required`
+	// for a token): a password reset with a leaked token would be access that
+	// survives the token's revocation.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+	ResetAccountPasswordWithBody(ctx context.Context, tenant TenantSlug, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetAccountPassword Set a new temporary password
+	//
+	// The person must change it at the next login (docs/adr/0033 D5), and every
+	// session of the account ends. Not for the administrator's own account: an
+	// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+	// for the current one (`403 forbidden`).
+	//
+	// A browser session only, like creating an account (`403 session_required`
+	// for a token): a password reset with a leaked token would be access that
+	// survives the token's revocation.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+	ResetAccountPassword(ctx context.Context, tenant TenantSlug, username Username, body ResetAccountPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EndAccountSessions End every session of an account
+	//
+	// Immediate: the next request with such a session's cookie is
+	// unauthenticated (docs/adr/0031 D4). Tokens are not affected.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
+	EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	//
@@ -2959,6 +3422,85 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LoginLocalWithBody Log in with a local account
+	//
+	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+	// SameSite=Lax; Path=/`) and answers whether the password is temporary
+	// and must be changed before anything else (docs/adr/0033 D4). A new
+	// session is made at every login, and the one the request presented is
+	// ended (docs/adr/0031 D5).
+	//
+	// Every failure is the same `401 invalid_credentials` in the same time —
+	// an unknown username, a wrong password, a locked or a deactivated
+	// account — so neither the answer nor the lockout says whether an account
+	// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+	// username within fifteen minutes lock it; more attempts from one client
+	// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+	// `429 too_many_attempts` — the client being the TCP peer, or behind
+	// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+	// right, that is not one of them (docs/adr/0035 D2). While no
+	// tenant exists, only a global administrator may log in: anyone else, with
+	// the right password, gets `403 not_initialised` and no session
+	// (docs/adr/0032 D5).
+	//
+	// There is no session yet to carry a CSRF check, so the request must come
+	// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+	// to equal it, else `403 csrf` (docs/adr/0037 D5).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+	LoginLocalWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LoginLocal Log in with a local account
+	//
+	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+	// SameSite=Lax; Path=/`) and answers whether the password is temporary
+	// and must be changed before anything else (docs/adr/0033 D4). A new
+	// session is made at every login, and the one the request presented is
+	// ended (docs/adr/0031 D5).
+	//
+	// Every failure is the same `401 invalid_credentials` in the same time —
+	// an unknown username, a wrong password, a locked or a deactivated
+	// account — so neither the answer nor the lockout says whether an account
+	// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+	// username within fifteen minutes lock it; more attempts from one client
+	// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+	// `429 too_many_attempts` — the client being the TCP peer, or behind
+	// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+	// right, that is not one of them (docs/adr/0035 D2). While no
+	// tenant exists, only a global administrator may log in: anyone else, with
+	// the right password, gets `403 not_initialised` and no session
+	// (docs/adr/0032 D5).
+	//
+	// There is no session yet to carry a CSRF check, so the request must come
+	// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+	// to equal it, else `403 csrf` (docs/adr/0037 D5).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+	LoginLocal(ctx context.Context, body LoginLocalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Logout End the session
+	//
+	// Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
+	// write of a session, so the CSRF check applies: a page of another site
+	// cannot log a person out (docs/adr/0037 D5).
+	//
+	// Corresponds with POST /auth/logout (the `Logout` operationId).
+	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAuthOptions What the login page offers
+	//
+	// The local form is offered when at least one active local account exists,
+	// the identity provider's button when one is configured (docs/adr/0033 D8).
+	// No identity provider exists yet, so `oidc` is always false. The minimum
+	// password length is the policy every password form follows (D3).
+	//
+	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
+	GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetMe The calling person and their tenants
@@ -2976,15 +3518,138 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 	return c.Client.Do(req)
 }
 
+// ChangeMyPasswordWithBody Change the password of the person's local account
+//
+// Needs the current password, which counts like a login attempt towards
+// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+// other session of the account ends (D4), and a temporary password is no
+// longer temporary. The local administrator's password is set by the
+// configuration and cannot be changed here (`403 forbidden`).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+func (c *Client) ChangeMyPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeMyPasswordRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangeMyPassword Change the password of the person's local account
+//
+// Needs the current password, which counts like a login attempt towards
+// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+// other session of the account ends (D4), and a temporary password is no
+// longer temporary. The local administrator's password is set by the
+// configuration and cannot be changed here (`403 forbidden`).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+func (c *Client) ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeMyPasswordRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListMyTokens The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6). Creating a token needs a browser session,
-// which does not exist yet (docs/adr/0038 D6).
+// (docs/adr/0035 D1, D6).
 //
 // Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 func (c *Client) ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMyTokensRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateMyTokenWithBody Create a personal access token
+//
+// Only the person themselves, in a browser session: no token creates a
+// token (`403 session_required`) and no administrator creates one for
+// another person (docs/adr/0035 D5). The answer carries the plaintext
+// `token` once; cowork stores its SHA-256 only (D1).
+//
+// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+// one is shortened to the maximum, and `expires_at` in the answer says what
+// the token got (D4). An agent token has at most `write` scope
+// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+// every capability when `capabilities` is left out; an empty list is no
+// capability, the baseline only (docs/adr/0043 D4). A tenant
+// restriction needs a tenant the person belongs to, a project restriction a
+// project of it the person sees; either, if not, is `validation_failed`
+// without saying which of the two it was.
+//
+// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+// answers the token without `token`, and the person revokes it and makes
+// another.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+func (c *Client) CreateMyTokenWithBody(ctx context.Context, params *CreateMyTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMyTokenRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateMyToken Create a personal access token
+//
+// Only the person themselves, in a browser session: no token creates a
+// token (`403 session_required`) and no administrator creates one for
+// another person (docs/adr/0035 D5). The answer carries the plaintext
+// `token` once; cowork stores its SHA-256 only (D1).
+//
+// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+// one is shortened to the maximum, and `expires_at` in the answer says what
+// the token got (D4). An agent token has at most `write` scope
+// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+// every capability when `capabilities` is left out; an empty list is no
+// capability, the baseline only (docs/adr/0043 D4). A tenant
+// restriction needs a tenant the person belongs to, a project restriction a
+// project of it the person sees; either, if not, is `validation_failed`
+// without saying which of the two it was.
+//
+// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+// answers the token without `token`, and the person revokes it and makes
+// another.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+func (c *Client) CreateMyToken(ctx context.Context, params *CreateMyTokenParams, body CreateMyTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMyTokenRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3022,6 +3687,54 @@ func (c *Client) RevokeMyToken(ctx context.Context, tokenId openapi_types.UUID, 
 // Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 func (c *Client) GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetOpenAPIRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTenantWithBody Create a tenant
+//
+// A global administrator, in a browser session: no token creates a tenant
+// (`403 session_required`), and a person who is not a global administrator
+// is `403 forbidden`. The creator becomes the tenant's first administrator
+// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+// administrator has no other role in it (docs/adr/0034 D2). The slug is
+// immutable and never reused (docs/adr/0005 D4).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+func (c *Client) CreateTenantWithBody(ctx context.Context, params *CreateTenantParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTenantRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTenant Create a tenant
+//
+// A global administrator, in a browser session: no token creates a tenant
+// (`403 session_required`), and a person who is not a global administrator
+// is `403 forbidden`. The creator becomes the tenant's first administrator
+// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+// administrator has no other role in it (docs/adr/0034 D2). The slug is
+// immutable and never reused (docs/adr/0005 D4).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+func (c *Client) CreateTenant(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTenantRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3077,6 +3790,191 @@ func (c *Client) UpdateTenantWithBody(ctx context.Context, tenant TenantSlug, pa
 // Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
 func (c *Client) UpdateTenant(ctx context.Context, tenant TenantSlug, params *UpdateTenantParams, body UpdateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateTenantRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAccounts The local accounts the tenant manages
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/accounts (the `ListAccounts` operationId).
+func (c *Client) ListAccounts(ctx context.Context, tenant TenantSlug, params *ListAccountsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAccountsRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAccountWithBody Create a local account in the tenant
+//
+// The administrator sets a temporary password; the person changes it at the
+// first login, before anything else (docs/adr/0033 D4). The account gets a
+// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+// is managed by this tenant. There is no registration and no invitation:
+// this route is the gate (D1). A username is unique in the installation,
+// so `409 username_taken` also tells an administrator that another tenant
+// has the name.
+//
+// A browser session only: a token, an administrator's included, answers
+// `403 session_required`. An account made with a leaked token would
+// survive the token's revocation, and so would the password the
+// administrator chose.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+func (c *Client) CreateAccountWithBody(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAccountRequestWithBody(c.Server, tenant, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAccount Create a local account in the tenant
+//
+// The administrator sets a temporary password; the person changes it at the
+// first login, before anything else (docs/adr/0033 D4). The account gets a
+// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+// is managed by this tenant. There is no registration and no invitation:
+// this route is the gate (D1). A username is unique in the installation,
+// so `409 username_taken` also tells an administrator that another tenant
+// has the name.
+//
+// A browser session only: a token, an administrator's included, answers
+// `403 session_required`. An account made with a leaked token would
+// survive the token's revocation, and so would the password the
+// administrator chose.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+func (c *Client) CreateAccount(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, body CreateAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAccountRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeactivateAccount Deactivate an account
+//
+// The person can no longer log in, their tokens are revoked and their
+// sessions end (docs/adr/0024 D5); the person and every act they made stay.
+// Not for the administrator's own account (`403 forbidden`). Deactivating a
+// deactivated account changes nothing.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
+func (c *Client) DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeactivateAccountRequest(c.Server, tenant, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnlockAccount Lift the lockout of an account
+//
+// Forgets the failed attempts and the lock of the username
+// (docs/adr/0033 D6). Not for the administrator's own account
+// (`403 forbidden`). Unlocking an account that is not locked changes
+// nothing.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
+func (c *Client) UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlockAccountRequest(c.Server, tenant, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetAccountPasswordWithBody Set a new temporary password
+//
+// The person must change it at the next login (docs/adr/0033 D5), and every
+// session of the account ends. Not for the administrator's own account: an
+// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+// for the current one (`403 forbidden`).
+//
+// A browser session only, like creating an account (`403 session_required`
+// for a token): a password reset with a leaked token would be access that
+// survives the token's revocation.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+func (c *Client) ResetAccountPasswordWithBody(ctx context.Context, tenant TenantSlug, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetAccountPasswordRequestWithBody(c.Server, tenant, username, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetAccountPassword Set a new temporary password
+//
+// The person must change it at the next login (docs/adr/0033 D5), and every
+// session of the account ends. Not for the administrator's own account: an
+// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+// for the current one (`403 forbidden`).
+//
+// A browser session only, like creating an account (`403 session_required`
+// for a token): a password reset with a leaked token would be access that
+// survives the token's revocation.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+func (c *Client) ResetAccountPassword(ctx context.Context, tenant TenantSlug, username Username, body ResetAccountPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetAccountPasswordRequest(c.Server, tenant, username, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// EndAccountSessions End every session of an account
+//
+// Immediate: the next request with such a session's cookie is
+// unauthenticated (docs/adr/0031 D4). Tokens are not affected.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
+func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEndAccountSessionsRequest(c.Server, tenant, username)
 	if err != nil {
 		return nil, err
 	}
@@ -4334,6 +5232,125 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// LoginLocalWithBody Log in with a local account
+//
+// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+// SameSite=Lax; Path=/`) and answers whether the password is temporary
+// and must be changed before anything else (docs/adr/0033 D4). A new
+// session is made at every login, and the one the request presented is
+// ended (docs/adr/0031 D5).
+//
+// Every failure is the same `401 invalid_credentials` in the same time —
+// an unknown username, a wrong password, a locked or a deactivated
+// account — so neither the answer nor the lockout says whether an account
+// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+// username within fifteen minutes lock it; more attempts from one client
+// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+// `429 too_many_attempts` — the client being the TCP peer, or behind
+// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+// right, that is not one of them (docs/adr/0035 D2). While no
+// tenant exists, only a global administrator may log in: anyone else, with
+// the right password, gets `403 not_initialised` and no session
+// (docs/adr/0032 D5).
+//
+// There is no session yet to carry a CSRF check, so the request must come
+// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+// to equal it, else `403 csrf` (docs/adr/0037 D5).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+func (c *Client) LoginLocalWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginLocalRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LoginLocal Log in with a local account
+//
+// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+// SameSite=Lax; Path=/`) and answers whether the password is temporary
+// and must be changed before anything else (docs/adr/0033 D4). A new
+// session is made at every login, and the one the request presented is
+// ended (docs/adr/0031 D5).
+//
+// Every failure is the same `401 invalid_credentials` in the same time —
+// an unknown username, a wrong password, a locked or a deactivated
+// account — so neither the answer nor the lockout says whether an account
+// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+// username within fifteen minutes lock it; more attempts from one client
+// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+// `429 too_many_attempts` — the client being the TCP peer, or behind
+// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+// right, that is not one of them (docs/adr/0035 D2). While no
+// tenant exists, only a global administrator may log in: anyone else, with
+// the right password, gets `403 not_initialised` and no session
+// (docs/adr/0032 D5).
+//
+// There is no session yet to carry a CSRF check, so the request must come
+// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+// to equal it, else `403 csrf` (docs/adr/0037 D5).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+func (c *Client) LoginLocal(ctx context.Context, body LoginLocalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginLocalRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Logout End the session
+//
+// Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
+// write of a session, so the CSRF check applies: a page of another site
+// cannot log a person out (docs/adr/0037 D5).
+//
+// Corresponds with POST /auth/logout (the `Logout` operationId).
+func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAuthOptions What the login page offers
+//
+// The local form is offered when at least one active local account exists,
+// the identity provider's button when one is configured (docs/adr/0033 D8).
+// No identity provider exists yet, so `oidc` is always false. The minimum
+// password length is the policy every password form follows (D3).
+//
+// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
+func (c *Client) GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAuthOptionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetMeRequest constructs an http.Request for the GetMe method
 func NewGetMeRequest(server string) (*http.Request, error) {
 	var err error
@@ -4357,6 +5374,46 @@ func NewGetMeRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewChangeMyPasswordRequest calls the generic ChangeMyPassword builder with application/json body
+func NewChangeMyPasswordRequest(server string, body ChangeMyPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewChangeMyPasswordRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewChangeMyPasswordRequestWithBody constructs an http.Request for the ChangeMyPassword method, with any body, and a specified content type
+func NewChangeMyPasswordRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/password")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4427,6 +5484,61 @@ func NewListMyTokensRequest(server string, params *ListMyTokensParams) (*http.Re
 	return req, nil
 }
 
+// NewCreateMyTokenRequest calls the generic CreateMyToken builder with application/json body
+func NewCreateMyTokenRequest(server string, params *CreateMyTokenParams, body CreateMyTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateMyTokenRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateMyTokenRequestWithBody constructs an http.Request for the CreateMyToken method, with any body, and a specified content type
+func NewCreateMyTokenRequestWithBody(server string, params *CreateMyTokenParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/tokens")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewRevokeMyTokenRequest constructs an http.Request for the RevokeMyToken method
 func NewRevokeMyTokenRequest(server string, tokenId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -4483,6 +5595,61 @@ func NewGetOpenAPIRequest(server string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateTenantRequest calls the generic CreateTenant builder with application/json body
+func NewCreateTenantRequest(server string, params *CreateTenantParams, body CreateTenantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTenantRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateTenantRequestWithBody constructs an http.Request for the CreateTenant method, with any body, and a specified content type
+func NewCreateTenantRequestWithBody(server string, params *CreateTenantParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -4579,6 +5746,318 @@ func NewUpdateTenantRequestWithBody(server string, tenant TenantSlug, params *Up
 			req.Header.Set("If-Match", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewListAccountsRequest constructs an http.Request for the ListAccounts method
+func NewListAccountsRequest(server string, tenant TenantSlug, params *ListAccountsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAccountRequest calls the generic CreateAccount builder with application/json body
+func NewCreateAccountRequest(server string, tenant TenantSlug, params *CreateAccountParams, body CreateAccountJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAccountRequestWithBody(server, tenant, params, "application/json", bodyReader)
+}
+
+// NewCreateAccountRequestWithBody constructs an http.Request for the CreateAccount method, with any body, and a specified content type
+func NewCreateAccountRequestWithBody(server string, tenant TenantSlug, params *CreateAccountParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeactivateAccountRequest constructs an http.Request for the DeactivateAccount method
+func NewDeactivateAccountRequest(server string, tenant TenantSlug, username Username) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts/%s/deactivation", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnlockAccountRequest constructs an http.Request for the UnlockAccount method
+func NewUnlockAccountRequest(server string, tenant TenantSlug, username Username) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts/%s/lockout", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResetAccountPasswordRequest calls the generic ResetAccountPassword builder with application/json body
+func NewResetAccountPasswordRequest(server string, tenant TenantSlug, username Username, body ResetAccountPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResetAccountPasswordRequestWithBody(server, tenant, username, "application/json", bodyReader)
+}
+
+// NewResetAccountPasswordRequestWithBody constructs an http.Request for the ResetAccountPassword method, with any body, and a specified content type
+func NewResetAccountPasswordRequestWithBody(server string, tenant TenantSlug, username Username, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts/%s/password", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewEndAccountSessionsRequest constructs an http.Request for the EndAccountSessions method
+func NewEndAccountSessionsRequest(server string, tenant TenantSlug, username Username) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/accounts/%s/sessions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -8911,6 +10390,100 @@ func NewGetVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewLoginLocalRequest calls the generic LoginLocal builder with application/json body
+func NewLoginLocalRequest(server string, body LoginLocalJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLoginLocalRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewLoginLocalRequestWithBody constructs an http.Request for the LoginLocal method, with any body, and a specified content type
+func NewLoginLocalRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/local")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLogoutRequest constructs an http.Request for the Logout method
+func NewLogoutRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/logout")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAuthOptionsRequest constructs an http.Request for the GetAuthOptions method
+func NewGetAuthOptionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/options")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -8962,16 +10535,99 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error)
 
+	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
+	//
+	// Needs the current password, which counts like a login attempt towards
+	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+	// other session of the account ends (D4), and a temporary password is no
+	// longer temporary. The local administrator's password is set by the
+	// configuration and cannot be changed here (`403 forbidden`).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+	ChangeMyPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error)
+
+	// ChangeMyPasswordWithResponse Change the password of the person's local account
+	//
+	// Needs the current password, which counts like a login attempt towards
+	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+	// other session of the account ends (D4), and a temporary password is no
+	// longer temporary. The local administrator's password is set by the
+	// configuration and cannot be changed here (`403 forbidden`).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+	ChangeMyPasswordWithResponse(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error)
+
 	// ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6). Creating a token needs a browser session,
-	// which does not exist yet (docs/adr/0038 D6).
+	// (docs/adr/0035 D1, D6).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 	ListMyTokensWithResponse(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*ListMyTokensResponse, error)
+
+	// CreateMyTokenWithBodyWithResponse Create a personal access token
+	//
+	// Only the person themselves, in a browser session: no token creates a
+	// token (`403 session_required`) and no administrator creates one for
+	// another person (docs/adr/0035 D5). The answer carries the plaintext
+	// `token` once; cowork stores its SHA-256 only (D1).
+	//
+	// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+	// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+	// one is shortened to the maximum, and `expires_at` in the answer says what
+	// the token got (D4). An agent token has at most `write` scope
+	// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+	// every capability when `capabilities` is left out; an empty list is no
+	// capability, the baseline only (docs/adr/0043 D4). A tenant
+	// restriction needs a tenant the person belongs to, a project restriction a
+	// project of it the person sees; either, if not, is `validation_failed`
+	// without saying which of the two it was.
+	//
+	// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+	// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+	// answers the token without `token`, and the person revokes it and makes
+	// another.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+	CreateMyTokenWithBodyWithResponse(ctx context.Context, params *CreateMyTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMyTokenResponse, error)
+
+	// CreateMyTokenWithResponse Create a personal access token
+	//
+	// Only the person themselves, in a browser session: no token creates a
+	// token (`403 session_required`) and no administrator creates one for
+	// another person (docs/adr/0035 D5). The answer carries the plaintext
+	// `token` once; cowork stores its SHA-256 only (D1).
+	//
+	// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+	// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+	// one is shortened to the maximum, and `expires_at` in the answer says what
+	// the token got (D4). An agent token has at most `write` scope
+	// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+	// every capability when `capabilities` is left out; an empty list is no
+	// capability, the baseline only (docs/adr/0043 D4). A tenant
+	// restriction needs a tenant the person belongs to, a project restriction a
+	// project of it the person sees; either, if not, is `validation_failed`
+	// without saying which of the two it was.
+	//
+	// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+	// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+	// answers the token without `token`, and the person revokes it and makes
+	// another.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+	CreateMyTokenWithResponse(ctx context.Context, params *CreateMyTokenParams, body CreateMyTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMyTokenResponse, error)
 
 	// RevokeMyTokenWithResponse Revoke one of the person's tokens
 	//
@@ -8993,6 +10649,34 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPIWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOpenAPIResponse, error)
+
+	// CreateTenantWithBodyWithResponse Create a tenant
+	//
+	// A global administrator, in a browser session: no token creates a tenant
+	// (`403 session_required`), and a person who is not a global administrator
+	// is `403 forbidden`. The creator becomes the tenant's first administrator
+	// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+	// administrator has no other role in it (docs/adr/0034 D2). The slug is
+	// immutable and never reused (docs/adr/0005 D4).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+	CreateTenantWithBodyWithResponse(ctx context.Context, params *CreateTenantParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error)
+
+	// CreateTenantWithResponse Create a tenant
+	//
+	// A global administrator, in a browser session: no token creates a tenant
+	// (`403 session_required`), and a person who is not a global administrator
+	// is `403 forbidden`. The creator becomes the tenant's first administrator
+	// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+	// administrator has no other role in it (docs/adr/0034 D2). The slug is
+	// immutable and never reused (docs/adr/0005 D4).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+	CreateTenantWithResponse(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error)
 
 	// GetTenantWithResponse The tenant and its settings
 	//
@@ -9020,6 +10704,119 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
 	UpdateTenantWithResponse(ctx context.Context, tenant TenantSlug, params *UpdateTenantParams, body UpdateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTenantResponse, error)
+
+	// ListAccountsWithResponse The local accounts the tenant manages
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/accounts (the `ListAccounts` operationId).
+	ListAccountsWithResponse(ctx context.Context, tenant TenantSlug, params *ListAccountsParams, reqEditors ...RequestEditorFn) (*ListAccountsResponse, error)
+
+	// CreateAccountWithBodyWithResponse Create a local account in the tenant
+	//
+	// The administrator sets a temporary password; the person changes it at the
+	// first login, before anything else (docs/adr/0033 D4). The account gets a
+	// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+	// is managed by this tenant. There is no registration and no invitation:
+	// this route is the gate (D1). A username is unique in the installation,
+	// so `409 username_taken` also tells an administrator that another tenant
+	// has the name.
+	//
+	// A browser session only: a token, an administrator's included, answers
+	// `403 session_required`. An account made with a leaked token would
+	// survive the token's revocation, and so would the password the
+	// administrator chose.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+	CreateAccountWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAccountResponse, error)
+
+	// CreateAccountWithResponse Create a local account in the tenant
+	//
+	// The administrator sets a temporary password; the person changes it at the
+	// first login, before anything else (docs/adr/0033 D4). The account gets a
+	// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+	// is managed by this tenant. There is no registration and no invitation:
+	// this route is the gate (D1). A username is unique in the installation,
+	// so `409 username_taken` also tells an administrator that another tenant
+	// has the name.
+	//
+	// A browser session only: a token, an administrator's included, answers
+	// `403 session_required`. An account made with a leaked token would
+	// survive the token's revocation, and so would the password the
+	// administrator chose.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+	CreateAccountWithResponse(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, body CreateAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAccountResponse, error)
+
+	// DeactivateAccountWithResponse Deactivate an account
+	//
+	// The person can no longer log in, their tokens are revoked and their
+	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
+	// Not for the administrator's own account (`403 forbidden`). Deactivating a
+	// deactivated account changes nothing.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
+	DeactivateAccountWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*DeactivateAccountResponse, error)
+
+	// UnlockAccountWithResponse Lift the lockout of an account
+	//
+	// Forgets the failed attempts and the lock of the username
+	// (docs/adr/0033 D6). Not for the administrator's own account
+	// (`403 forbidden`). Unlocking an account that is not locked changes
+	// nothing.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
+	UnlockAccountWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*UnlockAccountResponse, error)
+
+	// ResetAccountPasswordWithBodyWithResponse Set a new temporary password
+	//
+	// The person must change it at the next login (docs/adr/0033 D5), and every
+	// session of the account ends. Not for the administrator's own account: an
+	// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+	// for the current one (`403 forbidden`).
+	//
+	// A browser session only, like creating an account (`403 session_required`
+	// for a token): a password reset with a leaked token would be access that
+	// survives the token's revocation.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+	ResetAccountPasswordWithBodyWithResponse(ctx context.Context, tenant TenantSlug, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetAccountPasswordResponse, error)
+
+	// ResetAccountPasswordWithResponse Set a new temporary password
+	//
+	// The person must change it at the next login (docs/adr/0033 D5), and every
+	// session of the account ends. Not for the administrator's own account: an
+	// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+	// for the current one (`403 forbidden`).
+	//
+	// A browser session only, like creating an account (`403 session_required`
+	// for a token): a password reset with a leaked token would be access that
+	// survives the token's revocation.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+	ResetAccountPasswordWithResponse(ctx context.Context, tenant TenantSlug, username Username, body ResetAccountPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetAccountPasswordResponse, error)
+
+	// EndAccountSessionsWithResponse End every session of an account
+	//
+	// Immediate: the next request with such a session's cookie is
+	// unauthenticated (docs/adr/0031 D4). Tokens are not affected.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
+	EndAccountSessionsWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*EndAccountSessionsResponse, error)
 
 	// ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 	//
@@ -9665,6 +11462,89 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
+
+	// LoginLocalWithBodyWithResponse Log in with a local account
+	//
+	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+	// SameSite=Lax; Path=/`) and answers whether the password is temporary
+	// and must be changed before anything else (docs/adr/0033 D4). A new
+	// session is made at every login, and the one the request presented is
+	// ended (docs/adr/0031 D5).
+	//
+	// Every failure is the same `401 invalid_credentials` in the same time —
+	// an unknown username, a wrong password, a locked or a deactivated
+	// account — so neither the answer nor the lockout says whether an account
+	// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+	// username within fifteen minutes lock it; more attempts from one client
+	// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+	// `429 too_many_attempts` — the client being the TCP peer, or behind
+	// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+	// right, that is not one of them (docs/adr/0035 D2). While no
+	// tenant exists, only a global administrator may log in: anyone else, with
+	// the right password, gets `403 not_initialised` and no session
+	// (docs/adr/0032 D5).
+	//
+	// There is no session yet to carry a CSRF check, so the request must come
+	// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+	// to equal it, else `403 csrf` (docs/adr/0037 D5).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+	LoginLocalWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginLocalResponse, error)
+
+	// LoginLocalWithResponse Log in with a local account
+	//
+	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+	// SameSite=Lax; Path=/`) and answers whether the password is temporary
+	// and must be changed before anything else (docs/adr/0033 D4). A new
+	// session is made at every login, and the one the request presented is
+	// ended (docs/adr/0031 D5).
+	//
+	// Every failure is the same `401 invalid_credentials` in the same time —
+	// an unknown username, a wrong password, a locked or a deactivated
+	// account — so neither the answer nor the lockout says whether an account
+	// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+	// username within fifteen minutes lock it; more attempts from one client
+	// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+	// `429 too_many_attempts` — the client being the TCP peer, or behind
+	// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+	// right, that is not one of them (docs/adr/0035 D2). While no
+	// tenant exists, only a global administrator may log in: anyone else, with
+	// the right password, gets `403 not_initialised` and no session
+	// (docs/adr/0032 D5).
+	//
+	// There is no session yet to carry a CSRF check, so the request must come
+	// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+	// to equal it, else `403 csrf` (docs/adr/0037 D5).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+	LoginLocalWithResponse(ctx context.Context, body LoginLocalJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginLocalResponse, error)
+
+	// LogoutWithResponse End the session
+	//
+	// Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
+	// write of a session, so the CSRF check applies: a page of another site
+	// cannot log a person out (docs/adr/0037 D5).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/logout (the `Logout` operationId).
+	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
+
+	// GetAuthOptionsWithResponse What the login page offers
+	//
+	// The local form is offered when at least one active local account exists,
+	// the identity provider's button when one is configured (docs/adr/0033 D8).
+	// No identity provider exists yet, so `oidc` is always false. The minimum
+	// password length is the policy every password form follows (D3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
+	GetAuthOptionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAuthOptionsResponse, error)
 }
 
 // GetMeResponseDefaultHeaders the declared response headers of an HTTP default response for GetMe
@@ -9722,6 +11602,54 @@ func (r GetMeResponse) ContentType() string {
 	return ""
 }
 
+// ChangeMyPasswordResponseDefaultHeaders the declared response headers of an HTTP default response for ChangeMyPassword
+type ChangeMyPasswordResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ChangeMyPasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ChangeMyPasswordResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ChangeMyPasswordResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ChangeMyPasswordResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ChangeMyPasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ChangeMyPasswordResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ChangeMyPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListMyTokensResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyTokens
 type ListMyTokensResponseDefaultHeaders struct {
 	XRequestId *string
@@ -9771,6 +11699,61 @@ func (r ListMyTokensResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListMyTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateMyTokenResponseDefaultHeaders the declared response headers of an HTTP default response for CreateMyToken
+type CreateMyTokenResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateMyTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *TokenCreated
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateMyTokenResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateMyTokenResponse) GetJSON201() *TokenCreated {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateMyTokenResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateMyTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateMyTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateMyTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateMyTokenResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9874,6 +11857,69 @@ func (r GetOpenAPIResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetOpenAPIResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateTenantResponse201Headers the declared response headers of an HTTP 201 response for CreateTenant
+type CreateTenantResponse201Headers struct {
+	ETag     *string
+	Location *string
+}
+
+// CreateTenantResponseDefaultHeaders the declared response headers of an HTTP default response for CreateTenant
+type CreateTenantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateTenantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Tenant
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateTenantResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateTenantResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateTenantResponse) GetJSON201() *Tenant {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateTenantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateTenantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTenantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTenantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTenantResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9998,6 +12044,308 @@ func (r UpdateTenantResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateTenantResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListAccountsResponseDefaultHeaders the declared response headers of an HTTP default response for ListAccounts
+type ListAccountsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListAccountsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccountList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListAccountsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAccountsResponse) GetJSON200() *AccountList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListAccountsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAccountsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAccountsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAccountsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAccountsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateAccountResponseDefaultHeaders the declared response headers of an HTTP default response for CreateAccount
+type CreateAccountResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Account
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateAccountResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateAccountResponse) GetJSON201() *Account {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateAccountResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeactivateAccountResponseDefaultHeaders the declared response headers of an HTTP default response for DeactivateAccount
+type DeactivateAccountResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeactivateAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeactivateAccountResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeactivateAccountResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeactivateAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeactivateAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeactivateAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeactivateAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UnlockAccountResponseDefaultHeaders the declared response headers of an HTTP default response for UnlockAccount
+type UnlockAccountResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UnlockAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UnlockAccountResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnlockAccountResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UnlockAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnlockAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnlockAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnlockAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ResetAccountPasswordResponseDefaultHeaders the declared response headers of an HTTP default response for ResetAccountPassword
+type ResetAccountPasswordResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ResetAccountPasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ResetAccountPasswordResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ResetAccountPasswordResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetAccountPasswordResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetAccountPasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetAccountPasswordResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetAccountPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// EndAccountSessionsResponseDefaultHeaders the declared response headers of an HTTP default response for EndAccountSessions
+type EndAccountSessionsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type EndAccountSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *EndAccountSessionsResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r EndAccountSessionsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r EndAccountSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r EndAccountSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EndAccountSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r EndAccountSessionsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -13041,6 +15389,178 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
+// LoginLocalResponse200Headers the declared response headers of an HTTP 200 response for LoginLocal
+type LoginLocalResponse200Headers struct {
+	SetCookie *string
+}
+
+// LoginLocalResponseDefaultHeaders the declared response headers of an HTTP default response for LoginLocal
+type LoginLocalResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LoginLocalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LocalLoginResult
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *LoginLocalResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LoginLocalResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LoginLocalResponse) GetJSON200() *LocalLoginResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LoginLocalResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LoginLocalResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LoginLocalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LoginLocalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LoginLocalResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// LogoutResponse204Headers the declared response headers of an HTTP 204 response for Logout
+type LogoutResponse204Headers struct {
+	SetCookie *string
+}
+
+// LogoutResponseDefaultHeaders the declared response headers of an HTTP default response for Logout
+type LogoutResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LogoutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *LogoutResponse204Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LogoutResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LogoutResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LogoutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LogoutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LogoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LogoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAuthOptionsResponseDefaultHeaders the declared response headers of an HTTP default response for GetAuthOptions
+type GetAuthOptionsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetAuthOptionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthOptions
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetAuthOptionsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAuthOptionsResponse) GetJSON200() *AuthOptions {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAuthOptionsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAuthOptionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAuthOptionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAuthOptionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAuthOptionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetMeWithResponse The calling person and their tenants
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13054,11 +15574,50 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 	return ParseGetMeResponse(rsp)
 }
 
+// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
+//
+// Needs the current password, which counts like a login attempt towards
+// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+// other session of the account ends (D4), and a temporary password is no
+// longer temporary. The local administrator's password is set by the
+// configuration and cannot be changed here (`403 forbidden`).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+func (c *ClientWithResponses) ChangeMyPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error) {
+	rsp, err := c.ChangeMyPasswordWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeMyPasswordResponse(rsp)
+}
+
+// ChangeMyPasswordWithResponse Change the password of the person's local account
+//
+// Needs the current password, which counts like a login attempt towards
+// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
+// other session of the account ends (D4), and a temporary password is no
+// longer temporary. The local administrator's password is set by the
+// configuration and cannot be changed here (`403 forbidden`).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
+func (c *ClientWithResponses) ChangeMyPasswordWithResponse(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error) {
+	rsp, err := c.ChangeMyPassword(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeMyPasswordResponse(rsp)
+}
+
 // ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6). Creating a token needs a browser session,
-// which does not exist yet (docs/adr/0038 D6).
+// (docs/adr/0035 D1, D6).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13069,6 +15628,74 @@ func (c *ClientWithResponses) ListMyTokensWithResponse(ctx context.Context, para
 		return nil, err
 	}
 	return ParseListMyTokensResponse(rsp)
+}
+
+// CreateMyTokenWithBodyWithResponse Create a personal access token
+//
+// Only the person themselves, in a browser session: no token creates a
+// token (`403 session_required`) and no administrator creates one for
+// another person (docs/adr/0035 D5). The answer carries the plaintext
+// `token` once; cowork stores its SHA-256 only (D1).
+//
+// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+// one is shortened to the maximum, and `expires_at` in the answer says what
+// the token got (D4). An agent token has at most `write` scope
+// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+// every capability when `capabilities` is left out; an empty list is no
+// capability, the baseline only (docs/adr/0043 D4). A tenant
+// restriction needs a tenant the person belongs to, a project restriction a
+// project of it the person sees; either, if not, is `validation_failed`
+// without saying which of the two it was.
+//
+// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+// answers the token without `token`, and the person revokes it and makes
+// another.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+func (c *ClientWithResponses) CreateMyTokenWithBodyWithResponse(ctx context.Context, params *CreateMyTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMyTokenResponse, error) {
+	rsp, err := c.CreateMyTokenWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMyTokenResponse(rsp)
+}
+
+// CreateMyTokenWithResponse Create a personal access token
+//
+// Only the person themselves, in a browser session: no token creates a
+// token (`403 session_required`) and no administrator creates one for
+// another person (docs/adr/0035 D5). The answer carries the plaintext
+// `token` once; cowork stores its SHA-256 only (D1).
+//
+// The lifetime is `lifetime_days`, by default `COWORK_TOKEN_DEFAULT_LIFETIME`
+// (90 days) and at most `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer
+// one is shortened to the maximum, and `expires_at` in the answer says what
+// the token got (D4). An agent token has at most `write` scope
+// (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
+// every capability when `capabilities` is left out; an empty list is no
+// capability, the baseline only (docs/adr/0043 D4). A tenant
+// restriction needs a tenant the person belongs to, a project restriction a
+// project of it the person sees; either, if not, is `validation_failed`
+// without saying which of the two it was.
+//
+// An `Idempotency-Key` makes a retry create nothing twice, but the stored
+// answer never holds the plaintext (docs/adr/0045 D6): the repetition
+// answers the token without `token`, and the person revokes it and makes
+// another.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/me/tokens (the `CreateMyToken` operationId).
+func (c *ClientWithResponses) CreateMyTokenWithResponse(ctx context.Context, params *CreateMyTokenParams, body CreateMyTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMyTokenResponse, error) {
+	rsp, err := c.CreateMyToken(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMyTokenResponse(rsp)
 }
 
 // RevokeMyTokenWithResponse Revoke one of the person's tokens
@@ -13102,6 +15729,46 @@ func (c *ClientWithResponses) GetOpenAPIWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetOpenAPIResponse(rsp)
+}
+
+// CreateTenantWithBodyWithResponse Create a tenant
+//
+// A global administrator, in a browser session: no token creates a tenant
+// (`403 session_required`), and a person who is not a global administrator
+// is `403 forbidden`. The creator becomes the tenant's first administrator
+// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+// administrator has no other role in it (docs/adr/0034 D2). The slug is
+// immutable and never reused (docs/adr/0005 D4).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+func (c *ClientWithResponses) CreateTenantWithBodyWithResponse(ctx context.Context, params *CreateTenantParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error) {
+	rsp, err := c.CreateTenantWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTenantResponse(rsp)
+}
+
+// CreateTenantWithResponse Create a tenant
+//
+// A global administrator, in a browser session: no token creates a tenant
+// (`403 session_required`), and a person who is not a global administrator
+// is `403 forbidden`. The creator becomes the tenant's first administrator
+// by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+// administrator has no other role in it (docs/adr/0034 D2). The slug is
+// immutable and never reused (docs/adr/0005 D4).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants (the `CreateTenant` operationId).
+func (c *ClientWithResponses) CreateTenantWithResponse(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error) {
+	rsp, err := c.CreateTenant(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTenantResponse(rsp)
 }
 
 // GetTenantWithResponse The tenant and its settings
@@ -13147,6 +15814,167 @@ func (c *ClientWithResponses) UpdateTenantWithResponse(ctx context.Context, tena
 		return nil, err
 	}
 	return ParseUpdateTenantResponse(rsp)
+}
+
+// ListAccountsWithResponse The local accounts the tenant manages
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/accounts (the `ListAccounts` operationId).
+func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, tenant TenantSlug, params *ListAccountsParams, reqEditors ...RequestEditorFn) (*ListAccountsResponse, error) {
+	rsp, err := c.ListAccounts(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAccountsResponse(rsp)
+}
+
+// CreateAccountWithBodyWithResponse Create a local account in the tenant
+//
+// The administrator sets a temporary password; the person changes it at the
+// first login, before anything else (docs/adr/0033 D4). The account gets a
+// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+// is managed by this tenant. There is no registration and no invitation:
+// this route is the gate (D1). A username is unique in the installation,
+// so `409 username_taken` also tells an administrator that another tenant
+// has the name.
+//
+// A browser session only: a token, an administrator's included, answers
+// `403 session_required`. An account made with a leaked token would
+// survive the token's revocation, and so would the password the
+// administrator chose.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+func (c *ClientWithResponses) CreateAccountWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAccountResponse, error) {
+	rsp, err := c.CreateAccountWithBody(ctx, tenant, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAccountResponse(rsp)
+}
+
+// CreateAccountWithResponse Create a local account in the tenant
+//
+// The administrator sets a temporary password; the person changes it at the
+// first login, before anything else (docs/adr/0033 D4). The account gets a
+// marked grant with the given role in this tenant (docs/adr/0030 D3) and
+// is managed by this tenant. There is no registration and no invitation:
+// this route is the gate (D1). A username is unique in the installation,
+// so `409 username_taken` also tells an administrator that another tenant
+// has the name.
+//
+// A browser session only: a token, an administrator's included, answers
+// `403 session_required`. An account made with a leaked token would
+// survive the token's revocation, and so would the password the
+// administrator chose.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/accounts (the `CreateAccount` operationId).
+func (c *ClientWithResponses) CreateAccountWithResponse(ctx context.Context, tenant TenantSlug, params *CreateAccountParams, body CreateAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAccountResponse, error) {
+	rsp, err := c.CreateAccount(ctx, tenant, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAccountResponse(rsp)
+}
+
+// DeactivateAccountWithResponse Deactivate an account
+//
+// The person can no longer log in, their tokens are revoked and their
+// sessions end (docs/adr/0024 D5); the person and every act they made stay.
+// Not for the administrator's own account (`403 forbidden`). Deactivating a
+// deactivated account changes nothing.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
+func (c *ClientWithResponses) DeactivateAccountWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*DeactivateAccountResponse, error) {
+	rsp, err := c.DeactivateAccount(ctx, tenant, username, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeactivateAccountResponse(rsp)
+}
+
+// UnlockAccountWithResponse Lift the lockout of an account
+//
+// Forgets the failed attempts and the lock of the username
+// (docs/adr/0033 D6). Not for the administrator's own account
+// (`403 forbidden`). Unlocking an account that is not locked changes
+// nothing.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
+func (c *ClientWithResponses) UnlockAccountWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*UnlockAccountResponse, error) {
+	rsp, err := c.UnlockAccount(ctx, tenant, username, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlockAccountResponse(rsp)
+}
+
+// ResetAccountPasswordWithBodyWithResponse Set a new temporary password
+//
+// The person must change it at the next login (docs/adr/0033 D5), and every
+// session of the account ends. Not for the administrator's own account: an
+// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+// for the current one (`403 forbidden`).
+//
+// A browser session only, like creating an account (`403 session_required`
+// for a token): a password reset with a leaked token would be access that
+// survives the token's revocation.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+func (c *ClientWithResponses) ResetAccountPasswordWithBodyWithResponse(ctx context.Context, tenant TenantSlug, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetAccountPasswordResponse, error) {
+	rsp, err := c.ResetAccountPasswordWithBody(ctx, tenant, username, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetAccountPasswordResponse(rsp)
+}
+
+// ResetAccountPasswordWithResponse Set a new temporary password
+//
+// The person must change it at the next login (docs/adr/0033 D5), and every
+// session of the account ends. Not for the administrator's own account: an
+// administrator changes theirs with `PUT /api/v1/me/password`, which asks
+// for the current one (`403 forbidden`).
+//
+// A browser session only, like creating an account (`403 session_required`
+// for a token): a password reset with a leaked token would be access that
+// survives the token's revocation.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/password (the `ResetAccountPassword` operationId).
+func (c *ClientWithResponses) ResetAccountPasswordWithResponse(ctx context.Context, tenant TenantSlug, username Username, body ResetAccountPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetAccountPasswordResponse, error) {
+	rsp, err := c.ResetAccountPassword(ctx, tenant, username, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetAccountPasswordResponse(rsp)
+}
+
+// EndAccountSessionsWithResponse End every session of an account
+//
+// Immediate: the next request with such a session's cookie is
+// unauthenticated (docs/adr/0031 D4). Tokens are not affected.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
+func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*EndAccountSessionsResponse, error) {
+	rsp, err := c.EndAccountSessions(ctx, tenant, username, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEndAccountSessionsResponse(rsp)
 }
 
 // ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
@@ -14196,6 +17024,113 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	return ParseGetVersionResponse(rsp)
 }
 
+// LoginLocalWithBodyWithResponse Log in with a local account
+//
+// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+// SameSite=Lax; Path=/`) and answers whether the password is temporary
+// and must be changed before anything else (docs/adr/0033 D4). A new
+// session is made at every login, and the one the request presented is
+// ended (docs/adr/0031 D5).
+//
+// Every failure is the same `401 invalid_credentials` in the same time —
+// an unknown username, a wrong password, a locked or a deactivated
+// account — so neither the answer nor the lockout says whether an account
+// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+// username within fifteen minutes lock it; more attempts from one client
+// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+// `429 too_many_attempts` — the client being the TCP peer, or behind
+// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+// right, that is not one of them (docs/adr/0035 D2). While no
+// tenant exists, only a global administrator may log in: anyone else, with
+// the right password, gets `403 not_initialised` and no session
+// (docs/adr/0032 D5).
+//
+// There is no session yet to carry a CSRF check, so the request must come
+// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+// to equal it, else `403 csrf` (docs/adr/0037 D5).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+func (c *ClientWithResponses) LoginLocalWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginLocalResponse, error) {
+	rsp, err := c.LoginLocalWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginLocalResponse(rsp)
+}
+
+// LoginLocalWithResponse Log in with a local account
+//
+// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
+// SameSite=Lax; Path=/`) and answers whether the password is temporary
+// and must be changed before anything else (docs/adr/0033 D4). A new
+// session is made at every login, and the one the request presented is
+// ended (docs/adr/0031 D5).
+//
+// Every failure is the same `401 invalid_credentials` in the same time —
+// an unknown username, a wrong password, a locked or a deactivated
+// account — so neither the answer nor the lockout says whether an account
+// exists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one
+// username within fifteen minutes lock it; more attempts from one client
+// address within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are
+// `429 too_many_attempts` — the client being the TCP peer, or behind
+// `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
+// right, that is not one of them (docs/adr/0035 D2). While no
+// tenant exists, only a global administrator may log in: anyone else, with
+// the right password, gets `403 not_initialised` and no session
+// (docs/adr/0032 D5).
+//
+// There is no session yet to carry a CSRF check, so the request must come
+// from `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has
+// to equal it, else `403 csrf` (docs/adr/0037 D5).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/local (the `LoginLocal` operationId).
+func (c *ClientWithResponses) LoginLocalWithResponse(ctx context.Context, body LoginLocalJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginLocalResponse, error) {
+	rsp, err := c.LoginLocal(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginLocalResponse(rsp)
+}
+
+// LogoutWithResponse End the session
+//
+// Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
+// write of a session, so the CSRF check applies: a page of another site
+// cannot log a person out (docs/adr/0037 D5).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/logout (the `Logout` operationId).
+func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error) {
+	rsp, err := c.Logout(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLogoutResponse(rsp)
+}
+
+// GetAuthOptionsWithResponse What the login page offers
+//
+// The local form is offered when at least one active local account exists,
+// the identity provider's button when one is configured (docs/adr/0033 D8).
+// No identity provider exists yet, so `oidc` is always false. The minimum
+// password length is the policy every password form follows (D3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
+func (c *ClientWithResponses) GetAuthOptionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAuthOptionsResponse, error) {
+	rsp, err := c.GetAuthOptions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAuthOptionsResponse(rsp)
+}
+
 // ParseGetMeResponse parses an HTTP response from a GetMeWithResponse call
 func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14242,6 +17177,48 @@ func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 	return response, nil
 }
 
+// ParseChangeMyPasswordResponse parses an HTTP response from a ChangeMyPasswordWithResponse call
+func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ChangeMyPasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ChangeMyPasswordResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListMyTokensResponse parses an HTTP response from a ListMyTokensWithResponse call
 func ParseListMyTokensResponse(rsp *http.Response) (*ListMyTokensResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14275,6 +17252,52 @@ func ParseListMyTokensResponse(rsp *http.Response) (*ListMyTokensResponse, error
 	switch {
 	case true:
 		var headers ListMyTokensResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateMyTokenResponse parses an HTTP response from a CreateMyTokenWithResponse call
+func ParseCreateMyTokenResponse(rsp *http.Response) (*CreateMyTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateMyTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TokenCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers CreateMyTokenResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -14363,6 +17386,69 @@ func ParseGetOpenAPIResponse(rsp *http.Response) (*GetOpenAPIResponse, error) {
 	switch {
 	case true:
 		var headers GetOpenAPIResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateTenantResponse parses an HTTP response from a CreateTenantWithResponse call
+func ParseCreateTenantResponse(rsp *http.Response) (*CreateTenantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTenantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Tenant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateTenantResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers CreateTenantResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -14475,6 +17561,266 @@ func ParseUpdateTenantResponse(rsp *http.Response) (*UpdateTenantResponse, error
 		response.Headers200 = &headers
 	case true:
 		var headers UpdateTenantResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListAccountsResponse parses an HTTP response from a ListAccountsWithResponse call
+func ParseListAccountsResponse(rsp *http.Response) (*ListAccountsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAccountsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccountList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListAccountsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateAccountResponse parses an HTTP response from a CreateAccountWithResponse call
+func ParseCreateAccountResponse(rsp *http.Response) (*CreateAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Account
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers CreateAccountResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeactivateAccountResponse parses an HTTP response from a DeactivateAccountWithResponse call
+func ParseDeactivateAccountResponse(rsp *http.Response) (*DeactivateAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeactivateAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeactivateAccountResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUnlockAccountResponse parses an HTTP response from a UnlockAccountWithResponse call
+func ParseUnlockAccountResponse(rsp *http.Response) (*UnlockAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnlockAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers UnlockAccountResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseResetAccountPasswordResponse parses an HTTP response from a ResetAccountPasswordWithResponse call
+func ParseResetAccountPasswordResponse(rsp *http.Response) (*ResetAccountPasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetAccountPasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ResetAccountPasswordResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseEndAccountSessionsResponse parses an HTTP response from a EndAccountSessionsWithResponse call
+func ParseEndAccountSessionsResponse(rsp *http.Response) (*EndAccountSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EndAccountSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers EndAccountSessionsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -17240,26 +20586,207 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	return response, nil
 }
 
+// ParseLoginLocalResponse parses an HTTP response from a LoginLocalWithResponse call
+func ParseLoginLocalResponse(rsp *http.Response) (*LoginLocalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LoginLocalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LocalLoginResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers LoginLocalResponse200Headers
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers LoginLocalResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseLogoutResponse parses an HTTP response from a LogoutWithResponse call
+func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LogoutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		var headers LogoutResponse204Headers
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers204 = &headers
+	case true:
+		var headers LogoutResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAuthOptionsResponse parses an HTTP response from a GetAuthOptionsWithResponse call
+func ParseGetAuthOptionsResponse(rsp *http.Response) (*GetAuthOptionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAuthOptionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthOptions
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetAuthOptionsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// ChangeMyPassword Change the password of the person's local account
+	// (PUT /api/v1/me/password)
+	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(w http.ResponseWriter, r *http.Request, params ListMyTokensParams)
+	// CreateMyToken Create a personal access token
+	// (POST /api/v1/me/tokens)
+	CreateMyToken(w http.ResponseWriter, r *http.Request, params CreateMyTokenParams)
 	// RevokeMyToken Revoke one of the person's tokens
 	// (DELETE /api/v1/me/tokens/{token_id})
 	RevokeMyToken(w http.ResponseWriter, r *http.Request, tokenId openapi_types.UUID)
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(w http.ResponseWriter, r *http.Request)
+	// CreateTenant Create a tenant
+	// (POST /api/v1/tenants)
+	CreateTenant(w http.ResponseWriter, r *http.Request, params CreateTenantParams)
 	// GetTenant The tenant and its settings
 	// (GET /api/v1/tenants/{tenant})
 	GetTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// UpdateTenant Change the tenant's name or settings
 	// (PATCH /api/v1/tenants/{tenant})
 	UpdateTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params UpdateTenantParams)
+	// ListAccounts The local accounts the tenant manages
+	// (GET /api/v1/tenants/{tenant}/accounts)
+	ListAccounts(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAccountsParams)
+	// CreateAccount Create a local account in the tenant
+	// (POST /api/v1/tenants/{tenant}/accounts)
+	CreateAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateAccountParams)
+	// DeactivateAccount Deactivate an account
+	// (PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation)
+	DeactivateAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// UnlockAccount Lift the lockout of an account
+	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout)
+	UnlockAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// ResetAccountPassword Set a new temporary password
+	// (PUT /api/v1/tenants/{tenant}/accounts/{username}/password)
+	ResetAccountPassword(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// EndAccountSessions End every session of an account
+	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
+	EndAccountSessions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
@@ -17413,6 +20940,15 @@ type ServerInterface interface {
 	// GetVersion The backend build
 	// (GET /api/v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
+	// LoginLocal Log in with a local account
+	// (POST /auth/local)
+	LoginLocal(w http.ResponseWriter, r *http.Request)
+	// Logout End the session
+	// (POST /auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// GetAuthOptions What the login page offers
+	// (GET /auth/options)
+	GetAuthOptions(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -17429,6 +20965,20 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeMyPassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeMyPassword(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17484,6 +21034,47 @@ func (siw *ServerInterfaceWrapper) ListMyTokens(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// CreateMyToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateMyToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateMyTokenParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMyToken(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeMyToken operation middleware
 func (siw *ServerInterfaceWrapper) RevokeMyToken(w http.ResponseWriter, r *http.Request) {
 
@@ -17515,6 +21106,47 @@ func (siw *ServerInterfaceWrapper) GetOpenAPI(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOpenAPI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTenant operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateTenantParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTenant(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17591,6 +21223,251 @@ func (siw *ServerInterfaceWrapper) UpdateTenant(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTenant(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListAccounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccounts(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccount operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateAccountParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccount(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeactivateAccount operation middleware
+func (siw *ServerInterfaceWrapper) DeactivateAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeactivateAccount(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlockAccount operation middleware
+func (siw *ServerInterfaceWrapper) UnlockAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlockAccount(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetAccountPassword operation middleware
+func (siw *ServerInterfaceWrapper) ResetAccountPassword(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetAccountPassword(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EndAccountSessions operation middleware
+func (siw *ServerInterfaceWrapper) EndAccountSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndAccountSessions(w, r, tenant, username)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21579,6 +25456,48 @@ func (siw *ServerInterfaceWrapper) GetVersion(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// LoginLocal operation middleware
+func (siw *ServerInterfaceWrapper) LoginLocal(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginLocal(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthOptions operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthOptions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthOptions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -21700,11 +25619,20 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.ListMyTokens)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.CreateMyToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/me/tokens/{token_id}", wrapper.RevokeMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/openapi.json", wrapper.GetOpenAPI)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants", wrapper.CreateTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.GetTenant)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.UpdateTenant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts", wrapper.ListAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts", wrapper.CreateAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/deactivation", wrapper.DeactivateAccount)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/lockout", wrapper.UnlockAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members", wrapper.ListMembers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects", wrapper.ListProjects)
@@ -21756,6 +25684,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-report", wrapper.TimeReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tickets/{tenant}/{key}", wrapper.ResolveTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/version", wrapper.GetVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/local", wrapper.LoginLocal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.Logout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/options", wrapper.GetAuthOptions)
 
 	return m
 }
@@ -21811,6 +25742,43 @@ func (response GetMedefaultApplicationProblemPlusJSONResponse) VisitGetMeRespons
 	return err
 }
 
+type ChangeMyPasswordRequestObject struct {
+	Body *ChangeMyPasswordJSONRequestBody
+}
+
+type ChangeMyPasswordResponseObject interface {
+	VisitChangeMyPasswordResponse(w http.ResponseWriter) error
+}
+
+type ChangeMyPassword204Response struct {
+}
+
+func (response ChangeMyPassword204Response) VisitChangeMyPasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ChangeMyPassworddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ChangeMyPassworddefaultApplicationProblemPlusJSONResponse) VisitChangeMyPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMyTokensRequestObject struct {
 	Params ListMyTokensParams
 }
@@ -21840,6 +25808,50 @@ type ListMyTokensdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListMyTokensdefaultApplicationProblemPlusJSONResponse) VisitListMyTokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyTokenRequestObject struct {
+	Params CreateMyTokenParams
+	Body   *CreateMyTokenJSONRequestBody
+}
+
+type CreateMyTokenResponseObject interface {
+	VisitCreateMyTokenResponse(w http.ResponseWriter) error
+}
+
+type CreateMyToken201JSONResponse TokenCreated
+
+func (response CreateMyToken201JSONResponse) VisitCreateMyTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyTokendefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateMyTokendefaultApplicationProblemPlusJSONResponse) VisitCreateMyTokenResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -21919,6 +25931,64 @@ type GetOpenAPIdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetOpenAPIdefaultApplicationProblemPlusJSONResponse) VisitGetOpenAPIResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantRequestObject struct {
+	Params CreateTenantParams
+	Body   *CreateTenantJSONRequestBody
+}
+
+type CreateTenantResponseObject interface {
+	VisitCreateTenantResponse(w http.ResponseWriter) error
+}
+
+type CreateTenant201ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateTenant201JSONResponse struct {
+	Body    Tenant
+	Headers CreateTenant201ResponseHeaders
+}
+
+func (response CreateTenant201JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateTenantdefaultApplicationProblemPlusJSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -22027,6 +26097,248 @@ type UpdateTenantdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdateTenantdefaultApplicationProblemPlusJSONResponse) VisitUpdateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListAccountsParams
+}
+
+type ListAccountsResponseObject interface {
+	VisitListAccountsResponse(w http.ResponseWriter) error
+}
+
+type ListAccounts200JSONResponse AccountList
+
+func (response ListAccounts200JSONResponse) VisitListAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListAccountsdefaultApplicationProblemPlusJSONResponse) VisitListAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params CreateAccountParams
+	Body   *CreateAccountJSONRequestBody
+}
+
+type CreateAccountResponseObject interface {
+	VisitCreateAccountResponse(w http.ResponseWriter) error
+}
+
+type CreateAccount201JSONResponse Account
+
+func (response CreateAccount201JSONResponse) VisitCreateAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateAccountdefaultApplicationProblemPlusJSONResponse) VisitCreateAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeactivateAccountRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Username Username   `json:"username"`
+}
+
+type DeactivateAccountResponseObject interface {
+	VisitDeactivateAccountResponse(w http.ResponseWriter) error
+}
+
+type DeactivateAccount204Response struct {
+}
+
+func (response DeactivateAccount204Response) VisitDeactivateAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeactivateAccountdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeactivateAccountdefaultApplicationProblemPlusJSONResponse) VisitDeactivateAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnlockAccountRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Username Username   `json:"username"`
+}
+
+type UnlockAccountResponseObject interface {
+	VisitUnlockAccountResponse(w http.ResponseWriter) error
+}
+
+type UnlockAccount204Response struct {
+}
+
+func (response UnlockAccount204Response) VisitUnlockAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnlockAccountdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UnlockAccountdefaultApplicationProblemPlusJSONResponse) VisitUnlockAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAccountPasswordRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Username Username   `json:"username"`
+	Body     *ResetAccountPasswordJSONRequestBody
+}
+
+type ResetAccountPasswordResponseObject interface {
+	VisitResetAccountPasswordResponse(w http.ResponseWriter) error
+}
+
+type ResetAccountPassword204Response struct {
+}
+
+func (response ResetAccountPassword204Response) VisitResetAccountPasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ResetAccountPassworddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ResetAccountPassworddefaultApplicationProblemPlusJSONResponse) VisitResetAccountPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndAccountSessionsRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Username Username   `json:"username"`
+}
+
+type EndAccountSessionsResponseObject interface {
+	VisitEndAccountSessionsResponse(w http.ResponseWriter) error
+}
+
+type EndAccountSessions204Response struct {
+}
+
+func (response EndAccountSessions204Response) VisitEndAccountSessionsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type EndAccountSessionsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response EndAccountSessionsdefaultApplicationProblemPlusJSONResponse) VisitEndAccountSessionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -24857,26 +29169,192 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 	return err
 }
 
+type LoginLocalRequestObject struct {
+	Body *LoginLocalJSONRequestBody
+}
+
+type LoginLocalResponseObject interface {
+	VisitLoginLocalResponse(w http.ResponseWriter) error
+}
+
+type LoginLocal200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type LoginLocal200JSONResponse struct {
+	Body    LocalLoginResult
+	Headers LoginLocal200ResponseHeaders
+}
+
+func (response LoginLocal200JSONResponse) VisitLoginLocalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginLocaldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LoginLocaldefaultApplicationProblemPlusJSONResponse) VisitLoginLocalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutRequestObject struct {
+}
+
+type LogoutResponseObject interface {
+	VisitLogoutResponse(w http.ResponseWriter) error
+}
+
+type Logout204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type Logout204Response struct {
+	Headers Logout204ResponseHeaders
+}
+
+func (response Logout204Response) VisitLogoutResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type LogoutdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LogoutdefaultApplicationProblemPlusJSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAuthOptionsRequestObject struct {
+}
+
+type GetAuthOptionsResponseObject interface {
+	VisitGetAuthOptionsResponse(w http.ResponseWriter) error
+}
+
+type GetAuthOptions200JSONResponse AuthOptions
+
+func (response GetAuthOptions200JSONResponse) VisitGetAuthOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAuthOptionsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetAuthOptionsdefaultApplicationProblemPlusJSONResponse) VisitGetAuthOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// ChangeMyPassword Change the password of the person's local account
+	// (PUT /api/v1/me/password)
+	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(ctx context.Context, request ListMyTokensRequestObject) (ListMyTokensResponseObject, error)
+	// CreateMyToken Create a personal access token
+	// (POST /api/v1/me/tokens)
+	CreateMyToken(ctx context.Context, request CreateMyTokenRequestObject) (CreateMyTokenResponseObject, error)
 	// RevokeMyToken Revoke one of the person's tokens
 	// (DELETE /api/v1/me/tokens/{token_id})
 	RevokeMyToken(ctx context.Context, request RevokeMyTokenRequestObject) (RevokeMyTokenResponseObject, error)
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(ctx context.Context, request GetOpenAPIRequestObject) (GetOpenAPIResponseObject, error)
+	// CreateTenant Create a tenant
+	// (POST /api/v1/tenants)
+	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
 	// GetTenant The tenant and its settings
 	// (GET /api/v1/tenants/{tenant})
 	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
 	// UpdateTenant Change the tenant's name or settings
 	// (PATCH /api/v1/tenants/{tenant})
 	UpdateTenant(ctx context.Context, request UpdateTenantRequestObject) (UpdateTenantResponseObject, error)
+	// ListAccounts The local accounts the tenant manages
+	// (GET /api/v1/tenants/{tenant}/accounts)
+	ListAccounts(ctx context.Context, request ListAccountsRequestObject) (ListAccountsResponseObject, error)
+	// CreateAccount Create a local account in the tenant
+	// (POST /api/v1/tenants/{tenant}/accounts)
+	CreateAccount(ctx context.Context, request CreateAccountRequestObject) (CreateAccountResponseObject, error)
+	// DeactivateAccount Deactivate an account
+	// (PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation)
+	DeactivateAccount(ctx context.Context, request DeactivateAccountRequestObject) (DeactivateAccountResponseObject, error)
+	// UnlockAccount Lift the lockout of an account
+	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout)
+	UnlockAccount(ctx context.Context, request UnlockAccountRequestObject) (UnlockAccountResponseObject, error)
+	// ResetAccountPassword Set a new temporary password
+	// (PUT /api/v1/tenants/{tenant}/accounts/{username}/password)
+	ResetAccountPassword(ctx context.Context, request ResetAccountPasswordRequestObject) (ResetAccountPasswordResponseObject, error)
+	// EndAccountSessions End every session of an account
+	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
+	EndAccountSessions(ctx context.Context, request EndAccountSessionsRequestObject) (EndAccountSessionsResponseObject, error)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
@@ -25030,6 +29508,15 @@ type StrictServerInterface interface {
 	// GetVersion The backend build
 	// (GET /api/v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
+	// LoginLocal Log in with a local account
+	// (POST /auth/local)
+	LoginLocal(ctx context.Context, request LoginLocalRequestObject) (LoginLocalResponseObject, error)
+	// Logout End the session
+	// (POST /auth/logout)
+	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// GetAuthOptions What the login page offers
+	// (GET /auth/options)
+	GetAuthOptions(ctx context.Context, request GetAuthOptionsRequestObject) (GetAuthOptionsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -25095,6 +29582,37 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ChangeMyPassword operation middleware
+func (sh *strictHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
+	var request ChangeMyPasswordRequestObject
+
+	var body ChangeMyPasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeMyPassword(ctx, request.(ChangeMyPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeMyPassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeMyPasswordResponseObject); ok {
+		if err := validResponse.VisitChangeMyPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMyTokens operation middleware
 func (sh *strictHandler) ListMyTokens(w http.ResponseWriter, r *http.Request, params ListMyTokensParams) {
 	var request ListMyTokensRequestObject
@@ -25114,6 +29632,39 @@ func (sh *strictHandler) ListMyTokens(w http.ResponseWriter, r *http.Request, pa
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListMyTokensResponseObject); ok {
 		if err := validResponse.VisitListMyTokensResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMyToken operation middleware
+func (sh *strictHandler) CreateMyToken(w http.ResponseWriter, r *http.Request, params CreateMyTokenParams) {
+	var request CreateMyTokenRequestObject
+
+	request.Params = params
+
+	var body CreateMyTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMyToken(ctx, request.(CreateMyTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMyToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMyTokenResponseObject); ok {
+		if err := validResponse.VisitCreateMyTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -25164,6 +29715,39 @@ func (sh *strictHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOpenAPIResponseObject); ok {
 		if err := validResponse.VisitGetOpenAPIResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenant operation middleware
+func (sh *strictHandler) CreateTenant(w http.ResponseWriter, r *http.Request, params CreateTenantParams) {
+	var request CreateTenantRequestObject
+
+	request.Params = params
+
+	var body CreateTenantJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenant(ctx, request.(CreateTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTenantResponseObject); ok {
+		if err := validResponse.VisitCreateTenantResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -25224,6 +29808,182 @@ func (sh *strictHandler) UpdateTenant(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateTenantResponseObject); ok {
 		if err := validResponse.VisitUpdateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccounts operation middleware
+func (sh *strictHandler) ListAccounts(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAccountsParams) {
+	var request ListAccountsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccounts(ctx, request.(ListAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountsResponseObject); ok {
+		if err := validResponse.VisitListAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccount operation middleware
+func (sh *strictHandler) CreateAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateAccountParams) {
+	var request CreateAccountRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	var body CreateAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccount(ctx, request.(CreateAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountResponseObject); ok {
+		if err := validResponse.VisitCreateAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeactivateAccount operation middleware
+func (sh *strictHandler) DeactivateAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username) {
+	var request DeactivateAccountRequestObject
+
+	request.Tenant = tenant
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeactivateAccount(ctx, request.(DeactivateAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeactivateAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeactivateAccountResponseObject); ok {
+		if err := validResponse.VisitDeactivateAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnlockAccount operation middleware
+func (sh *strictHandler) UnlockAccount(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username) {
+	var request UnlockAccountRequestObject
+
+	request.Tenant = tenant
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnlockAccount(ctx, request.(UnlockAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnlockAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnlockAccountResponseObject); ok {
+		if err := validResponse.VisitUnlockAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetAccountPassword operation middleware
+func (sh *strictHandler) ResetAccountPassword(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username) {
+	var request ResetAccountPasswordRequestObject
+
+	request.Tenant = tenant
+	request.Username = username
+
+	var body ResetAccountPasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetAccountPassword(ctx, request.(ResetAccountPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetAccountPassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetAccountPasswordResponseObject); ok {
+		if err := validResponse.VisitResetAccountPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EndAccountSessions operation middleware
+func (sh *strictHandler) EndAccountSessions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username) {
+	var request EndAccountSessionsRequestObject
+
+	request.Tenant = tenant
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EndAccountSessions(ctx, request.(EndAccountSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EndAccountSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EndAccountSessionsResponseObject); ok {
+		if err := validResponse.VisitEndAccountSessionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -26799,6 +31559,85 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetVersionResponseObject); ok {
 		if err := validResponse.VisitGetVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginLocal operation middleware
+func (sh *strictHandler) LoginLocal(w http.ResponseWriter, r *http.Request) {
+	var request LoginLocalRequestObject
+
+	var body LoginLocalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginLocal(ctx, request.(LoginLocalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginLocal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginLocalResponseObject); ok {
+		if err := validResponse.VisitLoginLocalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Logout operation middleware
+func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var request LogoutRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Logout(ctx, request.(LogoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Logout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutResponseObject); ok {
+		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAuthOptions operation middleware
+func (sh *strictHandler) GetAuthOptions(w http.ResponseWriter, r *http.Request) {
+	var request GetAuthOptionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAuthOptions(ctx, request.(GetAuthOptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAuthOptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAuthOptionsResponseObject); ok {
+		if err := validResponse.VisitGetAuthOptionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

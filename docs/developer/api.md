@@ -1,24 +1,26 @@
 # The API
 
 How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
-the pipeline every request runs before its handler, authentication, the tenant boundary,
-authorization, errors, idempotency, versions, paging, filters, and the media types beside JSON.
-The decisions are [ADR 0046] (spec first), [ADR 0047] (errors),
-[ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions);
-the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-02.
+the pipeline every request runs before its handler, authentication — a token or a session —,
+the CSRF check, the tenant boundary, authorization, errors, idempotency, versions, paging,
+filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
+(errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
+(versions), [ADR 0031] (sessions), [ADR 0037] (CSRF); the reference table of routes and codes is
+[README.md, API](../../README.md#api-backend). Read against the tree on 2026-10-03.
 
 ## The document
 
 [`backend/api/openapi.yaml`](../../backend/api/openapi.yaml) is the source (OpenAPI 3.1): the
-`info`, the default security (`bearerToken`), the tags, and one `$ref` per path into the file of
-its path family.
+`info`, the default security (`bearerToken` or `sessionCookie`), the tags, and one `$ref` per path
+into the file of its path family.
 
 | File | Paths |
 |---|---|
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json` — `security: []`, read before a client authenticates |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/tokens`, `/me/tokens/{token_id}` |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | the tenant, its members, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/logout` — see [the login flows](#the-login-flows) |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}` |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | creating a tenant (`POST /tenants`), the tenant, its members, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, interest, the Markdown export |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
@@ -54,9 +56,23 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
 2. **Route.** The kin router finds the operation in the document. No path: `404 not_found`. The
    path with other methods: `405 method_not_allowed`, `Allow` listing the methods the document
    declares there. The document declares no `HEAD`, so a `HEAD` is `405` too.
-3. The `Accept` header is kept in the context for the routes that answer CSV.
-4. **Authentication**, when the operation declares `bearerToken` — all but `getVersion` and
-   `getOpenAPI`. The `auth.Principal` and the `store.Caller` go into the context.
+3. The `Accept` header is kept in the context for the routes that answer CSV, and the facts of
+   the connection the login handlers need — the client's address, the session cookie presented,
+   the `User-Agent` — in a `clientFacts` (`withClient`). The client's address is the TCP peer's,
+   or, when the peer is inside `Options.TrustedProxies` (`COWORK_TRUSTED_PROXIES`), the first
+   address of `X-Forwarded-For`, from the right, that is not one of them
+   ([`clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress`; [ADR 0035] D2,
+   [the rule](../security/local-accounts.md#the-client-address)): with no trusted network the
+   header is never read, and an entry that is no address stops the walk.
+4. **Authentication**, when the operation declares `bearerToken` or `sessionCookie` — all but
+   the four public operations (`getVersion`, `getOpenAPI`, `getAuthOptions`, `loginLocal`). One
+   resolver for both credentials ([Authentication](#authentication)); the `auth.Principal` and
+   the `store.Caller` go into the context. A public operation that writes and says
+   `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
+   **For a request authenticated by a session** two more rules run here, before the tenant
+   boundary: **the CSRF check** on an unsafe method (`403 csrf`), and the gate of a temporary
+   password (`403 password_change_required` for everything but `getMe`, `changeMyPassword` and
+   `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
 5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
    context.
 6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
@@ -88,23 +104,74 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 
 ## Authentication
 
-[`authn.go`](../../backend/internal/api/authn.go) with [`internal/auth`](../../backend/internal/auth/):
+[`authn.go`](../../backend/internal/api/authn.go) and [`session.go`](../../backend/internal/api/session.go)
+with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
+([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
+`sessionCookie` the operation declares — the default is both, written once at the root; the six
+session-only operations (`createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`,
+`changeMyPassword`, `logout`) declare `sessionCookie` alone, the four public ones declare
+nothing — and `authenticate` decides. What the first four make — a token, a tenant, an account,
+a password only its setter knows — would outlive the revocation of a leaked token, which is why
+a token cannot call them ([ADR 0033] D1, D5):
 
-- The token is read from `Authorization: Bearer` only ([ADR 0035] D7). A value that does not
+- **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
+  cookie is not looked at. A valid token on a session-only operation is `403 session_required`
+  (an invalid one is the `401` it would be anywhere). Otherwise, where the operation takes a
+  session, the cookie decides; neither is `401 unauthenticated`.
+- **A token** is read from `Authorization: Bearer` only ([ADR 0035] D7). A value that does not
   match `^cwk_[0-9A-Za-z]{43}$` (`auth.WellFormedToken`) is refused before the database is
   asked; the lookup is by SHA-256 (`auth.HashToken`, `DB.LookupToken`).
-- Missing, malformed or unknown: `401 unauthenticated`; revoked, or its person deactivated:
+  Missing, malformed or unknown: `401 unauthenticated`; revoked, or its person deactivated:
   `401 token_revoked`; expired: `401 token_expired`. Every `401` carries
   `WWW-Authenticate: Bearer realm="cowork"`. A dead token's use is recorded as an
   installation-level `refused` act, at most once per token, reason and hour ([ADR 0035] D9).
+- **A session** is the cookie `__Host-cowork-session` (`auth.SessionCookie`): 43 characters of
+  base64url, the SHA-256 of which is `sessions.token_hash` (`auth.HashSession`,
+  `DB.LookupSession`). Malformed, unknown, ended, past a limit (`sessionLive`: the absolute
+  `expires_at`, the idle `last_seen_at` plus `COWORK_SESSION_IDLE`) or its person deactivated:
+  the same `401`, with a `Set-Cookie` that clears the cookie. A live session moves its idle clock
+  at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure is logged).
+  The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
+  session has no scope, the role decides — no agent mark, `GlobalAdmin` and
+  `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
+  is how the session policies find the row; no audit row ever carries it.
 - `X-Cowork-Agent: name/model/session` — three parts of 1 to 64 printable ASCII characters
   without a leading or trailing space; a malformed header is `400` on `header:X-Cowork-Agent`,
-  never ignored. `auth.Mark` decides the agent mark: a token with the agent flag is an agent's
-  with or without the header (recorded as the header or `unknown-agent`) and holds the token's
-  capabilities; a plain token with the header is an agent's holding every capability; a plain
-  token without it is the person ([ADR 0036], [ADR 0043] D4).
+  never ignored. It belongs to a token's request: `auth.Mark` decides the agent mark: a token
+  with the agent flag is an agent's with or without the header (recorded as the header or
+  `unknown-agent`) and holds the token's capabilities; a plain token with the header is an
+  agent's holding every capability; a plain token without it is the person ([ADR 0036],
+  [ADR 0043] D4). A session is never an agent's.
 - The token's `last_used_on` is written at most once per UTC day (a process-local note, then
   the column), outside `Mutate`, and a failure never fails the request.
+
+### The CSRF check
+
+`csrf` in [`session.go`](../../backend/internal/api/session.go) ([ADR 0037] D1): on every
+method but `GET`, `HEAD` and `OPTIONS` of a session-authenticated request, the `Origin` header —
+or without one the origin of the `Referer` — must equal `Options.BaseOrigin`, the normalised
+`COWORK_BASE_URL` (`config.Origin`), and `X-Requested-With` must be `cowork`, else `403 csrf`.
+An empty `BaseOrigin` refuses every such write: the check fails closed. `checkOrigin` is the
+first half alone, for the login. A token's request is never checked.
+
+## The login flows
+
+`/auth/options`, `/auth/local` and `/auth/logout` are in the API document, in
+[`auth.yaml`](../../backend/api/auth.yaml), so the pipeline validates their bodies, the generated
+Go and Angular clients know them and the document says which credential each takes — **with
+paths outside `/api/v1`**, as [ADR 0037] D5 names them. `httpserver.New` mounts the API handler
+at `/auth/` as well as `/api/`; the frontend's nginx and the dev proxy forward `/auth` like
+`/api`. They are browser flows, but they are no secret: the served document lists them, and a
+script that wants a session can read how.
+
+[`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `throttled` (the limit per
+client address), `NormaliseUsername`, `DB.LookupLogin`, **one** `passwordFits` — against the stored hash or
+the dummy — and `DB.RecordLoginAttempt` (the lock and the counting in one transaction under the
+username's advisory lock), then `DB.CreateSession` for a success; every failure is the same
+`invalid_credentials`. `Logout` deletes the session's row. The store's side is
+[data-access.md](data-access.md#the-login-and-the-sessions); the security design is
+[docs/security/local-accounts.md](../security/local-accounts.md),
+[sessions.md](../security/sessions.md) and [csrf.md](../security/csrf.md).
 
 ## The tenant boundary
 
@@ -153,7 +220,9 @@ The handlers also build a few needs inline: `createProject` (admin, or member wh
 allows it; `write`; `create-project`), `setConfidential` (admin, `admin`, hard-off), the
 prerequisite override of a transition (member, `write`, hard-off), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
-(`write`, hard-off). Rules about *whose* entity it is —
+(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
+use `administer`; creating a tenant (`CreateTenant`) needs `Principal.GlobalAdmin` and a session,
+which the pipeline has already settled. A session passes every scope check: its scope is `admin`. Rules about *whose* entity it is —
 the asker, the author, the person asked — are checked after `Authorize`, in the handler.
 
 ## Problem details
@@ -176,9 +245,14 @@ A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addCommen
 [`server.go`](../../backend/internal/api/server.go):
 
 - No `Idempotency-Key`: a person's request goes on unkeyed; an agent's is
-  `400 idempotency_key_required` ([ADR 0045] D3).
-- With a key: the fingerprint is SHA-256 over the operation, the scope (the path's identities)
-  and the JSON body — for an upload, the file's SHA-256, name and comment instead of its bytes.
+  `400 idempotency_key_required` ([ADR 0045] D3). The key of a session, which has no token, is
+  scoped to the person (`token_id` is `NULL`; migration 16); `createMyToken`, `createTenant` and
+  `createAccount` take keys too, and `createMyToken` stores its answer **without the plaintext**,
+  so a replay answers without `token`.
+- With a key: the fingerprint is an HMAC-SHA-256 under a key derived from the server key
+  (`Server.fingerprint`, `newFingerprintKey`) over the operation, the scope (the path's identities)
+  and the JSON body — a body can carry a temporary password, and the row must be no plain hash of
+  it; a key replayed after the server key changed meets `422 idempotency_mismatch` — for an upload, the file's SHA-256, name and comment instead of its bytes.
   `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
   `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
   replay comes back as `*store.Result`, decoded
@@ -260,8 +334,11 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
   ([events.md](events.md)).
 
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
+[ADR 0033]: ../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
+[ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md
 [ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md

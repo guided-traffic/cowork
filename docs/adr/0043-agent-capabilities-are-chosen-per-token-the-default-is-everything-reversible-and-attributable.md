@@ -19,7 +19,9 @@ to.
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
 with the rank, `create-project`'s repository binding with that binding — the set recorded on
-each act. D6 arrives with the MCP server. Acts no record lists are open to agents
+each act. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
+switches with the full and assisted shortcuts, and all of them off — the baseline only — which
+the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens,
 removing a stake, editing a question, editing a project — until a review after experience.
 

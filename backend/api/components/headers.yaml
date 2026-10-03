@@ -4,3 +4,8 @@ ETag:
 Location:
   description: The new entity's URL
   schema: {type: string}
+SetCookie:
+  description: |
+    The session cookie `__Host-cowork-session`: `HttpOnly; Secure; SameSite=Lax;
+    Path=/`, no `Domain` (docs/adr/0031 D2). A logout clears it with `Max-Age=0`.
+  schema: {type: string}

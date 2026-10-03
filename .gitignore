@@ -27,6 +27,7 @@ node_modules/
 
 # Local state
 tmp/
+.dev/
 .claude/settings.local.json
 graphify-out/
 
