@@ -19,7 +19,6 @@
         <button
           pButton
           type="button"
-          size="small"
           data-testid="new-ticket"
           (click)="creating.set(true)"
         >
@@ -60,7 +59,6 @@
       (ngModelChange)="onStates($event ?? [])"
       placeholder="Every state"
       [showClear]="true"
-      size="small"
       ariaLabel="States"
       data-testid="state-filter"
     />
@@ -81,7 +79,6 @@
       [loading]="loading()"
       [showLoader]="false"
       dataKey="key"
-      size="small"
       [rowHover]="true"
       class="tickets"
       data-testid="backlog-table"
