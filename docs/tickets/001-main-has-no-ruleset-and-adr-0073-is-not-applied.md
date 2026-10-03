@@ -27,8 +27,11 @@ D1–D7 and [ADR 0003](../adr/0003-test-and-ci-policy.md) D1, D4.
 - `main` has no ruleset and no branch protection (`gh api …/rulesets` lists none; the protection
   endpoint answers "Branch not protected"). Merge commits, squash and rebase are all allowed,
   auto-merge and delete-on-merge are off, and the squash title is `COMMIT_OR_PR_TITLE`. The
-  phase-2 pull request was merged with a merge commit, which ADR 0073 D3 would refuse. ADR 0073
-  D1–D5 are an administrator's act in GitHub, and ADR 0073's Status assigns them to this ticket.
+  phase-2 pull request was squashed under the subject "Merge pull request #14 from …", with its
+  title in the body; semantic-release read the `feat:` from there, but the subject on `main` is
+  not a conventional commit — ADR 0073 D3's squash title taken from the pull request title
+  prevents that. ADR 0073 D1–D5 are an administrator's act in GitHub, and ADR 0073's Status
+  assigns them to this ticket.
 
 ## Required changes
 
