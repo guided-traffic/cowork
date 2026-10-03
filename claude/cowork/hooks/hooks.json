@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "COWORK_URL=\"${CLAUDE_PLUGIN_OPTION_COWORK_URL:-$COWORK_URL}\" COWORK_TOKEN=\"${CLAUDE_PLUGIN_OPTION_COWORK_TOKEN:-$COWORK_TOKEN}\" cowork-mcp session-context",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "COWORK_URL=\"${CLAUDE_PLUGIN_OPTION_COWORK_URL:-$COWORK_URL}\" COWORK_TOKEN=\"${CLAUDE_PLUGIN_OPTION_COWORK_TOKEN:-$COWORK_TOKEN}\" cowork-mcp session-end",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

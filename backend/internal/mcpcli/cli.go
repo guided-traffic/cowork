@@ -1,0 +1,411 @@
+// Package mcpcli is the command line of cowork-mcp (docs/adr/0041,
+// docs/adr/0067, docs/adr/0070): serve, the MCP server over stdio; the hook
+// modes session-context and session-end; and the workflow subcommands token
+// check and lookup. One configuration, one generated client and one tool
+// catalogue for all of them. cmd/cowork-mcp is its main; a test runs it with
+// its own environment and streams.
+package mcpcli
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/mcpserver"
+	"github.com/guided-traffic/cowork/backend/internal/tools"
+)
+
+// Build is what the linker sets on the binary (docs/adr/0041 D2).
+type Build struct {
+	Version, Commit, Time string
+}
+
+// Env is what the command runs with.
+type Env struct {
+	Args   []string
+	Lookup func(string) (string, bool)
+	// Stdin is a hook's input; nil when there is none, at a terminal.
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
+	// Dir is the working directory when neither the hook's input nor the
+	// environment names one.
+	Dir   string
+	Build Build
+	// Memory replaces the file under the user's cache directory, Doer the
+	// network, Workspace the git command line: all three for tests.
+	Memory    tools.Memory
+	Doer      apigen.HttpRequestDoer
+	Workspace tools.Workspace
+	// Transport replaces stdio for serve, for tests.
+	Transport mcp.Transport
+}
+
+// Exit codes as the backend binary has them (docs/adr/0070 D4).
+const (
+	exitOK    = 0
+	exitError = 1
+	exitUsage = 2
+)
+
+// The time budgets: a hook must answer within the five seconds Claude Code
+// gives it (docs/adr/0067 D2), the server's start-up check within ten, one
+// request within thirty.
+const (
+	hookBudget    = 4500 * time.Millisecond
+	startBudget   = 10 * time.Second
+	requestBudget = 30 * time.Second
+)
+
+const usageText = `Usage: cowork-mcp <command>
+
+Commands:
+  serve             Serve the cowork tools to an MCP host over stdio.
+  session-context   Print the session block for Claude Code's SessionStart hook.
+  session-end       Print the reminder for Claude Code's Stop hook, when one is due.
+  token check       Report whether COWORK_TOKEN works against COWORK_URL, and what it may do.
+  lookup            Print the binding of the working directory's repository, or the proposal.
+  version           Print the version, the commit and the API it was built against.
+
+token check and lookup take --json. Configuration is COWORK_URL and COWORK_TOKEN; the
+reference is README.md, the setup docs/operations/claude-code.md.
+`
+
+// Run dispatches the command line.
+func Run(ctx context.Context, e Env) int {
+	if len(e.Args) == 0 {
+		fmt.Fprint(e.Stderr, usageText)
+		return exitUsage
+	}
+	name, args := e.Args[0], e.Args[1:]
+	jsonOut := len(args) > 0 && args[len(args)-1] == "--json"
+	if jsonOut {
+		args = args[:len(args)-1]
+	}
+	if name == "token" && len(args) == 1 && args[0] == "check" {
+		name, args = "token check", nil
+	}
+	command, ok := commandTable()[name]
+	if !ok || len(args) > 0 || (jsonOut && !command.json) {
+		fmt.Fprintf(e.Stderr, "cowork-mcp: unknown command %q\n\n%s", strings.Join(e.Args, " "), usageText)
+		return exitUsage
+	}
+	return command.run(ctx, e, jsonOut)
+}
+
+// command is one subcommand: what it runs, and whether it takes --json.
+type command struct {
+	run  func(ctx context.Context, e Env, jsonOut bool) int
+	json bool
+}
+
+// commandTable is the subcommands by the name typed.
+func commandTable() map[string]command {
+	return map[string]command{
+		"serve":           {run: func(ctx context.Context, e Env, _ bool) int { return serve(ctx, e) }},
+		"session-context": {run: func(ctx context.Context, e Env, _ bool) int { return sessionContext(ctx, e) }},
+		"session-end":     {run: func(ctx context.Context, e Env, _ bool) int { return sessionEnd(ctx, e) }},
+		"token check":     {run: tokenCheck, json: true},
+		"lookup":          {run: lookupBinding, json: true},
+		"version":         {run: printVersion},
+		"help":            {run: printHelp},
+		"-h":              {run: printHelp},
+		"--help":          {run: printHelp},
+	}
+}
+
+func printVersion(_ context.Context, e Env, _ bool) int {
+	fmt.Fprintf(e.Stdout, "cowork-mcp %s (commit %s, built %s, API /api/v1: %d operations)\n",
+		e.Build.Version, e.Build.Commit, e.Build.Time, len(tools.Operations(tools.Catalogue())))
+	return exitOK
+}
+
+func printHelp(_ context.Context, e Env, _ bool) int {
+	fmt.Fprint(e.Stdout, usageText)
+	return exitOK
+}
+
+// client is what a command talks to cowork with: the session, and the agent
+// header it sends, settable once the client's name is known.
+type client struct {
+	session *tools.Session
+	mu      sync.Mutex
+	name    string
+	model   string
+	id      string
+}
+
+func (c *client) header() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return tools.AgentHeader(c.name, c.model, c.id)
+}
+
+func (c *client) setName(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if name != "" {
+		c.name = name
+	}
+}
+
+// connect builds the session of a command: the generated client over the
+// network — or the test's doer — with the token and the agent header on
+// every request, a transport failure retried where a repetition cannot act
+// twice, no redirect followed; the working directory; the memory.
+func connect(e Env, cfg config, name, model, sessionID string) *client {
+	c := &client{name: name, model: model, id: sessionID}
+	if c.id == "" {
+		// A session id of its own, short: it rides on every act's record.
+		c.id = strings.ReplaceAll(uuid.NewString(), "-", "")[:8]
+	}
+	doer := e.Doer
+	if doer == nil {
+		doer = &http.Client{Timeout: requestBudget, CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+	}
+	api, err := apigen.NewClientWithResponses(cfg.url,
+		apigen.WithHTTPClient(tools.Retrying{Next: doer, Attempts: 3, Wait: 300 * time.Millisecond}),
+		apigen.WithRequestEditorFn(tools.Editor(cfg.token, c.header, "cowork-mcp/"+e.Build.Version)))
+	if err != nil {
+		panic(err) // only an unparsable server URL fails, and loadConfig parsed it
+	}
+	c.session = tools.NewSession(api, cfg.url)
+	c.session.Workspace = e.Workspace
+	if c.session.Workspace == nil {
+		c.session.Workspace = tools.GitWorkspace{Dir: pickDir(e, cfg)}
+	}
+	c.session.Memory = e.Memory
+	if c.session.Memory == nil {
+		if memDir, err := tools.DefaultMemoryDir(); err == nil {
+			c.session.Memory = tools.FileMemory{Dir: memDir}
+		}
+	}
+	return c
+}
+
+// serve runs the MCP server over stdio until the host closes it. A missing
+// or malformed configuration ends it at once, naming the variable
+// (docs/adr/0041 D5); an installation that rejects the token or whose API
+// this binary does not know is refused on every call (docs/adr/0040 D5), and
+// one that cannot be reached is asked again at the next call.
+func serve(ctx context.Context, e Env) int {
+	logger := slog.New(slog.NewTextHandler(e.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	cfg, err := loadConfig(e.Lookup)
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "cowork-mcp: %v\n", err)
+		return exitError
+	}
+	c := connect(e, cfg, "", "", "")
+	gate := &readiness{session: c.session, version: e.Build.Version, logger: logger}
+	startCtx, cancel := context.WithTimeout(ctx, startBudget)
+	err = gate.check(startCtx)
+	cancel()
+	var tok *tools.Token
+	if err == nil {
+		t := c.session.Token()
+		tok = &t
+	}
+	srv := mcpserver.New(mcpserver.Options{Session: c.session, Token: tok, Ready: gate.check, Client: c.setName,
+		Version: e.Build.Version, Logger: logger})
+	transport := e.Transport
+	if transport == nil {
+		transport = &mcp.StdioTransport{}
+	}
+	if err := srv.Run(ctx, transport); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+		logger.Error("the MCP session ended", "error", err)
+		return exitError
+	}
+	return exitOK
+}
+
+// readiness is the start-up check of the server: the token read and the API
+// known (docs/adr/0040 D5, docs/adr/0043 D6). A definite refusal is kept; a
+// failure to reach the installation is tried again at the next call.
+type readiness struct {
+	session *tools.Session
+	version string
+	logger  *slog.Logger
+	mu      sync.Mutex
+	done    bool
+	refusal error
+}
+
+func (r *readiness) check(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.done {
+		return r.refusal
+	}
+	err := tools.CheckCompatibility(ctx, r.session, tools.Catalogue(), r.version)
+	if err == nil {
+		_, err = r.session.ReadToken(ctx)
+	}
+	var api *tools.APIError
+	var incompatible *tools.IncompatibleError
+	switch {
+	case err == nil:
+		r.done = true
+	case errors.As(err, &incompatible):
+		r.done, r.refusal = true, err
+	case errors.As(err, &api):
+		r.done, r.refusal = true, tokenRefusal(r.session, api)
+	default:
+		r.logger.Warn("cowork cannot be reached; the next tool call tries again", "installation", r.session.Installation, "error", err)
+		return fmt.Errorf("the installation %s cannot be reached: %w", r.session.Installation, err)
+	}
+	if r.refusal != nil {
+		r.logger.Error("cowork-mcp refuses to serve tools", "reason", r.refusal)
+	}
+	return r.refusal
+}
+
+// tokenRefusal says what is wrong with the token, naming the variable and the
+// token page, never the token (docs/adr/0041 D5).
+func tokenRefusal(s *tools.Session, api *tools.APIError) error {
+	switch api.Code() {
+	case "unauthenticated", "token_expired", "token_revoked":
+		return fmt.Errorf("the token in %s does not work against %s (%s); make a new one on %s", EnvToken, s.Installation, api.Code(), s.TokenPage())
+	}
+	return fmt.Errorf("the installation %s refused the start-up check: %s", s.Installation, api.Error())
+}
+
+// hookInput is what Claude Code hands a command hook on standard input; the
+// fields this binary reads (code.claude.com/docs/en/hooks).
+type hookInput struct {
+	SessionID      string `json:"session_id"`
+	Cwd            string `json:"cwd"`
+	Source         string `json:"source"`
+	Model          string `json:"model"`
+	StopHookActive bool   `json:"stop_hook_active"`
+}
+
+func readHook(r io.Reader) hookInput {
+	var in hookInput
+	if r != nil {
+		_ = json.NewDecoder(io.LimitReader(r, 1<<20)).Decode(&in)
+	}
+	return in
+}
+
+// hookConfig is the configuration of a hook mode: an absent installation or
+// token is silence (docs/adr/0067 D2), a malformed one a line naming it.
+func hookConfig(e Env, in hookInput) (config, bool) {
+	cfg, err := loadConfig(e.Lookup)
+	if errors.Is(err, errUnconfigured) {
+		return cfg, false
+	}
+	if err != nil {
+		fmt.Fprintf(e.Stdout, "cowork: %v\n", err)
+		return cfg, false
+	}
+	if in.Cwd != "" {
+		cfg.dir = in.Cwd
+	}
+	return cfg, true
+}
+
+// sessionContext is the SessionStart hook (docs/adr/0067 D1, D2, D5): the
+// session block on standard output, nothing in a directory with no binding to
+// tell, and on an error one line naming the cause and the token page. It
+// always exits 0: a session is never blocked by it.
+func sessionContext(ctx context.Context, e Env) int {
+	in := readHook(e.Stdin)
+	cfg, ok := hookConfig(e, in)
+	if !ok {
+		return exitOK
+	}
+	ctx, cancel := context.WithTimeout(ctx, hookBudget)
+	defer cancel()
+	c := connect(e, cfg, "claude-code", in.Model, in.SessionID)
+	if _, err := tools.CheckVersion(ctx, c.session, e.Build.Version); err != nil {
+		fmt.Fprintln(e.Stdout, hookFailure(c.session, err))
+		return exitOK
+	}
+	// A compaction continues the session it compacts: its start stays the
+	// session's start (docs/adr/0067 D4).
+	block, silent, err := tools.Start(ctx, c.session, tools.StartOptions{Record: in.Source != "compact"})
+	switch {
+	case err != nil:
+		fmt.Fprintln(e.Stdout, hookFailure(c.session, err))
+	case !silent:
+		fmt.Fprint(e.Stdout, block)
+	}
+	return exitOK
+}
+
+// hookFailure is the one line a hook prints when cowork does not answer as it
+// should (docs/adr/0067 D5).
+func hookFailure(s *tools.Session, err error) string {
+	var api *tools.APIError
+	var incompatible *tools.IncompatibleError
+	switch {
+	case errors.As(err, &incompatible):
+		return "cowork: " + incompatible.Error() + "."
+	case errors.As(err, &api) && (api.Code() == "unauthenticated" || api.Code() == "token_expired" || api.Code() == "token_revoked"):
+		return "cowork: " + tokenRefusal(s, api).Error() + "."
+	case errors.As(err, &api):
+		return fmt.Sprintf("cowork: the session start failed — %s. The token page is %s.", api.Error(), s.TokenPage())
+	case errors.Is(err, context.DeadlineExceeded):
+		return "cowork: " + s.Installation + " did not answer within the session start's time; session_start can try again."
+	default:
+		return fmt.Sprintf("cowork: %s cannot be reached (%v); session_start can try again later. The token page is %s.",
+			s.Installation, err, s.TokenPage())
+	}
+}
+
+// stopOutput is what the Stop hook prints: a message to the person, which
+// continues nothing and blocks nothing (docs/adr/0067 D4).
+type stopOutput struct {
+	SystemMessage string `json:"systemMessage"`
+}
+
+// sessionEnd is the Stop hook (docs/adr/0067 D4): the one-line reminder when
+// one is due, as a message to the person; silent otherwise, and on every
+// error — the session start has said what is wrong.
+func sessionEnd(ctx context.Context, e Env) int {
+	in := readHook(e.Stdin)
+	if in.StopHookActive {
+		return exitOK
+	}
+	cfg, ok := hookConfig(e, in)
+	if !ok {
+		return exitOK
+	}
+	ctx, cancel := context.WithTimeout(ctx, hookBudget)
+	defer cancel()
+	c := connect(e, cfg, "claude-code", in.Model, in.SessionID)
+	line, err := tools.Remind(ctx, c.session)
+	if err != nil || line == "" {
+		return exitOK
+	}
+	_ = json.NewEncoder(e.Stdout).Encode(stopOutput{SystemMessage: "cowork: " + line})
+	return exitOK
+}
+
+// pickDir is the working directory of a command run at a terminal.
+func pickDir(e Env, cfg config) string {
+	if cfg.dir != "" {
+		return cfg.dir
+	}
+	if e.Dir != "" {
+		return e.Dir
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return wd
+}

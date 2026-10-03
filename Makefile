@@ -209,6 +209,15 @@ vuln: $(GOVULNCHECK) ## Check the backend dependencies for known vulnerabilities
 build-backend: fmt vet ## Build bin/cowork.
 	cd $(BACKEND_DIR) && CGO_ENABLED=0 $(GOCMD) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/cowork ./cmd/cowork
 
+# The MCP server for Claude Code (docs/adr/0041): a static binary per
+# platform. GOOS= and GOARCH= cross-compile, MCP_OUT= names the file; the
+# release workflow builds every platform with them.
+MCP_OUT ?= $(BIN_DIR)/cowork-mcp$(if $(filter windows,$(GOOS)),.exe,)
+
+.PHONY: build-mcp
+build-mcp: ## Build bin/cowork-mcp, the MCP server and hooks for Claude Code; GOOS= GOARCH= cross-compile, MCP_OUT= names the file.
+	cd $(BACKEND_DIR) && CGO_ENABLED=0 $(if $(GOOS),GOOS=$(GOOS)) $(if $(GOARCH),GOARCH=$(GOARCH)) $(GOCMD) build -trimpath -ldflags="$(LDFLAGS)" -o $(MCP_OUT) ./cmd/cowork-mcp
+
 .PHONY: run
 run: ## Run the backend from source against the development database of make postgres-up; migrates on start as cowork_owner; a throw-away server key unless COWORK_SESSION_KEY is set.
 	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(DEV_DATABASE_URL)}" COWORK_DATABASE_OWNER_URL="$${COWORK_DATABASE_OWNER_URL:-$(DEV_DATABASE_OWNER_URL)}" COWORK_SESSION_KEY="$${COWORK_SESSION_KEY:-$$(openssl rand -base64 32)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run -ldflags="$(LDFLAGS)" ./cmd/cowork serve

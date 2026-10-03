@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cowork": {
+      "command": "cowork-mcp",
+      "args": ["serve"],
+      "env": {
+        "COWORK_URL": "${user_config.cowork_url}",
+        "COWORK_TOKEN": "${user_config.cowork_token}"
+      }
+    }
+  }
+}
