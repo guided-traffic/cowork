@@ -13,7 +13,10 @@ runner and secrets questions without a decision.
 2026-10-03 (D1). Amended 2026-10-02 (D5): the runner has a Docker socket after all,
 verified from the logs of run 36909513652. Amended 2026-10-03 (D5): the owner chose install
 steps in the jobs for the runner-image gaps, over a runner image and over another container
-mode; the integration job passed with them on the first run of the phase-2 code.
+mode; the integration job passed with them on the first run of the phase-2 code. Verified on
+2026-10-03 (run 37105034106): every job of "Test and Release" passes on the phase-2 branch,
+the container-scan legs among them — they log in with the organisation secret of D1, build
+each image on the runner's Docker daemon and scan it.
 
 ## Context
 
