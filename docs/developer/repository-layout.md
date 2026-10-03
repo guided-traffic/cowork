@@ -10,12 +10,14 @@ cowork/
 │   ├── api/                    # the API document, the contract (package apispec)
 │   │   ├── openapi.yaml        # the root: info, security, paths → one file per path family
 │   │   ├── meta.yaml, auth.yaml, me.yaml, tenants.yaml, accounts.yaml, members.yaml, tickets.yaml,
-│   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml
+│   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml, repositories.yaml
+│   │   ├── cowork-yaml.schema.json  # the schema of a repository's .cowork.yaml, served
 │   │   ├── components/         # schemas, parameters, responses, headers; problem-codes.yaml (generated)
 │   │   ├── oapi-codegen.yaml   # the generator's configuration
 │   │   ├── openapi.gen.json    # the bundle (generated), embedded and served
 │   │   └── embed.go
 │   ├── cmd/cowork/             # the binary: serve, migrate, version
+│   ├── cmd/cowork-mcp/         # the MCP server for Claude Code, its hooks and subcommands
 │   ├── internal/
 │   │   ├── api/                # the pipeline and one handler per operation
 │   │   │   └── apigen/         # oapi-codegen output: server interface, models, client (generated)
@@ -25,12 +27,15 @@ cowork/
 │   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
 │   │   ├── httpserver/         # health, request id, request log, recovery, server lifecycle
-│   │   ├── markdown/           # the Markdown export, grammar v1
+│   │   ├── markdown/           # the Markdown export, grammar v1, and the context document
 │   │   │   └── testdata/       # golden files
+│   │   ├── mcpcli/             # cowork-mcp's command line: serve, the hooks, token check, lookup
+│   │   ├── mcpserver/          # the tool catalogue over the MCP Go SDK
 │   │   ├── oidc/               # the OpenID Connect relying party: discovery, the code, the ID token, the refresh
 │   │   ├── problem/            # the problem code catalogue and the RFC 9457 body
 │   │   ├── requestid/          # the request id in the context
 │   │   ├── storage/            # the S3 client for the attachments
+│   │   ├── tools/              # the tool catalogue, transport-free; the session start and the binding
 │   │   └── store/              # transaction wrappers, roles check, list builder, locks, jobs, NOTIFY/LISTEN
 │   │       ├── migrations/     # NNNNNN_<name>.up.sql, embedded; no down files
 │   │       ├── queries/        # read/ and write/: the SQL, one file per aggregate
@@ -56,6 +61,8 @@ cowork/
 │   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz; holds no credential
 │   ├── Containerfile           # node:26-alpine build → nginxinc/nginx-unprivileged
 │   └── eslint.config.js
+├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
+├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
 ├── hack/                       # dev.sh + dev_demo.py (make dev); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   └── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only

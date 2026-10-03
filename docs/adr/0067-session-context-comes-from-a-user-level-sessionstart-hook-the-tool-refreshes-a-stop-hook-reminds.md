@@ -8,7 +8,13 @@ CLAUDE.md instruction, over the hook alone, and over hook and tool without the e
 reminder. The additional rules of D5–D7 were put to the owner with the question and
 explicitly confirmed.
 
-**Not built.** No `cowork-mcp`.
+**Built** (phase 5, 2026-10-04): `cowork-mcp session-context` and `session-end`, the plugin's
+`hooks/hooks.json` and the `settings.json` block of
+[docs/operations/claude-code.md](../operations/claude-code.md). D1 and D7 without the inbox,
+which does not exist ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)), and
+with the candidates in rank order while the score is not built; the block is held to about
+9 000 bytes. A compaction (`source: compact`) shows the block again without moving the
+session's start. D4 and D5 as amended.
 
 ## Context
 
@@ -34,8 +40,9 @@ up to five candidates by score, the unread inbox grouped by ticket (at most twen
 the activity of the bound tickets since the last session — and prints one Markdown block to
 standard output. One function, two callers: the hook and the tool.
 
-**D2 — The hook is configured once, user-wide,** in `~/.claude/settings.json`, not per
-repository: `SessionStart` runs `cowork-mcp session-context` with a five-second timeout. In a
+**D2 — The hook is configured once, user-wide,** in `~/.claude/settings.json` *(amended
+2026-10-04: or by the Claude Code plugin of this repository, whose hooks run in every session
+while it is enabled)*, not per repository: `SessionStart` runs `cowork-mcp session-context` with a five-second timeout. In a
 repository without a remote, a binding or a token the command prints nothing and exits 0; a
 session is never blocked by it.
 
@@ -46,13 +53,20 @@ tool; the hook is the first call.
 project assigned to the person is `in-progress` without a comment, a body change or a
 transition since the session started, and prints a one-line reminder ("`acme/VKO-12` is
 still in progress — `finish_work`?"). It is a hint, never a veto; it blocks nothing.
+*(Amended 2026-10-04: and only while the repository shows work since the session started — a
+commit, or a file changed after the start —, with no act of the person on the ticket since, of
+any kind. Claude Code runs `Stop` after every answer; without the first condition a session
+that only reads would be reminded after each of them. The line is a `systemMessage` to the
+person, which continues nothing.)*
 
 **D5 — The hook commands read only the environment and the working directory,** and write
 nothing but the session-time cache of [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)
 D5. An error — the installation unreachable, the token expired, the API incompatible
 ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
 D5) — prints one line naming the cause and the installation's token page, and exits 0; it is
-never a hook failure.
+never a hook failure. *(Amended 2026-10-04: the `SessionStart` hook prints the line; the `Stop`
+hook stays silent on an error, because it runs after every answer and the start has said what
+is wrong.)*
 
 **D6 — The operations page ships the ready `settings.json` block:** both hooks, the timeout,
 the environment passthrough, beside the MCP server entry of [ADR 0041](0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md)

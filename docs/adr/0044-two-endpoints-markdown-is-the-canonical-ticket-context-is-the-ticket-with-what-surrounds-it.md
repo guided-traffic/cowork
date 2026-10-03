@@ -16,8 +16,13 @@ D2, whose amendment says the export carries them; written when the stages were b
 
 **Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
-call is recorded, and in phase 2 every caller is a token. D2's `/context` and D4 arrive with
-the MCP server, D3 with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
+call is recorded, and in phase 2 every caller is a token. D2, D4, and D5 and D6 for `/context`
+since 2026-10-04 ([`RenderContext`](../../backend/internal/markdown/context.go)): the comments
+quoted as block quotes, so a comment's text never reads as a section of the document; the
+tree to a depth of eight, stopping at what the caller cannot see; the comments and the acts up
+to 100 each; at most 200 links, nodes and attachments, without a note when it stops; the
+activity is the ticket's activity list, which leaves out the exports. D3 arrives with the
+importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
 
 ## Context
 

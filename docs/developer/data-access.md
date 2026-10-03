@@ -40,15 +40,16 @@ file; the integration tier reads the force back after the run.
 The grants are per table and per column: `SELECT`, `INSERT` where rows are created, `UPDATE`
 on the columns a route may change — table-wide only on `ticket_counters`, `idempotency_keys`
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
-`idempotency_keys`, `sessions`, `login_attempts`, `login_locks`, `memberships`, `group_mappings`
-and `project_access`. `audit_events` gets `SELECT, INSERT` and nothing else — append-only is a
-grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and `tokens` are inserted by routes — a
-person by an account's creation, the bootstrap or a first login through the identity provider, a
-tenant by its creation, a grant by an administrator or the bootstrap, a mapped membership by the
-identity provider, a token by its person — and each insert has a policy that names who may
-(migrations 15, 20, 22), with the columns a grant lists (`global_admin` is the bootstrap's and the
-identity provider's alone: the policy refuses it to a request); the application makes the ids of
-the persons, tenants, memberships and mappings it inserts (`uuid.NewV7`), because an
+`project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
+`memberships`, `group_mappings` and `project_access`. `audit_events` gets `SELECT, INSERT` and
+nothing else — append-only is a grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and
+`tokens` are inserted by routes — a person by an account's creation, the bootstrap or a first login
+through the identity provider, a tenant by its creation, a grant by an administrator or the
+bootstrap, a mapped membership by the identity provider, a token by its person — and each insert
+has a policy that names who may (migrations 15, 20, 22), with the columns a grant lists
+(`global_admin` is the bootstrap's and the identity provider's alone: the policy refuses it to a
+request); the application makes the ids of the persons, tenants, memberships and mappings it
+inserts (`uuid.NewV7`), because an
 `INSERT … RETURNING` would have to pass the read policy of a row its writer has no membership of
 yet. Migrations 20 to 22 add the identity provider's columns of `users` and `sessions` with their
 grants, `group_mappings`, and the writes of `memberships`, `project_access` and
@@ -215,6 +216,7 @@ the one on the ticket the query reads.
 | `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation belongs to the ticket, not to the reader ([domain.md](domain.md#urgency)) |
 | `CanSeeProject`, `CanSeeTicket` | whether *another* person sees a project or a ticket: the assignee, the person asked |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
+| `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`

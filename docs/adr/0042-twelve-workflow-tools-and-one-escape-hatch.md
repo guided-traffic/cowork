@@ -8,7 +8,18 @@ proposes). Decided by the owner as the answer to the catalog question "tool gran
 tools generated from the resource model, over the escape hatch alone, and over both sets
 side by side. The rules of D3–D6 were put to the owner with the question and not objected to.
 
-**Not built.** No `cowork-mcp`.
+**Built** (phase 5, 2026-10-04), the fifteen tools of D1 and D2 as made concrete and amended
+there, in [`internal/tools`](../../backend/internal/tools/), served by `cowork-mcp`
+([docs/developer/mcp.md](../developer/mcp.md)). D3 — every description names its limits, and
+once the token is read which capabilities it holds and lacks. D4 — Markdown with the canonical
+key; a refusal is the API's problem with its status and code, marked as the tool's error. D5 —
+the time per installation and binding in the process and in a file under the user's cache
+directory; the `SessionStart` hook writes it as well, a compaction does not. D6 in two tiers:
+the unit tier asserts each tool's requests against a fake API, the integration tier runs every
+tool through the MCP server against the real API and asserts its answers and the acts it
+records, and a unit test holds every operation a tool calls to the document. The tools take a
+surface: `session_start` reads the working directory and is for a terminal; a host inside the
+backend runs the others in process — which credential such a host presents is not decided.
 
 ## Context
 
@@ -45,12 +56,31 @@ D2), and the agent limits hold server-side whatever tool is called (the next rec
 
 Thirteen names; `api` is the hatch, the twelve are the method.
 
+*(Made concrete 2026-10-04: the column "API behind it" named routes before the API had them;
+each tool calls the routes that exist — `get_ticket` and the active ticket of `session_start`
+`…/context`, `search` the ticket lists with `q`, `link` `PUT …/links/{type}/{other}` —, listed
+per tool in its `Operations`. Optional arguments beside the table's: `get_ticket` `comments`
+and `activity`; `search` `scope`, `project`, `state`, `type`, `assigned_to_me`,
+`include_terminal`; `file_ticket` `project`; `record_state` `comment`; `transition`
+`block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
+candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
+is not built, and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
+is not.)* *(Amended 2026-10-04: ~~`comment(key, text, explains_act?)`~~ `comment(key, text)` —
+the explanation of an own act is the `comment` argument of `record_state`, `transition` and
+`set_progress`, written in the act's own request as
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D2 requires;
+~~`set_progress(key, percent)`~~ `set_progress(key, percent, stage?, note?, reason?, comment?)`
+— one of the three stages of [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D2 as amended, the implementation stage by default, with the note of the write that closes the
+ticket and the reason of the one that reopens it.)*
+
 **D2 — ~~`answer_question` is not a tool and never will be;~~** *(amended 2026-10-01:
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and
 writes down the answer the person gave in chat, marked as recorded by the agent — the
 decision stays the person's, [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
 D8; `create_project(tenant, key, name, remote)` exists for the `create-project` capability,
-ADR 0066 D5)*. Nothing that deletes, overrides a prerequisite refusal or administers members,
+ADR 0066 D5)*. *(Made concrete 2026-10-04: `record_answer` takes the ticket's `key` beside the
+question's number; `create_project` an optional `path`, the sub-directory of a monorepo.)* Nothing that deletes, overrides a prerequisite refusal or administers members,
 tokens or tenants is a tool.
 
 **D3 — Every tool description names the agent limits** it can run into, so the model knows

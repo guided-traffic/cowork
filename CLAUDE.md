@@ -100,6 +100,11 @@ unanswered question.
   administrator from configuration, local accounts made by administrators, CSRF by origin and
   `X-Requested-With: cowork`; token creation, password changes, tenant creation, and creating or
   resetting a local account are session-only — a token gets `403` (ADR 0031–0033, 0035, 0037).
+- `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
+  `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
+  generated client and nothing else — it imports no store and no API handler, and a unit test
+  holds that (ADR 0040). `make build-mcp`; the Claude Code plugin is `claude/cowork/`. How it is
+  built: [docs/developer/mcp.md](docs/developer/mcp.md).
 
 ## Testing
 

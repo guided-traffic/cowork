@@ -11,8 +11,8 @@ Read against the tree on 2026-10-04.
 
 | Tier | Command | Build tag | Needs | What it is for |
 |---|---|---|---|---|
-| Backend unit | `make test-unit` | none | nothing running | Configuration, the domain rules, tokens and authorization, passwords and sessions, the sealing, the CSRF rule, the client address, the relying party and the identity provider's routes against an issuer in the test's process, the event hub, the Markdown grammar, the outer handler and the server lifecycle, the command dispatch, the API document's completeness (`TestEveryOperationIsDeclaredCompletely`, which holds the session-only operations to a set of twelve), and the lints over the migration set and the query files |
-| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`, an S3 server at `COWORK_TEST_S3_*` and an OpenID Connect issuer at `COWORK_TEST_OIDC_ISSUER` (`make dev-up` provides all three) | What only the database and the whole handler decide: migrations, roles, isolation, the wrappers, every API route, the local login with its lockout and sessions, the login through the identity provider with its gate, refresh and derivation, the administration of members and mappings, the start-up synchronisation |
+| Backend unit | `make test-unit` | none | nothing running | Configuration, the domain rules, tokens and authorization, passwords and sessions, the sealing, the CSRF rule, the client address, the relying party and the identity provider's routes against an issuer in the test's process, the event hub, the Markdown grammar and the context document, the remote identity, the outer handler and the server lifecycle, the command dispatch, the tool catalogue against a fake API, the MCP server over an in-memory transport, `cowork-mcp`'s command line and hooks, the API document's completeness (`TestEveryOperationIsDeclaredCompletely`, which holds the session-only operations to a set of twelve), and the lints over the migration set and the query files |
+| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`, an S3 server at `COWORK_TEST_S3_*` and an OpenID Connect issuer at `COWORK_TEST_OIDC_ISSUER` (`make dev-up` provides all three); `git` on the `PATH` | What only the database and the whole handler decide: migrations, roles, isolation, the wrappers, every API route, the local login with its lockout and sessions, the login through the identity provider with its gate, refresh and derivation, the administration of members and mappings, the start-up synchronisation, `cowork-mcp` against the real API |
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
@@ -23,9 +23,10 @@ Per-tier timeouts: the integration target passes `-timeout=10m`; the others use 
 ## Backend unit tests
 
 They sit next to the code under `backend/`. Two `httpserver` tests listen on `127.0.0.1:0`
-(`TestServeShutsDownOnContextCancel`, `TestListenAndServeReportsBindError`), and
-`TestTheBinaryContainsNoTestPackage` runs `go list -deps`; nothing else opens a socket or needs a
-tool.
+(`TestServeShutsDownOnContextCancel`, `TestListenAndServeReportsBindError`), the identity
+provider's tests start the fake issuer on `httptest`'s loopback listener (below), and
+`TestTheBinaryContainsNoTestPackage` and `TestTheBinaryIsAClientOnly` run `go list -deps`; nothing
+else opens a socket or needs a tool — the tools reach their fake API in process and read no git.
 
 | Fixture | Where | What it gives you |
 |---|---|---|
@@ -36,7 +37,11 @@ tool.
 | `newFixtures()`, `note`, `filter`, `Hub.now` | [`hub_test.go`](../../backend/internal/events/hub_test.go) | Notifications and filters without a database; a fixed clock for the replay window |
 | `Options.Now` | [`api.go`](../../backend/internal/api/api.go) | The clock every session and login window reads; a test that moves it ages a session or a lock without waiting ([`session_test.go`](../../backend/internal/api/session_test.go) `sessionLive`, the integration tier's `clock`) |
 | `auth.Computations()` | [`password.go`](../../backend/internal/auth/password.go) | A counter of the Argon2id computations this process made, to assert that a refusal costs what a success costs and that a throttled attempt computes nothing — exported for the integration tier and read by nothing else |
-| the golden files, `-update` | [`markdown_test.go`](../../backend/internal/markdown/markdown_test.go) | `TestRender` compares `Render` with `testdata/*.md`; `cd backend && go test ./internal/markdown -update` rewrites them after a deliberate change ([markdown-grammar.md](markdown-grammar.md#changing-the-grammar)) |
+| the golden files, `-update` | [`markdown_test.go`](../../backend/internal/markdown/markdown_test.go), [`context_test.go`](../../backend/internal/markdown/context_test.go) | `TestRender` compares `Render` with `testdata/*.md`, `TestRenderContext` `RenderContext` with `testdata/context-*.md`; `cd backend && go test ./internal/markdown -update` rewrites them after a deliberate change ([markdown-grammar.md](markdown-grammar.md#changing-the-grammar)) |
+| `fakeAPI` — `newFake(t)`, `on`, `text`, `refuse`, `calls`, `writes`, `session(bound)`, `call(t, s, name, args)` | [`tools/fake_test.go`](../../backend/internal/tools/fake_test.go) | The API as the tools see it, reached through `HandlerDoer` in process: a canned answer per route, a `not_found` problem for any other, every request recorded with its headers and body; a session bound to `acme/COW` or unbound; one tool call with its arguments as JSON, held to the tool's schema as the MCP server holds it |
+| `fakeWorkspace`, `startSession` | [`tools/start_test.go`](../../backend/internal/tools/start_test.go) | A working directory without git: its remotes, its path in the repository, a `.cowork.yaml`, whether files changed |
+| `fakeAPI(t, routes)`, `noRepo`, `run(t, e, args…)`, `envOf` | [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go) | `cowork-mcp` by its command line through `mcpcli.Env`: the exit code, standard output and standard error, against a mux, outside any repository |
+| `connect(t, o)`, `fakeSession` | [`mcpserver/server_test.go`](../../backend/internal/mcpserver/server_test.go) | An MCP client connected to the server over `mcp.NewInMemoryTransports` |
 
 The lints run in this tier, without a database:
 
@@ -50,7 +55,10 @@ The lints run in this tier, without a database:
 | `TestEveryReadOfProjectsAndTicketsCarriesTheVisibilityPredicate` ([`queries_test.go`](../../backend/internal/store/queries_test.go)) | the visibility lint ([data-access.md](data-access.md#visibility-in-sql)) |
 | `TestTicketListSelectsWhatTheQueriesSelect` | the list builder's columns and joins equal `GetTicketByNumber`'s |
 | `TestTheBinaryContainsNoTestPackage` ([`main_test.go`](../../backend/cmd/cowork/main_test.go)) | `cmd/cowork` depends on nothing under `backend/test/` |
-| `TestEveryOperationIsDeclaredCompletely` ([`document_test.go`](../../backend/api/document_test.go)) | every operation has an id, a tag, the problem response and a security requirement of one of three shapes: public (empty: `getVersion`, `getOpenAPI`, `getAuthOptions`, `loginLocal`, `loginOidc`, `oidcCallback`), the session cookie alone (exactly `logout`, `changeMyPassword`, `createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`, `addMember`, `setMemberGrant`, `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`), or the bearer token and the session cookie; a public write carries `x-cowork-origin-check`, and only `oidcCallback` takes query parameters it does not declare (`x-cowork-open-query`) |
+| `TestTheBinaryIsAClientOnly` ([`cmd/cowork-mcp/main_test.go`](../../backend/cmd/cowork-mcp/main_test.go)) | `cmd/cowork-mcp` depends on nothing under `backend/test/`, not on `internal/store`, `internal/api`, the PostgreSQL driver or the S3 client ([ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md) D1) |
+| `TestEveryOperationOfAToolIsInTheDocument` ([`tools_test.go`](../../backend/internal/tools/tools_test.go)) | every operation a tool declares is in the API document — what `cowork-mcp` compares with the server's at start |
+| `TestDescriptionsNameTheLimits` | `transition`'s description names the capability each move needs and, once the token is read, what an agent's token holds and lacks; a person's token is not bounded by capabilities ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D3) |
+| `TestEveryOperationIsDeclaredCompletely` ([`document_test.go`](../../backend/api/document_test.go)) | every operation has an id, a tag, the problem response and a security requirement of one of three shapes: public (empty: `getVersion`, `getOpenAPI`, `getCoworkYamlSchema`, `getAuthOptions`, `loginLocal`, `loginOidc`, `oidcCallback`), the session cookie alone (exactly `logout`, `changeMyPassword`, `createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`, `addMember`, `setMemberGrant`, `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`), or the bearer token and the session cookie; a public write carries `x-cowork-origin-check`, and only `oidcCallback` takes query parameters it does not declare (`x-cowork-open-query`) |
 
 The `run(ctx, args, lookup, stdout, stderr)` tests in `backend/cmd/cowork` cover the command
 dispatch and the configuration errors without a database: `migrate` without
@@ -97,6 +105,20 @@ defaults, the overrides, every variable refused without the issuer, the issuer r
 tenant of the administrator group) and [`store/identity_test.go`](../../backend/internal/store/identity_test.go)
 (`RefreshDue`, `GateDue`).
 
+The MCP layers without a server ([mcp.md](mcp.md)): every tool against the fake API in
+[`tools/`](../../backend/internal/tools/) — the requests it sends (method, path, body, an
+`Idempotency-Key` on every `POST`, `If-Match` where it overwrites, the agent header) and the
+Markdown it answers, refusals included —, the session-start block bound, unbound, with a
+`.cowork.yaml` and within its size, the reminder, the escape hatch's paths, the retries, the
+memory file, the parsing of `git` output and of `.cowork.yaml`, the compatibility check;
+[`mcpserver/server_test.go`](../../backend/internal/mcpserver/server_test.go) the catalogue as an
+MCP client lists and calls it, and a server whose start was refused answering every tool with the
+reason; [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go) the configuration
+(`https` except on loopback, the token's shape, no value echoed), the subcommands, the hooks
+silent outside a repository, `token check`, and `serve` refusing an API it does not know.
+[`domain/repository_test.go`](../../backend/internal/domain/repository_test.go) is the table of
+remote identities, sub-directories and proposed keys.
+
 The rules of the states and the progress stages without a database:
 [`domain_test.go`](../../backend/internal/domain/domain_test.go) (the move matrix, what a write of
 the stages does, which done is by the stages) and
@@ -119,6 +141,9 @@ the done by hand a ticket shows — rows the release before the stages left incl
    `cowork_it_<nanoseconds>`, owned by the owner role; it is dropped `WITH (FORCE)` at the end.
 4. `store.Migrate` as the owner role with `cowork_it_app` as the runtime role — the result is
    `env.Migrated`.
+
+`mcp_test.go` runs `git` to make the repository a session starts in, and `go build` for the
+binary; without either on the `PATH` those tests fail and say so.
 
 Every store and API test then connects as the runtime role, as `cowork serve` does; the
 administrative connection only creates and seeds. The tests share the run's database and keep
@@ -156,6 +181,9 @@ taken; `MINIO_PORT=` does the same for MinIO, and `DEX_PORT=` for Dex and its is
 | `ticketEnv`, `newTicketEnv(t)`, `task(…)`, `file(…)` | [`api_tickets_test.go`](../../backend/test/integration/api_tickets_test.go) | A world with its tokens and a running API; a plain ticket body; filing as a caller, with a key for an agent |
 | `openStream`, `next` | [`api_events_test.go`](../../backend/test/integration/api_events_test.go) | An event stream read message by message |
 | `adminWorld`, `newAdminWorld(t)`, `members`, `nextMembership` | [`api_members_test.go`](../../backend/test/integration/api_members_test.go) | A world whose persons have local accounts, tenant A's administrator in a session and an administrator's token beside it; the member list as a map; the next `membership.changed` of a stream |
+| `repoEnv`, `newRepoEnv(t)`, `bind`, `lookup` | [`api_repositories_test.go`](../../backend/test/integration/api_repositories_test.go) | A world with its tokens and a running API; a binding with a fresh key; a lookup's answer |
+| `contextOf` | [`api_context_test.go`](../../backend/test/integration/api_context_test.go) | A ticket's context document and its response |
+| `mcpEnv`, `newMCPEnv(t)`, `run`, `serve`, `callTool`, `mustCall` | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) | A git repository on disk whose `origin` lies under tenant A's slug, the API, and `cowork-mcp`'s environment against both: a subcommand by its command line with its exit code and output, the MCP server on an in-memory transport with a client that names itself `claude-code`, a tool call's text |
 
 ### The identity provider in the tests
 
@@ -229,6 +257,9 @@ is not a generated response and is not validated.
 | [`api_oidc_fake_test.go`](../../backend/test/integration/api_oidc_fake_test.go) | What only the fake issuer shows: the refresh that follows the groups, an unreachable issuer, a refused refresh token, no refresh token, the logout at an issuer with an end-session endpoint, every failure of the callback, a deactivated person, the mapping editor's own role and `last_admin`, no secret of the issuer in a log line or an audit row, leaving the gate stopping the tokens at once |
 | [`api_members_test.go`](../../backend/test/integration/api_members_test.go) | The administration: a member added by address — any case, never an unverified one, ambiguous, deactivated — or by username, in a session only; grants and the last administrator; mappings that derive at once, change and go; a project's restriction and access list; `membership.changed` reaching its audience; the source hash on every row of a request and none on a job's; the bootstrap tenant of the administrator group |
 | [`api_review_test.go`](../../backend/test/integration/api_review_test.go) | The findings of the security review of 2026-10-04, one test each: a refresh that holds no connection or lock while the issuer hangs, on a pool of two (`TestARefreshWaitsForNoOneElse`); a refresh that read nothing keeping the person's newer groups; the issuer refusing cowork's client; a refreshed ID token that does not verify; a mapping's derivation leaving who cannot act; two administrators removing each other at once (`TestTwoAdministratorsCannotRemoveEachOther`, eight rounds through `simultaneously`); only an administrator who can log in counting for `last_admin`; a person of another issuer outside the gate; no address in an audit row; the address for administrators only; a project-restricted stream hearing only its project |
+| [`api_repositories_test.go`](../../backend/test/integration/api_repositories_test.go) | Binding by the normalised identity, idempotent, the remote kept without credentials, another project's binding refused and named only to who sees it; who binds and unbinds; the list; the lookup — bound, the covering sub-directory, ambiguous across tenants, a restricted token's tenant —, the proposal (`only-tenant`, `remote-owner`, `choose`, a free key, none for a project-restricted token); a project created for a repository and the `200` for one bound already; `GET /me/token`; the public schema of `.cowork.yaml`; no credential in a lookup's answer |
+| [`api_context_test.go`](../../backend/test/integration/api_context_test.go) | The context document of [ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md) D2 over the real data: the sections, what the caller cannot see absent, the limits, every call recorded |
+| [`mcp_test.go`](../../backend/test/integration/mcp_test.go) | `cowork-mcp` against the real API ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D6): the working day from the proposal through `create_project`, filing, deciding, working, asking, answering and `finish_work`, every act the agent's with the client's name and every creating `POST` keyed; an assisted token's limits in the descriptions and `finish_work` stopping at `review`; the subcommands — `session-context` unbound and bound, `lookup`, `session-end` with and without changed files, `token check` and a revoked token —; and the binary itself, built with `go build` and run by its command line with its environment, the memory file under a temporary `HOME` ([ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D6) |
 | `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_transitions_test.go`, `api_stages_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents; `api_stages_test.go` the state `review`, done by hand and its withdrawal, done by the stages and the reopen, their refusals for persons and agents, a parent's stages, an open ticket whose stages are full, what the release before the stages writes over this schema in a rollback (its statements verbatim), the override that holds, `done_after` and the `review` limit |
 
 ## Frontend unit tests

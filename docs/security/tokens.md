@@ -263,6 +263,13 @@ H-23.
   token on its scope (`insufficient_scope`) before the hard-off rule is reached; the hard-off
   rule is what refuses it to a plain `admin` token marked by the header, and what refuses the
   hard-off acts that need only `write` to every agent.
+- `GET /api/v1/me/token` answers the token a request presents — its metadata as the list shows
+  it, the key of its project restriction — and what the request is: an agent's or not, the mark
+  its acts record, the capabilities it holds ([`api/token.go`](../../backend/internal/api/token.go);
+  [ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+  D6). It shows a token nothing but itself, never another of its person's, and a browser session
+  has no token to show (`404`). The MCP client reads it to tell the model the limits it will run
+  into ([agent-client.md](agent-client.md)).
 
 ## Capabilities, the baseline and the hard-off list
 

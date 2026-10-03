@@ -44,7 +44,13 @@ Two jobs need more explanation than their targets:
 published release: builds and pushes `guidedtraffic/cowork-backend:<version>` and
 `guidedtraffic/cowork-frontend:<version>` with provenance and SBOM, scans them, packages the
 chart with the release version and publishes it to the `gh-pages` branch and the release
-assets.
+assets. Its job `release-mcp` builds `cowork-mcp` with `make build-mcp` for linux, darwin and
+windows on amd64 and arm64 — `cowork-mcp-<version>-<os>-<arch>`, `.exe` on windows — writes a
+`.sha256` file beside each and attaches all twelve files to the release
+([ADR 0041](../adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md)
+D2). The binaries are not signed and not notarized. It runs after the release exists, so it is
+no check of a pull request: a build that breaks on one platform shows only there; `make
+build-mcp` with `GOOS=` and `GOARCH=` reproduces it locally.
 
 **Renovate** ([`renovate.yml`](../../.github/workflows/renovate.yml), [`renovate.json`](../../renovate.json))
 runs daily on a self-hosted runner: minor and patch updates automerge after CI, majors wait

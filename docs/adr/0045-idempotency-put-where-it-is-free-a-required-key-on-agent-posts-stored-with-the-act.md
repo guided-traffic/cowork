@@ -15,7 +15,9 @@ flags; the `from` precondition on transitions; keys on the other `POST`s, requir
 agents; the stored response and the replay in [`store.Mutate`](../../backend/internal/store/tx.go)
 with a `422` on a different request under the same key, expired by an hourly job; an upload's
 fingerprint over the file's hash, name and comment instead of the raw multipart body; an
-unsolicited key on a transition recorded on the act. D5 arrives with the MCP server. D3 holds
+unsolicited key on a transition recorded on the act. D5 is built (2026-10-04) in `cowork-mcp`: every `POST` of a tool — the `api` tool's included —
+carries a key of its own, and the integration tier holds that every ticket, comment and
+question the working day creates carries one on its act. D3 holds
 for a browser session since phase 3 (2026-10-03), and for the creation of a token, a tenant and
 a local account.
 
@@ -67,7 +69,10 @@ Because the row is written by the same `Mutate` as the act ([ADR 0027](0027-data
 D3), "act committed, key lost" cannot happen. Expired rows are removed by a job.
 
 **D5 — The MCP server generates and reuses keys itself;** one UUIDv7 per tool call, the
-same one on every retry of that call. The model never sees or supplies a key.
+same one on every retry of that call. The model never sees or supplies a key. *(Made concrete
+2026-10-04: one per `POST` a tool call sends — `finish_work` sends two, and one key on two
+requests is D3's `422`; a retry is the transport's, of the same request. A model that calls a
+tool again after a failure makes a new call with new keys.)*
 
 **D6 — A stored response contains no attachment bytes** and is bounded by the JSON body
 limit of [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)

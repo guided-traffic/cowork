@@ -11,21 +11,25 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 3 in progress — the UI on the core domain — and phase 4 — the login through
-> an identity provider — built.** Tenants, projects and tickets — with links, state transitions,
-> open questions, comments, interest, progress, time entries and attachments — the audit record and
-> the event stream exist behind a JSON API, tested against PostgreSQL 18, MinIO and Dex. A person
-> logs in through any OpenID Connect provider, whose groups decide who gets in and — mapped per
-> tenant — in which role, or with a local account: the local administrator the installation's
-> Secret names, or the provider's administrator group, creates the first tenant, its
-> administrators add its people, and each person makes their own personal access tokens in the
-> session. What comes next is [the project plan](docs/planning/project-plan.md).
+> **Status: phase 3 — the UI on the core domain — released as `0.2.0`; phase 4 — the login through
+> an identity provider — and phase 5 — the LLM interface — being built on this branch.** Tenants,
+> projects and tickets — with links, state transitions, open questions, comments, interest,
+> progress, time entries and attachments — the audit record and the event stream exist behind a
+> JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
+> provider, whose groups decide who gets in and — mapped per tenant — in which role, or with a local
+> account: the local administrator the installation's Secret names, or the provider's administrator
+> group, creates the first tenant, its administrators add its people, and each person makes their
+> own personal access tokens in the session. Claude Code works on the backlog through `cowork-mcp`,
+> an MCP server with hooks that runs on the person's machine
+> ([Claude Code](docs/operations/claude-code.md)). What comes next is
+> [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
 flowchart LR
   B[Browser] --> F
   B -.->|login redirects| I[OpenID Connect<br/>identity provider]
-  C[Claude Code<br/>personal access token] --> F
+  C[Claude Code] -->|stdio| X[cowork-mcp<br/>personal access token]
+  X -->|HTTPS| F
   F[cowork-frontend<br/>nginx + Angular bundle] -->|/api/ /auth/ proxied| S
   K[kubelet] -->|/healthz /readyz| S
   M[migrate<br/>init container] -->|owner role| P
@@ -39,6 +43,7 @@ flowchart LR
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
 - 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
 - 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 🤖 **Claude Code as a co-worker** — `cowork-mcp`, one static binary per platform, serves fifteen workflow tools over the API with the person's token and runs Claude Code's hooks: a session starts with its project's state and is reminded at its end; a repository finds its project by its normalised git remote, and an unbound one gets a proposal the person confirms.
 - 🪪 **Single sign-on through any OpenID Connect provider** — the code flow with PKCE against a provider discovered at start, a gate of allowed groups and an administrator group, per-tenant group mappings that derive memberships, marked grants beside them, the groups read again every fifteen minutes, and tokens held to the same gate; tested against a minimal Dex.
 - 🔐 **A login that needs no identity provider** — a local administrator kept in step with a Secret, local accounts created by tenant administrators, Argon2id, sessions in the database behind an `HttpOnly` `__Host-` cookie, an account lockout and an address throttle that answer every failure alike, and an origin-plus-header CSRF check on every write of a session.
 - 🏛️ **Administration that leaves nothing behind a token** — members, grants, group mappings, restricted projects and their access lists in the UI; every act that can give access takes a browser session, every act is recorded with the keyed hash of the client's address, and an administrator's change that would leave a tenant without an administrator is refused.
@@ -66,7 +71,10 @@ The frontend container substitutes four variables into its nginx configuration, 
 `COWORK_TEST_OIDC_ISSUER`, every one of them required; `make dev-seed` reads
 `COWORK_DEV_SEED_DATABASE_URL`; `make dev` takes `COWORK_DEV_ADMIN` and
 `COWORK_DEV_ADMIN_PASSWORD`. The development containers take `CONTAINER_BIND` (`127.0.0.1`
-`# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`.
+`# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
+`COWORK_URL`, `COWORK_TOKEN` and `CLAUDE_PROJECT_DIR` ([CLI (cowork-mcp)](#cli-cowork-mcp)); the
+plugin's hooks hand it `CLAUDE_PLUGIN_OPTION_COWORK_URL` and `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`
+under those names.
 
 ### Kubernetes objects (Helm chart)
 
@@ -106,6 +114,12 @@ The frontend container substitutes four variables into its nginx configuration, 
 | System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
+| Agent header of `cowork-mcp` | `<client>/<model>/<session>`: the MCP client's name (`claude-code` in the hooks), the hook's model or `unknown`, the hook's session id or eight hex characters per process; `cowork-mcp/unknown/token-check` and `cowork-mcp/unknown/lookup` for the two subcommands | `claude-code/unknown/1f0c9a2b` |
+| Repository identity | `<host>[:<port>]/<path>` of a git remote: scheme, user, a default port, `.git` and trailing slashes removed, the host lower-cased, the path's case kept; unique per tenant with the sub-directory | `github.com/acme/app` for `git@github.com:acme/app.git` |
+| Repository sub-directory | relative to the repository root, `/`-separated, no `..`; empty for the whole repository | `services/billing` |
+| Proposed project key | the initials of the repository name's parts (`-`, `_`, `.`), else its first three letters, upper-cased; `2`, `3`, … appended while the key is taken | `VO` for `valkey-operator` |
+| MCP tool | `session_start`, `get_ticket`, … ([the tools](#the-tools)); in Claude Code `mcp__plugin_cowork_cowork__<tool>` through the plugin, `mcp__cowork__<tool>` for a server added by hand as `cowork` | `mcp__plugin_cowork_cowork__get_ticket` |
+| Commit strings for a ticket | the subject ends with `(<PROJECT>-<number>)`, the body ends with the trailer `Cowork-Ticket: <key>`, the branch is `<type>/<PROJECT>-<number>-<slug>` | `feat/COW-42-export-attachments` |
 | Request id | `X-Request-Id`, a UUIDv7 the backend makes (an inbound one is ignored); the same value is `request_id` in a problem body and in the request log | — |
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
 | Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
@@ -138,6 +152,10 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Angular project | `frontend`, output `frontend/dist/frontend/browser/` | — |
 | Ticket (interim, in this repository) | `docs/tickets/NNN-<kebab-slug>.md`, `id: T<n>` | rules in [docs/tickets/README.md](docs/tickets/README.md) |
 | API document | `backend/api/openapi.yaml` and one file per path family, bundled by `make generate` into `backend/api/openapi.gen.json` | served at `/api/v1/openapi.json` |
+| `cowork-mcp` release binary | `cowork-mcp-<version>-<os>-<arch>`, `.exe` on windows, beside it `<file>.sha256`; os `linux`, `darwin`, `windows`, arch `amd64`, `arm64`; attached to the GitHub release | `cowork-mcp-0.3.0-darwin-arm64` |
+| Binding file | `.cowork.yaml`, the nearest at or above the working directory within the repository; schema at `/api/v1/schemas/cowork-yaml.json` | `tenant: acme`, `project: APP` |
+| Session memory of `cowork-mcp` | `<user cache directory>/cowork-mcp/<host and path of COWORK_URL>_<tenant>_<PROJECT>.json`, other characters than letters, digits, `.` and `-` as `_` | `~/.cache/cowork-mcp/cowork.example.com_acme_APP.json` |
+| Claude Code plugin | the marketplace `cowork` in `.claude-plugin/marketplace.json`, the plugin `cowork` in `claude/cowork/`; its options `cowork_url` and `cowork_token` | `claude plugin install cowork@cowork` |
 
 ### HTTP
 
@@ -157,7 +175,7 @@ The frontend container substitutes four variables into its nginx configuration, 
 | `application/problem+json; charset=utf-8` | every error |
 | `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id` |
 | `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
-| `text/markdown; charset=utf-8` | a ticket's canonical Markdown |
+| `text/markdown; charset=utf-8` | a ticket's canonical Markdown and its context |
 | `text/event-stream` | the event stream |
 
 ## 📚 Documentation
@@ -165,7 +183,7 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Document | What it is for |
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
@@ -354,6 +372,22 @@ The new backend pods migrate the schema in their init container before the serve
 
 </details>
 
+### Connect Claude Code
+
+`cowork-mcp` of the installation's release on the `PATH`, a token from the UI's token page —
+an agent token with `write` scope — and the plugin of this repository:
+
+```bash
+cowork-mcp version                                   # from the release assets, or make build-mcp
+COWORK_URL=https://cowork.example.com COWORK_TOKEN=cwk_… cowork-mcp token check   # example values
+claude plugin marketplace add guided-traffic/cowork
+claude plugin install cowork@cowork                  # then /plugin configure cowork@cowork: the URL and the token
+cd ~/src/app && claude                               # the session starts with the repository's project, or a proposal
+```
+
+The setup by hand, the token choices, the `CLAUDE.md` block and `.cowork.yaml`:
+[docs/operations/claude-code.md](docs/operations/claude-code.md).
+
 ## 📖 Reference
 
 ### Configuration
@@ -481,6 +515,69 @@ nothing else:
 
 Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command or no command.
 
+### CLI (cowork-mcp)
+
+The MCP server for Claude Code and the commands its hooks run
+([ADR 0041](docs/adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md),
+[ADR 0067](docs/adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md),
+[ADR 0070](docs/adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md)). It is a
+client of `/api/v1` with the person's token and nothing else: every request carries
+`Authorization: Bearer`, `X-Cowork-Agent` ([the agent header of `cowork-mcp`](#keys-and-identifiers))
+and the `User-Agent` `cowork-mcp/<version>`, every `POST` an `Idempotency-Key` of its own, and a
+failed connection is retried twice where a repetition cannot act twice. It follows no redirect.
+Setup: [docs/operations/claude-code.md](docs/operations/claude-code.md); what it holds and leaves
+open: [docs/security/agent-client.md](docs/security/agent-client.md).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_URL` | — (required) | `https://cowork.example.com` `# example` | The installation, as the browser shows it; `http://` only for `localhost` or a loopback address; no user, query or fragment. **Security:** the token goes to this URL and nowhere else |
+| `COWORK_TOKEN` | — (required) | `cwk_…` | A personal access token, best an agent token with `write` scope. An error names the variable, never the value. **Security:** a credential: from the plugin's sensitive option (the system's credential store) rather than a shell profile or a settings file |
+| `CLAUDE_PROJECT_DIR` | the working directory | `/home/ada/src/app` `# example` | The directory whose repository a session works in; set by Claude Code. A hook's own `cwd` comes first |
+
+| Command | Does |
+|---|---|
+| `cowork-mcp serve` | The MCP server on stdio. At start it compares its major version with the installation's, checks that the installation serves every operation its tools use and reads the token; a refusal answers every tool call with the reason, an installation it cannot reach is asked again at the next call. Exit 1 at once on a missing or malformed variable |
+| `cowork-mcp session-context` | The `SessionStart` hook: reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), prints the session block — the binding or the proposal, the active ticket with its context or the top of the backlog, what happened since the last session — as plain text of at most about 9 000 bytes, and records the start (not after a compaction). Nothing in a directory with no remote and no binding file, or without the two variables; one line naming the cause on a malformed variable or a failure, and the token page where a new token may help. Exit 0 always |
+| `cowork-mcp session-end` | The `Stop` hook: prints `{"systemMessage": "cowork: …"}` when a ticket of the person is `in-progress` in the bound project, the repository shows work since the session started and nothing was recorded on the ticket since; nothing otherwise, also on every error and while `stop_hook_active`. Exit 0 always |
+| `cowork-mcp token check` | Whether the token works against the installation: its person, name, scope, restriction, capabilities and expiry; `--json` for the same as an object. Exit 1 when it does not work, with the installation's answer and the token page |
+| `cowork-mcp lookup` | The working directory's remotes, binding file and binding — or the proposal, or why there is none; `--json` for the same as an object |
+| `cowork-mcp version` | `cowork-mcp <version> (commit <sha>, built <epoch>, API /api/v1: <n> operations)` |
+| `cowork-mcp help` | The usage (also `-h`, `--help`) |
+
+Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command, no command or
+`--json` where a command takes none.
+
+#### The tools
+
+Every tool answers Markdown that names the canonical key of what it touched; `api` answers the
+API's JSON. A refusal of the API is the tool's error with the API's status and `code`. Each
+description names the limits the token can run into, and once the token is read, which
+capabilities it holds and lacks
+([ADR 0042](docs/adr/0042-twelve-workflow-tools-and-one-escape-hatch.md),
+[ADR 0043](docs/adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).
+A key is `tenant/PROJECT-n`, or `PROJECT-n` in a bound session.
+
+| Tool | Arguments | Does | Capability |
+|---|---|---|---|
+| `session_start` | — | the session block of `session-context`, again; the binding it finds is the session's | — |
+| `get_ticket` | `key`, `comments` (10), `activity` (10) | the ticket's context document and the commit strings for it; read only | — |
+| `search` | `query`, `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
+| `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]` | files a ticket in the bound or the named project, then its links | — |
+| `record_state` | `key`, `body`, `comment` | replaces the body as a whole with `If-Match` of the version it read | — |
+| `comment` | `key`, `text` | comments, in the person's name with the agent's mark | — |
+| `link` | `key`, `type`, `other_key` | links two tickets of a tenant; an existing link is success | — |
+| `watch` | `key` | sets the person's `watch` interest | — |
+| `open_question` | `key`, `question`, `options`, `recommendation`, `asked_of` | opens one question for a person (`me`, a username, a display name or an id; left out, the tenant) | — |
+| `record_answer` | `key`, `question`, `answer` | writes down the answer the person gave in chat, marked as recorded by the agent | `record-answer` |
+| `transition` | `key`, `to`, `reason_or_note`, `block_kind`, `blocked_by`, `comment` | moves the ticket from the state it read | `decide` to `decided`, `close` to `done`, `drop` to `dropped` |
+| `set_progress` | `key`, `percent`, `stage` (`implementation`), `note`, `reason`, `comment` | sets one of the three stages | `close` when it closes the ticket |
+| `finish_work` | `key`, `verification_note` | the note as a comment, the implementation stage at 100 — unless that would close the ticket without `close` —, then `done` with `close` from `in-progress` or `review`, else `review` from `in-progress`; says what remains for a person and for the repository | `close` for `done` |
+| `create_project` | `tenant`, `key`, `name`, `remote`, `path` | creates a project and binds the repository in one act, after the person's yes to the proposal; idempotent over the remote | `create-project` |
+| `api` | `method`, `path`, `body`, `if_match` | any route under `/api/v1/` of the installation with the same token and limits; a `POST` gets an `Idempotency-Key` | as the route needs |
+
+`session_start` is for a terminal session; a host that runs the tools in the backend leaves it
+out (`tools.Catalogue(tools.Anywhere)`, [mcp.md](docs/developer/mcp.md)).
+
 ### API (backend)
 
 The contract is the OpenAPI 3.1 document in [`backend/api/`](backend/api/openapi.yaml)
@@ -489,7 +586,8 @@ serves it at `/api/v1/openapi.json` with `info.version` set to its own version, 
 every request against it. What this section says in one line per route, the document says in
 full.
 
-- **Authentication.** Every route under `/api/v1/` except `version` and `openapi.json` takes
+- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json` and
+  `schemas/cowork-yaml.json` takes
   one of two credentials, and the document says which per operation (`bearerToken`,
   `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
   agents; the session cookie `__Host-cowork-session` of a browser login — `POST /auth/local`, or
@@ -534,6 +632,7 @@ full.
 | `GET /readyz` | `200 {"status":"ready"}`, or `503 not_ready` when the database does not answer (the error goes to the log); no authentication |
 | `GET /api/v1/version` | `200 {"version":"…","commit":"…","build_time":"…"}`; no authentication |
 | `GET /api/v1/openapi.json` | the API document; no authentication |
+| `GET /api/v1/schemas/cowork-yaml.json` | the JSON Schema (draft 2020-12) of a repository's `.cowork.yaml`: `tenant` and `project` required, `path` and `url` optional, nothing else; no authentication |
 | a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
 | any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
 | `GET /auth/options` | `200 {"local": bool, "oidc": bool, "oidc_name": string or null, "password_min_length": int}` — what the login page offers: the local form while an active local account exists; the identity provider's button while one is configured and its gate names a group, with its name (`COWORK_OIDC_DISPLAY_NAME`; `null` without a provider); and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
@@ -546,6 +645,8 @@ full.
 | `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
 | `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
+| `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, `restricted_project`, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
+| `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
 
@@ -606,7 +707,7 @@ announced on the event stream as `membership.changed`.
 </details>
 
 <details>
-<summary>Tenant and projects — 9 routes</summary>
+<summary>Tenant and projects — 12 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -615,15 +716,18 @@ announced on the event stream as `membership.changed`.
 | `GET …/audit` | the audit record, newest first, for administrators; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv` |
 | `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
 | `GET …/projects` | the projects the caller can see, by key; `include_archived` |
-| `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project` |
+| `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
 | `GET …/projects/{project}` | one project |
 | `PATCH …/projects/{project}` | change its name, its description or its advisory WIP limits per state — `analysed`, `decided`, `in-progress`, `review`, `blocked` — a member with `write`, an agent too; `If-Match` |
 | `PUT …/projects/{project}/archive` | archive it — an administrator, never an agent; it keeps its tickets and refuses new ones |
+| `GET …/projects/{project}/repositories` | the repositories it owns, in the order they were bound: `identity`, `path`, `remote` as last given without credentials |
+| `POST …/projects/{project}/repositories` | bind one, `{"remote"}` and optionally `path` — those who may create a project, judged by the role in it; `201` new, `200` when the project binds it already, its remote updated to the form given; `409 repository_bound` when another project of the tenant binds it, naming that project only to a caller who sees it |
+| `DELETE …/projects/{project}/repositories/{repository}` | unbind it — the same people; `204` also when the binding is gone; the project and its tickets stay |
 
 </details>
 
 <details>
-<summary>Tickets — 19 routes</summary>
+<summary>Tickets — 20 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -645,6 +749,7 @@ announced on the event stream as `membership.changed`.
 | `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise |
 | `DELETE …/{number}/interest` | remove the caller's own stake |
 | `GET …/{number}/markdown` | its canonical Markdown, `text/markdown`; the `ETag` is its version; every call is recorded |
+| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree, eight levels), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
 | `GET …/{number}/activity` | every recorded act on it, from the audit record |
 
 </details>
@@ -1007,6 +1112,7 @@ make dev-up               # what the integration tier needs: PostgreSQL, MinIO a
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
 make build                # bin/cowork and frontend/dist/frontend/browser
+make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile
 make docker-build         # both images, from backend/Containerfile and frontend/Containerfile
 ```
 

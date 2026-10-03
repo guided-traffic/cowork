@@ -56,7 +56,15 @@ something the caller can see answers `403`. A request without a valid token is a
 The person's own routes under `/api/v1/me` are not tenant routes; they show what is the
 person's across tenants — their memberships and their tokens — and no tenant's tickets. A
 restricted token sees only its tenant's membership and itself there ([tokens.md](tokens.md)
-"Restrictions").
+"Restrictions"). The one that reads tenants' data, the repository lookup
+(`GET /api/v1/me/repositories/lookup`,
+[ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+D2), reads each of the person's tenants in a transaction bound to that tenant, one after the
+other ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D5),
+finds only the bindings of projects the caller sees, and names each binding's tenant; a token
+restricted to a tenant reads that tenant only, and one restricted to a project reads that
+project's bindings only ([`api/repositories.go`](../../backend/internal/api/repositories.go)
+`LookupRepository`, `TestLookingUpARepository`).
 
 ## Two database roles
 
@@ -68,10 +76,11 @@ restricted token sees only its tenant's membership and itself there ([tokens.md]
 The runtime role's grants are narrow: `UPDATE` only where the API changes something — column
 by column on the tenants, projects (their restriction among them), tokens, tickets, questions,
 comments, stakes, time entries, persons (the identity provider's columns among them), local
-accounts, sessions (the groups refresh's among them), memberships and group mappings (a role and a
-version each) and a project's access list (its role), table-wide on `ticket_counters`, `idempotency_keys` and
-`login_locks` — `DELETE` only on `ticket_links`, `ticket_interest`, `idempotency_keys`, `sessions`,
-`login_attempts`, `login_locks`, `memberships`, `group_mappings` and `project_access`, and only
+accounts, sessions (the groups refresh's among them), repository bindings, memberships and group
+mappings (a role and a version each) and a project's access list (its role), table-wide on
+`ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
+`ticket_interest`, `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`,
+`login_locks`, `memberships`, `group_mappings` and `project_access`, and only
 `INSERT` and `SELECT` on `audit_events`, which makes the audit record append-only by grant
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3).
 `TestTheAuditRecordIsAppendOnly` shows that `UPDATE`, `DELETE`, `TRUNCATE` and switching
@@ -251,6 +260,7 @@ The exemptions, each with its reason written in its query file:
 | `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation's inputs and the tickets that depend on them (H-3) |
 | `CanSeeProject`, `CanSeeTicket` | whether another person — an assignee, a person asked — sees what the caller reads |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
+| `GetRepositoryBinding` | whether the tenant binds a repository at all: the identity and path are unique in the tenant, and the `409 repository_bound` names the project only when the caller sees it |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice (H-3) |
 
 Where the predicate hides a related ticket, the visible one shows less rather than more: a

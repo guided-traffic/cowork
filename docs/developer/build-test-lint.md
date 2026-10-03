@@ -52,6 +52,7 @@ same toolchain builds them.
 | | `make frontend-clean` | | removes the build output |
 | Both | `make test` | | `test-unit` + `frontend-test` |
 | Build | `make build-backend` | — | `bin/cowork`, after `fmt` (which rewrites sources) and `vet` |
+| | `make build-mcp` | — | `bin/cowork-mcp`, the MCP server and hooks for Claude Code ([mcp.md](mcp.md)); `GOOS=` and `GOARCH=` cross-compile, `MCP_OUT=` names the file — a `.exe` by default for `GOOS=windows` |
 | | `make build` | npm | `build-backend` + `frontend-build` |
 | | `make run`, `make migrate` | `make postgres-up` | run the backend from source against the development database (below) |
 | | `make dev-seed` | `make postgres-up` | migrates, then creates a person, a tenant, an admin membership and a token, and prints the token once |

@@ -29,13 +29,18 @@ Everything described here exists; what is not built is listed at the end.
 
 The frontend is the entry point and the only Service an Ingress targets; the browser sees one
 origin. The backend Service stays cluster-internal for scripts and port-forwards
-([ADR 0001] D2–D4). Every route under `/api/v1` except the version and the API document needs a
-personal access token or a session cookie ([api.md](api.md#authentication)); the login flows
-live at `/auth/…` beside `/api/`. During a login through the identity provider the browser goes to
-the issuer and comes back to `/auth/callback`; the backend itself calls the issuer at start, at a
-login and at a session's groups refresh, and the issuer never calls the backend
-([the two logins](#the-two-logins)). The security architecture is
-[docs/security/](../security/README.md).
+([ADR 0001] D2–D4). Every route under `/api/v1` except the version, the API document and the
+schema of `.cowork.yaml` needs a personal access token or a session cookie
+([api.md](api.md#authentication)); the login flows live at `/auth/…` beside `/api/`. During a
+login through the identity provider the browser goes to the issuer and comes back to
+`/auth/callback`; the backend itself calls the issuer at start, at a login and at a session's
+groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). The
+security architecture is [docs/security/](../security/README.md).
+
+A third program runs on a person's machine, not in the cluster: `cowork-mcp`, the MCP server
+Claude Code starts over stdio and the command its hooks run. It is a client of `/api/v1` with
+the person's token, like a script — no path to the database, nothing the API does not allow
+([mcp.md](mcp.md), [ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)).
 
 ## Backend startup sequence (`cowork serve`)
 
@@ -273,11 +278,11 @@ D2). The commands are [build-test-lint.md](build-test-lint.md#run-locally).
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
 of one's own sessions; a global administrator's way into an existing tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the person-level lists, search,
-saved filters, the tenant board and the dashboard; the MCP server; the score beside the rank and
-the rebalancing of the rank's keys; deletion and purge; the `/context` export; import; the
-notification inbox; metrics; the end-to-end tier, with its login through Dex. The order in which
-they come is [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section
-here, or a page of its own, when it exists.
+saved filters, the tenant board and the dashboard; the score beside the rank and the rebalancing
+of the rank's keys; deletion and purge; import; the notification inbox; metrics; the end-to-end
+tier, with its login through Dex. The order in which they come is
+[docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
+page of its own, when it exists.
 
 [ADR 0001]: ../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md

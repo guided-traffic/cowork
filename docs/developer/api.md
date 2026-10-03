@@ -17,13 +17,14 @@ into the file of its path family.
 
 | File | Paths |
 |---|---|
-| [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json` — `security: []`, read before a client authenticates |
+| [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}` |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents |
+| [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
 | [`tenants.yaml`](../../backend/api/tenants.yaml) | creating a tenant (`POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
@@ -67,8 +68,8 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    [the rule](../security/local-accounts.md#the-client-address)): with no trusted network the
    header is never read, and an entry that is no address stops the walk.
 4. **Authentication**, when the operation declares `bearerToken` or `sessionCookie` — all but
-   the six public operations (`getVersion`, `getOpenAPI`, `getAuthOptions`, `loginLocal`,
-   `loginOidc`, `oidcCallback`). One resolver for both credentials
+   the seven public operations (`getVersion`, `getOpenAPI`, `getCoworkYamlSchema`, `getAuthOptions`,
+   `loginLocal`, `loginOidc`, `oidcCallback`). One resolver for both credentials
    ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
    keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
@@ -116,7 +117,7 @@ with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one res
 twelve session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`) declare
-`sessionCookie` alone, the six public ones declare nothing — and `authenticate` decides. What they
+`sessionCookie` alone, the seven public ones declare nothing — and `authenticate` decides. What they
 make — a token, a tenant, an account, a password only its setter knows, a role, a mapping, a way into
 a restricted project — would outlive the revocation of a leaked token, which is why a token cannot
 call them ([ADR 0033] D1, D5, [ADR 0035] D5; the rule is
@@ -252,8 +253,10 @@ another token. The checks run in this order; the first failure answers:
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
-The handlers also build a few needs inline: `createProject` (admin, or member while the tenant
-allows it; `write`; `create-project`), `setConfidential` (admin, `admin`, hard-off), the
+The handlers also build a few needs inline: `creating` for `createProject`, `bindRepository`
+and `unbindRepository` (admin, or member while the tenant allows it; `write`; `create-project`
+— [`repositories.go`](../../backend/internal/api/repositories.go), judged by the project role for
+a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
@@ -281,8 +284,9 @@ request id.
 
 ## Idempotency
 
-A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addComment`, `bookTime`,
-`uploadAttachment`, `addMember`, `createGroupMapping` — calls `keyed(ctx, key, op, scope, body)` in
+A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQuestion`, `addComment`,
+`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping` — calls
+`keyed(ctx, key, op, scope, body)` in
 [`server.go`](../../backend/internal/api/server.go):
 
 - No `Idempotency-Key`: a person's request goes on unkeyed; an agent's is
@@ -384,6 +388,9 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
   `Content-Length`, never `304`, and records every call as `exported`
   ([markdown-grammar.md](markdown-grammar.md)). The validator reads `text/markdown` with the
   plain-text body decoder registered in `validate.go`.
+- **The context** returns `contextResponse` from [`context.go`](../../backend/internal/api/context.go)
+  for the same reason: `text/markdown; charset=utf-8` and `Content-Length`, no `ETag` — it is no
+  one entity — and every call recorded as `exported` with the format `context v1`.
 - **The event stream** is no response a handler returns: oapi-codegen excludes `streamEvents`,
   and the pipeline calls `serveEvents` in [`events.go`](../../backend/internal/api/events.go)
   ([events.md](events.md)).

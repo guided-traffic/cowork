@@ -187,6 +187,13 @@ the mechanics are [api.md](api.md)).
 3. The README's values block and, when operators need to understand it,
    [docs/operations/installation.md](../operations/installation.md).
 
+## A tool of the MCP server
+
+The checklist is [mcp.md](mcp.md#adding-a-tool): first whether it should be a tool at all
+([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D1), then the route, the
+`define` in `backend/internal/tools/`, the unit tests against the fake API, a step of the
+integration test through the server, and the tool's row in the README.
+
 ## A CI job
 
 Add it to `release.yml` as a Makefile target, add its name to the `needs:` list of

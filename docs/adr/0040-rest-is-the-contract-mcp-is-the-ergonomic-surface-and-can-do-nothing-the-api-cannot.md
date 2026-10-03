@@ -8,8 +8,14 @@ server as a thin client of it, over REST alone, over MCP alone, and over an addi
 GraphQL surface. The rules of D4–D7 were put to the owner with the question and not objected
 to.
 
-**Partly built** (phase 2, 2026-10-02): D1, D6 and D7 — the REST API with its document, served
-at `/api/v1/openapi.json`. The MCP server of D2–D5 is phase 5.
+**Built** (phase 2, 2026-10-02; D2–D5 since 2026-10-04): D1, D6 and D7 — the REST API with its
+document, served at `/api/v1/openapi.json`. D2–D5 — `backend/cmd/cowork-mcp` over
+`internal/mcpcli`, `internal/mcpserver` and `internal/tools`, on the generated client of
+`internal/api/apigen`; a unit test holds that the binary depends on no store, no database
+driver, no S3 client and no API handler. D3 as built: a tool's failure is the API's problem
+with its status and code; a failed connection is retried twice for a `GET`, `PUT`, `DELETE`
+or keyed `POST`, which cannot act twice, and an answer of the API is never retried. D4 reads
+`CLAUDE_PROJECT_DIR` beside the two variables, for the working directory.
 
 ## Context
 
@@ -42,10 +48,17 @@ success.
 **D4 — Configuration of the MCP server is environment only:** `COWORK_URL` and
 `COWORK_TOKEN`, passed through by the Claude Code MCP configuration; no configuration file,
 no stored credential. It keeps a session id and an in-memory cache and writes nothing to
-disk.
+disk *(amended 2026-10-04: but the file of session-start times of
+[ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D5, which that record names
+the only file the server writes; the two records disagreed, and the later, more specific one
+holds)*.
 
 **D5 — The MCP server checks compatibility at start** against `GET /api/v1/version` and the
 OpenAPI document's version, and refuses to serve tools against an API it does not know.
+*(Made concrete 2026-10-04: an API it does not know is another major version than the
+binary's — a binary without a semantic version, a development build, compares none — or a
+served document that lacks an operation one of its tools calls. The refusal is the answer
+to every tool call; an installation that cannot be reached is asked again at the next call.)*
 
 **D6 — The API serves its own OpenAPI document** at `GET /api/v1/openapi.json`, so a session
 without the MCP server — a script, a one-off `curl` — can load the contract from the

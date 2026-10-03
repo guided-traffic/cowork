@@ -23,11 +23,15 @@ to.
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
 on a move in the rank since 2026-10-03 and on adopting the score with the score,
-`create-project`'s repository binding with that binding — the set recorded on
-each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
+`create-project`'s repository binding with that binding (since 2026-10-04 on binding and
+unbinding a repository) — the set recorded on each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
 `PATCH` that fills the last progress stage, refused with `agent_forbidden` outside `in-progress`
 and `review` ([`mayClose`](../../backend/internal/api/transitions.go)); without `close` that
-`PATCH` is refused whole and the stage keeps its value. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
+`PATCH` is refused whole and the stage keeps its value. D6 is built (2026-10-04): `GET /api/v1/me/token` answers the token a request presents with
+the request's mark — whether it is an agent's, the agent recorded, the capabilities it holds —
+and `cowork-mcp` reads it at start into its tool descriptions; `finish_work` makes the
+furthest move the token may — `done` with `close` from `in-progress` or `review`, else
+`review` from `in-progress` — and says what remains for a person. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
 the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens

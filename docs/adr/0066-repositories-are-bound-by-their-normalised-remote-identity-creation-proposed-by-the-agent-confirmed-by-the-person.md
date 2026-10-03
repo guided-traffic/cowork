@@ -15,7 +15,28 @@ projects by the tenant setting of
 D9, not necessarily be its administrator), the owner's answer to the question whether an
 agent's `write` token may create a project.
 
-**Not built.** No projects, no repositories table, no MCP server.
+**Built** (phase 5, 2026-10-04; D7 and D8 since phase 2): D1 —
+[`domain.NormaliseRemote`](../../backend/internal/domain/repository.go) with its table test,
+the identity and the remote as last given, without credentials, in `project_repositories`
+(migration 23), beside an optional sub-directory. D2 — `GET /api/v1/me/repositories/lookup`
+with `remote` repeated in order of preference and `path`; the first remote with a binding that
+covers the path decides, the most specific sub-directory first; the proposal's tenants are
+those where the caller may create a project (D5), none for a project-restricted token, and the
+reason says which rule chose (`only-tenant`, `remote-owner`, `choose`); the key splits the
+name also at `_` and `.`, takes the first three letters when there is one part, and appends 2,
+3, … while the key is taken. D3 — `session_start` and the `SessionStart` hook of
+[ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md);
+the remotes of the working directory leave the machine without credentials. D4 — `.cowork.yaml`
+read up to the repository root, its `path` the file's own directory when it names none; a
+file whose `url` names another installation than `COWORK_URL` is ignored, with a note; the schema at `/api/v1/schemas/cowork-yaml.json`, without
+authentication; `create_project` offers to write the file and writes nothing itself. D5 —
+`POST …/projects` with `repository`, the project, its counter and the binding in one act;
+`200` with the project that binds the repository already, `409 repository_bound` when the
+caller cannot see it. D6 — `ambiguous` with the projects named; resolved through the API's
+unbinding, as the UI has no page for it yet. Beside D1–D6: binding and unbinding a repository
+of an existing project are routes of their own, `…/projects/{project}/repositories`, with the
+need of creating a project; a repository another project of the tenant binds is
+`409 repository_bound`, naming that project only to a caller who sees it.
 
 ## Context
 

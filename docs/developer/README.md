@@ -87,7 +87,8 @@ change.
 | [storage.md](storage.md) | You touch attachments or the object storage |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to nginx |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
-| [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or need its exact form |
+| [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
+| [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
 | [testing.md](testing.md) | You are adding a test, choosing a tier, or a suite is failing and you need to know what it is for and what it needs |
 | [ci-and-release.md](ci-and-release.md) | You touch a workflow, Renovate or the release |
@@ -108,14 +109,15 @@ change.
 | Frontend request | nginx: `/healthz` itself, `/api/` and `/auth/` proxied to `BACKEND_URL` with its own problem bodies, the event stream unbuffered, hashed bundles immutable, everything else `index.html` with `no-store` | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
+| A Claude Code session | The SessionStart hook runs `cowork-mcp session-context`, which finds the binding by the git remotes and prints the active ticket's context; the tools of `internal/tools` call the API through the generated client with the token and the agent header; the Stop hook reminds of a ticket left standing | [mcp.md](mcp.md) |
 
 ## What has no page here
 
-The MCP server, the tenant board, the score beside the rank, the person-level lists, deletion,
-import, the notification inbox, metrics and the end-to-end tier are not built
+The tenant board, the score beside the rank, the person-level lists, deletion, import, the
+notification inbox, metrics and the end-to-end tier are not built
 ([architecture.md](architecture.md#what-is-not-built)); the rank itself is a section of
-[domain.md](domain.md#rank), the identity provider's login a section of
-[architecture.md](architecture.md#the-two-logins) and its own security page,
-[identity-provider.md](../security/identity-provider.md).
+[domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
+the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
+its own security page, [identity-provider.md](../security/identity-provider.md).
 The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
 each gets its page here when it exists.

@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-03.
+tree on 2026-10-04.
 
 ## Projects, keys and the counter
 
@@ -23,6 +23,51 @@ reads both forms, splits at the last hyphen and refuses a number that is not pos
 leading zero or exceeds `int32`; the path's `{number}` stops at 2147483647 as well. Every answer
 carries the full key (`domain.FullKey`). `GET /api/v1/tickets/{tenant}/{key}` resolves a short
 key in one path segment to the same body and `ETag` as the ticket's own route.
+
+## Repositories
+
+A project owns zero or more repositories ([ADR 0006] D3), each bound by its normalised remote
+identity ([ADR 0066] D1), [`domain/repository.go`](../../backend/internal/domain/repository.go)
+and [`api/repositories.go`](../../backend/internal/api/repositories.go):
+
+- **The identity.** `NormaliseRemote` reduces an SSH, scp-style, git or HTTP(S) URL to
+  `host/path`: the scheme, the user, a default port, a trailing `.git` and trailing slashes
+  removed, the host lower-cased, the path's case and all of its segments kept;
+  `git@github.com:acme/app.git`, `https://github.com/acme/app` and
+  `ssh://git@github.com:22/acme/app/` are `github.com/acme/app`, and a non-default port stays
+  (`gitlab.example.com:2222/group/sub/repo`). A local path or a `file://` URL names no host and
+  binds nothing (`ErrNotARemote`). `TestNormaliseRemote` is the table.
+- **The binding** (`project_repositories`, migration 23) holds the identity, an optional
+  sub-directory of a monorepo (`NormaliseRepositoryPath`: relative, no `..`, `""` for the whole
+  repository) and the remote as it was last given, without credentials (`SanitiseRemote`: an
+  HTTP(S) URL loses its user information, another URL its password). The identity and the
+  sub-directory are unique in the tenant: a repository is in at most one project of a tenant
+  ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
+- **Binding and unbinding** (`POST`, `DELETE …/projects/{project}/repositories`) are the act of
+  creating a project (`creating`): an administrator, or a member while the tenant lets members
+  create projects, judged by the role in the project; `write`; an agent with `create-project`
+  ([ADR 0043] D4). Binding is idempotent over the identity and the sub-directory — `201` for a
+  new binding, `200` for one the project holds, its remote updated to the form given —, and one
+  another project of the tenant holds is `409 repository_bound`, naming that project only to a
+  caller who sees it. Unbinding answers `204` also when the binding is gone. The acts are
+  `linked`, `updated` and `unlinked` on the entity `repository`.
+- **Creating a project for a repository** (`POST …/projects` with `repository`,
+  [ADR 0066] D3, D5): the project, its counter and the binding in one act, `created` with the
+  repository in its `after`. When a project of the tenant binds the repository already the
+  answer is `200` with that project and nothing is created — `409 repository_bound` when the
+  caller cannot see it.
+- **The lookup** (`GET /api/v1/me/repositories/lookup`, D2) normalises every remote, keeps
+  their order, and reads each of the person's tenants — a token's restriction narrows them — for
+  the bindings of projects the caller sees. The first remote with a binding whose sub-directory
+  covers the working directory's (`PathCovers`) decides, the most specific sub-directory
+  first: one binding is `bound`, several `ambiguous`. With none, the proposal comes from the
+  first remote with an identity: the tenants where the caller may create a project — none for
+  a project-restricted token — narrowed to the only one (`only-tenant`), else to the one that
+  binds repositories under the same owner, the identity without its last segment (`remote-owner`;
+  several of them, or none, are the list to `choose` from); the repository's name as the name;
+  and per tenant a key free there — `ProposeProjectKey`, the initials of the parts a hyphen, an
+  underscore or a dot divides (`valkey-operator` is `VO`), else the first three letters, then
+  `KeyCandidate` with 2, 3, … appended until `ProjectKeyTaken` says free.
 
 ## Fields and vocabularies
 
@@ -403,6 +448,7 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
