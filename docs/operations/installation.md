@@ -8,10 +8,13 @@ The chart brings neither the database nor the object storage
 [ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D1):
 the installation provides them, and the chart takes references to them.
 
-**There is no published chart repository and no published image yet.** The release workflow
-that would publish them exists ([`.github/workflows/build.yml`](../../.github/workflows/build.yml))
-and has not run; install from the checked-out tree and images you built with
-`make docker-build` until the first release. The values reference is
+**Each release publishes the chart and both images with one version**
+([`.github/workflows/build.yml`](../../.github/workflows/build.yml)): the chart to the Helm
+repository `https://guided-traffic.github.io/cowork/`, the images to Docker Hub as
+`guidedtraffic/cowork-backend` and `guidedtraffic/cowork-frontend`. The chart's image tags
+default to its `appVersion`, so a chart version brings its own images. The first release is
+`0.1.0`. Installing from the checked-out tree, with images you built with `make docker-build`,
+works the same way with `deploy/helm/cowork` and the image values set. The values reference is
 [README.md, Helm chart values](../../README.md#helm-chart-values).
 
 ## What the installation provides
@@ -200,10 +203,8 @@ not check it: a wrong endpoint, key or bucket shows on the first upload, as
 ## Install
 
 ```bash
-helm upgrade --install cowork deploy/helm/cowork --namespace cowork \
-  --set backend.image.repository=your-registry/cowork-backend \
-  --set frontend.image.repository=your-registry/cowork-frontend \
-  --set backend.image.tag=0.1.0 --set frontend.image.tag=0.1.0 \
+helm repo add cowork https://guided-traffic.github.io/cowork/
+helm upgrade --install cowork cowork/cowork --version 0.1.0 --namespace cowork \
   --set database.existingSecret=cowork-database \
   --set database.owner.existingSecret=cowork-database-owner \
   --set session.existingSecret=cowork-session \
@@ -212,8 +213,9 @@ helm upgrade --install cowork deploy/helm/cowork --namespace cowork \
 ```
 
 The last two lines are optional; leave them out and uploads are refused. What the release
-contains: the Deployments `<release>-cowork-backend` and `<release>-cowork-frontend` (just
-`cowork-backend` and `cowork-frontend` when the release is named `cowork`), a Service for each
+contains: the Deployments `<fullname>-backend` and `<fullname>-frontend` — `<fullname>` is
+`<release>-cowork`, or the release name itself when it contains `cowork`, so `cowork-backend`
+and `cowork-frontend` for the release `cowork` — a Service for each
 (backend on 8080, frontend on 80), one ServiceAccount without an API token, the `migrate` init
 container in every backend pod, and — only when the values ask for them — the Secrets rendered
 from inline URLs, the CA volume and the Ingress. No RBAC objects: neither container talks to
@@ -284,11 +286,13 @@ Ingress controller, a mesh — terminates it; both pods speak plain HTTP on 8080
 ## Upgrade
 
 ```bash
-helm upgrade cowork deploy/helm/cowork -n cowork --reuse-values \
-  --set backend.image.tag=<new> --set frontend.image.tag=<new>
+helm repo update cowork
+helm upgrade cowork cowork/cowork --version <new> -n cowork --reuse-values
 ```
 
-Both images carry the same version per release; move them together. The new backend pods
+Both images carry the release's version, and the chart of that version names them; set
+`backend.image.tag` and `frontend.image.tag` only to pin images apart from the chart, and then
+move them together. The new backend pods
 apply the pending migrations in their init container before their server starts. **Rolling
 back is rolling the image back:** deploy the previous tags and leave the schema where it is.
 The previous image's init container finds the schema ahead of it and applies nothing, and its

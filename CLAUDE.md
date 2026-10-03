@@ -4,7 +4,8 @@ Repo: https://github.com/guided-traffic/cowork — a multi-tenant backlog and ka
 one person working across many projects with an LLM as co-worker. Two containers: a Go
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
 (`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart.
-**Status: phase 2 (core domain and API) is built;** every founding decision is an ADR, and
+**Status: phase 2 (core domain and API) is built and released as `0.1.0`;** every founding
+decision is an ADR, and
 what comes next is [the project plan](docs/planning/project-plan.md).
 
 ## Language policy
