@@ -21,7 +21,7 @@ into the file of its path family.
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | creating a tenant (`POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
@@ -120,14 +120,16 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-thirteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+fourteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them; a turn of the chat acts with the person's
-session, and a token's agent has the MCP server ([ADR 0033] D1, D5, [ADR 0035] D5; the rule is
+session, and a token's agent has the MCP server; the list of every tenant is a global
+administrator's view of the installation's clients, which a token of theirs does not get
+([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
 [tokens.md](../security/tokens.md#what-only-a-session-does)). One field is held the same way inside
 `updateTenant`: switching `chat_external_allowed` on takes a session (`consentRules` in
 [`tenants.go`](../../backend/internal/api/tenants.go)):
@@ -143,7 +145,8 @@ session, and a token's agent has the MCP server ([ADR 0033] D1, D5, [ADR 0035] D
   `401 token_revoked`; expired: `401 token_expired`; its person one of the identity provider's whom
   the gate no longer admits — judged on their stored groups at most every
   `COWORK_OIDC_GROUPS_REFRESH`, and at every request when the person is not the configured
-  issuer's (`tokenGate` in [`identity.go`](../../backend/internal/api/identity.go))
+  issuer's or their groups are older than `COWORK_OIDC_GROUPS_MAX_AGE` (`tokenGate` in
+  [`identity.go`](../../backend/internal/api/identity.go))
   — `401 not_allowed`. Every `401` carries `WWW-Authenticate: Bearer realm="cowork"`. A dead or
   gated token's use is recorded as an installation-level `refused` act, at most once per token,
   reason and hour ([ADR 0035] D9).
@@ -230,6 +233,18 @@ exists ([ADR 0047] D5):
   `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
 
+**A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
+where `GetTenantForPerson` finds no membership, `overseen` admits the request when `oversees` holds —
+a global administrator, a session, no agent mark, and an operation of `oversight`: `getTenant`,
+`listMembers`, `listGroupMappings`, `setMemberGrant` — and reads the tenant by slug
+(`GetTenantBySlug`, which the `tenants` policy shows a global administrator since migration 26). The
+`tenantScope` it hands on has no `Role` and `Oversight` set. The three reads authorize through
+`administrationRead`, which takes the mark for the role; `SetMemberGrant` sends a grant to the
+person themselves to `grantSelf` when `ownGrant` holds — a global administrator in a session no agent
+marks who does not hold `admin`, with a role in the tenant or without — and anybody else's to
+`auth.Authorize`, which a scope without a role fails (`403 forbidden`). Every other operation is refused like an unknown slug, before any handler;
+a token, an agent-marked session and the event stream's heartbeat get no such admission.
+
 Inside the tenant, `visibleProject` and `visibleTicket` read through the visibility predicates
 ([data-access.md](data-access.md#visibility-in-sql)): a restricted project or a confidential
 ticket the caller cannot see is the same `404` as one that does not exist. `projectRole` lowers
@@ -278,8 +293,14 @@ member list `read`; a change of a grant or a mapping, or the deactivation of an 
 (`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
 `409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
 tenant's lock first);
-creating a tenant (`CreateTenant`) needs `Principal.GlobalAdmin` and a session, which the pipeline
-has already settled. A session passes every scope check: its scope is `admin`. Rules about *whose* entity it is —
+creating a tenant (`CreateTenant`) and listing every tenant (`ListTenants`) need
+`Principal.GlobalAdmin` and a session, which the pipeline has already settled; a global
+administrator's grant to themselves where they do not hold `admin` (`grantSelf`, `setOwnGrant`) takes
+the tenant's lock and meets no `lastAdmin`, since it takes no administrator away — unless it lowers a
+grant of `admin` another administrator gave them meanwhile; making a group mapping or changing its role (`CreateGroupMapping`,
+`UpdateGroupMapping`) needs `Principal.GlobalAdmin` after `administer`, else `403 forbidden` before
+an idempotency key is kept or a row is written (`mapsGroups`, [ADR 0030] D7). A session passes every
+scope check: its scope is `admin`. Rules about *whose* entity it is —
 the asker, the author, the person asked — are checked after `Authorize`, in the handler.
 
 ## Problem details
@@ -376,7 +397,7 @@ list answers that `invalid_cursor`.
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the other lists by id.
+  mappings by group; the installation's tenants by slug; the other lists by id.
 
 ## Filters
 
@@ -417,8 +438,10 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
+[ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0033]: ../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md
+[ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md

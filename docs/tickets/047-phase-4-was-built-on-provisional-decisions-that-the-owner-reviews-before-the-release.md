@@ -4,13 +4,13 @@ title: phase 4 (OIDC and authorization) was built in one night on provisional de
 state: in-progress
 severity: medium
 security: hardening
-threat: the open questions would additionally cover a tenant administrator who pulls the people of any provider group into their tenant and learns who exists in the installation (Q1), a person who left the provider's groups but keeps working tokens because they never sign in to the browser (Q2), and a tenant left without an administrator (Q3, Q7)
+threat: the remaining phase close would additionally cover development containers that still listen on every interface until they are recreated
 urgency: release      # rule 2: gates the release — merging the branch releases phase 4
 effort: S
-blocked-by: decision
+blocked-by: human
 filed-from: docs/planning/project-plan.md phase 4, converted and built 2026-10-04 (ADR 0074 D2)
 opened: 2026-10-04
-decided:
+decided: 2026-10-04
 done:
 ---
 
@@ -48,19 +48,23 @@ best knowledge, leave a gate open when in doubt, file what the owner should look
   written to audit rows; agents are refused on every administration route; the client secret
   comes from a Secret only (ADR 0058 D3); the development containers bind to the loopback interface
   (ADR 0038 D4).
-- **Not built:** the global administrator's view of a tenant without a role and their self-grant
-  (ADR 0034 D2, Q3); the administrators' view of their members' tokens (T40); the
-  last-administrator guard of the other tenants a deactivated account administers (Q7); the sign-in
-  through Dex in the end-to-end tier (T29).
+- **The owner's answers (Q1–Q7), built:** only a global administrator who administers a tenant
+  creates a mapping or changes its role, in the handler and in the data layer (ADR 0030 D7,
+  ADR 0021); tokens stop once their person's groups are older than `COWORK_OIDC_GROUPS_MAX_AGE`
+  (ADR 0035 D8); a global administrator sees a tenant's administration without a role and grants or
+  raises their own role, by session only (ADR 0034 D2); only `email_verified: true` finds a person
+  unless `COWORK_OIDC_EMAIL_TRUSTED` (ADR 0030 D3); audit rows record only that the groups changed
+  (ADR 0026 D1); a change of the server key signs provider persons out once (ADR 0031 D1); the
+  deactivation asks only the managing tenant (ADR 0034 D1).
+- **Not built:** the administrators' view of their members' tokens (T40); the sign-in through Dex
+  in the end-to-end tier (T29).
 
 ## Required changes
 
-1. The owner answers Q1–Q7; an answer that changes the build amends its ADR and changes the code
-   and the security page in the same change.
-2. After the merge, when the development data may go: `make postgres-down minio-down dex-down`,
+1. After the merge, when the development data may go: `make postgres-down minio-down dex-down`,
    then `make dev` — containers made before the loopback rule keep listening on every interface
    until they are recreated.
-3. Phase close: the questions answered, the remaining items here or in T29/T40, the phase-4 lines
+2. Phase close: the remaining items here or in T29/T40, the phase-4 lines
    of [project-plan.md](../planning/project-plan.md) gone, this ticket archived.
 
 ## Open questions
@@ -82,7 +86,8 @@ once — their names in X's member list, X in their tenant lists — and with gr
 Recommended: **(b)** now — one check on two routes, and the owner maps groups for client tenants
 anyway; **(c)** when a client wants self-service for its own groups.
 
-**Answer:** _open_
+**Answer:** (b) — only a global administrator who administers the tenant creates a mapping or
+changes its role; tenant administrators see, remove and grant by hand. Recorded in ADR 0030 D7.
 
 ### Q2: How old may the groups be that judge a token?
 
@@ -98,7 +103,8 @@ working tokens until they expire, up to the token lifetime (H-23).
 Recommended: **(b)** — one comparison and no further stored credential, and a weekly sign-in in the
 browser is part of the working day.
 
-**Answer:** _open_
+**Answer:** (b) — `COWORK_OIDC_GROUPS_MAX_AGE`, seven days by default: older groups refuse the
+person's tokens with `401 not_allowed` until they sign in to the browser once.
 
 ### Q3: What keeps a tenant from losing its last administrator?
 
@@ -115,7 +121,8 @@ existing tenant (H-29).
 Recommended: **(c)** — decided already, and it recovers a tenant whatever removed its last
 administrator, the deactivation of an account another tenant manages (Q7) included.
 
-**Answer:** _open_
+**Answer:** (c) — build the self-grant of ADR 0034 D2: a global administrator sees every tenant's
+administration and grants themselves `admin`, a recorded grant the tenant sees, by session only.
 
 ### Q4: Does a missing `email_verified` count as verified when an administrator grants by e-mail?
 
@@ -130,7 +137,9 @@ Entra do not send the claim, and a person of the provider has no username to be 
 Recommended: **(a)** while the installation's provider is one whose addresses an administrator
 issues; **(c)** before a provider where people choose their own address is configured.
 
-**Answer:** _open_
+**Answer:** (c), secure by default — `COWORK_OIDC_EMAIL_TRUSTED`, `false` by default: only
+`email_verified: true` matches; an operator sets `true` only for a provider whose addresses
+administrators issue.
 
 ### Q5: Do the groups belong in audit rows?
 
@@ -144,7 +153,8 @@ audit table, where an erasure request cannot be honoured; e-mail addresses are n
 Recommended: **(b)** — the memberships carry the accountability, and group names can say more about
 a person than their role in a tenant.
 
-**Answer:** _open_
+**Answer:** (b) — an audit row records only that the groups changed; the memberships they caused
+carry the accountability.
 
 ### Q6: Does a change of the server key end the sessions of the identity provider?
 
@@ -160,7 +170,8 @@ its next refresh (fails closed), and every list cursor and login-throttle hash s
 Recommended: **(a)** — a session lives twelve hours at most, a rotation is rare and deliberate, and a
 second key is one more Secret to handle.
 
-**Answer:** _open_
+**Answer:** (a) — ADR 0031 D1 is amended to what is built: a key change signs every provider person
+out once, and the operations pages name every consequence.
 
 ### Q7: Does the deactivation of an account ask the other tenants it administers?
 
@@ -192,7 +203,8 @@ Recommended: **(a) with Q3 (c)** — the self-grant recovers a tenant whatever l
 administrator, opens no boundary and is decided already; **(d)** if a stranded tenant must never
 happen, since it is the one option that keeps every row of the other tenant out of the request.
 
-**Answer:** _open_
+**Answer:** (a) — the deactivation asks only the managing tenant; a tenant it leaves without an
+administrator is recovered by the self-grant of Q3. Recorded in ADR 0034 D1.
 
 ## Related
 

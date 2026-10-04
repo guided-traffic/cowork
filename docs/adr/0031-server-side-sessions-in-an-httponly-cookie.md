@@ -9,8 +9,11 @@ the sealed refresh token built; D4: the issuer's logout is handed to the browser
 twelve routes take a session only; D7: the identity provider's ends), and again on 2026-10-04 after
 the security review (D3: the refresh claims a lease and holds nothing while it asks the issuer; D4:
 the sessions of a person of another issuer end at once), and for the chat in the UI (D6: thirteen
-routes and the consent field take a session only; the agent header marks a session's request).
-Date: 2026-10-01. Decided by the owner as the answer to the
+routes and the consent field take a session only; the agent header marks a session's request), and
+on 2026-10-04 by the owner's answer to "does a change of the server key end the sessions of the
+identity provider?" (D1: there is one server key and no rotation that keeps the old one; a change
+fails closed, and its consequences are named), and for the global administrator's view of the
+installation's tenants (D6: fourteen routes, [ADR 0035](0035-personal-access-tokens.md) D5). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -35,9 +38,10 @@ refresh in [`api/identity.go`](../../backend/internal/api/identity.go) and
 [`store/identity.go`](../../backend/internal/store/identity.go), the sealing in
 [`auth/seal.go`](../../backend/internal/auth/seal.go)
 ([docs/security/identity-provider.md](../security/identity-provider.md)). A person of the identity
-provider has no password, so no way to end their own other sessions. Not built: D1's rotation that
+provider has no password, so no way to end their own other sessions. ~~Not built: D1's rotation that
 keeps the old key for decryption — a changed `COWORK_SESSION_KEY` ends every provider session that
-holds a refresh token at its next refresh.
+holds a refresh token at its next refresh.~~ *(Amended 2026-10-04 by the owner: D1 no longer decides a
+rotation that keeps the old key; what a change of the key does is D1's rule, and built.)*
 
 ## Context
 
@@ -56,8 +60,9 @@ person, the groups snapshot and the time of the last refresh (ADR 0030 D5), crea
 last-seen times, and a hash of the user agent. The cookie value is 256 random bits; only its
 hash is stored. The identity provider's ID and access tokens are verified and discarded; a
 refresh token is stored only if the groups refresh needs it, encrypted at rest with a server
-key (`COWORK_SESSION_KEY`, a Secret in the chart, rotated by issuing a new key and keeping
-the old for decryption until every session that used it is gone *(not built, 2026-10-04: below)*).
+key (`COWORK_SESSION_KEY`, a Secret in the chart~~, rotated by issuing a new key and keeping
+the old for decryption until every session that used it is gone~~ *(not built, 2026-10-04: below)*
+*(amended 2026-10-04 by the owner, below: one key, no old one kept)*).
 *(Amended 2026-10-03: the row
 holds the person, `token_hash`, `user_agent_hash` — which nothing compares yet —, and
 `created_at`, `last_seen_at` and `expires_at`, three times the backend writes from its own
@@ -76,6 +81,35 @@ hash as additional data, so it opens for its own session only. **Not built: the 
 the old key for decryption.** There is one key and no old one is kept, so a new server key leaves
 the stored tokens unopenable, and each such session ends at its next refresh, its person logging in
 again — the change fails closed. The ID and access tokens are verified, used and discarded.)*
+*(Amended 2026-10-04, the owner's answer to "does a change of the server key end the sessions of the
+identity provider?", over building a `COWORK_SESSION_KEY_PREVIOUS` that opens what the old key
+sealed until the sessions holding it have ended: **there is one server key and no previous one is
+kept.** A session lives twelve hours at most, a change of the key is rare and deliberate, and a
+second key would be one more Secret to handle. Every key cowork derives from `COWORK_SESSION_KEY` by
+HKDF-SHA256 under a label of its own changes with it
+([`api/api.go`](../../backend/internal/api/api.go) `New`), and a change of the key does this, each
+verified in the code:*
+- *every sealed refresh token becomes unreadable (`cowork oidc refresh token v1`,
+  [`auth/seal.go`](../../backend/internal/auth/seal.go)), so every session of the identity provider
+  that holds one ends at its next groups refresh — `revoked`, cause `identity-provider` — and its
+  person signs in again: the change fails closed. A provider session without a refresh token is not
+  affected;*
+- *a login through the provider under way at the moment fails with `oidc_failed`: its state cookie
+  was sealed under the old key (`cowork oidc login v1`);*
+- *the list cursors clients hold stop working, `400 invalid_cursor` (the cursor codec's keys);*
+- *the login throttle's count of an address starts over, because the address is hashed under a key
+  derived from it (`cowork login address v1`); the lockout of a username, which is kept by the
+  username, stays;*
+- *the audit rows' source hashes before and after the change cannot be compared: one address gets
+  another hash (`cowork audit address v1`);*
+- *a retry of an idempotent request whose key was stored before the change, within the key's
+  twenty-four hours, no longer matches its stored fingerprint — an HMAC under a key derived from it
+  (`cowork idempotency fingerprint v1`) — and is refused as `422 idempotency_mismatch`: neither
+  replayed nor run a second time;*
+- *the sessions of the local login survive: a session row is found by the SHA-256 of its cookie,
+  which no key enters, and so is a personal access token.*
+*The operations page names the same list for the operator
+([installation.md](../operations/installation.md#the-secrets)).)*
 
 **D2 — Cookie attributes:** `HttpOnly; Secure; SameSite=Lax; Path=/`, no `Domain`. The
 cookie's name is fixed. `Secure` is set in every environment; ~~browsers treat `localhost` as
@@ -163,7 +197,10 @@ thirteen routes, a turn of the chat the thirteenth, and one field — switching 
 the person with no agent flag, but an `X-Cowork-Agent` header on the session's request marks that
 request as an agent's, every capability and the hard-off list
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
-D3): the chat's tool calls are such requests, and such a request is refused the thirteen routes.)*
+D3): the chat's tool calls are such requests, and such a request is refused the ~~thirteen~~ routes.)*
+*(Amended 2026-10-04: ~~thirteen~~ fourteen routes, the list of every tenant of the installation
+the fourteenth ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2, ADR 0035 D5); an agent-marked request is refused all fourteen.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))

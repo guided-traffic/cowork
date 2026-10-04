@@ -40,7 +40,8 @@ logs. The variables named here are explained one by one in
    again. An end-session endpoint that fails the rule is dropped with the warning `the issuer's
    end_session_endpoint is dropped: a logout ends no session at the issuer`. Discovered, the log
    says `identity provider discovered` with the issuer, the number of allowed groups, whether an
-   administrator group is set and the refresh interval; a gate that names no group warns `the
+   administrator group is set, the refresh interval, the groups' maximum age for a token and whether
+   an address without the issuer's word on it is trusted; a gate that names no group warns `the
    identity provider's gate admits nobody …`, and the login page then offers no button
    ([installation.md](installation.md#the-identity-provider)).
 6. **The bootstrap**: the local administrator the variables name is created or brought in step,
@@ -158,7 +159,7 @@ an alert or a look:
 | `not ready` | warn | `/readyz` failed its ping; the line carries the error |
 | `the event listener lost its connection` | warn | event streams are refused until it reconnects ([the event stream](#the-event-stream)) |
 | `slow query` | warn | a query took longer than 500 ms; the line names the query, never its arguments |
-| `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate or of another issuer than the configured one (`not_allowed`); the line names the token id and the reason |
+| `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate, of another issuer than the configured one, or judged by groups older than `COWORK_OIDC_GROUPS_MAX_AGE` (`not_allowed`); the line names the token id and the reason |
 | the identity provider's lines | info, warn, error | discovery at start, failed logins, the groups refresh, the token gate ([below](#the-login-through-the-identity-provider)) |
 | `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
@@ -196,7 +197,8 @@ in front of the frontend.
 **Sessions** live in the database: a restart of every pod ends none of them. A changed server key
 ends none of the local login's, and each session of the identity provider that holds a refresh
 token at its next refresh, whose sealed token no longer opens — no previous key is kept to open it,
-so each such person logs in again once their session's refresh is due. The absolute lifetime is
+so each such person logs in again once their session's refresh is due; what else a change of the key
+does is in [installation.md](installation.md#the-secrets). The absolute lifetime is
 `COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours); a request
 moves the idle clock at most once a minute. An administrator ends a local account's sessions with
 `DELETE …/accounts/{username}/sessions`; a person's other sessions end when they change their
@@ -275,8 +277,11 @@ heartbeat. No database connection is held while the issuer is asked. What shows:
 **Tokens of the provider's persons.** A token whose person the gate no longer admits — judged on the
 person's groups as of their last login or refresh, every 15 minutes, and at once when the person is
 not the configured issuer's — answers `401 not_allowed` and is logged as `token refused` with that
-reason; it is not revoked and works again once the person is admitted. A person who uses tokens
-only is judged on old groups ([H-23](../security/identity-provider.md#h-23)).
+reason; it is not revoked and works again once the person is admitted. So does a token whose
+person's groups were last read longer ago than `COWORK_OIDC_GROUPS_MAX_AGE` (a week by default), with
+a detail that says to sign in to the browser once: a person who uses tokens only must sign in that
+often, and is judged on groups up to that old meanwhile
+([H-23](../security/identity-provider.md#h-23)).
 
 **While the issuer is down**, running pods go on: a session whose refresh is due is served on its
 groups and retried every minute — the one request that asks waits up to twenty seconds, the others

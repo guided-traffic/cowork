@@ -90,8 +90,10 @@ holds. What the issuer answers decides:
 - the groups, judged by the gate: inside, the session goes on with them; outside, **every** session
   of the person ends at once;
 - a refusal of the refresh token — an OAuth error answer about the person — a refreshed ID token that
-  does not verify, or a token that no longer opens because the server key changed: **this** session
-  ends, and the request is `401` like any ended session's;
+  does not verify, or a token that no longer opens because the server key changed — no previous key
+  is kept to open it ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; what
+  else a change of the key does: [installation.md](../operations/installation.md#the-secrets)):
+  **this** session ends, and the request is `401` like any ended session's;
 - no answer, a timeout, a `5xx`, a `429`, a temporary OAuth error, or the issuer refusing cowork's
   own client: the session is served on the groups it holds, and asks again a minute later.
 
@@ -115,7 +117,7 @@ D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/interna
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
 person's.
 
-- **Thirteen routes take a session only** and answer a token `403 session_required`
+- **Fourteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
@@ -123,13 +125,15 @@ person's.
   (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
   that can give access — adding a member, setting a grant, making or changing a group mapping,
   restricting or opening a project, putting a person on a project's access list — and a turn of the
-  chat (`POST …/chat`). What the first twelve make would outlive the revocation of a leaked token,
-  and a turn acts with the person's session; the table and the rule are
+  chat (`POST …/chat`), and a global administrator's list of every tenant (`GET /api/v1/tenants`).
+  What the first twelve make would outlive the revocation of a leaked token, a turn acts with the
+  person's session, and the list shows a global administrator's view across the installation's
+  clients, which a token of theirs does not get; the table and the rule are
   [tokens.md](tokens.md#what-only-a-session-does), where switching a tenant's consent to the chat's
   provider outside on is the one field held the same way. The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these thirteen
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these fourteen
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
-  agent header marks is refused all thirteen with `403 agent_forbidden`. Every other operation
+  agent header marks is refused all fourteen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential.
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is

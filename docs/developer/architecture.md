@@ -238,7 +238,8 @@ authenticateSession ─► LookupSession ─► sessionLive ─► checkProvider
 
 An event stream checks the same at its heartbeat (`streamStillAdmitted`), without touching the idle
 clock. The token gate is shorter: `authenticateToken` → revoked or expired? → `tokenGate`: not the
-configured issuer's person → `401 not_allowed` at once; else `store.GateDue` →
+configured issuer's person, or one whose groups are older than `COWORK_OIDC_GROUPS_MAX_AGE`
+(`groupsTooOld`) → `401 not_allowed` at once; else `store.GateDue` →
 `store.CheckTokenGate`, which judges the person's stored groups against the gate as configured —
 `401 not_allowed`, or the check stamped and the memberships derived. What each outcome means for
 the person, and what it leaves open, is
@@ -311,7 +312,8 @@ inside. The commands are [build-test-lint.md](build-test-lint.md#run-locally).
 ## What is not built
 
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
-of one's own sessions; a global administrator's way into an existing tenant ([ADR 0034] D2); the
+of one's own sessions; a global administrator's reading of the installation-level audit rows and
+the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the person-level lists, search,
 saved filters, the tenant board and the dashboard; the score beside the rank and the rebalancing
 of the rank's keys; deletion and purge; import; the notification inbox; metrics; the end-to-end

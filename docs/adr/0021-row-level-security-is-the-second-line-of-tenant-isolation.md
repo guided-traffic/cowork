@@ -9,7 +9,13 @@ of the sessions and of the local login; D1: a migration that rewrites rows lifts
 its own transaction only, written when the rank's migration needed it) and 2026-10-04 (D3: the
 job `identity-provider` and the setting `app.person_lookup`; D6: the identity provider's policies
 and the restrictive policies of the administration, and — after the security review — the trigger
-that holds a project's restriction to the tenant's administrators). Date: 2026-09-30.
+that holds a project's restriction to the tenant's administrators), and again on 2026-10-04 by the
+owner's answer recorded in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D7 (D6: the restrictive policies hold a group mapping's insert and update to an administrator of the
+tenant who is a global administrator as well), and for the global administrator's grant to
+themselves of [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2 (D6: a global administrator reads every tenant, inserts their own grant in any role and changes
+its role). Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -45,6 +51,10 @@ file, and the integration tier reads the force back after the run. Migrations 20
 2026-10-04) widen the policies of `users`, `tenants` and `memberships` for the identity provider,
 add `group_mappings` with the canonical policy and three more, and hold the writes of
 `group_mappings` and `project_access` to a tenant's administrators with restrictive policies.
+Migration 25 (2026-10-04) narrows a mapping's insert and update to an administrator of the tenant
+who is a global administrator as well. Migration 26 (2026-10-04) widens `tenants` to a global
+administrator's reading of every row and `memberships` to their own grant in any role and the
+change of its role.
 
 ## Context
 
@@ -167,9 +177,19 @@ administrator into their tenant, the creator of a tenant into it, the bootstrap 
 an insert by the person and a read and update extended to the administrators of a managed account
 and the bootstrap job, which revoke tokens when they deactivate an account. What a tenant's
 administrators manage is decided in one place, `local_accounts.managing_tenant_id` — the tenant
-that created the account — through `app_manages_account()` and `app_manages_username()`. A
+that created the account — through `app_manages_account()` and `app_manages_username()`. ~~A
 global administrator still reads only the tenants they are a member of; the reading of all
-tenants is not built. *(Made concrete 2026-10-04:)* the identity provider reads every person —
+tenants is not built.~~ *(Built 2026-10-04 for
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2, [migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql):
+`tenants` admits every row to a global administrator, `app_is_global_admin()` — the list of every
+tenant and the request layer's admission to a tenant without a role read it in a transaction that
+names no tenant —, and `memberships` admits a global administrator's own marked grant in any role,
+not only as `admin`, and the change of its role inside the tenant's transaction, by which one who
+holds a role below `admin` raises it. No other policy changes: inside the tenant's transaction the tenant-bound
+tables admit whomever D3's request layer admitted, and which operations it admits a global
+administrator without a role to is the request layer's list, as membership is for everyone else.)*
+*(Made concrete 2026-10-04:)* the identity provider reads every person —
 the derivation of a mapping finds the persons whose groups hold its group — and inserts and updates
 only the persons of the provider (`oidc_issuer` set, no username), never a local account; it reads
 whether any tenant exists; it reads every tenant's `group_mappings`; and it alone inserts, changes
@@ -179,7 +199,13 @@ tenant, the persons the lookup in `app.person_lookup` names. `group_mappings` ca
 and the canonical policy; the bootstrap inserts the administrator group's mapping. On
 `group_mappings` and `project_access` every write must also pass an `AS RESTRICTIVE` policy that
 names an administrator of the current tenant (the bootstrap's insert excepted): a restrictive policy
-is ANDed with the permissive ones, so no later permissive policy widens who writes them. *(Added
+is ANDed with the permissive ones, so no later permissive policy widens who writes them. *(Amended
+2026-10-04, the owner's answer recorded in ADR 0030 D7: the insert and the update of a group mapping
+name an administrator of the current tenant who is a global administrator as well,
+`app_is_tenant_admin() AND app_is_global_admin()`; its delete stays any administrator's of the tenant
+([migration 25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql)).
+Every tenant shares the identity provider's groups, and the second line holds the rule the handler
+holds.)* *(Added
 after the security review, 2026-10-04:)* a rule on one column, which a policy cannot state because
 it sees rows, is a `BEFORE UPDATE OF` trigger: `projects_restriction_guard`
 ([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql))

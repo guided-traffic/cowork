@@ -66,14 +66,14 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; `me` loads again on `membership.changed`, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
-| `ProjectsService` | The current tenant's projects, every page of them; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on `membership.changed`, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
+| `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
 | `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view |
 | `EventStreamService` | The tenant's `EventSource`, its status, and the events as an Observable: the ticket events and `membership.changed` |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
 | `ThemeService` | The colour scheme |
 | `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on `membership.changed`, a `resync` and a `poll` |
-| `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
+| `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`) and time entries |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the urgency override and its withdrawal (a `412` is written over once while the urgency is unchanged); every answer goes into the cache |
@@ -81,8 +81,8 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
-| `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` again so the new membership shows |
-| `ChatService` | The chat of the tenant the pages show: its availability (`GET …/chat`), one conversation — in memory, gone when another tenant's pages open —, the turn that runs, and whether the panel is open, the person's preference in `localStorage` ([the assistant](#the-assistant)) |
+| `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
+| `ChatService` | The chat of the tenant the pages show: its availability (`GET …/chat`, of `workTenant`), one conversation — in memory, gone when another tenant's pages open —, the turn that runs, and whether the panel is open, the person's preference in `localStorage` ([the assistant](#the-assistant)) |
 
 **A resource loads again every time its `params` function runs** — Angular 22 wraps each result
 in a new request object, so an equal value does not stop it (`ResourceImpl`, `extRequest`). A
@@ -154,8 +154,9 @@ and empties it, as `TicketsService` drops a cached ticket on a `403` or `404`. A
 load for another tenant, have nothing to keep and fail.
 
 The tenant comes from the path: [`TenantScope`](../../frontend/src/app/layout/tenant-scope.ts)
-is the parent route of `/t/:tenant`, calls `session.enter(slug)` and `stream.connect(slug)`, and
-both get `null` when the person leaves the tenant's pages. A tenant switch empties the ticket
+is the parent route of `/t/:tenant`, calls `session.enter(slug)` and `stream.connect(slug)` — `null`
+under `oversight`, the stream being the members' —, and both get `null` when the person leaves the
+tenant's pages. A tenant switch empties the ticket
 cache (ADR 0053 D4). **A question belongs to the tenant it was asked in.** A page whose path
 changes only in `:tenant` is reused, and a question answered after the switch would act in the
 tenant shown now — a grant of the same person id there, the project of the same key. The members
@@ -164,6 +165,26 @@ a select, the accounts close theirs, a project's settings close the archive's qu
 tenant or the project changes, and a ticket's page closes its question when the ticket's canonical
 key does, which would otherwise write onto the next ticket. A project's access section goes with
 the project while another tenant's projects load, its question with it.
+
+**A global administrator without a role** in the tenant the pages show ([ADR 0034] D2) sees its
+administration only. The tenant switcher in the top bar and the start page list every tenant of the
+installation, the ones without a role marked `(no role)` and `no role`; a global administrator is
+sent to a sole tenant only once the installation's list has answered, and offered the first tenant
+only while the installation has none. Under `oversight` the navigation shows *Overview*, *Members*,
+*Group mappings* and *Settings* and no projects or time; the overview shows the tenant's name and
+none of its work; the members show without the addresses and without controls, the group mappings
+without their select, their removal and *New mapping*, the settings disabled. Above every page of
+such a tenant `TenantScope` shows [`SelfGrant`](../../frontend/src/app/features/tenant/self-grant.ts),
+loaded with `@defer`: that the person has no role here and sees the administration only, a select of
+the role — `admin` first — and *Grant yourself a role*, which asks first through
+[`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), naming the tenant and the role
+and saying that the tenant sees the grant in its audit record. The grant is `MembersService.setGrant`
+with the person's own id; once `me` holds the membership, `oversight` ends, and the pages, the
+projects, the stream and the assistant are a member's of that role. A global administrator who
+holds a role below `admin` (`mayGrantSelf` without `oversight`) gets the same panel on the members
+page, above the list: the role they hold, the roles above it to choose — `admin` first — and the
+same act and question, which raise their own grant; it goes once they hold `admin`. A question
+belongs to the tenant it was asked in: another tenant's pages close it.
 
 ## How a change reaches the screen
 
@@ -428,19 +449,19 @@ holds while the restriction's question is open as well.
 [`refocus`](../../frontend/src/app/shared/refocus.ts) after the next render: to the control the
 dialog came from — *Add member*, *New mapping*, the row's select or its removal — or, where the act
 takes that control away, to where it leaves something to work on: the row's select where the row
-stays, the select of the row that takes its place (the next one, else the one before), and the
-page's heading (`tabindex="-1"`) where no row is left or where administrators give up their own
-role, whose controls go with it. A refused act gives the focus back to its control. The tables keep
-a row by its id (`rowTrackBy`), so that a list that loads again does not take the focus out of a
-row. The meaning of a role, of an origin's badge and of the mark of the editor's own groups is a
-tooltip under the pointer and on focus (`tooltipEvent="both"`; the badges take the focus with
-`tabindex="0"`), and their accessible description: `aria-describedby` names a hidden element of the
+stays, the select of the row that takes its place (the next one, else the one before) — its removal
+where the page shows no select —, and the page's heading (`tabindex="-1"`) where no row is left or
+where administrators give up their own role, whose controls go with it. A refused act gives the
+focus back to its control. The tables keep a row by its id (`rowTrackBy`), so that a list that loads
+again does not take the focus out of a row. The meaning of a role, of an origin's badge and of the
+mark of the editor's own groups is a tooltip under the pointer and on focus (`tooltipEvent="both"`;
+the badges take the focus with `tabindex="0"`), and their accessible description: `aria-describedby` names a hidden element of the
 page that holds the meaning, each meaning once.
 
 | Page | What it does |
 |---|---|
 | [`members.ts`](../../frontend/src/app/features/tenant/members.ts), `/t/:tenant/members` | Every member: name — for administrators with the e-mail address under it, which tells two persons of one name apart —, username, the effective role, and each origin as a badge — `mapping` and `grant` with their roles, `local account` where the person has one — a username and a password of their own, wherever the account was made. For administrators: *Add member* ([`add-member-dialog.ts`](../../frontend/src/app/features/tenant/add-member-dialog.ts), by e-mail address or username, the refusals `person_not_found`, `person_ambiguous` and `grant_exists` under the field), the grant as a select in the row (`PUT …/grant`), and its removal, which asks first and says what stays — the mapped role, or nothing. A change that takes the administrator's own administrator role away asks first. Anybody else sees the list without the controls |
-| [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and its removal; *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)) sends the group as typed, without the spaces around it. A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
+| [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role and its removal; for a global administrator without a role there, the list alone. A global administrator who administers the tenant (`global_admin` of `/api/v1/me` and the `admin` role, `mayMap`) gets the role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)), which sends the group as typed, without the spaces around it; any other administrator reads the role as text under one line that says only a global administrator creates and changes mappings ([ADR 0030] D7). A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
 | [`project-access.ts`](../../frontend/src/app/features/project/project-access.ts), in the project's settings | For administrators: the restriction switch (`PUT …/restriction` with the project's `If-Match`; a `412` says so and reloads the projects) and the access list of [`AccessList`](../../frontend/src/app/features/project/access-list.ts), which the section provides, so it lives as long as the page. A restriction asks first with its own [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), saying how many people are on the list — or, when nobody is, that only the tenant's administrators will see the project, and no number while the list is not loaded; opening asks as well, saying that the project and its tickets become visible to every member of the tenant, a confidential ticket excepted ([ADR 0065] D1). The list shows whether the project is restricted or not, because it may be filled before the restriction so that nobody on it loses the project in between: a tenant member is added with `member` or `viewer`, changed in the row, taken off. A row shows the person's e-mail address under the name, and the picker offers each member as *name (address)* where the member list has one, the label its options are named by and its filter searches. A row's select and its removal are disabled while the row's change or removal is out, and a removal takes the entry out of the list at once. The section starts again — its choice, an open question and its message gone — only for another project's key: the projects load again on events and hand in a new object for the same project |
 
 The settings form of a project starts again from the list only when another project or another
@@ -534,7 +555,12 @@ because Safari stores no `Secure` cookie from `http://localhost` and the session
 `Secure` everywhere ([ADR 0031] D2). The proxy also flushes the headers of every
 `text/event-stream` answer at once — the event stream's and a chat turn's — because Node holds
 response headers until the first body byte, and a stream's first byte may be a heartbeat twenty
-seconds later.
+seconds later. And it ends the request to the backend when the browser's side closes before the
+backend's answer has ended, as nginx does: without that, the chat's Stop ended the stream in the
+browser while the backend's turn and the model's generation went on — measured on 2026-10-04, LM
+Studio still generating ten seconds after Stop through the proxy, and stopping in the same second
+through nginx and, with the fix, through the proxy. Over HTTP/2 an aborted stream counts as a
+finished response, so the test is whether the backend's answer is complete.
 
 ### The PrimeUI license key
 

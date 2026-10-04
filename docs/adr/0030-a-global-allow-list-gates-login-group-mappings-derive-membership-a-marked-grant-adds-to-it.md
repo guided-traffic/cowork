@@ -17,7 +17,16 @@ first implementation: D1 and D8 (the gate compares the issuer), D2 (only a perso
 derived; the changes of a tenant's administrators are ordered by the tenant's lock), D3 (an address
 is looked up among the configured issuer's persons only), D5 (the refresh holds nothing while it
 asks the issuer; the classes of the issuer's answers; a refresh that read nothing changes nothing of
-the person).
+the person). Amended a third time on 2026-10-04 by the owner's answer to the question whether a
+tenant's administrator may map any group of the identity provider: D7 (only a global administrator
+who administers the tenant makes a mapping or changes its role; every administrator of the tenant
+reads and removes mappings and grants by hand), with D2 and the residual risks marked where they
+said otherwise — built the same day, in the handler and, by
+[migration 25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql), in
+the data layer. Amended a fourth time on 2026-10-04 by the owner's answers to two more questions,
+each built the same day: D3 (an address finds a person only when the issuer marked it verified, or,
+with `COWORK_OIDC_EMAIL_TRUSTED`, when it said nothing about it — secure by default) and D6 (an
+audit row of a person records that their groups changed, never the groups).
 
 ~~**Not built.** No `memberships`, `group_mappings` or session table exists.~~ **Built** (phase 4,
 2026-10-04): D1–D8 but a global administrator's editing of the mappings of a tenant they do not
@@ -25,7 +34,8 @@ administer — the gate in [`api/identity.go`](../../backend/internal/api/identi
 derivation and the refresh in [`store/identity.go`](../../backend/internal/store/identity.go), the
 administration in [`api/members.go`](../../backend/internal/api/members.go) and the UI,
 `group_mappings` ([migration 21](../../backend/internal/store/migrations/000021_group_mappings.up.sql))
-and the policies of [migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql);
+and the policies of [migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql)
+and [migration 25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql);
 the security page is [docs/security/identity-provider.md](../security/identity-provider.md), the
 administration's [docs/security/tenancy.md](../security/tenancy.md#members-grants-and-group-mappings).
 
@@ -59,15 +69,17 @@ it whatever their groups — at once: their sessions end at the first request of
 tokens are refused at every request.)*
 
 **D2 — The mapping: group → (tenant, role), per tenant.** A table of rows (group name,
-tenant, role) that a tenant administrator edits for their tenant and a global administrator
-for any. On every login the person's groups are matched against the mappings; a matching
-row creates or updates the membership with that role; a membership that was derived from a
-mapping and whose group is no longer in the claim is removed. Several matches for one tenant
+tenant, role) that ~~a tenant administrator edits for their tenant and a global administrator
+for any~~ *(amended 2026-10-04, D7: a global administrator who administers the tenant makes and
+changes, and every administrator of the tenant removes)*. On every login the person's groups are
+matched against the mappings; a matching row creates or updates the membership with that role; a
+membership that was derived from a mapping and whose group is no longer in the claim is removed. Several matches for one tenant
 yield the highest role. *(Amended 2026-10-04: built as `group_mappings`, one mapping per group and
-tenant. A tenant's administrators edit it, in a browser session for a mapping made or changed
-([ADR 0035](0035-personal-access-tokens.md) D5); a global administrator's editing of a tenant they
-do not administer is not built — no route lets one in (ADR 0034 D2). The derivation runs at a login,
-at a groups refresh (D5), at a token's gate check, and **at once** when an administrator makes,
+tenant. ~~A tenant's administrators edit it~~ *(amended 2026-10-04, D7: a global administrator who
+administers the tenant makes and changes it, every administrator of the tenant removes it)*, in a
+browser session for a mapping made or changed ([ADR 0035](0035-personal-access-tokens.md) D5); a
+global administrator's editing of a tenant they do not administer is not built — no route lets one
+in (ADR 0034 D2). The derivation runs at a login, at a groups refresh (D5), at a token's gate check, and **at once** when an administrator makes,
 changes or removes a mapping: in the administrator's transaction, for every person whose groups as
 of their last login or refresh hold the group, so the member list shows the effect immediately and
 not at each person's next login. ~~It follows the groups whatever the gate says.~~ A change of a
@@ -89,8 +101,15 @@ whose role comes from a mapping has that role until the mapping or the groups ch
 manual grant stays until an administrator removes it; it is shown as manual in the member
 list. *(Made concrete 2026-10-04: the grant is a membership row of its own beside the mapped one,
 `source` `grant`. A person is added by the e-mail address the issuer asserted at their last login —
-compared without regard to case, never one the issuer marked unverified, *(amended after the security
-review: only among the persons of the configured issuer,)* and refused as ambiguous
+compared without regard to case, ~~never one the issuer marked unverified,~~ *(amended 2026-10-04,
+the owner's answer to "does a missing `email_verified` count as verified?": only one the issuer
+marked verified, `email_verified: true` — or, while the operator sets `COWORK_OIDC_EMAIL_TRUSTED` to
+`true` for an issuer whose addresses administrators issue, one about which it said nothing; one it
+marked unverified never. The setting is `false` by default: persons of an issuer that sends no
+claim, such as Entra, are then admitted by a mapping, not by their address. Built in the lookup's
+query, `FindPersonsByEmail`, `TestAnAddressTheIssuerSaidNothingAboutIsTrustedOnlyWhenConfigured`,)*
+*(amended after the security review: only among the persons of the configured issuer,)* and refused
+as ambiguous
 when two active persons share it — or by a local account's username; the person must exist, having
 logged in once or holding a local account. Adding a person and setting a grant take a browser
 session; removing a grant takes an administrator's token as well.)*
@@ -146,11 +165,42 @@ and removals with the administrator. *(Made concrete 2026-10-04: the actor is
 persons it makes and changes and the sessions it ends are its rows as well, a refused login is
 `login_refused`, and every change of a membership is announced as `membership.changed`
 ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D2).)*
+D2).)* *(Amended 2026-10-04, the owner's answer to "do the groups belong in audit rows?": a row of
+the person records that their groups changed — `groups_changed: true`, at a login, a refresh or a
+refused login that changed them — and never a group's name, and the row of their creation says
+nothing of the groups. The audit record is append-only, so an erasure request could not be honoured
+for what it names, and group names can say more about a person than their role in a tenant; the
+memberships the groups cause are recorded tenant by tenant and carry the accountability. Built in
+[`store/identity.go`](../../backend/internal/store/identity.go) `recordChanges`;
+`TestNoAuditRowNamesAPersonsGroups`.)*
 
-**D7 — Mappings are editable in the UI by tenant administrators; the allow-list and the
-administrator group are configuration only.** An installation's operator decides who may
-enter; a tenant's administrator decides who belongs where.
+**D7 — ~~Mappings are editable in the UI by tenant administrators~~ A mapping is made and its role
+changed only by a global administrator who administers the tenant; every administrator of the
+tenant reads and removes mappings and grants roles by hand; the allow-list and the administrator
+group are configuration only.** An installation's operator decides who may enter; ~~a tenant's
+administrator decides who belongs where~~ a tenant's administrators decide who belongs where by
+grant, and which group of the issuer's shared namespace admits its people into a tenant is a global
+administrator's word. *(Amended 2026-10-04, the owner's answer to the question "may a tenant
+administrator map any group of the identity provider?": only a person who is a global administrator
+— and an administrator of the tenant — creates a mapping or changes its role. Every tenant shares the
+issuer's one namespace of groups: an administrator of client tenant X who maps a broad group —
+`cowork-users`, a guessed department's — admits all its people into X at once, across the client
+boundary of [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md), and the one
+transaction takes the identity provider's lock of every person of the group. A tenant's
+administrator who is not a global administrator is `403 forbidden` on both acts, before an
+idempotency key is kept or a row is written, and still sees the mappings, removes them and grants
+roles by hand: removing a mapping only takes access away, and what gives access asks more than what
+takes it away — the rule of the session-only acts of [ADR 0035](0035-personal-access-tokens.md) D5,
+so an administrator's `admin`-scope token removes one too. Built in `CreateGroupMapping` and
+`UpdateGroupMapping` ([`api/members.go`](../../backend/internal/api/members.go) `mapsGroups`), and in
+the mappings page of the UI, which offers the two acts to a global administrator only. The data layer
+holds the rule as well: [migration 25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql)
+narrows the restrictive policies of
+[migration 21](../../backend/internal/store/migrations/000021_group_mappings.up.sql) so that a
+mapping's insert and update take `app_is_tenant_admin() AND app_is_global_admin()`; its delete stays
+any administrator's, and the start-up's seeded mapping of the bootstrap tenant is the job
+`bootstrap`'s ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D6;
+`TestPoliciesOfThePersonsAndTheirAccounts`).)*
 
 **D8 — No default admits anyone.** An installation without `COWORK_OIDC_ALLOWED_GROUPS`
 has no login; the login page says so. Bootstrapping the first administrator and tenant is
@@ -168,6 +218,11 @@ security review, 2026-10-04: at once, as D1 now says — their sessions and toke
 - A mapping mistake cannot lock everyone out of the installation — the gate is separate —
   but it can empty a tenant's memberships at the next login; D6 makes that visible and the
   mapping editor warns when a change would remove the editor's own membership.
+- *(Added 2026-10-04 with D7's amendment.)* A tenant whose administrators include no global
+  administrator gets no new mapping, and no mapping's role changes, until one of them grants a
+  global administrator the `admin` role there; its administrators work by grant meanwhile, and can
+  remove the mappings it has. A global administrator who administers a tenant may still map any
+  group of the issuer into it.
 - D5's refresh is a UserInfo call per session per fifteen minutes; the session record decides
   how the session stores and compares the snapshot. *(Amended 2026-10-04: a refresh grant, and a
   UserInfo call where the refreshed ID token lacks the groups, per active session per interval,
@@ -184,6 +239,13 @@ security review, 2026-10-04: at once, as D1 now says — their sessions and toke
   locks everyone out. Lost.
 - **A grant that overrides the mapping.** Convenient; two truths for one role and an unclear
   winner at the next login. Lost to D3's "adds, never overrides".
+- *(Added 2026-10-04 with D7's amendment.)* **A tenant's administrators map any group** — D7 as
+  first decided. Lost: the namespace of groups is the installation's, and a mapping made by the
+  administrator of one client brings the people of others into it.
+- *(Added 2026-10-04 with D7's amendment.)* **A group prefix per tenant**, set by a global
+  administrator, to which the tenant's administrators' mappings are held (`client-x-`). Not chosen
+  now: it needs a setting per tenant and a naming discipline at the provider; it is the way to
+  self-service when a client wants to map its own groups.
 
 ## Residual risks
 
@@ -200,8 +262,10 @@ security review, 2026-10-04: at once, as D1 now says — their sessions and toke
   own~~ until its absolute lifetime ends; ~~a derivation can remove a tenant's last administrator~~
   the issuer's word — a derivation, a person leaving the gate — can leave a tenant without an
   administrator who can log in; ~~a mapping shows its administrator every person of the installation
-  in its group~~ a tenant's administrator may map any group, and so bring its people into the tenant
-  and learn who exists in the installation. The security pages name each:
+  in its group~~ ~~a tenant's administrator may map any group, and so bring its people into the tenant
+  and learn who exists in the installation~~ *(amended 2026-10-04, D7: only a global administrator
+  who administers the tenant maps a group)* a tenant's administrator learns from a grant by address
+  whether the address names a person of the installation. The security pages name each:
   [identity-provider.md](../security/identity-provider.md) H-24, H-25, H-29,
   [tenancy.md](../security/tenancy.md) H-31.)*
 

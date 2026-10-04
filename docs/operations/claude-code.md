@@ -42,12 +42,15 @@ OS=darwin ARCH=arm64               # example
 curl -fsSLO https://github.com/guided-traffic/cowork/releases/download/v$VERSION/cowork-mcp-$VERSION-$OS-$ARCH
 curl -fsSLO https://github.com/guided-traffic/cowork/releases/download/v$VERSION/cowork-mcp-$VERSION-$OS-$ARCH.sha256
 shasum -a 256 -c cowork-mcp-$VERSION-$OS-$ARCH.sha256
+gh attestation verify cowork-mcp-$VERSION-$OS-$ARCH --repo guided-traffic/cowork   # built by the release workflow of this repository
 install -m 0755 cowork-mcp-$VERSION-$OS-$ARCH ~/.local/bin/cowork-mcp   # any directory on the PATH
 cowork-mcp version
 ```
 
-On macOS the binary is not signed, and the first start of a downloaded file is refused by
-Gatekeeper; `xattr -d com.apple.quarantine ~/.local/bin/cowork-mcp` lifts that once. Updates
+The checksum detects a damaged download; the attestation proves that the release workflow of this
+repository built the file from the tagged commit, which a replaced release cannot fake. On macOS the
+binary is not notarised, and the first start of a downloaded file is refused by Gatekeeper; after
+the attestation is verified, `xattr -d com.apple.quarantine ~/.local/bin/cowork-mcp` lifts that once. Updates
 are the same steps with the next release. `make build-mcp` builds the binary from a checkout
 instead.
 

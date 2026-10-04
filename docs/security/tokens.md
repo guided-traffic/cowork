@@ -99,10 +99,10 @@ reaches further than its person does at that moment.
 
 ## What only a session does
 
-Thirteen operations take a browser session only, and answer a token — whatever its scope, an
+Fourteen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these thirteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these fourteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -120,6 +120,7 @@ set to exactly these thirteen ([`backend/api/document_test.go`](../../backend/ap
 | `changeMyPassword` | `PUT /api/v1/me/password` | a password the person no longer knows |
 | `logout` | `POST /auth/logout` | — a token has no session to end |
 | `runChatTurn` | `POST …/chat` | — a turn's tool calls act with the person's session, and an agent that holds a token has the MCP server ([chat.md](chat.md)) |
+| `listTenants` | `GET /api/v1/tenants` | — it leaves nothing; it shows a global administrator every client of the installation, which a token of theirs does not reach ([tenancy.md](tenancy.md#a-global-administrator-without-a-role)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
 takes a session; an act that only takes access away does not.** A route that does both — a grant
@@ -136,9 +137,17 @@ One field follows the same rule: switching the tenant's `chat_external_allowed` 
 lets the chat send the tenant's text to a provider outside the installation — takes a session, and a
 token that sends it is `403 session_required`; switching it off stays open to an administrator's
 `admin` token ([`api/tenants.go`](../../backend/internal/api/tenants.go) `UpdateTenant`;
-`TestChatAvailability`). A session's request that the agent header marks is refused all thirteen,
+`TestChatAvailability`). A session's request that the agent header marks is refused all fourteen,
 with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
 ([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
+
+**A global administrator's token keeps the reach of the person's memberships.** The list of every
+tenant above is a session's, and so is the reach into a tenant in which a global administrator holds
+no role — its members, its group mappings, its settings and the grant to themselves: a token's
+request there answers the `404` of an unknown tenant, held in the request layer rather than the
+document ([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
+`TestAGlobalAdministratorWithoutARoleSeesTheAdministrationOnly`). A leaked token of a global
+administrator reads no client of the installation the person is not a member of.
 
 ## Restrictions
 
@@ -207,7 +216,10 @@ A token of a person of the identity provider is held to the gate its person's lo
 ([ADR 0035](../adr/0035-personal-access-tokens.md) D8; `tokenGate` in
 [`api/identity.go`](../../backend/internal/api/identity.go)). A person who is not the configured
 issuer's — another issuer's, or anyone's of a provider no longer configured — is refused at every
-request (`TestAPersonOfAnotherIssuerIsOutsideTheGate`). Otherwise, on the first request after the
+request (`TestAPersonOfAnotherIssuerIsOutsideTheGate`), and so is one whose groups were last read —
+at a sign-in, or by a session refresh that read them — longer ago than `COWORK_OIDC_GROUPS_MAX_AGE`,
+a week by default, until they sign in to the browser once
+(`TestGroupsOlderThanTheMaximumAgeRefuseTheTokens`). Otherwise, on the first request after the
 person's last check plus `COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes), the person's groups as of
 their last login or the last session refresh that read them are judged against
 `COWORK_OIDC_ALLOWED_GROUPS` and `COWORK_ADMIN_GROUP` as configured at that moment. Admitted, the
@@ -215,9 +227,8 @@ check is stamped and the request goes on; outside, it is `401 not_allowed` and t
 not revoked: it works again once the person is admitted. A refresh that reads groups outside the gate,
 or a login refused at the gate, clears the stamp, so the person's tokens are refused at their very
 next request (`TestLeavingTheGateStopsTheTokensAtOnce`, `TestLeavingTheAllowList`). A local account
-meets no gate. The mechanism, and why the groups a token
-is judged by can be old, is [identity-provider.md](identity-provider.md#the-token-gate) and its
-H-23.
+meets no gate, and has no groups to age. The mechanism, and how old the groups a token is judged by
+can be, is [identity-provider.md](identity-provider.md#the-token-gate) and its H-23.
 
 ## What is recorded
 

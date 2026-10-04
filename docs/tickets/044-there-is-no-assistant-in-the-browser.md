@@ -65,7 +65,7 @@ Go implementation of every tool for Claude Code and the chat instead of a second
 every call through validation, authorization, agent rules, audit and events, and the page still
 follows the agent.
 
-**Answer:** _open_
+**Answer:** (b) — the loop runs in the backend, as built. Recorded in ADR 0076.
 
 ### Q2: Who acts when the chat's agent acts?
 
@@ -77,7 +77,9 @@ follows the agent.
 Recommended: **(b) with the choice built** (required change 2), its default leaving `decide`,
 `close` and `drop` to the person — the confirmations then stop being the only brake.
 
-**Answer:** _open_
+**Answer:** (b) with the choice built — the person chooses the chat's capabilities from the nine of
+ADR 0043 D4; `decide`, `close` and `drop` are off by default, so the API refuses them to the chat
+even after Run. Recorded in ADR 0076 and ADR 0043 D5.
 
 ### Q3: What may be sent to a provider outside the installation?
 
@@ -90,7 +92,10 @@ Recommended: **(b) with the choice built** (required change 2), its default leav
 Recommended: **(b) with confidential tickets withheld** (required change 3) — a client's data leaves
 only with that tenant's consent, and a confidential finding never.
 
-**Answer:** _open_
+**Answer:** (a), with the risk accepted by the owner — the providers are configured in the Helm
+chart and nowhere in the app; a configured provider may see everything the person can read,
+confidential tickets included; no tenant consent, no inside or outside. The chart holds a list of
+providers, and the person picks one in the panel. Recorded in ADR 0076.
 
 ### Q4: Which writes does the person confirm before they run?
 
@@ -104,7 +109,8 @@ only with that tenant's consent, and a confidential finding never.
 Recommended: **(b)** — quick at filing, ranking and editing, and the acts that need the person stay
 the person's.
 
-**Answer:** _open_
+**Answer:** (a) — nothing waits for a Run; the capabilities the person chooses (Q2) are the only
+limit, and the proposals, the `+confirmed` mark and the confidential hold go. Recorded in ADR 0076.
 
 ### Q5: May every member use the chat?
 
@@ -118,7 +124,7 @@ per person (`COWORK_CHAT_TURNS_PER_PERSON`), there is no budget (ADR 0039 D1).
 Recommended: **(a)** — a viewer reads, and the chat is a way to read; the bound keeps one person
 from occupying a local model.
 
-**Answer:** _open_
+**Answer:** (a) — every member, viewers included, as built. Recorded in ADR 0076.
 
 ## Not verified
 

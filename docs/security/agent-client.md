@@ -131,14 +131,18 @@ is recorded with the agent mark. Mitigation: "assisted" tokens where another per
 the same projects, restricted tokens, and the timeline.
 
 <a id="h-35"></a>
-### H-35 — The binaries are not signed
+### H-35 — The binaries are attested, not signed for the operating system
 
-Live today. A release attaches the six binaries and a SHA-256 file each to the GitHub release;
-the checksum comes from the same release, so it detects a damaged download, not a release
-replaced by whoever can write releases. macOS warns about the unsigned file at first start
-(ADR 0041 Residual risks). Mitigation: the repository's release protection — tags written only by
-the release App ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
-and building from a checkout with `make build-mcp` where that is not enough.
+Live today. A release attaches the six binaries, a SHA-256 file each and a build provenance
+attestation for each binary, which the release workflow makes with its own identity; `gh attestation
+verify` proves the file was built by that workflow of this repository from the tagged commit, so a
+release replaced by whoever can write releases fails it. The check is the person's step, and nothing
+makes them take it: the checksum beside the binary comes from the same release, macOS refuses the
+unnotarised file at first start until the person lifts the quarantine, and Windows sees no
+Authenticode signature (ADR 0041 Residual risks). Mitigation: the verification step of
+[claude-code.md](../operations/claude-code.md), the repository's release protection — tags written
+only by the release App ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
+and building from a checkout with `make build-mcp`.
 
 <a id="h-36"></a>
 ### H-36 — The lookup's remotes travel in a query string

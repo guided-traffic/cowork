@@ -40,7 +40,9 @@ never contains the token.
 **D2 — The binary ships as a release asset per platform.** The release workflow cross-compiles
 `cowork-mcp` for `darwin/arm64`, `darwin/amd64`, `linux/amd64` and `linux/arm64` *(amended
 2026-10-04: and `windows/amd64` and `windows/arm64`, as `.exe`; no session on Windows has used
-them)*, attaches each with a SHA-256 file to the GitHub release, and `cowork-mcp version` prints the version,
+them)*, attaches each with a SHA-256 file to the GitHub release *(amended 2026-10-04, the owner's
+answer: and a build provenance attestation per binary, made by the release workflow with its own
+identity and verified with `gh attestation verify`; notarisation by Apple waits for an account)*, and `cowork-mcp version` prints the version,
 the commit and the API version it was built against ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
 D5).
 
@@ -99,7 +101,9 @@ Go binary needs neither.
   scope and the `cwk_` prefix are the mitigations, and the operations page says to prefer the
   per-repository `.mcp.json` only when the repository is private.
 - Cross-compiled binaries without code signing produce a warning on macOS at first start;
-  the operations page gives the one-time step. Signing is an amendment.
+  the operations page gives the one-time step. Signing is an amendment. *(Amended 2026-10-04: the
+  build provenance attestation of D2 proves where a binary was built to whoever verifies it; the
+  operating systems check none of it — no notarisation by Apple, no Authenticode.)*
 
 ## References
 

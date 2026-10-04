@@ -141,15 +141,40 @@ kubectl -n cowork create secret generic cowork-chat \
 
 **The server key** is standard base64 of at least 32 random bytes; `openssl rand -base64 32`
 makes one. It signs the list cursors, keys the hashes of a client's address — the login
-throttle's and the audit rows' — and seals the identity provider's login state and refresh tokens,
-so every replica must hold the same key — they read the same Secret. Rotating it invalidates the
-cursors clients hold: the next page they ask for is `400 invalid_cursor`, and they start the list
-over. A session is a row in the database, signed by nothing, so a rotation logs nobody out of the
-local login; a session of the identity provider that holds a refresh token ends at its next groups
-refresh, because its sealed token no longer opens — cowork keeps no previous key to open it with —
-and a login through the provider that is under way at the moment fails
-([trust-boundaries.md](../security/trust-boundaries.md#where-the-credentials-live)).
-The chart has no inline path for it.
+throttle's and the audit rows' — and the fingerprints of idempotent requests, and seals the identity
+provider's login state and refresh tokens, so every replica must hold the same key — they read the
+same Secret. The chart has no inline path for it.
+
+**Rotating the server key.** Write the new key into the Secret and restart the backend
+(`kubectl -n cowork rollout restart deploy/cowork-backend`); every replica must have the new key
+before it serves. cowork keeps one key and no previous one to open what the old key sealed
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1), so the change does this,
+once:
+
+- **Each session of the identity provider that holds a refresh token ends** at its next groups
+  refresh, its sealed token no longer opening — `revoked` with the cause `identity-provider`, and
+  the warning `a session's refresh token does not open; the session ends` — and its person signs in
+  again. The change fails closed. A session of an issuer that gave no refresh token goes on.
+- **A login through the provider under way** at the moment fails with `oidc_failed`: its state
+  cookie was sealed under the old key. The person starts it again.
+- **The list cursors clients hold** stop working: the next page they ask for is
+  `400 invalid_cursor`, and they start the list over.
+- **The login throttle's count of an address starts over**: the address is hashed under a key
+  derived from the server key. The lockout of a username is kept by the username and stays.
+- **The audit rows' source hashes** before and after the change cannot be compared: one address
+  gets another hash.
+- **An idempotent request retried across the change** — its key stored before it, the retry within
+  the key's twenty-four hours — no longer matches its stored fingerprint, an HMAC under a key derived
+  from the server key, and is refused with `422 idempotency_mismatch`, neither replayed nor run a
+  second time. A client that retries a creation across a rotation reads the list to see whether it
+  happened.
+- **The sessions of the local login survive**, and so does every personal access token: a session
+  row and a token are found by the SHA-256 of their value, which no key enters.
+
+Whoever holds the old key and a copy of the database taken before the change can still open the
+refresh tokens sealed in that copy
+([identity-provider.md](../security/identity-provider.md#h-27) H-27;
+[trust-boundaries.md](../security/trust-boundaries.md#where-the-credentials-live)).
 
 **The owner's credential reaches only the init container.** The serving container gets the
 runtime URL alone and `COWORK_MIGRATE_ON_START=false`. An installation that hands the owner URL
@@ -227,7 +252,10 @@ of the account and forgets the lock. A leaked password stays valid until both st
 **What it can and cannot do through the UI.** The local administrator's password changes only
 where it comes from: `PUT /api/v1/me/password` is refused for it (`403`, naming
 `COWORK_LOCAL_ADMIN_PASSWORD`), because the next start would put the configured password back.
-To switch the account off, empty the Secret's values and restart; the account is deactivated.
+To switch the account off, empty the Secret's values and restart; the account is deactivated — in
+every tenant at once, without the check that keeps a tenant's last administrator: a tenant whose
+only administrator it is keeps none who can log in, so first grant each of its tenants another
+administrator ([H-32](../security/local-accounts.md#h-32)).
 Where an identity provider with a second factor does the work, keep it switched off: a local
 account has no second factor ([H-16](../security/local-accounts.md#h-16)).
 
@@ -274,6 +302,8 @@ auth:
     scopes: openid profile email groups offline_access   # default
     groupsClaim: groups                              # default
     groupsRefresh: 15m                               # default
+    groupsMaxAge: 168h                               # default: longer than groupsRefresh
+    emailTrusted: false                              # default
 ```
 
 Each value is one `COWORK_OIDC_*` variable (`adminGroup` is `COWORK_ADMIN_GROUP`), rendered only
@@ -316,12 +346,18 @@ D1): a person logs in through the provider only when their groups include one of
 `auth.oidc.allowedGroups` or `auth.oidc.adminGroup`, whatever the tenants map. Both empty admits
 nobody (D8): the login page shows no provider button, and the chart's notes warn. The members of
 `auth.oidc.adminGroup` are global administrators — they create tenants, each of which they then
-administer by a grant, and hold no role in a tenant they were not given; no route lets them grant
-themselves into an existing tenant or delete one yet
+administer by a grant, and hold no role in a tenant they were not given: they see every tenant, and
+in one without a role its members, mappings and settings, and grant themselves a role there in the
+UI — recorded in the tenant's audit, and how a tenant that lost its last administrator gets one
+again; no route deletes a tenant yet
 ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2) — so whoever may change that group at the provider administers the installation. Which
-tenant a person belongs to, and in which role, is not configuration: a tenant's administrators
-map groups to roles and grant roles to people by hand, in the UI (ADR 0030 D2, D3, D7).
+tenant a person belongs to, and in which role, is not configuration: a global administrator who
+administers a tenant maps groups to its roles, and its administrators grant roles to people by hand
+and remove mappings, in the UI (ADR 0030 D2, D3, D7). Every tenant shares the provider's groups, so
+a tenant's administrator who is not a global administrator makes no mapping and changes none; such a
+tenant gets a new mapping once one of its administrators grants a global administrator the `admin`
+role there, or a global administrator grants it to themselves.
 
 **The first tenant.** While no tenant exists, only global administrators log in — the local
 administrator and the members of `auth.oidc.adminGroup`; anyone else behind the gate is sent back
@@ -344,10 +380,25 @@ refuses cowork's own client — a client secret rotated at the provider and not 
 the sessions are served as during an outage and the log says so at error level, so put the new
 secret into the Secret, and restart, as soon as the provider has it. A personal access token is checked against the groups of its
 person's last login or session refresh, not against the provider: removing a person from a group
-at the provider reaches their tokens at their next browser login or session refresh, and not at
-all while they use only tokens ([H-23](../security/identity-provider.md#h-23)). Behind the gate,
+at the provider reaches their tokens at their next browser login or session refresh, and at the
+latest when those groups are older than `auth.oidc.groupsMaxAge` — a week by default: from then on
+the person's tokens are `401 not_allowed`, with a detail that says to sign in to the browser once,
+until they do ([H-23](../security/identity-provider.md#h-23)). A person who works with tokens only —
+an agent's, a script's — signs in to the browser at least that often; a shorter maximum age cuts a
+removed person off sooner and asks everyone to sign in more often. Behind the gate,
 which tenants a person belongs to follows their groups at every login and refresh as well: a
-person in no mapped group logs in to no tenant until an administrator grants them one. What the
+person in no mapped group logs in to no tenant until an administrator grants them one.
+
+**Granting by e-mail address, and `emailTrusted`.** An administrator grants a role by the address
+the provider asserted at the person's last login. By default only an address the provider marked
+verified (`email_verified: true`) finds the person. A provider that sends no `email_verified`
+claim — Entra is one: it sends none, and its optional `xms_edov` claim, which says whether the
+address's domain is verified, is not read by cowork — leaves every address unmarked, so its people
+are found by no address and are admitted by a group mapping instead; set `auth.oidc.emailTrusted: true` only when the provider's
+addresses are issued by its administrators, not chosen by its users: where a person can choose an
+address unverified, they can take a colleague's and be granted the colleague's role
+([H-26](../security/identity-provider.md#h-26)). An address the provider marked unverified never
+matches, whatever the setting. What the
 operator sees of all this is [runtime.md](runtime.md#the-login-through-the-identity-provider).
 
 **Logging out** ends the cowork session. When the provider's discovery document names an

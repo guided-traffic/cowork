@@ -380,7 +380,27 @@ another tenant ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-
 D3, D7, D8).
 
 Read from the code; no test runs it. The tenant is then where
-[identity-provider.md](identity-provider.md#h-29) H-29 leaves one: no route gives it an
-administrator, and no route reactivates a person. Mitigation: give every tenant an administrator
+[identity-provider.md](identity-provider.md#h-29) H-29 leaves one: without an administrator until a
+global administrator who does not hold `admin` there grants themselves `admin` and gives it one of
+its own
+([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
+`TestAStrandedTenantIsRecoveredByTheSelfGrant`), and no route reactivates the person. Mitigation:
+give every tenant an administrator
 whose account it manages itself, or a person of the identity provider, so no other tenant can
 deactivate its last one.
+
+**The start-up's deactivation of the local administrator asks no tenant either.** Dormant until the
+operator acts: when `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` are emptied, or
+name another username, the next start deactivates the account the configuration kept — its tokens
+revoked, its sessions ended ([above](#the-local-administrator)) — as `system:bootstrap`, without a
+tenant's lock and without `last_admin` in any tenant
+([`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `run`, `deactivate`). Its
+memberships stay, but a deactivated person counts as no tenant's administrator, so a tenant whose
+only administrator who can log in is the local administrator — the bootstrap tenant made with it and
+without `COWORK_ADMIN_GROUP`, say — is left without one. Read from the code; no test runs it.
+Recovery: name the same username again, and the next start reactivates the account with its
+memberships; or the self-grant of
+[ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2 by a global administrator — a member of `COWORK_ADMIN_GROUP`, or the local administrator under
+its new username. Mitigation: before the variables change, grant every tenant the local
+administrator administers another administrator.

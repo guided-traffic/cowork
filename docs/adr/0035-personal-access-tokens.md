@@ -11,7 +11,13 @@ makes) and 2026-10-04 (D2: the address hash in the audit row built; D5: twelve o
 session only, by one rule; D8: the gate built; D9: its refusal recorded), and again on 2026-10-04
 after the security review (D8: a person of another issuer is outside at once), and for the chat
 in the UI (D5: thirteen operations, and the tenant's consent to an outside provider of the chat
-switched on in a session only). Date: 2026-10-01. Decided by the owner as the answer to the
+switched on in a session only), and on 2026-10-04 by the owner's answer to "how old may the groups
+be that judge a token?" (D8: groups older than `COWORK_OIDC_GROUPS_MAX_AGE`, a week by default,
+refuse the person's tokens until they sign in to the browser once — built the same day), and for
+the global administrator's view of the installation's tenants (D5: fourteen operations, the list of
+every tenant among them,
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -156,9 +162,17 @@ in `PATCH /api/v1/tenants/{tenant}` takes a session — the consent lets the ten
 installation, which outlives a leaked token's revocation — and a token that tries is
 `403 session_required`; switching it off only takes something away and stays open to an
 administrator's `admin`-scope token ([`api/tenants.go`](../../backend/internal/api/tenants.go)
-`UpdateTenant`). A session the agent header marks is refused all thirteen
+`UpdateTenant`). A session the agent header marks is refused all ~~thirteen~~
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
-D7).)*
+D7).)* *(Amended 2026-10-04 for the global administrator's view,
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2: ~~thirteen~~ fourteen operations — listing every tenant of the installation, `listTenants`,
+takes a session as well, for a reason of its own: it shows a global administrator the
+installation's clients beyond the person's memberships, and a token of theirs keeps the reach of
+those memberships, so a leaked one lists no other client. The same holds, in the request layer and
+not in the document, for the reach into a tenant in which the global administrator holds no role:
+a token's request there answers like an unknown tenant. A session the agent header marks is refused
+all fourteen.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a
@@ -187,11 +201,24 @@ the check is stamped and the memberships are derived from the snapshot; outside,
 the person is admitted. A refresh or a login refused at the gate clears the stamp, so the person's
 next token request meets the gate at once. A local account meets no gate. The snapshot is only as
 fresh as the person's last browser login or refresh: a person who uses tokens only is judged on old
-groups until the token expires —
-[docs/security/identity-provider.md](../security/identity-provider.md) H-23.)* *(Amended after the
+groups ~~until the token expires~~ *(amended 2026-10-04, below: until they are older than the
+maximum age)* — [docs/security/identity-provider.md](../security/identity-provider.md) H-23.)* *(Amended after the
 security review, 2026-10-04: a person who is not the configured issuer's — of another issuer, or of
 a provider no longer configured — is outside the gate at every request, whatever their last check;
 and the snapshot is the groups of the person's last login or of the last refresh that read them.)*
+*(Amended 2026-10-04, the owner's answer to "how old may the groups be that judge a token?", over
+any age as built and over a refresh token of the person's own that the gate would use to ask the
+issuer: the snapshot judges a token only while it is no older than `COWORK_OIDC_GROUPS_MAX_AGE` — a
+duration, seven days (`168h`) by default, which the configuration refuses unless it is longer than
+`COWORK_OIDC_GROUPS_REFRESH`. Groups older than that — `users.oidc_groups_at` is when the person's
+last sign-in, or the last session refresh that read them, read them — refuse every token of the
+person at every request with `401 not_allowed`, whose detail says to sign in to the browser once, and
+end an open event stream of such a token at its heartbeat; the refusal is recorded as D9 says. A
+sign-in, or a refresh that reads the groups, makes the tokens work again. It is one comparison and no
+further stored credential, and a weekly sign-in in the browser is part of the working day. A local
+account has no groups and is not affected. Built in
+[`api/identity.go`](../../backend/internal/api/identity.go) `tokenGate`, `streamStillAdmitted`,
+`groupsTooOld`; `TestGroupsOlderThanTheMaximumAgeRefuseTheTokens`.)*
 
 **D9 — Creation, use after expiry or revocation, and revocation are recorded acts;** use
 itself is recorded through the audit rows of the acts the token performs (`token_id` in

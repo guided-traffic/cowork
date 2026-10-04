@@ -81,7 +81,7 @@ these is an amendment of the record that closed it, not of this one.
 | Capability | Grants |
 |---|---|
 | `decide` | the transition `analysed → decided` |
-| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value |
+| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value; *(decided 2026-10-04 by the owner)* an open question of the ticket does not hold `close` back — the question stays open on the done ticket |
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)) |
 | `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3) |

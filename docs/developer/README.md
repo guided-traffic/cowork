@@ -38,8 +38,9 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, thirteen routes take a session only — what can give access, or outlive a leaked
-  token, and a turn of the chat — and a temporary password gates everything but its own change;
+  CSRF-checked, fourteen routes take a session only — what can give access, or outlive a leaked
+  token, a turn of the chat and a global administrator's list of every tenant — and a temporary
+  password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it
   ([api.md](api.md#authentication), [sessions](../security/sessions.md)).
 - **One tool catalogue, two hosts.** `internal/tools` is the catalogue of workflow tools: `cowork-mcp`
@@ -54,7 +55,8 @@ change.
   ([architecture.md](architecture.md#the-two-logins),
   [identity provider](../security/identity-provider.md)).
 - **The tenant boundary, then the visibility predicate.** A request under
-  `/api/v1/tenants/{tenant}` is admitted to the tenant before any handler runs; inside, every
+  `/api/v1/tenants/{tenant}` is admitted to the tenant before any handler runs — a member, or a
+  global administrator without a role to the tenant's administration only; inside, every
   query runs in a transaction bound to that tenant, and the predicates in SQL hide restricted
   projects and confidential tickets. What the caller may not see answers exactly like what does
   not exist ([api.md](api.md#the-tenant-boundary), [data-access.md](data-access.md#visibility-in-sql)).

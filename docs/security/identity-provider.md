@@ -200,8 +200,11 @@ Every login refreshes what the issuer says of the person: the display name (`nam
 e-mail address and the issuer's word on it (`email_verified`, a boolean or a string such as `true`
 or `false`; null when absent or anything else), the groups and the administrator flag. What changed
 is recorded as `updated`, the changed fields only — **a changed address as `email_changed: true`,
-never as the address**: the audit record is append-only, and an address in it could not be erased
-(`TestAnAddressIsInNoAuditRow`). The address and the name are display attributes; the address is
+never as the address, and changed groups as `groups_changed: true`, never as the groups**: the audit
+record is append-only, and an address or a group's name in it could not be erased
+(`TestAnAddressIsInNoAuditRow`, `TestNoAuditRowNamesAPersonsGroups`;
+[ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D6). The address and the name are display attributes; the address is
 also what an administrator grants by ([H-26](#h-26)), and the tenant's administrators alone see it
 in the member list and a project's access list
 ([tenancy.md](tenancy.md#members-grants-and-group-mappings)).
@@ -212,8 +215,10 @@ The members of `COWORK_ADMIN_GROUP` are global administrators, and the group is 
 definition. The flag is set and cleared from the groups whenever they are read or judged anew — a
 login, a refresh that reads them, a token's gate check — and a change is recorded
 (`TestRefreshFollowsTheIssuersGroups`). A global administrator creates tenants — becoming the new
-tenant's first administrator by a marked grant — and has no role in any tenant they were not given;
-no route lets them grant themselves into an existing tenant or delete one
+tenant's first administrator by a marked grant — and has no role in any tenant they were not given:
+they list every tenant, see the administration of one without a role — its members, mappings and
+settings — and grant themselves a role there, in a browser session, recorded in the tenant
+([tenancy.md](tenancy.md#a-global-administrator-without-a-role)); no route deletes a tenant
 ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2). While no tenant exists they and the local administrator are the only ones who log in
 (`TestInitStateThroughDex`). With `COWORK_BOOTSTRAP_TENANT_SLUG` and `_NAME` the start creates the
@@ -339,8 +344,10 @@ above.
   stored value and finds no token the issuer handed out in it
   (`TestNoIssuerSecretIsLoggedOrRecorded`).
 - **One server key, no old one.** A sealed token opens under the key it was sealed with; no
-  previous key is kept to open what it sealed, so a changed `COWORK_SESSION_KEY` ends each session
-  that holds a refresh token at its next refresh, and its person logs in again ([H-27](#h-27)).
+  previous key is kept to open what it sealed
+  ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1, the owner's answer of
+  2026-10-04), so a changed `COWORK_SESSION_KEY` ends each session that holds a refresh token at its
+  next refresh, and its person logs in again — the change fails closed ([H-27](#h-27)).
 - **Not done:** cowork never revokes a refresh token at the issuer. When a session ends, the row and
   the sealed token go, and the token at the issuer lives as long as the issuer lets it
   ([H-27](#h-27)).
@@ -354,6 +361,13 @@ to ([`api/identity.go`](../../backend/internal/api/identity.go) `tokenGate`,
 - **Another issuer is outside at once.** A person who is not the configured issuer's — another
   issuer's, or any person of a provider while none is configured — is refused at every request,
   whatever their last check (`TestAPersonOfAnotherIssuerIsOutsideTheGate`).
+- **Groups no older than the maximum age.** Groups that the person's last sign-in, or the last
+  session refresh that read them, read longer ago than `COWORK_OIDC_GROUPS_MAX_AGE` — a week by
+  default, `users.oidc_groups_at` — judge no token: every request of the person's tokens is
+  `401 not_allowed`, whose detail says to sign in to the browser once, recorded as the refusal below,
+  and nothing else is written. A sign-in, or a refresh of one of their sessions that reads the groups,
+  makes the tokens work again ([ADR 0035](../adr/0035-personal-access-tokens.md) D8 as amended
+  2026-10-04; `groupsTooOld`; `TestGroupsOlderThanTheMaximumAgeRefuseTheTokens`).
 - **Otherwise once per interval.** The first request after the person's last check plus
   `COWORK_OIDC_GROUPS_REFRESH` judges the person's stored groups — those of their last login or of
   the last refresh that read them, `users.oidc_groups` — against the gate as configured at the
@@ -386,13 +400,15 @@ does not call the issuer itself. Every other logout answers `204`. Dex names no
 ## Who decides who gets in
 
 The issuer decides who is in which group; the installation's configuration decides which groups
-pass the gate and which administer the installation; a tenant's administrators decide what the
-groups give in their tenant — mappings, grants, a restricted project's access list
-([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — and may map any group of the issuer,
-which brings everyone in it into their tenant at once ([tenancy.md](tenancy.md#h-31) H-31). Every
-administration act that can give access — adding a member, setting a grant, making or changing a
-mapping, restricting or opening a project, putting a person on an access list — takes a browser
-session, and a token, an administrator's `admin` token included, is `403 session_required`: what it
+pass the gate and which administer the installation; a tenant's administrators decide who belongs
+in their tenant by grant and a restricted project's access list, and remove mappings
+([tenancy.md](tenancy.md#members-grants-and-group-mappings)); a mapping is made and its role changed
+by a global administrator who administers the tenant only, because every tenant shares the issuer's
+one namespace of groups and a mapping brings everyone in its group into the tenant at once
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D7). Every administration act that can give access — adding a member, setting a grant, making or
+changing a mapping, restricting or opening a project, putting a person on an access list — takes a
+browser session, and a token, an administrator's `admin` token included, is `403 session_required`: what it
 gives would outlive the revocation of a leaked token. An act that only takes access away — removing
 a grant, a mapping, an entry of an access list — takes an administrator's token as well. No agent
 makes any of them. The whole set of session-only operations, and the rule, is
@@ -403,7 +419,7 @@ makes any of them. The whole set of session-only operations, and the rule, is
 | Action | Actor | Where | When |
 |---|---|---|---|
 | `login_refused` | `system:identity-provider` | installation | a verified login refused: reason `not_allowed` or `not_initialised`, the note `outside the gate`, `deactivated` or `not initialised`, the person when one exists |
-| `created`, `updated` (entity `user`) | `system:identity-provider` | installation | the first login — name, identity `oidc`, administrator flag, groups — and what a login, a refresh that read groups or a token's gate check changed, with the cause; an address as `email_changed`, never itself |
+| `created`, `updated` (entity `user`) | `system:identity-provider` | installation | the first login — name, identity `oidc`, administrator flag, nothing of the groups — and what a login, a refresh that read groups or a token's gate check changed, with the cause; an address as `email_changed` and the groups as `groups_changed`, never the address or a group's name |
 | `revoked` (entity `user`) | `system:identity-provider` | installation | the sessions the provider ended: `sessions_ended`, the cause `gate` or `identity-provider` |
 | `logged_in` | the person | installation | a login, note `oidc` |
 | `created`, `updated`, `deleted` (entity `membership`) | `system:identity-provider` | the tenant | a derived membership, with the cause |
@@ -413,8 +429,12 @@ database only; the tenant's rows show in its audit view. Every row written for a
 identity provider's included — carries the keyed hash of the client's address
 ([tokens.md](tokens.md#what-is-recorded)). **`login_refused` is written only after an ID token
 verified**: a stale state, the issuer's error, a failed exchange or verification and a claim of the
-wrong shape fail before anybody is known, and `oidc_failed` is in the log only. The group lists of
-a person are recorded as the issuer said them.
+wrong shape fail before anybody is known, and `oidc_failed` is in the log only. **No row names a
+person's groups** — their change is `groups_changed: true`, and the memberships they cause are
+recorded tenant by tenant, with the cause
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D6; `TestNoAuditRowNamesAPersonsGroups`). A mapping's own rows name its group: they are an
+administrator's act on the tenant's configuration, not a word about a person.
 
 **No code, ID token, access token or refresh token reaches a log line or an audit row.**
 `TestNoIssuerSecretIsLoggedOrRecorded` records every log level through a login, a refresh, an
@@ -458,23 +478,27 @@ the person lookup are [tenancy.md](tenancy.md#two-database-roles) and
 ## What this does not cover
 
 <a id="h-23"></a>
-### H-23 — A token judges its person by the groups of their last login or refresh
+### H-23 — A token judges its person by groups up to `COWORK_OIDC_GROUPS_MAX_AGE` old
 
 Live today for every person of the provider who holds a token. The gate a token meets reads the
 person's stored groups, never the issuer. Removing a person from the allowed groups at the issuer
 reaches their tokens at their next browser login or at the next refresh of a session they hold that
-reads the groups. A person who only uses tokens never refreshes the groups, so their tokens keep
-passing the gate — and keep the memberships those groups map to — until the token expires, at most
-`COWORK_TOKEN_MAX_LIFETIME` (a year by default) after its creation, or the person revokes it. A
-person the issuer disables outright is no different: their sessions end at their next refresh, when
-the issuer refuses the refresh token, but a refusal stores no groups, so their tokens go on. No route
-deactivates a person of the provider, and no route lets an administrator revoke another person's
-token ([tokens.md](tokens.md)). What does reach a token within one interval is the gate's
-configuration — the check judges the stored groups against `COWORK_OIDC_ALLOWED_GROUPS` and
-`COWORK_ADMIN_GROUP` as they are at the check — and a change of the configured issuer reaches it at
-once. Mitigation: shorter token lifetimes (`COWORK_TOKEN_MAX_LIFETIME`); to cut a person off at once,
-the operator sets the person's `users.deactivated_at` in the database, which every token and login of
-theirs then meets as revoked — outside the API, and recorded nowhere.
+reads the groups — and at the latest when the stored groups grow older than
+`COWORK_OIDC_GROUPS_MAX_AGE`, a week by default: from then on every token of the person is refused
+until they sign in to the browser, where the issuer's groups of that moment judge them
+([above](#the-token-gate)). So a person who only uses tokens keeps working tokens — and the
+memberships those groups map to — for up to the maximum age after the groups were last read, no
+longer until the token expires. A person the issuer disables outright is no different: their
+sessions end at their next refresh, when the issuer refuses the refresh token, but a refusal stores
+no groups, so their tokens go on until the groups of their last read are too old, and a sign-in goes
+through the issuer, which no longer lets them in. No route deactivates a person of the provider, and no route lets an
+administrator revoke another person's token ([tokens.md](tokens.md)). What does reach a token within
+one interval is the gate's configuration — the check judges the stored groups against
+`COWORK_OIDC_ALLOWED_GROUPS` and `COWORK_ADMIN_GROUP` as they are at the check — and a change of the
+configured issuer reaches it at once. Mitigation: a shorter `COWORK_OIDC_GROUPS_MAX_AGE` — a day asks
+a daily sign-in in the browser; to cut a person off at once, the operator sets the person's
+`users.deactivated_at` in the database, which every token and login of theirs then meets as
+revoked — outside the API, and recorded nowhere.
 
 <a id="h-24"></a>
 ### H-24 — While the issuer cannot be reached, sessions are served on their last groups
@@ -517,16 +541,22 @@ never go over a newer login's (`TestWithoutARefreshTokenTheLoginsGroupsHold`,
 
 Live wherever administrators add members by address. `POST …/members` finds a person among the
 active persons of the configured issuer by the address the issuer asserted at that person's last
-login, compared without regard to case; an address the issuer marked unverified (`email_verified`
-false) never matches, and one about which it said nothing counts as verified
-(`TestAddMemberByAddressOrUsername`). An issuer that lets its users choose an address without
-verifying it, and does not say so, lets a person claim a colleague's address: an administrator who
-grants that address before the colleague has ever logged in grants the claimant — the grant is the
-person's, not the address's, and stays when the address changes. Two active persons with one address
-answer `409 person_ambiguous` and nobody is granted, which holds only once both have logged in. The
-identity itself is the issuer and the subject, never the address. Mitigation: an issuer that verifies
-addresses and says so; an administrator who checks the name in the answer; the username for a local
-account.
+login, compared without regard to case. Only an address the issuer marked verified
+(`email_verified: true`) matches; one about which it said nothing matches only while the operator
+sets `COWORK_OIDC_EMAIL_TRUSTED` to `true`, `false` by default; one it marked unverified never
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D3; `TestAnAddressTheIssuerSaidNothingAboutIsTrustedOnlyWhenConfigured`). What remains is the
+issuer's word itself: an issuer that marks an address verified it did not verify, and — dormant by
+default, live once an operator sets `COWORK_OIDC_EMAIL_TRUSTED=true` for a provider whose users choose
+their own address — a provider that lets its users choose one without verifying it and says nothing.
+There a person can claim a colleague's address, and an administrator who grants that address before
+the colleague has ever logged in grants the claimant — the grant is the person's, not the address's,
+and stays when the address changes. Two active persons with one address answer
+`409 person_ambiguous` and nobody is granted, which holds only once both have logged in. The identity
+itself is the issuer and the subject, never the address. Mitigation: leave `COWORK_OIDC_EMAIL_TRUSTED`
+`false` unless administrators issue the provider's addresses — persons of a provider that sends no
+claim are then admitted by a group mapping; an administrator who checks the name in the answer; the
+username for a local account.
 
 <a id="h-27"></a>
 ### H-27 — Whoever holds the database and the server key can open the stored refresh tokens
@@ -537,13 +567,16 @@ token, and with the client secret — both sit in the serving pod's environment 
 issuer for tokens of those persons, with the scopes cowork was granted, for as long as the issuer
 honours them; cowork never revokes one, so a token taken from a backup can outlive the session it
 belonged to. Rotating the server key makes every stored token unopenable — no previous key is kept to
-open them ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1 as built): each
-provider session that holds one ends at its next refresh, and its person logs in again; a session
-without a refresh token is not affected. The rotation also fails the logins in flight
-(`oidc_failed`), and changes the cursors and the address hashes of the throttle and the audit rows
-([trust-boundaries.md](trust-boundaries.md#where-the-credentials-live)). Mitigation: guard the
-database, its backups and the Secrets as one; after a suspected compromise of both, rotate the server
-key and revoke the client's tokens at the issuer.
+open them ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1, amended
+2026-10-04 to this): each provider session that holds one ends at its next refresh, and its person
+logs in again; a session without a refresh token is not affected. The rotation also fails the logins
+in flight (`oidc_failed`), invalidates the cursors, starts the throttle's count of an address over,
+makes the audit rows' address hashes before and after it incomparable, and refuses an idempotent
+retry across it as `422 idempotency_mismatch`
+([installation.md](../operations/installation.md#the-secrets) lists each). It does not make a copy of
+the database taken before it safe: the refresh tokens sealed in that copy open under the old key.
+Mitigation: guard the database, its backups and the Secrets as one; after a suspected compromise of
+both, rotate the server key and revoke the client's tokens at the issuer.
 
 <a id="h-28"></a>
 ### H-28 — An issuer without an end-session endpoint keeps its own session after a logout
@@ -573,13 +606,20 @@ mapping who leaves the group loses the role at their next login or refresh. A pe
 gate keeps their memberships but cannot log in, and their tenants keep no administrator who can. And
 the derivations take no tenant's lock, so an administrator's change that counted such a person a
 moment before can commit beside the derivation that takes their role — read from the code, run by no
-test. Afterwards nobody can change
-the tenant's settings, members, mappings or restrictions: no route lets a global administrator grant
-themselves into an existing tenant
-([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D2), and the local administrator has no role there unless given one. Recovery: put a person into the
-mapped group at the issuer — the mapping stays, so their next login makes them administrator — or
-write a grant into the database, outside the API and recorded nowhere. Mitigation: keep one
+test. Afterwards nobody of the tenant can change its settings, members, mappings or restrictions
+until a global administrator acts. Recovery: a global administrator who holds no role in the tenant
+grants themselves `admin` — a marked grant recorded in the tenant with them as its actor, which
+takes no administrator away and so meets no `last_admin` — and gives the tenant an administrator of
+its own ([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
+[ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2; `TestAStrandedTenantIsRecoveredByTheSelfGrant`); or put a person into the mapped group at the
+issuer — the mapping stays, so their next login makes them administrator. What remains: nothing
+tells anybody that a tenant has no administrator who can log in, so it stays without one until a
+global administrator looks — one who holds no role there grants themselves `admin`, one who holds a
+lower role raises their own grant to it; and an installation whose global administrators cannot log
+in either — the administrator group
+emptied at the issuer, no local administrator configured — has only a grant written into the
+database, outside the API and recorded nowhere. Mitigation: keep one
 administrator of every tenant by a grant to a local account the tenant manages itself, which neither
 a derivation nor the gate touches and whose deactivation the tenant's `last_admin` holds — an
 account another tenant manages, that tenant can still deactivate ([local-accounts.md](local-accounts.md#h-32)

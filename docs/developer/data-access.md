@@ -137,12 +137,24 @@ files, without a database; application queries still filter by `tenant_id` as we
 
 `group_mappings` carries `tenant_id` and the canonical policy, and three more: the identity
 provider reads every tenant's mappings, the bootstrap inserts the administrator group's, and
-**restrictive** policies (`AS RESTRICTIVE`) hold every insert, update and delete to an
-administrator of the current tenant (the bootstrap's insert excepted). A restrictive policy is
-ANDed with the permissive ones instead of ORed: it narrows what any other policy admits, so a
-later permissive policy cannot widen who writes a mapping. `project_access` has the same three
-restrictive policies (migrations [21](../../backend/internal/store/migrations/000021_group_mappings.up.sql),
-[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql)). On
+**restrictive** policies (`AS RESTRICTIVE`) hold every write to an administrator of the current
+tenant — an insert and an update to one who is a global administrator as well
+(`app_is_tenant_admin() AND app_is_global_admin()`, the handler's `mapsGroups` in the data layer,
+[ADR 0030] D7), a delete to any (the bootstrap's insert excepted, which names no person). `tenants`
+admits every row to a global administrator and `memberships` their own marked grant in any role, and
+the change of its role in the tenant's transaction,
+([migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql),
+[ADR 0034] D2): the list of every tenant and the boundary's admission of a global administrator
+without a role read the tenant in an `Installation` transaction; inside the tenant's transaction no
+policy tells them from a member, and the operations they reach are the boundary's list
+([api.md](api.md#the-tenant-boundary)). A
+restrictive policy is ANDed with the permissive ones instead of ORed: it narrows what any other
+policy admits, so a later permissive policy cannot widen who writes a mapping. `project_access` has
+three restrictive policies on `app_is_tenant_admin()` alone (migrations
+[21](../../backend/internal/store/migrations/000021_group_mappings.up.sql),
+[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql),
+[25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql);
+`TestPoliciesOfThePersonsAndTheirAccounts`). On
 `memberships` the writes are split by source instead: a grant is inserted, changed and removed by
 an administrator of its tenant, a mapped membership only in a transaction named
 `identity-provider`.
@@ -339,7 +351,9 @@ issuer, or has no gate stamp (`GetPersonForDerivation`), brings the others' mapp
 transaction's tenant in line, records each change as an `Event` with
 `System: system:identity-provider`, and names the job no more. `FindPerson` is a read-only
 transaction of the administrator's, in their tenant, that names the address or username in
-`app.person_lookup` and looks an address up among the configured issuer's persons only.
+`app.person_lookup` and looks an address up among the configured issuer's persons only — one the
+issuer marked verified, or, with `PersonLookup.EmailTrusted` (`COWORK_OIDC_EMAIL_TRUSTED`), one it
+said nothing about.
 
 The mapped memberships themselves are written by `applyMapped` only — insert, role change or
 delete, by the row's id — and a grant is never among them: the policies of

@@ -7,7 +7,8 @@ named other tickets, comment texts kept out; D2: an act is required and publishe
 installation-level row is read by the person it names; D6: the activity withholds what a
 reader may not see), 2026-10-03 (D1: the actors and actions of the login) and 2026-10-04 (D1: the
 action `login_refused`, the column `source_hash`, the system actor `system:identity-provider`; after
-the security review, no e-mail address in `before` or `after`).
+the security review, no e-mail address in `before` or `after`; by the owner's answer on the groups,
+no group of a person in them either).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -65,7 +66,7 @@ the administrator's transaction, and carries the request, not the administrator)
 | `entity_type`, `entity_id` | what changed |
 | `ticket_id` | the ticket the entity belongs to, denormalised, so a ticket's activity is one index scan; *(added 2026-10-02)* `ticket_key` its key, which survives the ticket's purge |
 | `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* |
-| `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it; *(amended after the security review, 2026-10-04)* never an e-mail address, which no append-only row could erase on request — a changed address is recorded as `email_changed: true`; a person's group lists are recorded |
+| `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it; *(amended after the security review, 2026-10-04)* never an e-mail address, which no append-only row could erase on request — a changed address is recorded as `email_changed: true`; ~~a person's group lists are recorded~~ *(amended 2026-10-04, the owner's answer recorded in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md) D6)* never a person's groups either: a change of them is recorded as `groups_changed: true`, and the row of a person's creation says nothing of them; the memberships the groups cause are recorded tenant by tenant |
 | `refs` *(added 2026-10-02)* | the other tickets the payload names — a link's other end, the ticket a block waits on, the prerequisites a close overrode, a parent; D6 withholds the payload from a reader who cannot see one of them |
 | `reason`, `note` | the transition's reason or verification note, the override's reason |
 | `explained_by_comment_id` | the comment written in the same request (ADR 0015 D2) |
