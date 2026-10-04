@@ -9,7 +9,25 @@ question "notifications — which channel first?": in-app only, over in-app plus
 recommendation), over e-mail, and over both. The event list of D2 was proposed with the
 question and not objected to.
 
-**Not built.** No `notifications` table exists.
+**Built** (phase 3, 2026-10-04), but for D2's mention: D1 — the inbox `GET /api/v1/me/inbox`, a
+union of per-tenant reads newest first, each entry with its tenant, its ticket as it is now and its
+act, the unread count beside it, and in the UI the page `/me/inbox` grouped by ticket with the bell's
+unread count in the top bar ([`api/inbox.go`](../../backend/internal/api/inbox.go),
+[`features/me/inbox.ts`](../../frontend/src/app/features/me/inbox.ts)); D2's events but the mention,
+each telling only an active member who sees the ticket, never the actor nor for the actor's agent
+([`store/inbox.go`](../../backend/internal/store/inbox.go)) — "a question I asked is withdrawn"
+tells nobody, because only the asker withdraws a question and their own act tells them nothing; D3 —
+`notifications` rows written by `Mutate` with the act and referencing its audit row
+([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)), rendered from
+it, so a withdrawn comment or question and a reversed transition show as they are now; D4 — the
+count pushed as `inbox.changed` on the person-level stream of ADR 0054 and loaded again on its
+fallback's poll; D6 — marking one read and every one up to the newest seen
+(`PUT /api/v1/me/inbox/{notification}/read`, `PUT /api/v1/me/inbox/read`), each the person's act
+`read`, and the job `notification-expiry` that deletes a notification ninety days after it was read
+*(made concrete 2026-10-04: the ninety days count from the reading, so a notification read late is
+kept as long as one read at once)*. **Not built:** D2's mention — D5 of
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) names `@person` without
+saying how a comment's text names a person, and that is open.
 
 ## Context
 

@@ -5,7 +5,7 @@ state: in-progress
 severity: high
 security: none
 threat:
-urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox does not exist
+urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox has no end-to-end verification
 effort: L
 blocked-by:
 filed-from: docs/planning/project-plan.md phase 3, converted by ADR 0074 D2
@@ -27,8 +27,9 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
-- **What the goal still lacks:** the person-level lists (T35) and the inbox (T36), through which
-  the phase's verification goes; the end-to-end tier (T29); and what is left of each child below.
+- **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
+  verification goes, exist; what is left of them is "next for me" (T35) and the mention (T36). The
+  end-to-end tier (T29), and what is left of each child below.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -58,7 +59,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
     [ADR 0003](../adr/0003-test-and-ci-policy.md) D5 has it, not gated by a number.
 - **Carried over from phase 2:** rank (built; its score and the rebalancing of its keys are T34),
   deletion and purge (T39), numbered pages on the audit view, members, tokens and projects (T40),
-  the person-level events with the inbox (T36), the attachment quota (T32), the server-side
+  the attachment quota (T32), the server-side
   Markdown sanitiser (T33).
 - **Not in phase 3:** import and the cut-over (phase 6).
 
@@ -81,8 +82,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
      attachment quota
    - T33 — the rendered Markdown body and the server-side sanitiser
    - T34 — the score beside the rank, and the rebalancing of the rank keys
-   - T35 — the person-level lists: next for me, assigned to me, open decisions
-   - T36 — the inbox and the person-level events
+   - T35 — next for me, the person-level pages following every tenant, the lists in the score's order
+   - T36 — the mention in a comment, and the inbox's end-to-end path
    - T37 — search
    - T38 — saved filters
    - T39 — ticket deletion and the purge

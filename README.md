@@ -59,6 +59,7 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
+- 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
@@ -121,7 +122,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
 | Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
 | Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
-| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry` | `system:identity-provider` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
@@ -137,7 +138,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
 | Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; the control events `resync` and `unavailable` | — |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 
@@ -181,7 +182,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | `/readyz` | readiness: a database ping, through the backend Service | the Ingress sends it here, and nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend |
 | `/api/v1/…` | the JSON API, routed here by the Ingress; errors are RFC 9457 `application/problem+json` with a stable `code` | not routed here; a request that arrives all the same gets `404` with a problem naming the cause |
 | `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, routed here like `/api/`, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | the same `404` problem |
-| `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no` | — |
+| `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no`; `?me=true` makes it the person-level stream | — |
 | `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream with `X-Accel-Buffering: no` | — |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
@@ -685,7 +686,11 @@ full.
   numbered pages, `page` and `per_page` (`25`, `50`, `100`), with a total, up to row 10 000;
   the ticket lists answer `304` to an unchanged page's weak `ETag` in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
-  `404`.
+  `404`. The person-level lists under `/api/v1/me/` — the inbox, the tickets assigned to the
+  person, the open decisions — span every tenant of the person, name the tenant on every item, take
+  `tenant=<slug>` to narrow to one (`404 not_found` for a slug that names none of theirs, as for an
+  unknown one) and carry cursors only; a token restricted to a tenant or a project reads that
+  tenant or that project alone.
 - **Every response** carries `Cache-Control: no-store` (the event stream `no-cache`) and
   `X-Request-Id`. An error is `application/problem+json`
   ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): `type`, `title`, `status`, `detail`,
@@ -716,6 +721,11 @@ full.
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
+| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent` —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
+| `PUT /api/v1/me/inbox/read` | `{"through": "<notification id>"}`: every unread notification of the person up to and including that one, read — one that arrived after it stays unread; `tenant` narrows; `write` scope; `200 {"unread"}`; one act `read` per tenant where something changed |
+| `PUT /api/v1/me/inbox/{notification}/read` | one notification read; `write` scope; `200 {"unread"}`; one already read records nothing; another person's, or one of a ticket the person no longer sees, `404 not_found` |
+| `GET /api/v1/me/assigned` | the open tickets — neither `done` nor `dropped` — assigned to the person across their tenants: `{"items": [{"tenant": {slug, name}, "ticket": {...}}], "next_cursor"}`, in the order of the tenant's slug, the project's key and the project's rank, until the score of ADR 0014 exists; `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/decisions` | the open questions asked of the person and those open in their tenants — asked of nobody —, on tickets they see: `{"items": [{"tenant", "ticket": {key, title, state}, "question": {...}}], "next_cursor"}`, in the order of the tenant's slug, the project's key, the ticket's place in the rank — `done` and `dropped` tickets after the ranked ones — and the question's number; `tenant`, `limit`, `cursor` |
 | `GET /api/v1/tenants` | a global administrator, session only: every tenant of the installation by slug, `{"slug","name","role"}` — `role` the caller's, the higher of mapping and grant, `null` where they hold none; `limit` and `cursor`. Anybody else `403 forbidden`; a token `403 session_required` |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
@@ -799,7 +809,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
 | `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before |
-| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
+| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)); with `me=true` the person-level stream, which adds `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes — and the `question.changed` of a question asked of the person in another of their tenants, while they belong to it and see its ticket; neither carries an `id:` |
 | `GET …/projects` | the projects the caller can see, by key; `include_archived` |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
 | `GET …/projects/{project}` | one project |

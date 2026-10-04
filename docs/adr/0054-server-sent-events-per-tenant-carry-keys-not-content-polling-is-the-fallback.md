@@ -23,8 +23,9 @@ recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-in
 D3 (D6: the Ingress routes the stream to the backend and the frontend's nginx has no location for
 it; built the same day).
 
-**Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
-with the inbox), D2 without `inbox.changed` and ~~`membership.changed` (no route changes a
+**Partly built** (phase 2, 2026-10-02): D1 without ~~`?me=true` (the person-level events arrive
+with the inbox)~~ — built 2026-10-04, below —, D2 without ~~`inbox.changed`~~ — built 2026-10-04,
+below — and ~~`membership.changed` (no route changes a
 membership yet)~~ — built 2026-10-04, below —, D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
 [`notify.go`](../../backend/internal/store/notify.go) and [`events.go`](../../backend/internal/api/events.go);
 ~~the nginx template has the events location~~ *(gone 2026-10-04 with the frontend's proxy, D6)*. D3's recomputation on `membership.changed`
@@ -41,6 +42,21 @@ to a tenant or who sees a project — an administrator's and the identity provid
 ([`store/notify.go`](../../backend/internal/store/notify.go) `MembershipChange`,
 [`events/hub.go`](../../backend/internal/events/hub.go) `Filter.Admits`) — and the client's reloads
 on it.
+
+**Built** (phase 3, 2026-10-04): D1's `?me=true` and D2's `inbox.changed {"unread": n}` — the
+person-level stream carries, besides its tenant's events, the person's own across their tenants as
+D1 names them: their inbox changing, as the unread count when the stream opens and once a burst of
+changes is over, and the acts of questions asked of them in their other tenants, each judged before
+it is written against that tenant — still a member, the ticket still visible by D3's facts, a
+token restricted to another tenant hearing none ([`api/events.go`](../../backend/internal/api/events.go)
+`writeStreamed`, `Hub.toPerson`). *(Made concrete 2026-10-04:)* neither carries an `id:` nor enters
+D5's ring — a count is a state, and another tenant's event is no place in this tenant's replay — so a
+reconnect replays neither and the client reloads its person-level pages on the count the stream
+sends when it opens. The browser opens every stream as a person-level one, on the tenant its pages
+show or, on the person-level pages, on the person's first tenant
+([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts)). The integration
+tier asserts what the person-level stream never carries: another person's events, a tenant the person
+left, a project restricted away from them, a confidential ticket they cannot see.
 
 ## Context
 

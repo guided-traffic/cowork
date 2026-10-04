@@ -2,7 +2,8 @@
 
 How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
 role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
-ticket, act, event and time entry, as built on 2026-10-04. What a token or an agent may do with
+ticket, act, event, notification and time entry, and what the person-level lists and stream gather
+across a person's tenants, as built on 2026-10-04. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -327,11 +328,15 @@ The exemptions, each with its reason written in its query file:
 | `GetWrittenTicket` | a write's answer rereads the row it wrote; a reassignment can take a confidential ticket out of its writer's sight in the same transaction |
 | `TicketFacts` | the publication of a committed act; each event stream filters (below) |
 | `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no (H-3) |
-| `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation's inputs and the tickets that depend on them (H-3) |
-| `CanSeeProject`, `CanSeeTicket` | whether another person — an assignee, a person asked — sees what the caller reads |
+| `CanSeeProject` | whether another person — an assignee — sees what the caller reads |
+| `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `person_sees_ticket` ([the person-level lists](#the-person-level-lists-are-unions-one-tenant-at-a-time)) |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
 | `GetRepositoryBinding` | whether the tenant binds a repository at all: the identity and path are unique in the tenant, and the `409 repository_bound` names the project only when the caller sees it |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice (H-3) |
+
+`person_sees_ticket` (migration 30) answers whether another person — not the caller — sees a ticket,
+past the caller's predicate: `CanSeeTicket` (the person a question is asked of) and the recipients of a
+notification read through it.
 
 Where the predicate hides a related ticket, the visible one shows less rather than more: a
 parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
@@ -557,6 +562,61 @@ membership again ([tokens.md](tokens.md) H-7) and recomputes the visible project
 person's current role (`Hub.Refilter`). A project restricted away from the person, a lowered
 role or a project created after the stream opened counts within one heartbeat — a change made
 in the database as well as one through the API (`TestStreamFollowsAccess`).
+
+## The person-level lists are unions, one tenant at a time
+
+The inbox, "assigned to me" and "open decisions" (`GET /api/v1/me/inbox`, `…/assigned`,
+`…/decisions`) are the one kind of answer that spans tenants
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). They are
+built as ADR 0021 D5 has it: the person's memberships are read first, and each tenant is then read in
+a transaction of its own, bound to that tenant and the caller, under the same predicates as the
+tenant's own lists; the parts are merged in the application, and no query names two tenants
+([`api/inbox.go`](../../backend/internal/api/inbox.go) `personTenants`,
+[`api/mylists.go`](../../backend/internal/api/mylists.go)). A tenant the person left is not read at
+all; a global administrator without a role in a tenant has no membership there and reads nothing of
+it. A token restricted to a tenant reads that tenant alone, and one restricted to a project its project
+alone — `app.restricted_project_id` hides every project of another tenant. A `tenant` that names none
+of the person's tenants is the boundary's `404`, whether or not it exists. A cursor is bound to its
+person and its narrowing, and carries the rank of a ticket sealed as a project's list does (H-3).
+`TestTheInboxIsThePersonsAcrossTheirTenants`, `TestAssignedToMeAcrossTenants` and
+`TestOpenDecisionsAcrossTenants` cover the tenants, the restricted project, the narrowing and the
+restricted tokens.
+
+**A notification is its person's.** The act's own transaction writes it for each person the act
+tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an
+active member of the tenant who sees, by `person_sees_ticket`, both the ticket it is about and the
+ticket the act is on — never the actor
+([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). Reading it holds again: a
+notification is listed and counted only while its person sees both tickets, so one whose ticket turned
+confidential, whose project was restricted away, or whose tenant the person left is absent and counts
+nowhere (`TestTheInboxIsThePersonsAcrossTheirTenants`); its act is shown as the ticket's activity shows
+it, without the payload where it names a ticket the person cannot see. Inside the tenant, the
+writer of an act inserts notifications for others, so the canonical policy alone would show any
+person of the tenant another's inbox to a query that forgot its `user_id`; restrictive policies hold
+reading and marking to `user_id = app_user_id()`, and deleting to the retention job
+([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql);
+`TestTheInboxPolicyHoldsAPersonToTheirOwn`). Marking read is the person's recorded act `read` in that
+tenant, so its administrators read in the audit view when a person marked their notifications read —
+the cost of ADR 0026 D1's rule that every write is an act.
+
+## The person-level stream
+
+`GET …/events?me=true` is a tenant's stream that also carries the person's own events across their
+tenants ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, [events.md](../developer/events.md#the-person-level-stream)): `inbox.changed` with the unread
+count — counted per tenant, as the inbox counts, so a notification the person no longer sees does not
+count — and the `question.changed` of a question asked of the person in another of their tenants. The
+hub hands an inbox change only to its person's person-level streams, and a question's act only to
+those of the person it is asked of; the stream then judges another tenant's event before it writes it:
+a token restricted to another tenant never hears it, and otherwise the person must still belong to the
+event's tenant and see its ticket by the facts the event carries — the project, a project-restricted
+token's restriction, and the confidential rule — read in that tenant's transaction as the caller
+([`api/events.go`](../../backend/internal/api/events.go) `writeStreamed`). It carries no other event
+of another tenant. `TestThePersonLevelStream` asserts what never arrives: another person's question,
+the questions on a project restricted away from the person and on a confidential ticket they are
+neither assignee nor reporter of, a question of a tenant they left; and
+`TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a tenant-restricted token hears nothing
+of another tenant and counts its own tenant's notifications only.
 
 ## Time follows its own rule
 

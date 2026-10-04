@@ -25,7 +25,13 @@ tickets in its rank since 2026-10-03, the unranked after the ranked by number
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
 D2's numbered pages on the two ticket lists and the tenant's time entries — the audit view,
 members, tokens and projects carry the cursor only so far; D4's markings and client helpers
-arrive with the generated frontend client.
+arrive with the generated frontend client. *(2026-10-04:)* D3's inbox, `/me/assigned` and
+`/me/decisions`, cursor only and merged across the person's tenants — the inbox by the
+notifications' ids, the other two in the interim order of
+[ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s Status rather than D1's
+`(score, id)`, their position the tenant's slug, the project's key and the rank's place sealed as a
+project's list seals it; a cursor names its person and its narrowing, and the `cursor` parameter
+takes up to 1024 characters for these positions.
 
 ## Context
 

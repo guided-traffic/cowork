@@ -38,7 +38,10 @@ the mechanics are [api.md](api.md)).
    project sets `Event.Membership` with the keys it changes and its audience, so the streams hear
    it as `membership.changed` ([events.md](events.md#publication)); one that can change a tenant's
    administrators takes the tenant's lock first (`w.LockTenant`) and checks `lastAdmin` before it
-   commits ([data-access.md](data-access.md#advisory-locks)).
+   commits ([data-access.md](data-access.md#advisory-locks)). An act of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
+   D2 names whom it tells in `Event.Notices` — a reason with the persons it names, the ticket's
+   watchers, or the watchers of the tickets it blocks — and the store writes the notifications in the
+   same transaction ([data-access.md](data-access.md#notifications)).
 4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
    the visibility predicate or naming its exemption ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
