@@ -33,3 +33,7 @@ D1, D2 are carried over from phase 2.
 4. The bell with the unread count in the top bar, the page `/me/inbox`, both live.
 5. The e2e path: the second identity sees the assignment in its inbox within the stream's
    latency.
+
+## Related
+
+- T35 — its Q1 decides whether the person-level stream carries more than the person's own events

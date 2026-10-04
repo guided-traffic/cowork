@@ -1,12 +1,12 @@
 ---
 id: T28
-title: the frontend has no component library, no theme, no logo, no generated client, no services and no live updates
+title: the frontend's polls reload every list in full, six forms send a new idempotency key on every attempt, and the bundle budget's number is open
 state: in-progress
-severity: high
+severity: medium
 security: none
 threat:
-urgency: next         # rule 3: severity high, live
-effort: L
+urgency: next         # rule 3: severity medium, live — a retry of a released form creates its object twice
+effort: M
 blocked-by:
 filed-from: T26
 opened: 2026-10-03
@@ -16,7 +16,7 @@ done:
 
 ## Current state
 
-The foundation is on the branch of phase 3, not merged:
+The foundation is released (0.2.0 and later):
 
 - PrimeNG 22 with the cowork preset over Aura: the logo's violet as primary, dark surfaces
   tinted toward its ink, badge accents for severity, security class and state as `light-dark()`
@@ -31,27 +31,83 @@ The foundation is on the branch of phase 3, not merged:
 - The services of [ADR 0053](../adr/0053-signals-and-services-no-store-framework.md):
   session, projects, tickets with the entity cache, problem details, the event stream with the
   polling fallback and the hidden-tab deferral (ADR 0054 D7, D8) — [`core/`](../../frontend/src/app/core/).
-- The shell; the tenant overview, the backlog as a table in number order, the ticket detail
-  and the member list, all following the event stream; the design preview at
-  `/dev/design`, development builds only.
-- `make dev` over HTTPS with the real login and `make dev-reset`; the dev proxy holds no credential.
-- The PrimeUI license key wired through `--define`, a BuildKit secret and the release
-  workflow's `PRIMEUI_LICENSE` secret (ADR 0052 D9).
+- The shell and the pages, which follow the event stream except for time entries, which are not
+  published (ADR 0054 D4); the design preview at `/dev/design`, development builds only. The unit tier covers the services and pages, and the `frontend` job
+  reports its line coverage on every pull request
+  ([`release.yml`](../../.github/workflows/release.yml#L315-L337)).
+- `make dev` over HTTPS with the real login and `make dev-reset`; the dev proxy holds no
+  credential; [frontend.md](../developer/frontend.md) describes it all.
+- The PrimeUI license key wired through `--define`, a BuildKit secret and the repository secret
+  `PRIMEUI_LICENSE`, which is set and reaches the release's frontend image
+  ([`build.yml`](../../.github/workflows/build.yml#L89-L92), ADR 0052 D9).
+
+Not as decided:
+
+- **A poll reloads every list in full.** The fallback's `poll`
+  ([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts#L249)) loads
+  every open list again — the ticket lists
+  ([`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts#L224-L235)), the projects,
+  a ticket's relations, the members — without `If-None-Match`, and the parameters of a list
+  followed cursor by cursor leave the header out
+  ([`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts#L60-L63)). Both ticket
+  lists answer `304` to it ([`tenants.yaml`](../../backend/api/tenants.yaml#L371-L386) and lines
+  432-447); the other lists carry no list `ETag`, which
+  [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+  D7 gives every list.
+- **Six forms send a new `Idempotency-Key` on every attempt:** a ticket
+  ([`ticket-actions.service.ts`](../../frontend/src/app/core/ticket-actions.service.ts#L63)), a
+  comment and a question ([`conversation.service.ts`](../../frontend/src/app/core/conversation.service.ts#L29)
+  and line 37), a project ([`projects.service.ts`](../../frontend/src/app/core/projects.service.ts#L73)),
+  an attachment and a time entry ([`ticket-records.service.ts`](../../frontend/src/app/core/ticket-records.service.ts#L20)
+  and line 28). A retry after a lost answer creates the thing twice. The first tenant keeps one
+  key per form content ([`first-tenant.ts`](../../frontend/src/app/features/home/first-tenant.ts#L178-L186)),
+  as a new local account, a group mapping and a member's grant do; a token takes a new key per
+  act on purpose, because a repeated answer carries no plaintext (ADR 0045 D6).
+- **The bundle budget warns on every production build** (Q1).
+- **Two checks by hand are outstanding:** nobody has looked at a released frontend image for the
+  license notice, and nobody has run both images read-only since the icon location joined the
+  nginx template ([`default.conf.template`](../../frontend/nginx/default.conf.template#L131-L139)).
 
 ## Required changes
 
-1. The owner puts the Community key into the repository secret `PRIMEUI_LICENSE` (the local
-   `.dev/primeui-license` is in place); a release image shows no license notice.
-2. The polling fallback sends `If-None-Match` with each list's weak `ETag` and keeps the list on
-   `304` (ADR 0054 D7); today a poll reloads the lists in full.
-3. Unit tests for every service and page, line coverage reported per pull request (ADR 0056 D6).
-4. The production bundle within the budget of ADR 0052 D6, measured in CI.
-5. Both images run together read-only with the new nginx icon location, verified as
+### Independent of the open question
+
+1. The polling fallback sends `If-None-Match` with each list's weak `ETag` and keeps the list on
+   `304` (ADR 0054 D7); the lists without one gain it and the `304`, in the API document first.
+   Unit tests that a `304` keeps what a list shows.
+2. One `Idempotency-Key` per form content in the six forms, reused on a retry and new when the
+   content changes, as the first tenant does
+   ([frontend.md](../developer/frontend.md#where-state-lives)); unit tests per form that a retry
+   of the same content sends the same key and a changed content a new one.
+3. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
+4. By hand: both images run together read-only with the icon location, as
    [build-test-lint.md](../developer/build-test-lint.md#run-the-images-together) says.
-6. One `Idempotency-Key` per form content in every form that creates — a ticket, a comment, a
-   question, a project, an attachment, a time entry — reused on a retry and new when the content
-   changes, as the first tenant and a new local account do
-   ([frontend.md](../developer/frontend.md#where-state-lives)). Today these send a fresh key per
-   call, so a retry after a lost answer creates the thing twice.
-7. Documentation: a developer page for the frontend, `make dev` in the build page and the
-   README, the security note on the dev proxy, the Status of ADR 0046, 0052, 0053, 0054, 0055.
+
+### Depends on the answer
+
+5. The budget in [`angular.json`](../../frontend/angular.json#L52-L57) as Q1's answer has it, and
+   ADR 0052's D6 and Status settled with it.
+
+## Open questions
+
+### Q1: At which number does the initial bundle's budget warn?
+
+ADR 0052 D6 raises the warning to 1 MiB (1,048,576 bytes) "once the library is in"; `angular.json`
+writes `"1mb"`, which Angular reads in thousands — 1,000,000 bytes — so the warning fires at the
+smaller number. The initial bundle lies between the two (1,016.52 kB as ADR 0052's Status
+records it), every `make frontend-build` warns, CI's included, and the record calls which number
+holds open.
+
+- **(a) `angular.json` follows the record:** `"maximumWarning": "1048576b"` and, for the error,
+  `"1572864b"` (1.5 MiB); the build warns again once the bundle passes 1 MiB, and D6 stands as
+  written.
+- **(b) The record follows `angular.json`:** 1,000,000 bytes, and code leaves the initial bundle
+  until it fits; D6 is amended to the decimal number. Work to save some 17 kB below a line the
+  record did not choose.
+
+Recommended: **(a)** — 1 MiB is the number the record decided, and `"1mb"` meaning 1,000,000
+bytes is the builder's unit, not a decision; a warning that fires on every build tells nobody
+anything, which is the opposite of a budget, and (a) makes it mean "past the decided line"
+again.
+
+**Answer:** _open_

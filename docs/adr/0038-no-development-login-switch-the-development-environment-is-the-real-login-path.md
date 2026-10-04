@@ -7,7 +7,8 @@ Angular dev server's proxy holds the seeded token until the login of phase 3; D2
 consequence of the seeded token: the local login now exists in the backend) and 2026-10-04 (D2,
 D4, D5 and the Consequences: Make targets with Dex instead of a compose file and `.env.dev`, bound
 to `127.0.0.1`; D3: the fixture identities are four Dex users, the rest of the matrix is the
-tests' own). Date: 2026-10-01.
+tests' own; this Status and the Consequences: `make dev` sets the local administrator itself, its
+dev proxy holds no token, and the UI has the tokens page). Date: 2026-10-01.
 Decided by the owner as the answer to the catalog question "local development login?": no
 development-only authentication code, over a `COWORK_DEV_LOGIN` switch and over a test-only
 build tag. The rules of D3–D5 were put to the owner with the question and not objected to.
@@ -29,13 +30,19 @@ holds the binary free of it) and `make dev-seed`; D2's small start is `make post
 exists in the backend, so D2's small start is real: `make postgres-up`, then `make run` with
 `COWORK_LOCAL_ADMIN_USERNAME`, `COWORK_LOCAL_ADMIN_PASSWORD` and
 `COWORK_BASE_URL=http://localhost:4200` in the shell's environment, which `make run` passes on —
-neither it nor `make dev` sets them. The routes D6 said would arrive with the sessions are
+~~neither it nor `make dev` sets them~~ *(amended 2026-10-04: `make run` sets none of them;
+`make dev` sets all three itself, the base URL `https://localhost:4200`
+([`hack/dev.sh`](../../hack/dev.sh)))*. The routes D6 said would arrive with the sessions are
 built: `POST /api/v1/tenants`, `POST /api/v1/me/tokens` and the accounts routes of a tenant. The
-fixture stays for the tests and for `make dev-seed` (D7). `make dev` keeps the dev proxy's seeded
+fixture stays for the tests and for `make dev-seed` (D7). ~~`make dev` keeps the dev proxy's seeded
 token until the UI has its login page, and in that setup a browser login does not act: a request
 that carries an `Authorization` header is a token's and its cookie is not looked at
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), so the proxy's token
-decides, and the routes that take a session only answer `403 session_required`. ~~Not built: Dex,
+decides, and the routes that take a session only answer `403 session_required`.~~ *(Amended
+2026-10-04: the UI has its login page, and the dev server's proxy holds no credential
+([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)): the browser logs in through the real login,
+as D2 says, and the seeded token of `make dev` feeds only the demo data, straight to the
+backend.)* ~~Not built: Dex,
 the compose file, `make dev-up`, `.env.dev` and D3's fixture identities, which are the identity
 provider's.~~
 
@@ -170,8 +177,8 @@ an installation step; the README's fast start shows it as such.
   a token through cowork. The UI cannot log in with a token either, because the browser
   never holds one (ADR 0035 D7), so the UI needs the login first. *(Amended 2026-10-03: a
   person creates a token through `POST /api/v1/me/tokens` with a session cookie from
-  `/auth/local`, which is how Claude's token comes to exist on an installation; the UI has no
-  page for it yet.)*
+  `/auth/local`, which is how Claude's token comes to exist on an installation; ~~the UI has no
+  page for it yet~~.)* *(Amended 2026-10-04: the UI's page for it is `/me/tokens`.)*
 
 ## Alternatives Considered
 

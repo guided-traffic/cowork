@@ -1,11 +1,11 @@
 ---
 id: T32
-title: attachments and time cannot be used in the browser, the tenant has no attachment quota and there is no time report view
+title: an upload cannot go to a comment, a raster attachment has no preview, a time entry cannot be corrected in the browser, and the tenant has no attachment quota
 state: in-progress
 severity: medium
 security: none
 threat:
-urgency: later        # rule 4: decided fix
+urgency: later        # rule 4: decided fixes for the browser's parts; the quota waits for Q1
 effort: M
 blocked-by:
 filed-from: T26
@@ -16,21 +16,71 @@ done:
 
 ## Current state
 
-On the branch of phase 3, the detail page lists, uploads and downloads attachments and books
-and voids the person's own time ([`records-cards.ts`](../../frontend/src/app/features/ticket/records-cards.ts)),
+Released: the detail page lists, uploads and downloads attachments and books and voids the
+person's own time ([`records-cards.ts`](../../frontend/src/app/features/ticket/records-cards.ts)),
 and `/t/{slug}/time` shows the time report per project, ticket, person or tenant over a period
 ([`time-report.ts`](../../frontend/src/app/features/time/time-report.ts)). Time entries are not
 published on the event stream ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D4): the page that books reloads them. The per-tenant attachment quota of
-[ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-D6 is carried over from phase 2: limits per file and per ticket exist, a tenant quota does not.
+D4): the page that books reloads them. Missing:
+
+- **An upload to a comment:** `uploadAttachment` takes a `comment_id`
+  ([`attachments.yaml`](../../backend/api/attachments.yaml#L25-L45)); the page sends none.
+- **The preview of a raster attachment**, which the backend delivers inline
+  ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+  D5).
+- **Correcting a time entry and its revisions**
+  ([ADR 0017](../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)):
+  `TicketRecords.edit` writes a correction with `If-Match`
+  ([`ticket-records.service.ts`](../../frontend/src/app/core/ticket-records.service.ts#L33-L41))
+  and only its unit test calls it; `listTimeEntryRevisions`
+  ([`time.yaml`](../../backend/api/time.yaml#L130)) has no caller.
+- **The per-tenant attachment quota** of ADR 0016 D6, carried over from phase 2: limits per file
+  (`COWORK_ATTACHMENT_MAX_BYTES`) and per ticket (`COWORK_ATTACHMENT_MAX_PER_TICKET`) exist,
+  nothing counts a tenant's bytes. Whether the quota refuses an upload is open (Q1).
 
 ## Required changes
 
-1. An upload to a comment; the image preview of a raster attachment.
-2. The per-tenant quota: the setting and its enforcement before bytes are stored, the usage in
-   the tenant's administration (ADR 0016 D6); integration tests across two tenants.
-3. Correcting a time entry with `If-Match` and its revisions
-   ([ADR 0017](../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)).
-4. Unit tests (written for what exists); the README reference for the quota's variable and
-   problem code.
+### Independent of the open question
+
+1. An upload to a comment; the inline preview of a raster attachment.
+2. Correcting a time entry with `If-Match`, and its revisions, in the browser.
+3. Unit tests for both.
+
+### Depends on the answer
+
+4. The per-tenant quota: its setting, the usage in the tenant's administration and, by Q1's
+   answer, the refusal before bytes are stored with its problem code; integration tests across
+   two tenants; the README reference for the quota's variable and code; ADR 0016 amended where
+   the answer departs from it.
+
+## Open questions
+
+### Q1: Does the tenant's attachment quota refuse an upload, or is it only reported?
+
+ADR 0016 D6 lists "a per-tenant quota reported in the tenant's administration" among the limits
+and says "uploads beyond a limit are refused before bytes are stored"; its Residual risks say the
+quota "is reported, not enforced against a hard storage limit; a runaway upload loop is bounded by
+the per-file and per-ticket limits only". The two readings disagree, and nothing of the quota is
+built.
+
+- **(a) Enforce:** a quota per tenant (a variable, `0` for none, as
+  [ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+  D2 has every limit); the tenant's stored bytes summed and checked under a per-tenant lock
+  before the bytes are stored, as the per-ticket count is checked under its ticket's lock; a
+  refusal with a problem code of its own; the usage in the administration. It costs a lock that
+  orders one tenant's uploads, a sum per upload, a code and a variable; the residual risk is
+  amended.
+- **(b) Report only:** the usage in the administration, no refusal; D6's refusal is amended to
+  the per-file and per-ticket limits. One tenant — or an agent with `upload` in a loop, which
+  files tickets without bound and attaches up to the per-ticket count to each — can fill the
+  storage every tenant shares, and the operator's bucket quota, where there is one, stops every
+  tenant at once.
+
+Recommended: **(a)** — the tenant is the isolation unit
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)), and only a
+refusal per tenant keeps one tenant from using up what all of them share; the per-ticket count
+does not bound a loop that files new tickets, which is the gap the record's own residual risk
+names; and D6 already counts the quota among the limits that refuse, with the per-ticket count
+under its lock as the mechanism to copy.
+
+**Answer:** _open_

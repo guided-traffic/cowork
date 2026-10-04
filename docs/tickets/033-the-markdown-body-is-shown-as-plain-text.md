@@ -26,8 +26,11 @@ nothing renders Markdown yet; it is carried over from phase 2.
 
 1. The server renders and sanitises the body (and comments and answers) and returns the HTML
    beside the Markdown, or on a route of its own; the API document says which.
-2. The detail page shows the rendered HTML; editing the body stays Markdown, written with
-   `If-Match` (`replaceTicketBody`).
+2. The detail page shows the rendered HTML; the body's editor (T30) stays Markdown.
 3. Tests with hostile input: script tags, event handlers, `javascript:` and `data:` links, raw
    HTML, images from elsewhere; the security page that names the sanitiser and what it does not
    cover.
+
+## Related
+
+- T30 — the body's editor on the ticket page

@@ -5,9 +5,9 @@ state: in-progress
 severity: medium
 security: none
 threat:
-urgency: later        # rule 4: decided fix
+urgency: later        # rule 4: decided fix; what is left is a path of T29's tier
 effort: M
-blocked-by:
+blocked-by: T29
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03

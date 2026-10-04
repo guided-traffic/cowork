@@ -5,7 +5,7 @@ state: in-progress
 severity: high
 security: none
 threat:
-urgency: next         # rule 3: severity high and the trigger is live (nobody can work in the browser)
+urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox does not exist
 effort: L
 blocked-by:
 filed-from: docs/planning/project-plan.md phase 3, converted by ADR 0074 D2
@@ -19,19 +19,27 @@ done:
 The family ticket of phase 3 ([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
 D2). **Goal:** the owner and a second person run the daily work in the browser.
 
-- The backend serves the API of phase 2; the frontend is the foundation of T28 — PrimeNG with
-  cowork's preset, the shell, read-only pages and the event stream's client. Nobody can log in:
-  until T27 lands, the Angular dev server's proxy presents a seeded token
+- **On `main` and released** (0.2.0 and 0.3.0): the local login with its pages (T27); the
+  frontend foundation with the event stream's client (T28); the backlog as a ranked table grouped
+  by urgency (T34) and the project board (T41); the ticket page's writes — filing, fields, stages,
+  moves, comments, questions, interest, links, attachments and time (T30, T31, T32); the time
+  report; and the tenant's settings, projects, members, accounts and group mappings. Phases 4 (the
+  identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
+  in 0.3.0; phase 3 is the open phase before phase 6
+  ([project-plan.md](../planning/project-plan.md)).
+- **What the goal still lacks:** the person-level lists (T35) and the inbox (T36), through which
+  the phase's verification goes; the end-to-end tier (T29); and what is left of each child below.
+- `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
+  as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-  D2), which no installation has.
-- **Decisions the phase builds on**, beyond the records it implements — the owner's answers of
-  the conversion, amended into the records they change:
-  - **the local login moves from phase 4 into phase 3.** The plan's "temporary login with a
-    token" predated [ADR 0035](../adr/0035-personal-access-tokens.md) D7 ("the browser never
-    holds a token") and ADR 0038's amendment ("the UI needs the login first"); the owner chose
-    sessions, the local administrator, local accounts, CSRF and the creation of tenants and
-    tokens (T27) over moving all of phase 4 forward and over a token in the browser. OIDC, Dex,
-    the group gate and the mappings stay in phase 4;
+  D2).
+- **Decisions the phase builds on**, beyond the records it implements — the owner's answers,
+  amended into the records they change:
+  - **the local login is part of this phase:** the browser never holds a token
+    ([ADR 0035](../adr/0035-personal-access-tokens.md) D7), so the UI needed the login first; the
+    owner chose sessions, the local administrator, local accounts, CSRF and the creation of
+    tenants and tokens (T27) over moving the identity provider forward and over a token in the
+    browser;
   - **PrimeNG 22 under the PrimeUI Community License.** PrimeNG left MIT with version 22
     (2026-07-15); the owner chose a free Community key, kept out of the repository, over Angular
     Material and over PrimeNG 21 on Angular 21
@@ -45,45 +53,46 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
     already decides; measured through the dev proxy: a comment's event reached an
     open stream 29 ms after the write started;
   - **the owner watches the UI while it is built**: `make dev` runs the whole stack with live
-    reload and demo data; the dev proxy is the token's only holder until T27;
-  - high line coverage in the frontend's unit tier, measured and reported as
+    reload and demo data;
+  - high line coverage in the frontend's unit tier, measured and reported per pull request as
     [ADR 0003](../adr/0003-test-and-ci-policy.md) D5 has it, not gated by a number.
-- **Moved into phase 3:** the local login of phase 4 (above). **Carried over from phase 2:**
-  rank (T33), deletion and purge (T38), numbered pages on the audit view, members, tokens and
-  projects (T39), the person-level events with the inbox (T35), the attachment quota (T31), the
-  server-side Markdown sanitiser (T32).
-- **Not in phase 3:** OIDC, Dex, the group gate and mappings, membership administration beyond
-  what a local account's creation grants (phase 4); the MCP server (phase 5); import (phase 6).
+- **Carried over from phase 2:** rank (built; its score and the rebalancing of its keys are T34),
+  deletion and purge (T39), numbered pages on the audit view, members, tokens and projects (T40),
+  the person-level events with the inbox (T36), the attachment quota (T32), the server-side
+  Markdown sanitiser (T33).
+- **Not in phase 3:** import and the cut-over (phase 6).
 
 ## Required changes
 
 1. **The children, in this order.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T27 — the local login: sessions, the local administrator, local accounts, CSRF, tenant
-     and token creation
-   - T28 — the frontend foundation: PrimeNG, the preset, the logo, the shell, the generated
-     client, the services, the event stream's client, `make dev`
-   - T29 — the end-to-end tier: Playwright against the built images, two identities, both schemes
-   - T30 — tickets are filed, edited and moved through their states in the browser
-   - T31 — the ticket's conversation: comments, questions, interest, links, the prerequisite tree
-   - T32 — attachments, the attachment quota, time entries and the time report
+   - T27 — the login's remainder: a token's project by key, the token form's longest lifetime, and
+     its open question on other pods and the frontend
+   - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, two
+     checks by hand, and its open question on the bundle budget
+   - T29 — the end-to-end tier: Playwright against the built images, two identities, both
+     schemes, the login's paths and every view's
+   - T30 — the ticket page edits the title, the body, the parent, the urgency override and the
+     confidential flag, and its editors close when the page turns to another ticket
+   - T31 — comments edited and withdrawn, an open question's text edited, the prerequisite tree
+   - T32 — an upload to a comment, the raster preview, the correction of a time entry, the
+     attachment quota
    - T33 — the rendered Markdown body and the server-side sanitiser
-   - T34 — rank, its moves and the ranked backlog with drag order and the score marker
+   - T34 — the score beside the rank, and the rebalancing of the rank keys
    - T35 — the person-level lists: next for me, assigned to me, open decisions
    - T36 — the inbox and the person-level events
    - T37 — search
    - T38 — saved filters
    - T39 — ticket deletion and the purge
-   - T40 — numbered pages on the administration lists and the tenant administration pages
-   - T41 — the project board
+   - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
+   - T41 — the project board's end-to-end path
    - T42 — the tenant board with swimlanes
    - T43 — the fixed dashboard
 2. **The phase verification**, recorded here with what was run, against what, with what result:
    the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned
    to me" and in its inbox, moves it and closes it — through the UI, without touching the API —
    and the Playwright suite of T29 covers that path with both identities in both schemes.
-3. **Phase close:** every child extracted and archived; `docs/security/` has pages for the
-   sessions, the local accounts and CSRF, each ending with `## What this does not cover`; the
-   README reference covers every variable, value, route and problem code the phase added; the
-   Status of every ADR the phase built says what is built; the phase-3 section is gone from
-   [project-plan.md](../planning/project-plan.md) and phase 4 names only what is left of it.
+3. **Phase close:** every child extracted and archived; the README reference covers every
+   variable, value, route and problem code the phase added; the Status of every ADR the phase
+   built says what is built; the phase-3 section is gone from
+   [project-plan.md](../planning/project-plan.md).
