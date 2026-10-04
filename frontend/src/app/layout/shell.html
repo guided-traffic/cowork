@@ -18,8 +18,8 @@
         ariaLabel="Tenant"
         data-testid="tenant-switch"
       />
-    } @else if (session.membership(); as membership) {
-      <span class="tenant-name" data-testid="tenant-name">{{ membership.tenant.name }}</span>
+    } @else if (session.shown(); as shown) {
+      <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
     }
 
     <span class="spacer"></span>
@@ -118,6 +118,9 @@
             data-testid="nav-accounts"
             ><i class="pi pi-id-card"></i>Accounts</a
           >
+        }
+        <!-- A global administrator without a role here sees the administration only (docs/adr/0034 D2). -->
+        @if (tenantInfo.isAdmin() || session.oversight()) {
           <a
             class="item"
             [routerLink]="['/t', tenant, 'group-mappings']"
@@ -126,13 +129,15 @@
             ><i class="pi pi-sitemap"></i>Group mappings</a
           >
         }
-        <a
-          class="item"
-          [routerLink]="['/t', tenant, 'time']"
-          routerLinkActive="active"
-          data-testid="nav-time"
-          ><i class="pi pi-clock"></i>Time</a
-        >
+        @if (!session.oversight()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'time']"
+            routerLinkActive="active"
+            data-testid="nav-time"
+            ><i class="pi pi-clock"></i>Time</a
+          >
+        }
         <a
           class="item"
           [routerLink]="['/t', tenant, 'settings']"
@@ -142,37 +147,39 @@
         >
       </div>
 
-      <div class="section">
-        <div class="heading">
-          Projects
-          @if (tenantInfo.canCreateProjects()) {
-            <button
-              type="button"
-              class="add"
-              (click)="creatingProject.set(true)"
-              aria-label="New project"
-              title="New project"
-              data-testid="nav-new-project"
+      @if (!session.oversight()) {
+        <div class="section">
+          <div class="heading">
+            Projects
+            @if (tenantInfo.canCreateProjects()) {
+              <button
+                type="button"
+                class="add"
+                (click)="creatingProject.set(true)"
+                aria-label="New project"
+                title="New project"
+                data-testid="nav-new-project"
+              >
+                <i class="pi pi-plus"></i>
+              </button>
+            }
+          </div>
+          @for (project of projects.list(); track project.id) {
+            <a
+              class="item project"
+              [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
+              routerLinkActive="active"
+              [attr.data-testid]="'nav-project-' + project.key"
+              ><span class="key">{{ project.key }}</span
+              ><span class="name">{{ project.name }}</span></a
             >
-              <i class="pi pi-plus"></i>
-            </button>
+          } @empty {
+            @if (!projects.projects.isLoading()) {
+              <span class="item empty">No projects yet</span>
+            }
           }
         </div>
-        @for (project of projects.list(); track project.id) {
-          <a
-            class="item project"
-            [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
-            routerLinkActive="active"
-            [attr.data-testid]="'nav-project-' + project.key"
-            ><span class="key">{{ project.key }}</span
-            ><span class="name">{{ project.name }}</span></a
-          >
-        } @empty {
-          @if (!projects.projects.isLoading()) {
-            <span class="item empty">No projects yet</span>
-          }
-        }
-      </div>
+      }
     }
 
     <div class="section bottom">

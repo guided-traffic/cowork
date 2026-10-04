@@ -5,14 +5,16 @@
 -- name: FindPersonsByEmail :many
 -- The active persons of the configured issuer whose address — as the issuer
 -- asserted it at their last login — is the given one, compared without regard
--- to case. An address the issuer marked unverified is no one's
--- (docs/adr/0030 D3), and a person of another issuer cannot log in (the
--- security review of 2026-10-04, m6). The transaction names the address in
--- app.person_lookup, which the users policy admits those rows for; two rows say
--- the address is not one person's.
+-- to case. An address is someone's only when the issuer marked it verified, or,
+-- with COWORK_OIDC_EMAIL_TRUSTED (email_trusted), when it said nothing about
+-- it; one it marked unverified is no one's (docs/adr/0030 D3). A person of
+-- another issuer cannot log in (the security review of 2026-10-04, m6). The
+-- transaction names the address in app.person_lookup, which the users policy
+-- admits those rows for; two rows say the address is not one person's.
 SELECT id
 FROM users
-WHERE lower(email) = lower(sqlc.arg(email)) AND deactivated_at IS NULL AND email_verified IS DISTINCT FROM false
+WHERE lower(email) = lower(sqlc.arg(email)) AND deactivated_at IS NULL
+  AND (email_verified OR (sqlc.arg(email_trusted)::boolean AND email_verified IS NULL))
   AND oidc_issuer = sqlc.arg(issuer)::text
 ORDER BY id
 LIMIT 2;

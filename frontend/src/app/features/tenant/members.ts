@@ -25,6 +25,7 @@ import { TenantService } from '../../core/tenant.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { refocus } from '../../shared/refocus';
 import { AddMemberDialog } from './add-member-dialog';
+import { SelfGrant } from './self-grant';
 import {
   higher,
   lastAdminNotice,
@@ -43,8 +44,10 @@ import {
  * only. They add a person by e-mail address or username, change a member's grant in the row and
  * remove it; a removal asks first and says what stays. A change that takes the administrator's own
  * administrator role away asks first as well. Anybody else sees the list without the controls
- * (D8). A refusal the page can explain — the tenant's last administrator, a person who is gone —
- * is its message above the list; anything else is a toast. When a dialog closes, the keyboard goes
+ * (D8). A global administrator who holds a role below `admin` here is offered to raise their own
+ * grant above the list ({@link SelfGrant}, docs/adr/0034 D2); one without a role is offered the
+ * grant above every page of the tenant. A refusal the page can explain — the tenant's last
+ * administrator, a person who is gone — is its message above the list; anything else is a toast. When a dialog closes, the keyboard goes
  * back to the control it came from, or where that control went: the row's select, the row that
  * took its place, the heading.
  */
@@ -58,6 +61,7 @@ import {
     FormsModule,
     Message,
     Select,
+    SelfGrant,
     TableModule,
     Tooltip,
   ],

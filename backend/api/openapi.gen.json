@@ -3258,6 +3258,54 @@
         ],
         "type": "object"
       },
+      "TenantSummary": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "description": "The role the caller holds in the tenant, the higher of their mapping and\ntheir grant; null where they hold none (docs/adr/0034 D2)\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "role"
+        ],
+        "type": "object"
+      },
+      "TenantSummaryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TenantSummary"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "Ticket": {
         "properties": {
           "assignee": {
@@ -4281,7 +4329,7 @@
     },
     "securitySchemes": {
       "bearerToken": {
-        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\nA request that carries an `Authorization` header is a token's, and\nits cookie, if any, is not looked at. A token of a person the identity\nprovider's groups no longer admit is refused with `401 not_allowed`,\nchecked against the person's groups as of their last login or groups\nrefresh, at most `COWORK_OIDC_GROUPS_REFRESH` apart (docs/adr/0035 D8).\n",
+        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\nA request that carries an `Authorization` header is a token's, and\nits cookie, if any, is not looked at. A token of a person the identity\nprovider's groups no longer admit is refused with `401 not_allowed`,\nchecked against the person's groups as of their last login or groups\nrefresh, at most `COWORK_OIDC_GROUPS_REFRESH` apart, and so is one whose\ngroups are older than `COWORK_OIDC_GROUPS_MAX_AGE`, until the person\nsigns in to the browser once (docs/adr/0035 D8).\n",
         "scheme": "bearer",
         "type": "http"
       },
@@ -4294,7 +4342,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat, and the administration acts that\ngive access: adding a member, setting a grant, making or changing a group\nmapping, restricting or opening a project, putting a person on its access\nlist. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat, a global administrator's list\nof every tenant, and the administration acts that give access: adding a member, setting a grant, making or changing a group\nmapping, restricting or opening a project, putting a person on its access\nlist. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -4650,6 +4698,42 @@
       }
     },
     "/api/v1/tenants": {
+      "get": {
+        "description": "Every tenant by slug, with the role the caller holds in it — the highest\nof their mapping and their grant — or `null` where they hold none\n(docs/adr/0034 D2). It is how a global administrator finds a tenant in\nwhich they have no role: there they see its administration — the\ntenant and its settings, its members, its group mappings — and grant\nthemselves a role (`PUT …/members/{person_id}/grant` with their own id),\nand nothing of its work until they have. A person who is not a global\nadministrator is `403 forbidden`; the tenants they belong to are in\n`GET /api/v1/me`. A browser session only, which no agent mark carries: a\ntoken is `403 session_required`, so a leaked token of a global\nadministrator lists no tenant beyond the person's own.\n",
+        "operationId": "listTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantSummaryList"
+                }
+              }
+            },
+            "description": "A page of tenants, by slug"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Every tenant of the installation, for a global administrator",
+        "tags": [
+          "tenants"
+        ]
+      },
       "post": {
         "description": "A global administrator, in a browser session: no token creates a tenant\n(`403 session_required`), and a person who is not a global administrator\nis `403 forbidden`. The creator becomes the tenant's first administrator\nby a marked grant, recorded with the tenant (docs/adr/0032 D7); a global\nadministrator has no other role in it (docs/adr/0034 D2). The slug is\nimmutable and never reused (docs/adr/0005 D4).\n",
         "operationId": "createTenant",
@@ -4708,6 +4792,7 @@
     },
     "/api/v1/tenants/{tenant}": {
       "get": {
+        "description": "Every member reads it; a global administrator who holds no role in the\ntenant too, in a browser session, as part of its administration\n(docs/adr/0034 D2).\n",
         "operationId": "getTenant",
         "responses": {
           "200": {
@@ -5225,7 +5310,7 @@
     },
     "/api/v1/tenants/{tenant}/group-mappings": {
       "get": {
-        "description": "Each mapping gives its role to every person whose groups include its\ngroup; several matches yield the highest role (docs/adr/0030 D2).\n`includes_caller` says the calling person is one of them, so the editor\ncan warn before a change takes the editor's own role away.\n",
+        "description": "Each mapping gives its role to every person whose groups include its\ngroup; several matches yield the highest role (docs/adr/0030 D2).\n`includes_caller` says the calling person is one of them, so the editor\ncan warn before a change takes the editor's own role away. The tenant's\nadministrators read them, and a global administrator who holds no role\nin the tenant, in a browser session (docs/adr/0034 D2).\n",
         "operationId": "listGroupMappings",
         "parameters": [
           {
@@ -5261,7 +5346,7 @@
         }
       ],
       "post": {
-        "description": "The group is matched exactly, case and all, against the groups the\nidentity provider's claim carries (docs/adr/0029 D2). The mapping applies\nat once to every person whose groups, as of their last login or groups\nrefresh, include it: their memberships are derived in the same\ntransaction, recorded with the cause `mapping`. Everyone else is caught\nup at their next login or groups refresh (docs/adr/0030 D5). A group the\ntenant maps already is `409 mapping_exists`.\n",
+        "description": "The group is matched exactly, case and all, against the groups the\nidentity provider's claim carries (docs/adr/0029 D2). The mapping applies\nat once to every person whose groups, as of their last login or groups\nrefresh, include it: their memberships are derived in the same\ntransaction, recorded with the cause `mapping`. Everyone else is caught\nup at their next login or groups refresh (docs/adr/0030 D5). A group the\ntenant maps already is `409 mapping_exists`.\n\nOnly a global administrator who administers the tenant maps a group, in\na browser session; any other administrator of the tenant is\n`403 forbidden`, and nothing is written. Every tenant shares the identity\nprovider's one namespace of groups, and a mapping admits everyone in its\ngroup at once (docs/adr/0030 D7).\n",
         "operationId": "createGroupMapping",
         "parameters": [
           {
@@ -5318,7 +5403,7 @@
     },
     "/api/v1/tenants/{tenant}/group-mappings/{mapping_id}": {
       "delete": {
-        "description": "The memberships it derived go at once, or fall to the highest of the\nperson's other mapped groups; grants stay (docs/adr/0030 D3).\nIdempotent: removing a mapping that does not exist answers 204 as well.\n",
+        "description": "The memberships it derived go at once, or fall to the highest of the\nperson's other mapped groups; grants stay (docs/adr/0030 D3). Any\nadministrator of the tenant may remove one, with an `admin`-scope token\ntoo: it only takes access away (docs/adr/0030 D7).\nIdempotent: removing a mapping that does not exist answers 204 as well.\n",
         "operationId": "deleteGroupMapping",
         "responses": {
           "204": {
@@ -5342,7 +5427,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). The memberships the mapping\nderives change at once, as at its creation.\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). The memberships the mapping\nderives change at once, as at its creation. Like its creation, a global\nadministrator's who administers the tenant: any other administrator is\n`403 forbidden` (docs/adr/0030 D7).\n",
         "operationId": "updateGroupMapping",
         "parameters": [
           {
@@ -5395,7 +5480,7 @@
     },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
-        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null.\n",
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2).\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -5520,7 +5605,7 @@
         }
       ],
       "put": {
-        "description": "Creates the member's manual grant with the role, or changes the role of\nthe one they hold; repeating it changes nothing (docs/adr/0045 D1). The\nmapped membership is never touched: it holds until the mapping or the\ngroups change (docs/adr/0030 D3). The person must be a member of the\ntenant, else `404 person_not_found` — a person who is not one yet is\nadded by e-mail address or username.\n",
+        "description": "Creates the member's manual grant with the role, or changes the role of\nthe one they hold; repeating it changes nothing (docs/adr/0045 D1). The\nmapped membership is never touched: it holds until the mapping or the\ngroups change (docs/adr/0030 D3). The person must be a member of the\ntenant, else `404 person_not_found` — a person who is not one yet is\nadded by e-mail address or username.\n\nA global administrator who does not hold `admin` in the tenant — who\nholds no role there, or a lower one — sets their own grant here, their\nown id as `person_id` and any role (docs/adr/0034 D2): a marked grant like\nany other, made or its role changed under the tenant's lock, recorded in\nthe tenant's audit with the administrator as its actor and announced to\nits members as `membership.changed`. It takes no administrator away, so\nit is never `409 last_admin`; it is how a tenant left without an\nadministrator who can log in gets one again. A grant to anybody else\nstays an administrator's act: `403 forbidden`.\n",
         "operationId": "setMemberGrant",
         "requestBody": {
           "content": {

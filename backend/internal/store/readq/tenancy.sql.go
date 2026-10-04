@@ -98,6 +98,29 @@ func (q *Queries) GetTenant(ctx context.Context, tenantID uuid.UUID) (GetTenantR
 	return i, err
 }
 
+const getTenantBySlug = `-- name: GetTenantBySlug :one
+SELECT id, slug, name
+FROM tenants
+WHERE slug = $1
+`
+
+type GetTenantBySlugRow struct {
+	ID   uuid.UUID
+	Slug string
+	Name string
+}
+
+// A tenant by slug, whoever is a member: the tenant boundary's read for a
+// global administrator who holds no role in it (docs/adr/0034 D2). The tenants
+// policy admits the row to a global administrator and to the tenant's members
+// only (migration 26), so for anybody else it is no row.
+func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (GetTenantBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getTenantBySlug, slug)
+	var i GetTenantBySlugRow
+	err := row.Scan(&i.ID, &i.Slug, &i.Name)
+	return i, err
+}
+
 const getTenantForPerson = `-- name: GetTenantForPerson :one
 SELECT t.id, t.slug, t.name, max(m.role)::tenant_role AS role
 FROM tenants t
@@ -295,6 +318,52 @@ func (q *Queries) ListMembershipsOfUser(ctx context.Context, userID uuid.UUID) (
 			&i.Sources,
 			&i.Roles,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTenants = `-- name: ListTenants :many
+SELECT t.slug, t.name, COALESCE(max(m.role)::text, '')::text AS role
+FROM tenants t
+LEFT JOIN memberships m ON m.tenant_id = t.id AND m.user_id = $1
+WHERE $2::text IS NULL OR t.slug > $2::text
+GROUP BY t.id, t.slug, t.name
+ORDER BY t.slug
+LIMIT $3
+`
+
+type ListTenantsParams struct {
+	UserID   uuid.UUID
+	After    *string
+	PageSize int32
+}
+
+type ListTenantsRow struct {
+	Slug string
+	Name string
+	Role string
+}
+
+// Every tenant of the installation by slug, a page after the cursor's slug,
+// with the person's highest role in each — ” where they hold none: the
+// tenant list of a global administrator (docs/adr/0034 D2), whom alone the
+// tenants policy shows every row.
+func (q *Queries) ListTenants(ctx context.Context, arg ListTenantsParams) ([]ListTenantsRow, error) {
+	rows, err := q.db.Query(ctx, listTenants, arg.UserID, arg.After, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantsRow{}
+	for rows.Next() {
+		var i ListTenantsRow
+		if err := rows.Scan(&i.Slug, &i.Name, &i.Role); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

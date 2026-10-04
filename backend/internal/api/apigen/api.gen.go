@@ -2136,6 +2136,22 @@ type TenantRef struct {
 	Slug string `json:"slug"`
 }
 
+// TenantSummary defines model for TenantSummary.
+type TenantSummary struct {
+	Name string `json:"name"`
+
+	// Role The role the caller holds in the tenant, the higher of their mapping and
+	// their grant; null where they hold none (docs/adr/0034 D2)
+	Role nullable.Nullable[Role] `json:"role"`
+	Slug string                  `json:"slug"`
+}
+
+// TenantSummaryList defines model for TenantSummaryList.
+type TenantSummaryList struct {
+	Items      []TenantSummary           `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
 // Ticket defines model for Ticket.
 type Ticket struct {
 	Assignee nullable.Nullable[Person] `json:"assignee"`
@@ -2705,6 +2721,15 @@ type CreateMyTokenParams struct {
 	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
 	// agent's POST requires one (docs/adr/0045 D3, D4).
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ListTenantsParams defines parameters for ListTenants.
+type ListTenantsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateTenantParams defines parameters for CreateTenant.
@@ -3596,6 +3621,23 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
 	GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListTenants Every tenant of the installation, for a global administrator
+	//
+	// Every tenant by slug, with the role the caller holds in it — the highest
+	// of their mapping and their grant — or `null` where they hold none
+	// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+	// which they have no role: there they see its administration — the
+	// tenant and its settings, its members, its group mappings — and grant
+	// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+	// and nothing of its work until they have. A person who is not a global
+	// administrator is `403 forbidden`; the tenants they belong to are in
+	// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+	// token is `403 session_required`, so a leaked token of a global
+	// administrator lists no tenant beyond the person's own.
+	//
+	// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+	ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateTenantWithBody Create a tenant
 	//
 	// A global administrator, in a browser session: no token creates a tenant
@@ -3625,6 +3667,10 @@ type ClientInterface interface {
 	CreateTenant(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTenant The tenant and its settings
+	//
+	// Every member reads it; a global administrator who holds no role in the
+	// tenant too, in a browser session, as part of its administration
+	// (docs/adr/0034 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant} (the `GetTenant` operationId).
 	GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3792,7 +3838,9 @@ type ClientInterface interface {
 	// Each mapping gives its role to every person whose groups include its
 	// group; several matches yield the highest role (docs/adr/0030 D2).
 	// `includes_caller` says the calling person is one of them, so the editor
-	// can warn before a change takes the editor's own role away.
+	// can warn before a change takes the editor's own role away. The tenant's
+	// administrators read them, and a global administrator who holds no role
+	// in the tenant, in a browser session (docs/adr/0034 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
 	ListGroupMappings(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3806,6 +3854,12 @@ type ClientInterface interface {
 	// transaction, recorded with the cause `mapping`. Everyone else is caught
 	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
 	// tenant maps already is `409 mapping_exists`.
+	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3822,6 +3876,12 @@ type ClientInterface interface {
 	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
 	// tenant maps already is `409 mapping_exists`.
 	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -3830,7 +3890,9 @@ type ClientInterface interface {
 	// DeleteGroupMapping Remove a mapping
 	//
 	// The memberships it derived go at once, or fall to the highest of the
-	// person's other mapped groups; grants stay (docs/adr/0030 D3).
+	// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+	// administrator of the tenant may remove one, with an `admin`-scope token
+	// too: it only takes access away (docs/adr/0030 D7).
 	// Idempotent: removing a mapping that does not exist answers 204 as well.
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
@@ -3839,7 +3901,9 @@ type ClientInterface interface {
 	// UpdateGroupMappingWithBody Change a mapping's role
 	//
 	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-	// derives change at once, as at its creation.
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3849,7 +3913,9 @@ type ClientInterface interface {
 	// UpdateGroupMapping Change a mapping's role
 	//
 	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-	// derives change at once, as at its creation.
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3863,7 +3929,9 @@ type ClientInterface interface {
 	// own role; `local` marks a person with a local account rather than an
 	// identity of the identity provider (docs/adr/0033). `email` is the
 	// address that tells two persons of one name apart, for the tenant's
-	// administrators; everyone else reads null.
+	// administrators; everyone else reads null — a global administrator who
+	// holds no role in the tenant and reads the list as part of its
+	// administration too (docs/adr/0034 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 	ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3920,6 +3988,16 @@ type ClientInterface interface {
 	// tenant, else `404 person_not_found` — a person who is not one yet is
 	// added by e-mail address or username.
 	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
@@ -3933,6 +4011,16 @@ type ClientInterface interface {
 	// groups change (docs/adr/0030 D3). The person must be a member of the
 	// tenant, else `404 person_not_found` — a person who is not one yet is
 	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5184,6 +5272,33 @@ func (c *Client) GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
+// ListTenants Every tenant of the installation, for a global administrator
+//
+// Every tenant by slug, with the role the caller holds in it — the highest
+// of their mapping and their grant — or `null` where they hold none
+// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+// which they have no role: there they see its administration — the
+// tenant and its settings, its members, its group mappings — and grant
+// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+// and nothing of its work until they have. A person who is not a global
+// administrator is `403 forbidden`; the tenants they belong to are in
+// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+// token is `403 session_required`, so a leaked token of a global
+// administrator lists no tenant beyond the person's own.
+//
+// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+func (c *Client) ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTenantsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateTenantWithBody Create a tenant
 //
 // A global administrator, in a browser session: no token creates a tenant
@@ -5233,6 +5348,10 @@ func (c *Client) CreateTenant(ctx context.Context, params *CreateTenantParams, b
 }
 
 // GetTenant The tenant and its settings
+//
+// Every member reads it; a global administrator who holds no role in the
+// tenant too, in a browser session, as part of its administration
+// (docs/adr/0034 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant} (the `GetTenant` operationId).
 func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5530,7 +5649,9 @@ func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, req
 // Each mapping gives its role to every person whose groups include its
 // group; several matches yield the highest role (docs/adr/0030 D2).
 // `includes_caller` says the calling person is one of them, so the editor
-// can warn before a change takes the editor's own role away.
+// can warn before a change takes the editor's own role away. The tenant's
+// administrators read them, and a global administrator who holds no role
+// in the tenant, in a browser session (docs/adr/0034 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
 func (c *Client) ListGroupMappings(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5554,6 +5675,12 @@ func (c *Client) ListGroupMappings(ctx context.Context, tenant TenantSlug, param
 // transaction, recorded with the cause `mapping`. Everyone else is caught
 // up at their next login or groups refresh (docs/adr/0030 D5). A group the
 // tenant maps already is `409 mapping_exists`.
+//
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5580,6 +5707,12 @@ func (c *Client) CreateGroupMappingWithBody(ctx context.Context, tenant TenantSl
 // up at their next login or groups refresh (docs/adr/0030 D5). A group the
 // tenant maps already is `409 mapping_exists`.
 //
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -5598,7 +5731,9 @@ func (c *Client) CreateGroupMapping(ctx context.Context, tenant TenantSlug, para
 // DeleteGroupMapping Remove a mapping
 //
 // The memberships it derived go at once, or fall to the highest of the
-// person's other mapped groups; grants stay (docs/adr/0030 D3).
+// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+// administrator of the tenant may remove one, with an `admin`-scope token
+// too: it only takes access away (docs/adr/0030 D7).
 // Idempotent: removing a mapping that does not exist answers 204 as well.
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
@@ -5617,7 +5752,9 @@ func (c *Client) DeleteGroupMapping(ctx context.Context, tenant TenantSlug, mapp
 // UpdateGroupMappingWithBody Change a mapping's role
 //
 // `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-// derives change at once, as at its creation.
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5637,7 +5774,9 @@ func (c *Client) UpdateGroupMappingWithBody(ctx context.Context, tenant TenantSl
 // UpdateGroupMapping Change a mapping's role
 //
 // `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-// derives change at once, as at its creation.
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5661,7 +5800,9 @@ func (c *Client) UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mapp
 // own role; `local` marks a person with a local account rather than an
 // identity of the identity provider (docs/adr/0033). `email` is the
 // address that tells two persons of one name apart, for the tenant's
-// administrators; everyone else reads null.
+// administrators; everyone else reads null — a global administrator who
+// holds no role in the tenant and reads the list as part of its
+// administration too (docs/adr/0034 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 func (c *Client) ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5758,6 +5899,16 @@ func (c *Client) RemoveMemberGrant(ctx context.Context, tenant TenantSlug, perso
 // tenant, else `404 person_not_found` — a person who is not one yet is
 // added by e-mail address or username.
 //
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
@@ -5781,6 +5932,16 @@ func (c *Client) SetMemberGrantWithBody(ctx context.Context, tenant TenantSlug, 
 // groups change (docs/adr/0030 D3). The person must be a member of the
 // tenant, else `404 person_not_found` — a person who is not one yet is
 // added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7972,6 +8133,72 @@ func NewGetCoworkYamlSchemaRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTenantsRequest constructs an http.Request for the ListTenants method
+func NewListTenantsRequest(server string, params *ListTenantsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -14289,6 +14516,25 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
 	GetCoworkYamlSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCoworkYamlSchemaResponse, error)
 
+	// ListTenantsWithResponse Every tenant of the installation, for a global administrator
+	//
+	// Every tenant by slug, with the role the caller holds in it — the highest
+	// of their mapping and their grant — or `null` where they hold none
+	// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+	// which they have no role: there they see its administration — the
+	// tenant and its settings, its members, its group mappings — and grant
+	// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+	// and nothing of its work until they have. A person who is not a global
+	// administrator is `403 forbidden`; the tenants they belong to are in
+	// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+	// token is `403 session_required`, so a leaked token of a global
+	// administrator lists no tenant beyond the person's own.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+	ListTenantsWithResponse(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error)
+
 	// CreateTenantWithBodyWithResponse Create a tenant
 	//
 	// A global administrator, in a browser session: no token creates a tenant
@@ -14318,6 +14564,10 @@ type ClientWithResponsesInterface interface {
 	CreateTenantWithResponse(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error)
 
 	// GetTenantWithResponse The tenant and its settings
+	//
+	// Every member reads it; a global administrator who holds no role in the
+	// tenant too, in a browser session, as part of its administration
+	// (docs/adr/0034 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14499,7 +14749,9 @@ type ClientWithResponsesInterface interface {
 	// Each mapping gives its role to every person whose groups include its
 	// group; several matches yield the highest role (docs/adr/0030 D2).
 	// `includes_caller` says the calling person is one of them, so the editor
-	// can warn before a change takes the editor's own role away.
+	// can warn before a change takes the editor's own role away. The tenant's
+	// administrators read them, and a global administrator who holds no role
+	// in the tenant, in a browser session (docs/adr/0034 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14516,6 +14768,12 @@ type ClientWithResponsesInterface interface {
 	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
 	// tenant maps already is `409 mapping_exists`.
 	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -14531,6 +14789,12 @@ type ClientWithResponsesInterface interface {
 	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
 	// tenant maps already is `409 mapping_exists`.
 	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -14539,7 +14803,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteGroupMappingWithResponse Remove a mapping
 	//
 	// The memberships it derived go at once, or fall to the highest of the
-	// person's other mapped groups; grants stay (docs/adr/0030 D3).
+	// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+	// administrator of the tenant may remove one, with an `admin`-scope token
+	// too: it only takes access away (docs/adr/0030 D7).
 	// Idempotent: removing a mapping that does not exist answers 204 as well.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -14550,7 +14816,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateGroupMappingWithBodyWithResponse Change a mapping's role
 	//
 	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-	// derives change at once, as at its creation.
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14560,7 +14828,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateGroupMappingWithResponse Change a mapping's role
 	//
 	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-	// derives change at once, as at its creation.
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14574,7 +14844,9 @@ type ClientWithResponsesInterface interface {
 	// own role; `local` marks a person with a local account rather than an
 	// identity of the identity provider (docs/adr/0033). `email` is the
 	// address that tells two persons of one name apart, for the tenant's
-	// administrators; everyone else reads null.
+	// administrators; everyone else reads null — a global administrator who
+	// holds no role in the tenant and reads the list as part of its
+	// administration too (docs/adr/0034 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14635,6 +14907,16 @@ type ClientWithResponsesInterface interface {
 	// tenant, else `404 person_not_found` — a person who is not one yet is
 	// added by e-mail address or username.
 	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
@@ -14648,6 +14930,16 @@ type ClientWithResponsesInterface interface {
 	// groups change (docs/adr/0030 D3). The person must be a member of the
 	// tenant, else `404 person_not_found` — a person who is not one yet is
 	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -16188,6 +16480,61 @@ func (r GetCoworkYamlSchemaResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCoworkYamlSchemaResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListTenantsResponseDefaultHeaders the declared response headers of an HTTP default response for ListTenants
+type ListTenantsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListTenantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TenantSummaryList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListTenantsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTenantsResponse) GetJSON200() *TenantSummaryList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTenantsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTenantsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTenantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTenantsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -21221,6 +21568,31 @@ func (c *ClientWithResponses) GetCoworkYamlSchemaWithResponse(ctx context.Contex
 	return ParseGetCoworkYamlSchemaResponse(rsp)
 }
 
+// ListTenantsWithResponse Every tenant of the installation, for a global administrator
+//
+// Every tenant by slug, with the role the caller holds in it — the highest
+// of their mapping and their grant — or `null` where they hold none
+// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+// which they have no role: there they see its administration — the
+// tenant and its settings, its members, its group mappings — and grant
+// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+// and nothing of its work until they have. A person who is not a global
+// administrator is `403 forbidden`; the tenants they belong to are in
+// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+// token is `403 session_required`, so a leaked token of a global
+// administrator lists no tenant beyond the person's own.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+func (c *ClientWithResponses) ListTenantsWithResponse(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error) {
+	rsp, err := c.ListTenants(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTenantsResponse(rsp)
+}
+
 // CreateTenantWithBodyWithResponse Create a tenant
 //
 // A global administrator, in a browser session: no token creates a tenant
@@ -21262,6 +21634,10 @@ func (c *ClientWithResponses) CreateTenantWithResponse(ctx context.Context, para
 }
 
 // GetTenantWithResponse The tenant and its settings
+//
+// Every member reads it; a global administrator who holds no role in the
+// tenant too, in a browser session, as part of its administration
+// (docs/adr/0034 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -21521,7 +21897,9 @@ func (c *ClientWithResponses) GetChatAvailabilityWithResponse(ctx context.Contex
 // Each mapping gives its role to every person whose groups include its
 // group; several matches yield the highest role (docs/adr/0030 D2).
 // `includes_caller` says the calling person is one of them, so the editor
-// can warn before a change takes the editor's own role away.
+// can warn before a change takes the editor's own role away. The tenant's
+// administrators read them, and a global administrator who holds no role
+// in the tenant, in a browser session (docs/adr/0034 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -21544,6 +21922,12 @@ func (c *ClientWithResponses) ListGroupMappingsWithResponse(ctx context.Context,
 // up at their next login or groups refresh (docs/adr/0030 D5). A group the
 // tenant maps already is `409 mapping_exists`.
 //
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -21565,6 +21949,12 @@ func (c *ClientWithResponses) CreateGroupMappingWithBodyWithResponse(ctx context
 // up at their next login or groups refresh (docs/adr/0030 D5). A group the
 // tenant maps already is `409 mapping_exists`.
 //
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
@@ -21579,7 +21969,9 @@ func (c *ClientWithResponses) CreateGroupMappingWithResponse(ctx context.Context
 // DeleteGroupMappingWithResponse Remove a mapping
 //
 // The memberships it derived go at once, or fall to the highest of the
-// person's other mapped groups; grants stay (docs/adr/0030 D3).
+// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+// administrator of the tenant may remove one, with an `admin`-scope token
+// too: it only takes access away (docs/adr/0030 D7).
 // Idempotent: removing a mapping that does not exist answers 204 as well.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -21596,7 +21988,9 @@ func (c *ClientWithResponses) DeleteGroupMappingWithResponse(ctx context.Context
 // UpdateGroupMappingWithBodyWithResponse Change a mapping's role
 //
 // `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-// derives change at once, as at its creation.
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21612,7 +22006,9 @@ func (c *ClientWithResponses) UpdateGroupMappingWithBodyWithResponse(ctx context
 // UpdateGroupMappingWithResponse Change a mapping's role
 //
 // `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-// derives change at once, as at its creation.
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21632,7 +22028,9 @@ func (c *ClientWithResponses) UpdateGroupMappingWithResponse(ctx context.Context
 // own role; `local` marks a person with a local account rather than an
 // identity of the identity provider (docs/adr/0033). `email` is the
 // address that tells two persons of one name apart, for the tenant's
-// administrators; everyone else reads null.
+// administrators; everyone else reads null — a global administrator who
+// holds no role in the tenant and reads the list as part of its
+// administration too (docs/adr/0034 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -21717,6 +22115,16 @@ func (c *ClientWithResponses) RemoveMemberGrantWithResponse(ctx context.Context,
 // tenant, else `404 person_not_found` — a person who is not one yet is
 // added by e-mail address or username.
 //
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
@@ -21736,6 +22144,16 @@ func (c *ClientWithResponses) SetMemberGrantWithBodyWithResponse(ctx context.Con
 // groups change (docs/adr/0030 D3). The person must be a member of the
 // tenant, else `404 person_not_found` — a person who is not one yet is
 // added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -23703,6 +24121,52 @@ func ParseGetCoworkYamlSchemaResponse(rsp *http.Response) (*GetCoworkYamlSchemaR
 	switch {
 	case true:
 		var headers GetCoworkYamlSchemaResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListTenantsResponse parses an HTTP response from a ListTenantsWithResponse call
+func ParseListTenantsResponse(rsp *http.Response) (*ListTenantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTenantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TenantSummaryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListTenantsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -28081,6 +28545,9 @@ type ServerInterface interface {
 	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
 	// (GET /api/v1/schemas/cowork-yaml.json)
 	GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request)
+	// ListTenants Every tenant of the installation, for a global administrator
+	// (GET /api/v1/tenants)
+	ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(w http.ResponseWriter, r *http.Request, params CreateTenantParams)
@@ -28558,6 +29025,52 @@ func (siw *ServerInterfaceWrapper) GetCoworkYamlSchema(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCoworkYamlSchema(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTenants operation middleware
+func (siw *ServerInterfaceWrapper) ListTenants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenants(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -34050,6 +34563,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/me/tokens/{token_id}", wrapper.RevokeMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/openapi.json", wrapper.GetOpenAPI)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schemas/cowork-yaml.json", wrapper.GetCoworkYamlSchema)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants", wrapper.ListTenants)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants", wrapper.CreateTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.GetTenant)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.UpdateTenant)
@@ -34503,6 +35017,49 @@ type GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse) VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantsRequestObject struct {
+	Params ListTenantsParams
+}
+
+type ListTenantsResponseObject interface {
+	VisitListTenantsResponse(w http.ResponseWriter) error
+}
+
+type ListTenants200JSONResponse TenantSummaryList
+
+func (response ListTenants200JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTenantsdefaultApplicationProblemPlusJSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -38885,6 +39442,9 @@ type StrictServerInterface interface {
 	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
 	// (GET /api/v1/schemas/cowork-yaml.json)
 	GetCoworkYamlSchema(ctx context.Context, request GetCoworkYamlSchemaRequestObject) (GetCoworkYamlSchemaResponseObject, error)
+	// ListTenants Every tenant of the installation, for a global administrator
+	// (GET /api/v1/tenants)
+	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
@@ -39403,6 +39963,32 @@ func (sh *strictHandler) GetCoworkYamlSchema(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCoworkYamlSchemaResponseObject); ok {
 		if err := validResponse.VisitGetCoworkYamlSchemaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenants operation middleware
+func (sh *strictHandler) ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams) {
+	var request ListTenantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenants(ctx, request.(ListTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantsResponseObject); ok {
+		if err := validResponse.VisitListTenantsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

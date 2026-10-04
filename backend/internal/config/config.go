@@ -72,6 +72,8 @@ const (
 	EnvOIDCAllowedGroups = "COWORK_OIDC_ALLOWED_GROUPS"
 	EnvAdminGroup        = "COWORK_ADMIN_GROUP"
 	EnvOIDCGroupsRefresh = "COWORK_OIDC_GROUPS_REFRESH"
+	EnvOIDCGroupsMaxAge  = "COWORK_OIDC_GROUPS_MAX_AGE"
+	EnvOIDCEmailTrusted  = "COWORK_OIDC_EMAIL_TRUSTED"
 	EnvOIDCDisplayName   = "COWORK_OIDC_DISPLAY_NAME"
 )
 
@@ -118,7 +120,11 @@ const (
 	DefaultOIDCGroupsClaim   = "groups"
 	DefaultOIDCGroupsRefresh = 15 * time.Minute
 	MinOIDCGroupsRefresh     = time.Minute
-	DefaultOIDCDisplayName   = "single sign-on"
+	// DefaultOIDCGroupsMaxAge is how old the groups a token's person is judged
+	// by may be (docs/adr/0035 D8): a week, so a weekly sign-in in the browser
+	// keeps a person's tokens working.
+	DefaultOIDCGroupsMaxAge = 7 * 24 * time.Hour
+	DefaultOIDCDisplayName  = "single sign-on"
 )
 
 // Config is the complete server configuration.
@@ -244,6 +250,16 @@ type OIDC struct {
 	// token's person checked against the gate (docs/adr/0030 D5,
 	// docs/adr/0035 D8).
 	GroupsRefresh time.Duration
+	// GroupsMaxAge is how old a person's stored groups may be for their tokens
+	// to work: older ones — no sign-in and no session refresh read them since —
+	// refuse the tokens until the person signs in to the browser once
+	// (docs/adr/0035 D8). Longer than GroupsRefresh.
+	GroupsMaxAge time.Duration
+	// EmailTrusted says the issuer's addresses are verified even where it does
+	// not say so: a grant by e-mail address then matches a person without the
+	// email_verified claim, not only one the issuer marked verified
+	// (docs/adr/0030 D3). An address marked unverified never matches.
+	EmailTrusted bool
 	// DisplayName is the provider's name on the login page's button.
 	DisplayName string
 }

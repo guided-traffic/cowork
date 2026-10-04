@@ -41,12 +41,15 @@ const ownAdminWarning = (group: string) =>
 /**
  * The tenant's group mappings, for its administrators (docs/adr/0030 D2, D7): each gives everyone
  * whose identity-provider groups include its group a role in the tenant, the highest where several
- * match. An administrator adds one, changes its role in the row — over the version that was read
- * (docs/adr/0050 D3) — and removes one, which asks first. A change or a removal that would take
+ * match. A global administrator who administers the tenant adds one and changes its role in the
+ * row — over the version that was read (docs/adr/0050 D3) — since every tenant shares the
+ * provider's groups (D7); any other administrator reads the roles as text, under a line that says
+ * so. Every administrator removes one, which asks first. A change or a removal that would take
  * the editor's own administrator role away — it comes from this mapping and from no grant and no
  * other mapping of theirs — asks first with a warning (ADR 0030, Consequences). A refusal the page
- * can explain is its message above the list; anything else is a toast. Anybody else is told that
- * the administrators manage the mappings. When a dialog closes, the keyboard goes back to the
+ * can explain is its message above the list; anything else is a toast. A global administrator who
+ * holds no role in the tenant reads the list without its controls (docs/adr/0034 D2); anybody else
+ * is told that the administrators manage the mappings. When a dialog closes, the keyboard goes back to the
  * control it came from, or where that control went: the row that took its place, the heading.
  */
 @Component({
@@ -90,6 +93,14 @@ export class GroupMappings {
   protected readonly pending = signal<ReadonlyMap<string, Role>>(new Map());
   /** What the page says about the last change it could not make. */
   protected readonly notice = signal<string | null>(null);
+  /**
+   * Whether the person makes mappings and changes their roles: a global administrator, on the page
+   * of a tenant they administer (docs/adr/0030 D7). Removing one is every administrator's. A global
+   * administrator who holds no role in the tenant reads them only (docs/adr/0034 D2).
+   */
+  protected readonly mayMap = computed(
+    () => this.session.person()?.global_admin === true && this.tenant.isAdmin(),
+  );
 
   protected readonly failure = computed(() => {
     const error = this.mappings.mappings.error();
@@ -218,11 +229,16 @@ export class GroupMappings {
     return `tr[data-row="${id}"] .remove`;
   }
 
-  /** The selects of the rows beside the mapping's, the next one first. */
+  /**
+   * The controls of the rows beside the mapping's, the next one first: its select, or its removal
+   * where the page shows no select.
+   */
   private neighbours(id: string): string[] {
     const list = this.mappings.list();
     const at = list.findIndex((each) => each.id === id);
-    return [list[at + 1], list[at - 1]].flatMap((each) => (each ? [this.select(each.id)] : []));
+    return [list[at + 1], list[at - 1]].flatMap((each) =>
+      each ? [this.select(each.id), this.removeButton(each.id)] : [],
+    );
   }
 
   /**

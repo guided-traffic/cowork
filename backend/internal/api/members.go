@@ -155,7 +155,9 @@ func (s *Server) AddMember(ctx context.Context, req apigen.AddMemberRequestObjec
 }
 
 // findPerson looks up the person an administrator grants a role to, by
-// e-mail address or username (docs/adr/0030 D3). A username is taken with or
+// e-mail address — one the issuer marked verified, or, with
+// COWORK_OIDC_EMAIL_TRUSTED, one it said nothing about — or username
+// (docs/adr/0030 D3). A username is taken with or
 // without the local: that names the identity of a local account
 // (docs/adr/0032 D1), and normalised as the local login normalises it.
 func (s *Server) findPerson(ctx context.Context, t tenantScope, given string) (uuid.UUID, error) {
@@ -168,7 +170,8 @@ func (s *Server) findPerson(ctx context.Context, t tenantScope, given string) (u
 			return uuid.Nil, personNotFound("no active person has this e-mail address or username")
 		}
 	}
-	person, match, err := s.db.FindPerson(ctx, t.ID, key, s.h.issuer())
+	person, match, err := s.db.FindPerson(ctx, store.PersonLookup{TenantID: t.ID, Key: key, Issuer: s.h.issuer(),
+		EmailTrusted: s.h.opts.OIDC.EmailTrusted})
 	switch {
 	case err != nil:
 		return uuid.Nil, err
@@ -205,61 +208,141 @@ func grantExists() *problem.Error {
 
 // SetMemberGrant creates a member's grant or changes its role
 // (docs/adr/0030 D3); the mapped membership is never touched. Repeating it
-// changes nothing (docs/adr/0045 D1).
+// changes nothing (docs/adr/0045 D1). A global administrator who does not hold
+// admin in the tenant sets their own grant here (grantSelf), and nobody else's.
 func (s *Server) SetMemberGrant(ctx context.Context, req apigen.SetMemberGrantRequestObject) (apigen.SetMemberGrantResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
+	person, role := req.PersonId, domain.Role(req.Body.Role)
+	if ownGrant(p, t, person) {
+		return s.grantSelf(ctx, t, person, role)
+	}
 	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
 		return nil, perr
 	}
-	person, role := req.PersonId, domain.Role(req.Body.Role)
 	var view apigen.Member
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		if err := w.LockTenant(ctx); err != nil {
-			return err
-		}
-		member, err := w.IsMember(ctx, readq.IsMemberParams{TenantID: t.ID, UserID: person})
-		if err != nil {
-			return err
-		}
-		if !member {
-			return personNotFound("the person is not a member of the tenant; add them by e-mail address or username")
-		}
-		cur, err := w.GetGrant(ctx, readq.GetGrantParams{TenantID: t.ID, UserID: person})
-		switch {
-		case errors.Is(err, pgx.ErrNoRows):
-			id, err := uuid.NewV7()
-			if err != nil {
-				return err
-			}
-			if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: id, TenantID: t.ID, UserID: person, Role: role}); err != nil {
-				return err
-			}
-			w.Record(store.Event{EntityType: entityMembership, EntityID: id, Action: actionCreated,
-				After: map[string]any{fieldUser: person, fieldRole: role, fieldSource: sourceGrant}, Membership: memberChange(person)})
-		case err != nil:
-			return err
-		case cur.Role == role:
-			if view, err = readMember(ctx, w.Reader, t.ID, person); err != nil {
-				return err
-			}
-			return store.ErrNoChange
-		default:
-			if err := w.SetGrantRole(ctx, writeq.SetGrantRoleParams{Role: role, TenantID: t.ID, UserID: person}); err != nil {
-				return err
-			}
-			w.Record(store.Event{EntityType: entityMembership, EntityID: cur.ID, Action: actionUpdated,
-				Before: map[string]any{fieldRole: cur.Role}, After: map[string]any{fieldRole: role}, Membership: memberChange(person)})
-		}
-		if err := s.lastAdmin(ctx, w, t.ID); err != nil {
-			return err
-		}
-		view, err = readMember(ctx, w.Reader, t.ID, person)
+		var err error
+		view, err = s.setGrant(ctx, w, t, person, role)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
 	return apigen.SetMemberGrant200JSONResponse(view), nil
+}
+
+// setGrant creates a member's grant or changes its role under the tenant's
+// lock, and answers the member as the grant leaves them — with
+// store.ErrNoChange where they hold the role already.
+func (s *Server) setGrant(ctx context.Context, w *store.Writer, t tenantScope, person uuid.UUID, role domain.Role) (apigen.Member, error) {
+	if err := w.LockTenant(ctx); err != nil {
+		return apigen.Member{}, err
+	}
+	member, err := w.IsMember(ctx, readq.IsMemberParams{TenantID: t.ID, UserID: person})
+	if err != nil {
+		return apigen.Member{}, err
+	}
+	if !member {
+		return apigen.Member{}, personNotFound("the person is not a member of the tenant; add them by e-mail address or username")
+	}
+	cur, err := w.GetGrant(ctx, readq.GetGrantParams{TenantID: t.ID, UserID: person})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		id, err := uuid.NewV7()
+		if err != nil {
+			return apigen.Member{}, err
+		}
+		if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: id, TenantID: t.ID, UserID: person, Role: role}); err != nil {
+			return apigen.Member{}, err
+		}
+		w.Record(store.Event{EntityType: entityMembership, EntityID: id, Action: actionCreated,
+			After: map[string]any{fieldUser: person, fieldRole: role, fieldSource: sourceGrant}, Membership: memberChange(person)})
+	case err != nil:
+		return apigen.Member{}, err
+	case cur.Role == role:
+		view, err := readMember(ctx, w.Reader, t.ID, person)
+		if err != nil {
+			return apigen.Member{}, err
+		}
+		return view, store.ErrNoChange
+	default:
+		if err := w.SetGrantRole(ctx, writeq.SetGrantRoleParams{Role: role, TenantID: t.ID, UserID: person}); err != nil {
+			return apigen.Member{}, err
+		}
+		w.Record(store.Event{EntityType: entityMembership, EntityID: cur.ID, Action: actionUpdated,
+			Before: map[string]any{fieldRole: cur.Role}, After: map[string]any{fieldRole: role}, Membership: memberChange(person)})
+	}
+	if err := s.lastAdmin(ctx, w, t.ID); err != nil {
+		return apigen.Member{}, err
+	}
+	return readMember(ctx, w.Reader, t.ID, person)
+}
+
+// ownGrant says whether a request sets its own person's grant as a global
+// administrator who does not hold admin in the tenant (docs/adr/0034 D2): one
+// the boundary admitted without a role, or one who holds a lower role. The
+// document takes a session for setMemberGrant and the pipeline refuses an
+// agent's request; this holds the path to both again.
+func ownGrant(p auth.Principal, t tenantScope, person uuid.UUID) bool {
+	return person == p.PersonID && p.GlobalAdmin && p.Session && !p.IsAgent() && t.Role != domain.RoleAdmin
+}
+
+// grantSelf is a global administrator's grant of a role to themselves in a
+// tenant in which they do not hold admin (docs/adr/0034 D2): a marked grant
+// like any other, made — or its role changed — under the tenant's lock,
+// recorded in the tenant with the administrator as its actor and announced to
+// its members. It takes no administrator away, so it meets no last_admin; it is
+// how a tenant left without an administrator who can log in gets one again. The
+// same role is no change (docs/adr/0045 D1).
+func (s *Server) grantSelf(ctx context.Context, t tenantScope, person uuid.UUID, role domain.Role) (apigen.SetMemberGrantResponseObject, error) {
+	var view apigen.Member
+	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
+		if err := w.LockTenant(ctx); err != nil {
+			return err
+		}
+		var err error
+		view, err = s.setOwnGrant(ctx, w, t, person, role)
+		return err
+	})
+	if err != nil && !errors.Is(err, store.ErrNoChange) {
+		return nil, err
+	}
+	return apigen.SetMemberGrant200JSONResponse(view), nil
+}
+
+// setOwnGrant makes the global administrator's grant or changes its role, with
+// the tenant's lock held. A grant of admin that another administrator gave them
+// after the boundary read their role is lowered only as any administrator's
+// own grant is: held to last_admin.
+func (s *Server) setOwnGrant(ctx context.Context, w *store.Writer, t tenantScope, person uuid.UUID, role domain.Role) (apigen.Member, error) {
+	cur, err := w.GetGrant(ctx, readq.GetGrantParams{TenantID: t.ID, UserID: person})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		id, err := uuid.NewV7()
+		if err != nil {
+			return apigen.Member{}, err
+		}
+		return insertGrant(ctx, w, t, id, person, role)
+	case err != nil:
+		return apigen.Member{}, err
+	case cur.Role == role:
+		view, err := readMember(ctx, w.Reader, t.ID, person)
+		if err != nil {
+			return apigen.Member{}, err
+		}
+		return view, store.ErrNoChange
+	}
+	if err := w.SetGrantRole(ctx, writeq.SetGrantRoleParams{Role: role, TenantID: t.ID, UserID: person}); err != nil {
+		return apigen.Member{}, err
+	}
+	w.Record(store.Event{EntityType: entityMembership, EntityID: cur.ID, Action: actionUpdated,
+		Before: map[string]any{fieldRole: cur.Role}, After: map[string]any{fieldRole: role}, Membership: memberChange(person)})
+	if cur.Role == domain.RoleAdmin {
+		if err := s.lastAdmin(ctx, w, t.ID); err != nil {
+			return apigen.Member{}, err
+		}
+	}
+	return readMember(ctx, w.Reader, t.ID, person)
 }
 
 // RemoveMemberGrant removes a member's grant; the mapped membership, if any,
@@ -311,10 +394,11 @@ func callerGroups(ctx context.Context, r *store.Reader) ([]string, error) {
 }
 
 // ListGroupMappings lists the tenant's group mappings by group
-// (docs/adr/0030 D2, D7).
+// (docs/adr/0030 D2, D7), to its administrators and to a global administrator
+// who oversees it (docs/adr/0034 D2).
 func (s *Server) ListGroupMappings(ctx context.Context, req apigen.ListGroupMappingsRequestObject) (apigen.ListGroupMappingsResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
+	if perr := administrationRead(principal(ctx), t, adminRead); perr != nil {
 		return nil, perr
 	}
 	const op = "listGroupMappings"
@@ -375,12 +459,28 @@ func mappingURL(t tenantScope, id uuid.UUID) string {
 	return "/api/v1/tenants/" + t.Slug + "/group-mappings/" + id.String()
 }
 
+// mapsGroups authorizes the making of a mapping and the change of its role:
+// an administrator of the tenant, who must be a global administrator as well.
+// Every tenant shares the identity provider's one namespace of groups, and a
+// mapping admits everyone in its group at once (docs/adr/0030 D7). Removing
+// one only takes access away and stays with the tenant's administrators.
+func mapsGroups(p auth.Principal, role domain.Role, act string) *problem.Error {
+	if perr := auth.Authorize(p, role, administer); perr != nil {
+		return perr
+	}
+	if !p.GlobalAdmin {
+		return problem.New(problem.Forbidden, act+" needs a global administrator who administers the tenant")
+	}
+	return nil
+}
+
 // CreateGroupMapping maps a group to a role in the tenant (docs/adr/0030 D2,
 // D7) and derives at once the memberships of every person whose groups hold
-// it. A browser session only (docs/adr/0035 D5).
+// it. A browser session of a global administrator who administers the tenant
+// only (docs/adr/0035 D5, docs/adr/0030 D7).
 func (s *Server) CreateGroupMapping(ctx context.Context, req apigen.CreateGroupMappingRequestObject) (apigen.CreateGroupMappingResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
-	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
+	if perr := mapsGroups(p, t.Role, "mapping a group"); perr != nil {
 		return nil, perr
 	}
 	body := *req.Body
@@ -451,10 +551,12 @@ func mappingExists() *problem.Error {
 }
 
 // UpdateGroupMapping changes a mapping's role, with If-Match
-// (docs/adr/0050 D3), and re-derives the memberships it gives at once.
+// (docs/adr/0050 D3), and re-derives the memberships it gives at once. Like
+// its making, a global administrator's who administers the tenant
+// (docs/adr/0030 D7).
 func (s *Server) UpdateGroupMapping(ctx context.Context, req apigen.UpdateGroupMappingRequestObject) (apigen.UpdateGroupMappingResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
+	if perr := mapsGroups(principal(ctx), t.Role, "changing a group mapping"); perr != nil {
 		return nil, perr
 	}
 	version, perr := ifMatch(req.Params.IfMatch)
@@ -512,7 +614,8 @@ func (s *Server) UpdateGroupMapping(ctx context.Context, req apigen.UpdateGroupM
 
 // DeleteGroupMapping removes a mapping; the memberships it derived go at once,
 // or fall to the person's other mapped groups, and grants stay
-// (docs/adr/0030 D3). An administrator's token may: it only takes access away.
+// (docs/adr/0030 D3). Any administrator of the tenant may, a token of one too:
+// it only takes access away (docs/adr/0030 D7).
 func (s *Server) DeleteGroupMapping(ctx context.Context, req apigen.DeleteGroupMappingRequestObject) (apigen.DeleteGroupMappingResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {

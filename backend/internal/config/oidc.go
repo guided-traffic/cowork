@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,7 +14,8 @@ import (
 // without it, each is a mistake the start names (docs/adr/0029 D4).
 var oidcVariables = []string{
 	EnvOIDCClientID, EnvOIDCClientSecret, EnvOIDCScopes, EnvOIDCGroupsClaim,
-	EnvOIDCAllowedGroups, EnvAdminGroup, EnvOIDCGroupsRefresh, EnvOIDCDisplayName,
+	EnvOIDCAllowedGroups, EnvAdminGroup, EnvOIDCGroupsRefresh, EnvOIDCGroupsMaxAge, EnvOIDCEmailTrusted,
+	EnvOIDCDisplayName,
 }
 
 // maxGroupName is the longest group name a mapping holds, and so the longest
@@ -46,6 +48,7 @@ func (l *loader) oidc(cfg *Config) {
 		Issuer:        issuer,
 		GroupsClaim:   DefaultOIDCGroupsClaim,
 		GroupsRefresh: DefaultOIDCGroupsRefresh,
+		GroupsMaxAge:  DefaultOIDCGroupsMaxAge,
 		DisplayName:   DefaultOIDCDisplayName,
 		Scopes:        strings.Fields(DefaultOIDCScopes),
 	}
@@ -64,15 +67,13 @@ func (l *loader) oidc(cfg *Config) {
 	}
 	l.oidcScopes(o)
 	l.oidcGroups(o)
-	if v, set := l.get(EnvOIDCGroupsRefresh); set {
-		d, err := time.ParseDuration(v)
-		switch {
-		case err != nil:
-			l.fail("%s: %q is not a duration such as 15m", EnvOIDCGroupsRefresh, clip(v, 64))
-		case d < MinOIDCGroupsRefresh:
-			l.fail("%s: must be at least %s, got %s", EnvOIDCGroupsRefresh, MinOIDCGroupsRefresh, d)
-		default:
-			o.GroupsRefresh = d
+	l.oidcGroupsTimes(o)
+	if v, set := l.get(EnvOIDCEmailTrusted); set {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			l.fail("%s: %q is not a boolean", EnvOIDCEmailTrusted, clip(v, 64))
+		} else {
+			o.EmailTrusted = b
 		}
 	}
 	if v, set := l.get(EnvOIDCDisplayName); set {
@@ -83,6 +84,37 @@ func (l *loader) oidc(cfg *Config) {
 		}
 	}
 	cfg.OIDC = o
+}
+
+// oidcGroupsTimes reads how often a session reads the groups again and how old
+// they may be for a token (docs/adr/0030 D5, docs/adr/0035 D8). The maximum age
+// must be longer than the interval: a person whose session refreshes the groups
+// would otherwise find their tokens refused between two refreshes.
+func (l *loader) oidcGroupsTimes(o *OIDC) {
+	if v, set := l.get(EnvOIDCGroupsRefresh); set {
+		d, err := time.ParseDuration(v)
+		switch {
+		case err != nil:
+			l.fail("%s: %q is not a duration such as 15m", EnvOIDCGroupsRefresh, clip(v, 64))
+			return
+		case d < MinOIDCGroupsRefresh:
+			l.fail("%s: must be at least %s, got %s", EnvOIDCGroupsRefresh, MinOIDCGroupsRefresh, d)
+			return
+		}
+		o.GroupsRefresh = d
+	}
+	if v, set := l.get(EnvOIDCGroupsMaxAge); set {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			l.fail("%s: %q is not a duration such as 168h", EnvOIDCGroupsMaxAge, clip(v, 64))
+			return
+		}
+		o.GroupsMaxAge = d
+	}
+	if o.GroupsMaxAge <= o.GroupsRefresh {
+		l.fail("%s must be longer than %s: %s is not longer than %s", EnvOIDCGroupsMaxAge, EnvOIDCGroupsRefresh,
+			o.GroupsMaxAge, o.GroupsRefresh)
+	}
 }
 
 // checkIssuer holds the issuer to https, or to http on a loopback host for a

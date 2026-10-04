@@ -81,6 +81,8 @@ describe('Members', () => {
   let tenantSlug: WritableSignal<string | null>;
   let person: WritableSignal<Me | undefined>;
   let isAdmin: WritableSignal<boolean>;
+  let mayGrantSelf: WritableSignal<boolean>;
+  let oversight: WritableSignal<boolean>;
   let add: MockInstance<MembersService['add']>;
   let setGrant: MockInstance<MembersService['setGrant']>;
   let removeGrant: MockInstance<MembersService['removeGrant']>;
@@ -93,6 +95,8 @@ describe('Members', () => {
     tenantSlug = signal<string | null>('acme');
     person = signal<Me | undefined>(me());
     isAdmin = signal(false);
+    mayGrantSelf = signal(false);
+    oversight = signal(false);
     add = vi.fn<MembersService['add']>();
     setGrant = vi.fn<MembersService['setGrant']>().mockImplementation(async (id, role) => ({
       ...(list().find((each) => each.person.id === id) as Member),
@@ -112,7 +116,17 @@ describe('Members', () => {
             removeGrant,
           },
         },
-        { provide: SessionService, useValue: { tenant: tenantSlug, person } },
+        {
+          provide: SessionService,
+          useValue: {
+            tenant: tenantSlug,
+            person,
+            mayGrantSelf,
+            oversight,
+            membership: signal(undefined),
+            shown: signal({ slug: 'acme', name: 'Acme Corp', role: 'viewer' }),
+          },
+        },
         { provide: TenantService, useValue: { isAdmin } },
       ],
     });
@@ -303,6 +317,27 @@ describe('Members', () => {
       expect(el(fixture, 'members-lead')).toBeNull();
       expect(host(fixture).querySelector('p-select')).toBeNull();
       expect(host(fixture).querySelector('[data-testid^="remove-grant-"]')).toBeNull();
+      expect(host(fixture).querySelector('app-self-grant')).toBeNull();
+    });
+
+    // docs/adr/0034 D2: a global administrator who holds a role below admin raises their own grant.
+    it('offers a global administrator below admin to raise their own grant, above the list', async () => {
+      mayGrantSelf.set(true);
+
+      const fixture = await render();
+
+      expect(
+        host(fixture).querySelector('app-self-grant [data-testid="grant-yourself"]'),
+      ).not.toBeNull();
+    });
+
+    it("leaves the offer to the tenant's pages where the global administrator holds no role", async () => {
+      mayGrantSelf.set(true);
+      oversight.set(true);
+
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('app-self-grant')).toBeNull();
     });
 
     it('shows the names as before, without an address, which the list has for administrators only', async () => {

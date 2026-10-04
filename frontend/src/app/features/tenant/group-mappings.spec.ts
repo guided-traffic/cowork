@@ -52,6 +52,8 @@ describe('GroupMappings', () => {
   let membership: WritableSignal<Membership | undefined>;
   let personLoading: WritableSignal<boolean>;
   let isAdmin: WritableSignal<boolean>;
+  let globalAdmin: WritableSignal<boolean>;
+  let oversight: WritableSignal<boolean>;
   let changeRole: MockInstance<GroupMappingsService['changeRole']>;
   let remove: MockInstance<GroupMappingsService['remove']>;
 
@@ -64,6 +66,8 @@ describe('GroupMappings', () => {
     membership = signal<Membership | undefined>(mapped);
     personLoading = signal(false);
     isAdmin = signal(true);
+    globalAdmin = signal(true);
+    oversight = signal(false);
     changeRole = vi
       .fn<GroupMappingsService['changeRole']>()
       .mockImplementation(async (each, role) => ({ ...each, role, version: each.version + 1 }));
@@ -86,6 +90,8 @@ describe('GroupMappings', () => {
           useValue: {
             tenant: tenantSlug,
             membership: computed(() => membership()),
+            person: computed(() => ({ global_admin: globalAdmin() })),
+            oversight,
             me: { isLoading: personLoading },
           },
         },
@@ -147,6 +153,7 @@ describe('GroupMappings', () => {
         'several mapped groups give the highest of their roles',
       );
       expect(el(fixture, 'new-mapping')?.textContent?.trim()).toBe('New mapping');
+      expect(el(fixture, 'mappings-global-only')).toBeNull();
     });
 
     it('shows a row per mapping with the group, its role and when it changed', async () => {
@@ -267,6 +274,88 @@ describe('GroupMappings', () => {
 
       expect(el(fixture, 'mappings-not-admin')).toBeNull();
       expect(host(fixture).querySelector('p-skeleton')).not.toBeNull();
+    });
+  });
+
+  // docs/adr/0034 D2: a global administrator without a role in the tenant reads its mappings, and
+  // changes nothing: making one, changing its role and removing it are its administrators'.
+  describe('for a global administrator without a role in the tenant', () => {
+    beforeEach(() => {
+      isAdmin.set(false);
+      membership.set(undefined);
+      oversight.set(true);
+    });
+
+    it('lists the mappings with their roles as text, and offers no act', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'mappings')).not.toBeNull();
+      expect(el(fixture, 'mapping-role-team-red')?.textContent?.trim()).toBe('member');
+      expect(el(fixture, 'mapping-role-cowork-admins')?.textContent?.trim()).toBe('admin');
+      expect(host(fixture).querySelector('p-select')).toBeNull();
+      expect(el(fixture, 'mapping-remove-team-red')).toBeNull();
+      expect(el(fixture, 'new-mapping')).toBeNull();
+      expect(el(fixture, 'mappings-global-only')).toBeNull();
+      expect(el(fixture, 'mappings-not-admin')).toBeNull();
+    });
+  });
+
+  // docs/adr/0030 D7: every tenant shares the provider's groups, so only a global administrator
+  // makes a mapping or changes its role; removing one only takes access away.
+  describe('for an administrator who is not a global administrator', () => {
+    beforeEach(() => globalAdmin.set(false));
+
+    it('says that only a global administrator creates and changes mappings, and offers no new one', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'mappings-global-only')?.textContent?.trim()).toBe(
+        'Only a global administrator creates mappings and changes their roles; you can remove them.',
+      );
+      expect(el(fixture, 'new-mapping')).toBeNull();
+      expect(el(fixture, 'mappings')).not.toBeNull();
+    });
+
+    it('shows each role as text, without a select', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'mapping-role-team-red')?.textContent?.trim()).toBe('member');
+      expect(el(fixture, 'mapping-role-cowork-admins')?.textContent?.trim()).toBe('admin');
+      expect(host(fixture).querySelector('p-select')).toBeNull();
+    });
+
+    it('removes a mapping when it is confirmed', async () => {
+      const fixture = await render();
+      el(fixture, 'mapping-remove-team-red')?.click();
+      await settle(fixture);
+
+      press('Remove mapping');
+      await settle(fixture);
+
+      expect(remove).toHaveBeenCalledExactlyOnceWith(red);
+    });
+
+    it('puts the keyboard on the removal of the next row, which has no select', async () => {
+      const blue = mapping('team-blue');
+      list.set([admins, red, blue]);
+      const fixture = await render();
+      el(fixture, 'mapping-remove-team-red')?.click();
+      await settle(fixture);
+
+      press('Remove mapping');
+      await settle(fixture);
+
+      expect(document.activeElement).toBe(el(fixture, 'mapping-remove-team-blue'));
+    });
+
+    it('offers to create and change mappings once the person is a global administrator', async () => {
+      const fixture = await render();
+
+      globalAdmin.set(true);
+      await settle(fixture);
+
+      expect(el(fixture, 'new-mapping')).not.toBeNull();
+      expect(shownRole(fixture, red)).toBe('member');
+      expect(el(fixture, 'mappings-global-only')).toBeNull();
     });
   });
 

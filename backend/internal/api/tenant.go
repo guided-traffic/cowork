@@ -17,12 +17,16 @@ import (
 )
 
 // tenantScope is the tenant a request under /tenants/{tenant} acts in, with
-// the person's role there.
+// the person's role there. Oversight marks a global administrator who holds no
+// role in the tenant (docs/adr/0034 D2): Role is empty, so every need of
+// auth.Authorize refuses them, and the boundary admitted them to the
+// operations of oversight only.
 type tenantScope struct {
-	ID   uuid.UUID
-	Slug string
-	Name string
-	Role domain.Role
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	Role      domain.Role
+	Oversight bool
 }
 
 type tenantKey struct{}
@@ -49,9 +53,32 @@ var tenantWideForProjectTokens = map[string]bool{
 	opStreamEvents:      true,
 }
 
+// oversight are the operations under a tenant that a global administrator
+// reaches without a role in it (docs/adr/0034 D2): its administration — the
+// tenant and its settings, the members, the group mappings — and the grant of
+// a role to themselves, which SetMemberGrant holds to their own person. Nothing
+// of the tenant's work: no project, ticket, time entry, attachment, event or
+// audit row, and no other act.
+var oversight = map[string]bool{
+	"getTenant":         true,
+	"listMembers":       true,
+	"listGroupMappings": true,
+	"setMemberGrant":    true,
+}
+
+// oversees says whether the request may reach a tenant in which its person
+// holds no role: a global administrator's, in a browser session no agent
+// marks, on an operation of oversight. A token keeps the reach of its
+// person's memberships, so a leaked one of a global administrator gains
+// nothing by it, and an agent — the chat in the UI among them — none either.
+func oversees(p auth.Principal, operationID string) bool {
+	return p.GlobalAdmin && p.Session && !p.IsAgent() && oversight[operationID]
+}
+
 // boundary admits a request to a tenant before any handler runs
 // (docs/adr/0023 D5): the person must be a member, and the token must not be
-// restricted elsewhere. Every refusal is the same 404 as an unknown slug, so
+// restricted elsewhere — or the person is a global administrator who oversees
+// the tenant (oversees). Every refusal is the same 404 as an unknown slug, so
 // the answer does not tell whether the tenant exists (docs/adr/0047 D5).
 func (h *handler) boundary(ctx context.Context, slug, path, operationID string) (tenantScope, *problem.Error) {
 	refused := problem.New(problem.NotFound, "no such tenant")
@@ -79,7 +106,7 @@ func (h *handler) boundary(ctx context.Context, slug, path, operationID string) 
 		return tenantScope{}, problem.New(problem.Internal, "internal error")
 	}
 	if !found {
-		return tenantScope{}, refused
+		return h.overseen(ctx, p, slug, operationID)
 	}
 	if p.RestrictedTenantID != uuid.Nil && p.RestrictedTenantID != scope.ID {
 		return tenantScope{}, refused
@@ -88,4 +115,47 @@ func (h *handler) boundary(ctx context.Context, slug, path, operationID string) 
 		return tenantScope{}, refused
 	}
 	return scope, nil
+}
+
+// overseen admits a global administrator to a tenant in which they hold no
+// role, for an operation of oversight (docs/adr/0034 D2), or refuses like an
+// unknown slug. The tenants policy shows a global administrator every tenant
+// (migration 26).
+func (h *handler) overseen(ctx context.Context, p auth.Principal, slug, operationID string) (tenantScope, *problem.Error) {
+	refused := problem.New(problem.NotFound, "no such tenant")
+	if !oversees(p, operationID) {
+		return tenantScope{}, refused
+	}
+	var (
+		row   readq.GetTenantBySlugRow
+		found bool
+	)
+	err := h.opts.DB.Installation(ctx, func(r *store.Reader) error {
+		var err error
+		row, err = r.GetTenantBySlug(ctx, slug)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		found = err == nil
+		return err
+	})
+	if err != nil {
+		h.logger.Error("tenant boundary failed", "request_id", requestid.From(ctx), "error", err)
+		return tenantScope{}, problem.New(problem.Internal, "internal error")
+	}
+	if !found {
+		return tenantScope{}, refused
+	}
+	return tenantScope{ID: row.ID, Slug: row.Slug, Name: row.Name, Oversight: true}, nil
+}
+
+// administrationRead authorizes a read of the tenant's administration — the
+// tenant, its members, its group mappings: by the caller's role and need, or
+// for a global administrator the boundary admitted without a role, by that
+// admission alone (docs/adr/0034 D2).
+func administrationRead(p auth.Principal, t tenantScope, need auth.Need) *problem.Error {
+	if t.Oversight {
+		return nil
+	}
+	return auth.Authorize(p, t.Role, need)
 }

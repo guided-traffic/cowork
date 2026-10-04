@@ -15,7 +15,7 @@ import { ChatEntry, ChatService } from '../core/chat.service';
 import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
 import { ProjectsService } from '../core/projects.service';
-import { SessionService } from '../core/session.service';
+import { OpenableTenant, SessionService } from '../core/session.service';
 import { TenantService } from '../core/tenant.service';
 import { VersionInfo, VersionService } from '../core/version.service';
 import { NewProjectDialog } from '../features/project/new-project-dialog';
@@ -92,6 +92,9 @@ const chatAvailable: ChatAvailability = {
 
 describe('Shell', () => {
   let memberships: WritableSignal<Membership[]>;
+  /** The tenants of the installation a global administrator holds no role in. */
+  let roleless: WritableSignal<OpenableTenant[]>;
+  let oversight: WritableSignal<boolean>;
   let tenant: WritableSignal<string | null>;
   let person: WritableSignal<Me | undefined>;
   let projects: {
@@ -113,6 +116,8 @@ describe('Shell', () => {
   beforeEach(() => {
     chat = new FakeChat();
     memberships = signal<Membership[]>([acme]);
+    roleless = signal<OpenableTenant[]>([]);
+    oversight = signal(false);
     tenant = signal<string | null>('acme');
     person = signal<Me | undefined>(ada);
     projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
@@ -135,13 +140,22 @@ describe('Shell', () => {
         MessageService,
         {
           provide: SessionService,
-          useValue: {
-            person,
-            memberships,
-            tenant,
-            membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
-            signedOut,
-          },
+          useValue: (() => {
+            const tenants = computed<OpenableTenant[]>(() => [
+              ...memberships().map(({ tenant: t, role }) => ({ ...t, role })),
+              ...roleless(),
+            ]);
+            return {
+              person,
+              memberships,
+              tenants,
+              tenant,
+              membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
+              shown: computed(() => tenants().find((t) => t.slug === tenant())),
+              oversight,
+              signedOut,
+            };
+          })(),
         },
         { provide: ProjectsService, useValue: projects },
         { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
@@ -382,6 +396,28 @@ describe('Shell', () => {
         .triggerEventHandler('ngModelChange', 'globex');
 
       expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'globex']);
+    });
+
+    it('offers a global administrator the tenants they hold no role in too, marked so (docs/adr/0034 D2)', async () => {
+      roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
+
+      const { fixture } = await render();
+
+      const select = fixture.debugElement.query(By.directive(Select));
+      expect((select.componentInstance as Select).options()).toEqual([
+        acme.tenant,
+        { slug: 'initech', name: 'Initech (no role)' },
+      ]);
+    });
+
+    it('names the only tenant a global administrator holds no role in', async () => {
+      memberships.set([]);
+      roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
+      tenant.set('initech');
+
+      const { page } = await render();
+
+      expect(text(page, 'tenant-name')).toBe('Initech');
     });
 
     it('follows the tenant of the page', async () => {
@@ -827,6 +863,30 @@ describe('Shell', () => {
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-accounts');
     });
 
+    // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
+    // administration — the members, the group mappings, the settings — and none of its work.
+    it('offers a global administrator without a role the administration only', async () => {
+      memberships.set([]);
+      roleless.set([{ slug: 'acme', name: 'Acme Corp', role: null }]);
+      oversight.set(true);
+      projects.list.set([project('COW', 'Cowork')]);
+
+      const { page } = await render();
+
+      const shown = [...page.querySelectorAll('nav a.item')].map((link) =>
+        link.getAttribute('data-testid'),
+      );
+      expect(shown).toEqual([
+        'nav-overview',
+        'nav-members',
+        'nav-group-mappings',
+        'nav-settings',
+        'nav-design',
+      ]);
+      expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
+      expect(page.textContent).not.toContain('Projects');
+    });
+
     it('has no tenant navigation on a page that belongs to no tenant', async () => {
       tenant.set(null);
       canCreateProjects.set(true);
@@ -897,8 +957,11 @@ describe('Shell, creating a project', () => {
           useValue: {
             person: signal<Me | undefined>(ada),
             memberships: signal<Membership[]>([acme]),
+            tenants: signal<OpenableTenant[]>([{ ...acme.tenant, role: acme.role }]),
             tenant: signal<string | null>('acme'),
             membership: signal<Membership | undefined>(acme),
+            shown: signal<OpenableTenant | undefined>({ ...acme.tenant, role: acme.role }),
+            oversight: signal(false),
           },
         },
         {

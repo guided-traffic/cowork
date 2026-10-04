@@ -219,6 +219,176 @@ describe('SessionService', () => {
     });
   });
 
+  describe('a person who is no global administrator', () => {
+    beforeEach(() => load(person([asAdmin])));
+
+    it("never asks for the installation's tenants, which would be a 403", () => {
+      http.expectNone((request) => request.url === '/api/v1/tenants');
+      expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'admin' }]);
+    });
+
+    it('works in the tenant the pages show and oversees none, not even one they are not in', () => {
+      service.enter('acme');
+      expect(service.oversight()).toBe(false);
+      expect(service.mayGrantSelf()).toBe(false);
+      expect(service.workTenant()).toBe('acme');
+
+      service.enter('initech');
+      expect(service.oversight()).toBe(false);
+      expect(service.mayGrantSelf()).toBe(false);
+      expect(service.workTenant()).toBe('initech');
+    });
+  });
+
+  describe('a global administrator (docs/adr/0034 D2)', () => {
+    const administrator = (memberships: Membership[]): Me => ({
+      ...person(memberships),
+      global_admin: true,
+    });
+    const tenantsRequest = () =>
+      http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+
+    it("names no sole tenant before the installation's tenants are known", async () => {
+      await load(administrator([asAdmin]));
+
+      expect(service.soleTenant()).toBeNull();
+      tenantsRequest().flush({
+        items: [
+          { slug: 'acme', name: 'Acme Corp', role: 'admin' },
+          { slug: 'initech', name: 'Initech', role: null },
+        ],
+        next_cursor: null,
+      });
+      await settle();
+
+      expect(service.soleTenant()).toBeNull();
+    });
+
+    it('lists every tenant, every page, the ones without a role among them, by slug', async () => {
+      await load(administrator([asMember]));
+      const first = tenantsRequest();
+      expect(first.request.params.get('limit')).toBe('200');
+      first.flush({
+        items: [
+          { slug: 'acme', name: 'Acme Corp', role: null },
+          { slug: 'globex', name: 'Globex', role: 'member' },
+        ],
+        next_cursor: 'c1',
+      });
+      await settle();
+      const second = tenantsRequest();
+      expect(second.request.params.get('cursor')).toBe('c1');
+      second.flush({
+        items: [{ slug: 'initech', name: 'Initech', role: null }],
+        next_cursor: null,
+      });
+      await settle();
+
+      expect(service.tenants()).toEqual([
+        { slug: 'acme', name: 'Acme Corp', role: null },
+        { slug: 'globex', name: 'Globex', role: 'member' },
+        { slug: 'initech', name: 'Initech', role: null },
+      ]);
+    });
+
+    it('takes the roles from the memberships, which follow the grants, not from the list', async () => {
+      await load(administrator([]));
+      tenantsRequest().flush({
+        items: [{ slug: 'acme', name: 'Acme Corp', role: null }],
+        next_cursor: null,
+      });
+      await settle();
+      expect(service.soleTenant()).toBe('acme');
+
+      service.me.reload();
+      await settle();
+      http.expectOne('/api/v1/me').flush(administrator([asAdmin]));
+      await settle();
+
+      http.expectNone((request) => request.url === '/api/v1/tenants');
+      expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'admin' }]);
+    });
+
+    it('oversees a tenant without a role in it, where the work of the tenant is not followed', async () => {
+      await load(administrator([asMember]));
+      tenantsRequest().flush({
+        items: [
+          { slug: 'acme', name: 'Acme Corp', role: null },
+          { slug: 'globex', name: 'Globex', role: 'member' },
+        ],
+        next_cursor: null,
+      });
+      await settle();
+
+      service.enter('acme');
+      expect(service.oversight()).toBe(true);
+      expect(service.workTenant()).toBeNull();
+      expect(service.shown()).toEqual({ slug: 'acme', name: 'Acme Corp', role: null });
+
+      service.enter('globex');
+      expect(service.oversight()).toBe(false);
+      expect(service.workTenant()).toBe('globex');
+
+      service.enter(null);
+      expect(service.oversight()).toBe(false);
+      expect(service.workTenant()).toBeNull();
+    });
+
+    it('may set their own grant where they do not hold admin, and nowhere else', async () => {
+      await load(administrator([asAdmin, asMember]));
+      tenantsRequest().flush({
+        items: [
+          { slug: 'acme', name: 'Acme Corp', role: 'admin' },
+          { slug: 'globex', name: 'Globex', role: 'member' },
+          { slug: 'initech', name: 'Initech', role: null },
+        ],
+        next_cursor: null,
+      });
+      await settle();
+
+      expect(service.mayGrantSelf()).toBe(false);
+      service.enter('acme');
+      expect(service.mayGrantSelf()).toBe(false);
+      service.enter('globex');
+      expect(service.mayGrantSelf()).toBe(true);
+      expect(service.oversight()).toBe(false);
+      service.enter('initech');
+      expect(service.mayGrantSelf()).toBe(true);
+      expect(service.oversight()).toBe(true);
+    });
+
+    it('works in the tenant once a grant to themselves is in the memberships', async () => {
+      await load(administrator([]));
+      tenantsRequest().flush({
+        items: [{ slug: 'acme', name: 'Acme Corp', role: null }],
+        next_cursor: null,
+      });
+      await settle();
+      service.enter('acme');
+      expect(service.oversight()).toBe(true);
+
+      service.me.reload();
+      await settle();
+      http.expectOne('/api/v1/me').flush(administrator([asAdmin]));
+      await settle();
+
+      expect(service.oversight()).toBe(false);
+      expect(service.workTenant()).toBe('acme');
+    });
+
+    it('oversees nothing before the person has answered', async () => {
+      service.enter('acme');
+      const request = meRequest();
+
+      expect(service.oversight()).toBe(false);
+      request.flush(administrator([]));
+      await settle();
+      tenantsRequest().flush({ items: [], next_cursor: null });
+      await settle();
+      expect(service.oversight()).toBe(true);
+    });
+  });
+
   describe('when the memberships change (docs/adr/0054 D2)', () => {
     beforeEach(() => load(person([asAdmin, asMember])));
 

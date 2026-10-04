@@ -195,7 +195,8 @@ func TestTokenCreationIdempotency(t *testing.T) {
 // docs/adr/0005 D5, docs/adr/0032 D7: a global administrator, in a session,
 // creates a tenant and becomes its first administrator by a marked grant, in
 // the same transaction; nobody else creates one, and a global administrator has
-// no other role anywhere (docs/adr/0034 D2).
+// no other role anywhere: the work of another tenant stays closed to them
+// (docs/adr/0034 D2).
 func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 	ctx := context.Background()
 	w := newWorld(t)
@@ -222,7 +223,7 @@ func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 
 	b := s.browser(t)
 	b.mustLogin(usernameOf(t, root), testPassword)
-	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugA), http.StatusNotFound, "not_found")
+	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugA+"/projects"), http.StatusNotFound, "not_found")
 	res := b.request(http.MethodPost, "/api/v1/tenants", body)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	assert.Equal(t, "/api/v1/tenants/"+slug, res.Header.Get("Location"))
@@ -236,8 +237,8 @@ func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 		"the creator's marked grant as admin")
 	assert.EqualValues(t, 2, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE actor_user_id = $1 AND tenant_id IS NULL AND action = 'created'
 		AND entity_type IN ('tenant', 'membership') AND (entity_id = $2 OR after->>'tenant' = $3)`, root, tenantID, slug))
-	assert.Equal(t, http.StatusOK, b.get("/api/v1/tenants/"+slug).StatusCode, "the first administrator reads the tenant")
-	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugB), http.StatusNotFound, "not_found")
+	assert.Equal(t, http.StatusOK, b.get("/api/v1/tenants/"+slug+"/projects").StatusCode, "the first administrator works in the tenant")
+	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugB+"/projects"), http.StatusNotFound, "not_found")
 
 	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants", body), http.StatusConflict, "tenant_slug_taken")
 	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants", map[string]string{"slug": "Bad_Slug", "name": "x"}), http.StatusBadRequest, "validation_failed")

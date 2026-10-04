@@ -27,8 +27,9 @@ export class ProjectsService {
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
 
+  /** The tenant's projects, while the person holds a role in it (docs/adr/0034 D2). */
   readonly projects: ResourceRef<Project[] | undefined> = resource({
-    params: () => this.session.tenant() ?? undefined,
+    params: () => this.session.workTenant() ?? undefined,
     loader: ({ params: tenant }) =>
       keepShown(this.projects, async () => {
         const projects: Project[] = [];

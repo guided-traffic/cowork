@@ -12,8 +12,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { getMe } from '../api/functions';
-import { Me, Membership } from '../api/models';
+import { getMe, listTenants } from '../api/functions';
+import { Me, Membership, Role, TenantSummary } from '../api/models';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { RELOAD } from './hard-navigation';
 import { keepShown, refresh } from './refresh';
@@ -40,6 +40,13 @@ export const SESSION_CHANNEL = new InjectionToken<SessionChannel | null>('SESSIO
   },
 });
 
+/** A tenant the person may open, with the role they hold in it; null where they hold none. */
+export interface OpenableTenant {
+  slug: string;
+  name: string;
+  role: Role | null;
+}
+
 /** Whether another tab says the session is no longer the person's: it signed out, or another signed in. */
 function otherSession(data: unknown, person: string): boolean {
   const said = data as { person?: unknown; signedOut?: unknown } | null | undefined;
@@ -53,6 +60,12 @@ function otherSession(data: unknown, person: string): boolean {
  * that a grant, a mapping or the person's groups change (docs/adr/0030) is loaded again when the
  * tenant's stream says so, or may have missed it, so the pages offer what the new role allows
  * without a reload; a load again that fails keeps the person shown ({@link keepShown}).
+ *
+ * A global administrator sees every tenant of the installation, and in one where they hold no role
+ * its administration only — the members, the group mappings, the settings — until they grant
+ * themselves a role (docs/adr/0034 D2): `oversight()` says the pages show such a tenant, and the
+ * services of the tenant's work follow `workTenant()`, which is null then. Where they hold a role
+ * below `admin`, they raise their own grant (`mayGrantSelf()`).
  *
  * The browser's tabs share one session cookie, and a tab's services keep what its person looked at
  * — a conversation of the assistant among it. So every tab says on {@link SESSION_CHANNEL} whose
@@ -77,15 +90,90 @@ export class SessionService {
   private readonly personId = computed(() => this.person()?.id);
   readonly memberships = computed<Membership[]>(() => this.person()?.memberships ?? []);
 
+  /**
+   * The person's id while they are a global administrator, for whom alone the installation's
+   * tenants are asked: anybody else would get a `403`. A primitive, so that the person loaded again
+   * leaves the list alone.
+   */
+  private readonly globalAdmin = computed(() => {
+    const person = this.person();
+    return person?.global_admin ? person.id : undefined;
+  });
+  /** Every tenant of the installation, every page of them, for a global administrator. */
+  readonly installation: ResourceRef<TenantSummary[] | undefined> = resource({
+    params: () => this.globalAdmin(),
+    loader: () =>
+      keepShown(this.installation, async () => {
+        const tenants: TenantSummary[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await this.api.invoke(listTenants, { cursor, limit: 200 });
+          tenants.push(...page.items);
+          cursor = page.next_cursor ?? undefined;
+        } while (cursor);
+        return tenants;
+      }),
+  });
+  /**
+   * The tenants the person may open, by slug: their memberships with their roles, and for a global
+   * administrator every other tenant of the installation, without a role. The roles are the
+   * memberships', which `me` keeps current.
+   */
+  readonly tenants = computed<OpenableTenant[]>(() => {
+    const own: OpenableTenant[] = this.memberships().map(({ tenant, role }) => ({
+      slug: tenant.slug,
+      name: tenant.name,
+      role,
+    }));
+    const others: OpenableTenant[] = (this.installation.hasValue() ? this.installation.value() : [])
+      .filter((tenant) => !own.some((mine) => mine.slug === tenant.slug))
+      .map(({ slug, name }) => ({ slug, name, role: null }));
+    return [...own, ...others].sort((a, b) => a.slug.localeCompare(b.slug));
+  });
+
   /** The tenant of the current page; null on the person-level pages. */
   readonly tenant = signal<string | null>(null);
   readonly membership = computed(() =>
     this.memberships().find((membership) => membership.tenant.slug === this.tenant()),
   );
-  /** The only tenant when there is exactly one; it gets no switcher (docs/adr/0023 D4). */
+  /** The tenant of the current page with its name, whether the person holds a role in it or not. */
+  readonly shown = computed(() => this.tenants().find((tenant) => tenant.slug === this.tenant()));
+  /**
+   * The pages show a tenant in which the person, a global administrator, holds no role: its
+   * administration is theirs to see, its work is not (docs/adr/0034 D2). False until `me` answered.
+   */
+  readonly oversight = computed(
+    () =>
+      this.tenant() !== null &&
+      this.person()?.global_admin === true &&
+      this.membership() === undefined,
+  );
+  /**
+   * The tenant of the current page while the person may work in it: what the projects, the event
+   * stream and the assistant follow. Null on the person-level pages and under {@link oversight}.
+   */
+  readonly workTenant = computed(() => (this.oversight() ? null : this.tenant()));
+  /**
+   * The pages show a tenant in which the person, a global administrator, does not hold `admin`: they
+   * may set their own grant there — grant themselves a role under {@link oversight}, raise the one
+   * they hold otherwise (docs/adr/0034 D2). False until `me` answered.
+   */
+  readonly mayGrantSelf = computed(
+    () =>
+      this.tenant() !== null &&
+      this.person()?.global_admin === true &&
+      this.membership()?.role !== 'admin',
+  );
+  /**
+   * The only tenant when there is exactly one; it gets no switcher (docs/adr/0023 D4). A global
+   * administrator's tenants are known once the installation's list has answered.
+   */
   readonly soleTenant = computed(() => {
-    const memberships = this.memberships();
-    return memberships.length === 1 ? memberships[0].tenant.slug : null;
+    if (this.globalAdmin() !== undefined && !this.installation.hasValue()) {
+      return null;
+    }
+    const tenants = this.tenants();
+    return tenants.length === 1 ? tenants[0].slug : null;
   });
 
   constructor() {

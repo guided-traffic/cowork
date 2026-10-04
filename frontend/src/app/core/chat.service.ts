@@ -350,9 +350,12 @@ export class ChatService {
   private readonly document = inject(DOCUMENT);
   private readonly fetch = inject(CHAT_FETCH);
 
-  /** Whether the tenant's members may hold a conversation, and with which model. */
+  /**
+   * Whether the tenant's members may hold a conversation, and with which model; not asked of a
+   * tenant the person holds no role in (docs/adr/0034 D2).
+   */
   readonly availability = resource({
-    params: () => this.session.tenant() ?? undefined,
+    params: () => this.session.workTenant() ?? undefined,
     loader: ({ params: tenant }) => this.api.invoke(getChatAvailability, { tenant }),
   });
   readonly available = computed(

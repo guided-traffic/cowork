@@ -70,7 +70,6 @@ const (
 	fieldUser        = "user"
 	fieldRole        = "role"
 	fieldGlobalAdmin = "global_admin"
-	fieldGroups      = "groups"
 	fieldName        = "name"
 )
 
@@ -477,7 +476,7 @@ func (t *identityTx) createPerson(ctx context.Context, in OIDCLogin) (uuid.UUID,
 		return uuid.Nil, err
 	}
 	t.w.Record(Event{EntityType: entityUser, EntityID: id, Action: "created", Reason: CauseLogin, After: map[string]any{
-		fieldName: in.DisplayName, "identity": MethodOIDC, fieldGlobalAdmin: in.Admin, fieldGroups: nonNilStrings(in.Groups)}})
+		fieldName: in.DisplayName, "identity": MethodOIDC, fieldGlobalAdmin: in.Admin}})
 	return id, nil
 }
 
@@ -488,21 +487,39 @@ func (t *identityTx) updatePerson(ctx context.Context, cur readq.GetPersonByIden
 	}); err != nil {
 		return uuid.Nil, fmt.Errorf("refresh the person: %w", err)
 	}
-	before := map[string]any{fieldName: cur.DisplayName, "email_verified": cur.EmailVerified,
-		fieldGlobalAdmin: cur.GlobalAdmin, fieldGroups: nonNilStrings(cur.OidcGroups)}
-	after := map[string]any{fieldName: in.DisplayName, "email_verified": in.EmailVerified,
-		fieldGlobalAdmin: in.Admin, fieldGroups: nonNilStrings(in.Groups)}
-	t.recordChanges(cur.ID, before, after, derefOr(cur.Email, "") != in.Email, CauseLogin)
+	before := map[string]any{fieldName: cur.DisplayName, "email_verified": cur.EmailVerified, fieldGlobalAdmin: cur.GlobalAdmin}
+	after := map[string]any{fieldName: in.DisplayName, "email_verified": in.EmailVerified, fieldGlobalAdmin: in.Admin}
+	t.recordChanges(cur.ID, before, after, unnamed{
+		email:  derefOr(cur.Email, "") != in.Email,
+		groups: !sameGroups(cur.OidcGroups, in.Groups),
+	}, CauseLogin)
 	return cur.ID, nil
+}
+
+// unnamed is what changed about a person that an audit row says changed but
+// never names: the address and the groups.
+type unnamed struct {
+	email, groups bool
+}
+
+// sameGroups reports whether two lists name the same groups, in any order.
+func sameGroups(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 // recordChanges records what the issuer changed about a person, the changed
 // fields only, and nothing when nothing changed. The values compare as the
-// audit row writes them, in JSON. A changed address is recorded as having
-// changed and never as the address (the security review of 2026-10-04, m11):
-// the audit record is append-only, and an address in it could not be erased
-// on request.
-func (t *identityTx) recordChanges(person uuid.UUID, before, after map[string]any, emailChanged bool, cause string) {
+// audit row writes them, in JSON. A changed address is recorded as
+// email_changed and never as the address (the security review of 2026-10-04,
+// m11), and changed groups as groups_changed and never as the groups
+// (docs/adr/0030 D6, the owner's answer of 2026-10-04): the audit record is
+// append-only, so what it names could not be erased on request, and group
+// names can say more about a person than their role in a tenant — the
+// memberships the groups caused are recorded, tenant by tenant, anyway.
+func (t *identityTx) recordChanges(person uuid.UUID, before, after map[string]any, changed unnamed, cause string) {
 	changedBefore, changedAfter := map[string]any{}, map[string]any{}
 	for k, v := range after {
 		b, _ := json.Marshal(before[k])
@@ -511,8 +528,11 @@ func (t *identityTx) recordChanges(person uuid.UUID, before, after map[string]an
 			changedBefore[k], changedAfter[k] = before[k], v
 		}
 	}
-	if emailChanged {
+	if changed.email {
 		changedAfter["email_changed"] = true
+	}
+	if changed.groups {
+		changedAfter["groups_changed"] = true
 	}
 	if len(changedAfter) == 0 {
 		return
@@ -805,8 +825,8 @@ func (t *identityTx) storeSnapshot(ctx context.Context, person uuid.UUID, groups
 		GlobalAdmin: admin, ID: person}); err != nil {
 		return fmt.Errorf("store the person's groups: %w", err)
 	}
-	t.recordChanges(person, map[string]any{fieldGlobalAdmin: cur.GlobalAdmin, fieldGroups: nonNilStrings(cur.OidcGroups)},
-		map[string]any{fieldGlobalAdmin: admin, fieldGroups: nonNilStrings(groups)}, false, cause)
+	t.recordChanges(person, map[string]any{fieldGlobalAdmin: cur.GlobalAdmin}, map[string]any{fieldGlobalAdmin: admin},
+		unnamed{groups: !sameGroups(cur.OidcGroups, groups)}, cause)
 	return t.flushIn(ctx, uuid.Nil)
 }
 
@@ -862,7 +882,7 @@ func (db *DB) CheckTokenGate(ctx context.Context, in TokenGate) (bool, error) {
 	if err := t.w.StampGateCheck(ctx, writeq.StampGateCheckParams{Now: &in.Now, GlobalAdmin: admin, ID: in.PersonID}); err != nil {
 		return false, fmt.Errorf("stamp the check: %w", err)
 	}
-	t.recordChanges(in.PersonID, map[string]any{fieldGlobalAdmin: cur.GlobalAdmin}, map[string]any{fieldGlobalAdmin: admin}, false, CauseToken)
+	t.recordChanges(in.PersonID, map[string]any{fieldGlobalAdmin: cur.GlobalAdmin}, map[string]any{fieldGlobalAdmin: admin}, unnamed{}, CauseToken)
 	if err := t.flushIn(ctx, uuid.Nil); err != nil {
 		return false, err
 	}

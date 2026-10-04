@@ -11,11 +11,18 @@
 # leaked token, it would outlive the token's revocation, as an account or a
 # password would (docs/adr/0035 D5). What only takes access away — removing a
 # grant, a mapping or an entry — stays open to an administrator's `admin`-scope
-# token. An agent writes none of it (docs/adr/0043 D3). Every change is recorded
+# token. Making a group mapping or changing its role takes, besides, a global
+# administrator who administers the tenant: every tenant shares the identity
+# provider's one namespace of groups, and a mapping admits everyone in its group
+# at once; any other administrator is `403 forbidden` (docs/adr/0030 D7). An
+# agent writes none of it (docs/adr/0043 D3). Every change is recorded
 # (docs/adr/0030 D6, docs/adr/0026) and announced on the tenant's event stream
 # as `membership.changed` (docs/adr/0054 D2). A change that would leave the
 # tenant without an administrator — nobody holding `admin`, mapped or granted —
-# is `409 last_admin`.
+# is `409 last_admin`. A global administrator who holds no role in the tenant
+# reads its members and its group mappings and grants themselves a role, in a
+# browser session, and does nothing else here until they have one; one who
+# holds a role below `admin` raises their own grant (docs/adr/0034 D2).
 members:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -29,7 +36,9 @@ members:
       own role; `local` marks a person with a local account rather than an
       identity of the identity provider (docs/adr/0033). `email` is the
       address that tells two persons of one name apart, for the tenant's
-      administrators; everyone else reads null.
+      administrators; everyone else reads null — a global administrator who
+      holds no role in the tenant and reads the list as part of its
+      administration too (docs/adr/0034 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -104,6 +113,16 @@ memberGrant:
       groups change (docs/adr/0030 D3). The person must be a member of the
       tenant, else `404 person_not_found` — a person who is not one yet is
       added by e-mail address or username.
+
+      A global administrator who does not hold `admin` in the tenant — who
+      holds no role there, or a lower one — sets their own grant here, their
+      own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+      any other, made or its role changed under the tenant's lock, recorded in
+      the tenant's audit with the administrator as its actor and announced to
+      its members as `membership.changed`. It takes no administrator away, so
+      it is never `409 last_admin`; it is how a tenant left without an
+      administrator who can log in gets one again. A grant to anybody else
+      stays an administrator's act: `403 forbidden`.
     security:
       - sessionCookie: []
     requestBody:
@@ -147,7 +166,9 @@ groupMappings:
       Each mapping gives its role to every person whose groups include its
       group; several matches yield the highest role (docs/adr/0030 D2).
       `includes_caller` says the calling person is one of them, so the editor
-      can warn before a change takes the editor's own role away.
+      can warn before a change takes the editor's own role away. The tenant's
+      administrators read them, and a global administrator who holds no role
+      in the tenant, in a browser session (docs/adr/0034 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -172,6 +193,12 @@ groupMappings:
       transaction, recorded with the cause `mapping`. Everyone else is caught
       up at their next login or groups refresh (docs/adr/0030 D5). A group the
       tenant maps already is `409 mapping_exists`.
+
+      Only a global administrator who administers the tenant maps a group, in
+      a browser session; any other administrator of the tenant is
+      `403 forbidden`, and nothing is written. Every tenant shares the identity
+      provider's one namespace of groups, and a mapping admits everyone in its
+      group at once (docs/adr/0030 D7).
     security:
       - sessionCookie: []
     parameters:
@@ -209,7 +236,9 @@ groupMapping:
     summary: Change a mapping's role
     description: |
       `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
-      derives change at once, as at its creation.
+      derives change at once, as at its creation. Like its creation, a global
+      administrator's who administers the tenant: any other administrator is
+      `403 forbidden` (docs/adr/0030 D7).
     security:
       - sessionCookie: []
     parameters:
@@ -240,7 +269,9 @@ groupMapping:
     summary: Remove a mapping
     description: |
       The memberships it derived go at once, or fall to the highest of the
-      person's other mapped groups; grants stay (docs/adr/0030 D3).
+      person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+      administrator of the tenant may remove one, with an `admin`-scope token
+      too: it only takes access away (docs/adr/0030 D7).
       Idempotent: removing a mapping that does not exist answers 204 as well.
     responses:
       '204':

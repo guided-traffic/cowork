@@ -189,15 +189,15 @@ func (h *handler) streamStillAdmitted(ctx context.Context, p auth.Principal) boo
 		return true
 	}
 	var person struct {
-		issuer  *string
-		checked *time.Time
+		issuer          *string
+		checked, groups *time.Time
 	}
 	err := h.opts.DB.Installation(ctx, func(r *store.Reader) error {
 		u, err := r.GetUser(ctx, p.PersonID)
-		person.issuer, person.checked = u.OidcIssuer, u.GateCheckedAt
+		person.issuer, person.checked, person.groups = u.OidcIssuer, u.GateCheckedAt, u.OidcGroupsAt
 		return err
 	})
-	if err != nil || !h.ownIssuer(person.issuer) {
+	if err != nil || !h.ownIssuer(person.issuer) || h.groupsTooOld(person.groups, now) {
 		return false
 	}
 	if !store.GateDue(true, person.checked, now, h.opts.OIDC.GroupsRefresh) {
@@ -208,11 +208,21 @@ func (h *handler) streamStillAdmitted(ctx context.Context, p auth.Principal) boo
 	return err == nil && admitted
 }
 
+// groupsTooOld reports whether a person's stored groups — read at their last
+// sign-in or at the last session refresh that read them — are older than
+// COWORK_OIDC_GROUPS_MAX_AGE, and so too old to judge a token by
+// (docs/adr/0035 D8). Groups never read are too old.
+func (h *handler) groupsTooOld(readAt *time.Time, now time.Time) bool {
+	return readAt == nil || now.Sub(*readAt) > h.opts.OIDC.GroupsMaxAge
+}
+
 // tokenGate checks a token's person against the gate with the groups of their
 // last login or refresh, at most once per refresh interval (docs/adr/0035 D8):
 // a person outside it has no working token from that moment, and the token
 // works again once they are back inside. It is not revoked. A person who is
-// not the configured issuer's is outside at once, whatever was checked (m6).
+// not the configured issuer's is outside at once, whatever was checked (m6),
+// and so is one whose groups are older than the maximum age, until a sign-in in
+// the browser reads them again.
 func (h *handler) tokenGate(r *http.Request, rec store.TokenRecord, now time.Time) *problem.Error {
 	if !rec.Person.Provider {
 		return nil
@@ -223,6 +233,11 @@ func (h *handler) tokenGate(r *http.Request, rec store.TokenRecord, now time.Tim
 	}
 	if !h.ownIssuer(rec.Person.OidcIssuer) {
 		return refused()
+	}
+	if h.groupsTooOld(rec.Person.OidcGroupsAt, now) {
+		h.recordRefusal(r, rec, "not_allowed")
+		return unauthenticated(problem.NotAllowed, "the person's groups were last read from the identity provider more than "+
+			h.opts.OIDC.GroupsMaxAge.String()+" ago: sign in to cowork in the browser once, and the token works again")
 	}
 	if !store.GateDue(true, rec.Person.GateCheckedAt, now, h.opts.OIDC.GroupsRefresh) {
 		return nil

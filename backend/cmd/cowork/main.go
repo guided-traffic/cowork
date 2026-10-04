@@ -263,9 +263,11 @@ func discoverIssuer(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		logger.Warn("the identity provider's gate admits nobody: name a group in COWORK_OIDC_ALLOWED_GROUPS or COWORK_ADMIN_GROUP")
 	}
 	logger.Info("identity provider discovered", "issuer", o.Issuer, "allowed_groups", len(o.AllowedGroups),
-		"administrator_group", o.AdminGroup != "", "groups_refresh", o.GroupsRefresh)
+		"administrator_group", o.AdminGroup != "", "groups_refresh", o.GroupsRefresh, "groups_max_age", o.GroupsMaxAge,
+		"email_trusted", o.EmailTrusted)
 	return api.OIDCOptions{Provider: provider, AllowedGroups: o.AllowedGroups, AdminGroup: o.AdminGroup,
-		GroupsRefresh: o.GroupsRefresh, DisplayName: o.DisplayName}, nil
+		GroupsRefresh: o.GroupsRefresh, GroupsMaxAge: o.GroupsMaxAge, EmailTrusted: o.EmailTrusted,
+		DisplayName: o.DisplayName}, nil
 }
 
 // requireForServe checks what only `cowork serve` needs: the server key, and

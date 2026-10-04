@@ -183,6 +183,7 @@ func TestARefreshedIDTokenThatDoesNotVerify(t *testing.T) {
 func TestARederivationLeavesWhoCannotAct(t *testing.T) {
 	ctx := context.Background()
 	a := newAdminWorld(t)
+	a.globalAdmin(t)
 	yes := true
 	group := uniqueSlug("g")
 	active := a.person(t, address("active"), &yes, group)

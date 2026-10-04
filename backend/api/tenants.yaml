@@ -1,5 +1,36 @@
-# Creating a tenant, /api/v1/tenants (docs/adr/0005 D5).
+# The installation's tenants, /api/v1/tenants: a global administrator lists
+# them all and creates one (docs/adr/0005 D5, docs/adr/0034 D2).
 tenants:
+  get:
+    operationId: listTenants
+    tags: [tenants]
+    summary: Every tenant of the installation, for a global administrator
+    description: |
+      Every tenant by slug, with the role the caller holds in it — the highest
+      of their mapping and their grant — or `null` where they hold none
+      (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+      which they have no role: there they see its administration — the
+      tenant and its settings, its members, its group mappings — and grant
+      themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+      and nothing of its work until they have. A person who is not a global
+      administrator is `403 forbidden`; the tenants they belong to are in
+      `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+      token is `403 session_required`, so a leaked token of a global
+      administrator lists no tenant beyond the person's own.
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of tenants, by slug
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TenantSummaryList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
   post:
     operationId: createTenant
     tags: [tenants]
@@ -40,7 +71,11 @@ tenants:
         $ref: './components/responses.yaml#/Problem'
 # Everything under one tenant, /api/v1/tenants/{tenant}/… (docs/adr/0023 D1).
 # An unknown slug, a tenant the person is not a member of, and a token
-# restricted to another tenant answer alike: 404 not_found (D5).
+# restricted to another tenant answer alike: 404 not_found (D5). A global
+# administrator without a role in the tenant reaches, in a browser session that
+# no agent marks, its administration — getTenant, listMembers,
+# listGroupMappings — and the grant of a role to themselves, setMemberGrant;
+# every other route of the tenant answers them that 404 too (docs/adr/0034 D2).
 tenant:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -48,6 +83,10 @@ tenant:
     operationId: getTenant
     tags: [tenants]
     summary: The tenant and its settings
+    description: |
+      Every member reads it; a global administrator who holds no role in the
+      tenant too, in a browser session, as part of its administration
+      (docs/adr/0034 D2).
     responses:
       '200':
         description: The tenant

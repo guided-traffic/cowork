@@ -50,6 +50,10 @@ describe('TenantsService', () => {
   };
   const write = () =>
     http.expectOne((request) => request.method === 'POST' && request.url === '/api/v1/tenants');
+  /** The list of the installation's tenants a global administrator's session loads (docs/adr/0034 D2). */
+  const installation = () =>
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+  const noTenants = { items: [], next_cursor: null };
   const body = { slug: 'acme', name: 'Acme Corp' };
   const key = '0199aaaa-2222-7000-8000-000000000001';
 
@@ -63,6 +67,8 @@ describe('TenantsService', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.tick();
     http.expectOne('/api/v1/me').flush(administrator());
+    await settle();
+    installation().flush(noTenants);
     await settle();
   });
 
@@ -87,6 +93,7 @@ describe('TenantsService', () => {
     expect(await done).toEqual(acme);
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
+    installation().flush(noTenants);
   });
 
   it('sends the key it is given, not one of its own (docs/adr/0045 D3)', async () => {
@@ -98,6 +105,7 @@ describe('TenantsService', () => {
     await done;
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
+    installation().flush(noTenants);
   });
 
   it('sends the same key again for a retry of the same content after a network failure, and another one for other content', async () => {
@@ -106,6 +114,7 @@ describe('TenantsService', () => {
     expect(((await lost) as HttpErrorResponse).status).toBe(0);
     await settle();
     http.expectNone('/api/v1/me');
+    http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
 
     const retry = service.create(body, key);
     const again = write();
@@ -114,6 +123,7 @@ describe('TenantsService', () => {
     await retry;
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
+    installation().flush(noTenants);
     await settle();
 
     const other = '0199aaaa-2222-7000-8000-000000000002';
@@ -124,6 +134,7 @@ describe('TenantsService', () => {
     await changed;
     await settle();
     http.expectOne('/api/v1/me').flush(administrator());
+    installation().flush(noTenants);
   });
 
   it('loads the person again, so that the new membership is there for the pages of the tenant', async () => {
@@ -145,9 +156,11 @@ describe('TenantsService', () => {
         },
       ]),
     );
+    installation().flush({ items: [{ slug: 'acme', name: 'Acme Corp', role: 'admin' }], next_cursor: null });
     await settle();
 
     expect(session.memberships().map((membership) => membership.tenant.slug)).toEqual(['acme']);
+    expect(session.installation.value()?.map((tenant) => tenant.slug)).toEqual(['acme']);
     expect(session.soleTenant()).toBe('acme');
   });
 
@@ -172,6 +185,7 @@ describe('TenantsService', () => {
         },
       ]),
     );
+    installation().flush(noTenants);
   });
 
   it.each([
@@ -195,6 +209,7 @@ describe('TenantsService', () => {
       expect(error).toBeInstanceOf(HttpErrorResponse);
       expect((error as HttpErrorResponse).status).toBe(status);
       http.expectNone('/api/v1/me');
+      http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
     },
   );
 });

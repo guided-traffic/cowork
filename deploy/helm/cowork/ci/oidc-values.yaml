@@ -28,6 +28,8 @@ auth:
       - cowork-guests
     adminGroup: cowork-admins
     groupsRefresh: 5m
+    groupsMaxAge: 72h
+    emailTrusted: true
     displayName: Example SSO
 backend:
   config:

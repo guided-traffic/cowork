@@ -147,6 +147,19 @@ auth:
     # D5). A person removed from a group at the provider keeps what the group
     # gave until the session's next refresh.
     groupsRefresh: 15m
+    # COWORK_OIDC_GROUPS_MAX_AGE: how old a person's groups — read at their
+    # last sign-in or session refresh — may be for their personal access tokens
+    # to work, a Go duration longer than groupsRefresh (docs/adr/0035 D8).
+    # Older groups refuse the tokens with 401 not_allowed until the person
+    # signs in to the browser once; a local account's tokens are not affected.
+    groupsMaxAge: 168h
+    # COWORK_OIDC_EMAIL_TRUSTED: whether an address about which the provider
+    # says nothing (no email_verified claim, as Entra sends none) counts as
+    # verified when an administrator grants a role by e-mail address
+    # (docs/adr/0030 D3). false: only email_verified true matches. Set true only
+    # for a provider whose addresses administrators issue: where people choose
+    # their own address, one can claim a colleague's.
+    emailTrusted: false
     # COWORK_OIDC_DISPLAY_NAME: the login page offers "Sign in with <name>".
     displayName: single sign-on
 

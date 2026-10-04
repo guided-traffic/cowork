@@ -125,6 +125,13 @@ type OIDCOptions struct {
 	// GroupsRefresh is how often a session's groups are read again and a
 	// token's person is checked against the gate; zero means the default.
 	GroupsRefresh time.Duration
+	// GroupsMaxAge is how old a person's stored groups may be for their tokens
+	// to work (docs/adr/0035 D8); zero means the default.
+	GroupsMaxAge time.Duration
+	// EmailTrusted lets a grant by e-mail address match a person about whose
+	// address the issuer said nothing (docs/adr/0030 D3); false matches only
+	// an address the issuer marked verified.
+	EmailTrusted bool
 	// DisplayName is the provider's name on the login page's button.
 	DisplayName string
 }
@@ -245,6 +252,9 @@ func withDefaults(o *Options) {
 	}
 	if o.OIDC.GroupsRefresh <= 0 {
 		o.OIDC.GroupsRefresh = config.DefaultOIDCGroupsRefresh
+	}
+	if o.OIDC.GroupsMaxAge <= 0 {
+		o.OIDC.GroupsMaxAge = config.DefaultOIDCGroupsMaxAge
 	}
 }
 

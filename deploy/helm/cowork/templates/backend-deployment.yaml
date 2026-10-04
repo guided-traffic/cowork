@@ -149,6 +149,10 @@ spec:
             {{- end }}
             - name: COWORK_OIDC_GROUPS_REFRESH
               value: {{ .Values.auth.oidc.groupsRefresh | quote }}
+            - name: COWORK_OIDC_GROUPS_MAX_AGE
+              value: {{ .Values.auth.oidc.groupsMaxAge | quote }}
+            - name: COWORK_OIDC_EMAIL_TRUSTED
+              value: {{ .Values.auth.oidc.emailTrusted | quote }}
             - name: COWORK_OIDC_DISPLAY_NAME
               value: {{ .Values.auth.oidc.displayName | quote }}
             {{- end }}

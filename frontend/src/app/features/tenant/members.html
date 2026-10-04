@@ -22,6 +22,10 @@
     }
   </header>
 
+  @if (session.mayGrantSelf() && !session.oversight()) {
+    <app-self-grant />
+  }
+
   @if (tenant.isAdmin()) {
     <p class="muted lead" data-testid="members-lead">
       A member's role is the higher of the role a group mapping gives them and the role granted

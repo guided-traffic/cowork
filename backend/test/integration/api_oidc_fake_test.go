@@ -17,7 +17,9 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/test/fakeissuer"
+	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
 // fakeWorld is a tenant whose mapping makes a group of its own members, an
@@ -276,17 +278,18 @@ func TestADeactivatedPersonIsRefused(t *testing.T) {
 		AND reason = 'not_allowed' AND note = 'deactivated'`, w.person(t)))
 }
 
-// docs/adr/0030 D2, D7, docs/adr/0034 D1: the editor of a mapping sees which
-// mappings hold their own groups, and the change of the one that makes them
-// the tenant's only administrator is refused; with another administrator it
-// goes through and changes their own role at once.
+// docs/adr/0030 D2, D7, docs/adr/0034 D1: the editor of a mapping — a global
+// administrator by the administrator group, who alone changes a mapping —
+// sees which mappings hold their own groups, and the change of the one that
+// makes them the tenant's only administrator is refused; with another
+// administrator it goes through and changes their own role at once.
 func TestTheMappingEditorsOwnRole(t *testing.T) {
 	ctx := context.Background()
 	w := newFakeWorld(t)
 	f := fixtures(t)
 	adminGroup := uniqueSlug("admins")
 	require.NoError(t, f.Exec(ctx, `INSERT INTO group_mappings (tenant_id, group_name, role) VALUES ($1, $2, 'admin')`, w.tenant, adminGroup))
-	w.is.SetGroups(w.subject, []string{"cowork-users", adminGroup})
+	w.is.SetGroups(w.subject, []string{"cowork-users", "cowork-admins", adminGroup})
 	b := w.login(t)
 	assert.Equal(t, apigen.RoleAdmin, roleIn(decode[apigen.Me](t, b.get("/api/v1/me")), w.slug))
 
@@ -387,4 +390,101 @@ func TestLeavingTheGateStopsTheTokensAtOnce(t *testing.T) {
 			assertProblem(t, me(), http.StatusUnauthorized, "not_allowed")
 		})
 	}
+}
+
+// docs/adr/0035 D8, COWORK_OIDC_GROUPS_MAX_AGE (the owner's answer of
+// 2026-10-04): a token of a person of the identity provider is judged by
+// groups no older than the maximum age, a week by default. Older ones refuse
+// it with 401 not_allowed, at every request, until a sign-in in the browser —
+// or a session's refresh that reads them — reads the groups again. A local
+// account has no groups to age.
+func TestGroupsOlderThanTheMaximumAgeRefuseTheTokens(t *testing.T) {
+	ctx := context.Background()
+	w := newFakeWorld(t)
+	b := w.login(t)
+	created := b.request(http.MethodPost, "/api/v1/me/tokens", map[string]any{"name": "script", "scope": "read"})
+	require.Equal(t, http.StatusCreated, created.StatusCode)
+	token := caller{Token: *decode[apigen.TokenCreated](t, created).Token}
+	me := func() *http.Response { return w.s.do(t, token, http.MethodGet, "/api/v1/me", nil) }
+	person := w.person(t)
+	age := func(d time.Duration) {
+		t.Helper()
+		require.NoError(t, fixtures(t).Exec(ctx, `UPDATE users SET oidc_groups_at = $2 WHERE id = $1`, person, w.clock.Now().Add(-d)))
+	}
+	const week = 168 * time.Hour
+
+	age(week - time.Minute)
+	require.Equal(t, http.StatusOK, me().StatusCode, "a week old less a minute is young enough")
+	age(week + time.Minute)
+	refused := assertProblem(t, me(), http.StatusUnauthorized, "not_allowed")
+	assert.Contains(t, refused["detail"], "sign in to cowork in the browser once")
+	assertProblem(t, me(), http.StatusUnauthorized, "not_allowed")
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE entity_type = 'token' AND action = 'refused'
+		AND reason = 'not_allowed' AND actor_user_id = $1`, person), "recorded once per token, reason and hour")
+
+	require.Equal(t, "/", w.s.browser(t).oidcLogin(w.subject+"@example.com", "/").Header.Get("Location"))
+	require.Equal(t, http.StatusOK, me().StatusCode, "a sign-in read the groups again")
+
+	age(week + time.Minute)
+	assertProblem(t, me(), http.StatusUnauthorized, "not_allowed")
+	w.clock.Advance(16 * time.Minute)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode, "the session's refresh reads the groups")
+	assert.Equal(t, 1, w.refreshes())
+	require.Equal(t, http.StatusOK, me().StatusCode, "and the token works again")
+
+	local, err := fixtures(t).Person(ctx, uniqueSlug("local"), "Local")
+	require.NoError(t, err)
+	require.NoError(t, fixtures(t).Account(ctx, local, testPassword, uuid.Nil, false))
+	plaintext, _, err := fixtures(t).Token(ctx, fixture.TokenSpec{UserID: local, Scope: domain.ScopeRead})
+	require.NoError(t, err)
+	w.clock.Advance(2 * week)
+	assert.Equal(t, http.StatusOK, w.s.do(t, caller{Token: plaintext}, http.MethodGet, "/api/v1/me", nil).StatusCode,
+		"a local account's token: no groups, nothing to age")
+}
+
+// docs/adr/0026 D1, docs/adr/0030 D6 (the owner's answer of 2026-10-04): no
+// audit row names a person's groups — not at their creation, not when a sign-in
+// or a refresh changes them, which is recorded as groups_changed only. The
+// memberships the groups cause are recorded as before.
+func TestNoAuditRowNamesAPersonsGroups(t *testing.T) {
+	w := newFakeWorld(t)
+	gone, fresh := uniqueSlug("gone"), uniqueSlug("fresh")
+	w.is.SetGroups(w.subject, []string{"cowork-users", "cowork-admins", w.group, gone})
+	b := w.login(t)
+	person := w.person(t)
+
+	w.is.SetGroups(w.subject, []string{"cowork-users", w.group, fresh})
+	w.clock.Advance(16 * time.Minute)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode)
+	require.Equal(t, 1, w.refreshes(), "a refresh read the changed groups")
+	w.is.SetGroups(w.subject, []string{"cowork-users", fresh, gone})
+	require.Equal(t, "/", w.s.browser(t).oidcLogin(w.subject+"@example.com", "/").Header.Get("Location"))
+
+	// A name in a JSON column is a quoted string; reason and note are plain.
+	names := func(param string) string {
+		return `(coalesce(before::text, '') || coalesce(after::text, '') LIKE '%"' || ` + param + ` || '"%'
+			OR reason = ` + param + ` OR note = ` + param + `)`
+	}
+	for _, group := range []string{"cowork-users", "cowork-admins", w.group, gone, fresh} {
+		assert.EqualValues(t, 0, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE
+			(entity_id = $1 OR actor_user_id = $1 OR after->>'user' = $1::text OR before->>'user' = $1::text)
+			AND `+names("$2"), person, group), "a row of the person names %s", group)
+	}
+	for _, group := range []string{w.group, gone, fresh} {
+		assert.EqualValues(t, 0, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE `+names("$1"), group),
+			"no row anywhere names %s", group)
+	}
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE entity_id = $1 AND action = 'created'
+		AND NOT after ? 'groups' AND NOT after ? 'groups_changed'`, person), "a creation says nothing of the groups")
+	for _, cause := range []string{"refresh", "login"} {
+		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE entity_id = $1 AND action = 'updated'
+			AND reason = $2 AND (after->>'groups_changed')::boolean AND NOT after ? 'groups' AND NOT coalesce(before, '{}') ? 'groups'`,
+			person, cause), cause)
+	}
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND entity_type = 'membership'
+		AND action = 'created' AND reason = 'login' AND after->>'user' = $2::text`, w.tenant, person),
+		"the mapped membership's own rows: made at the first login")
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND entity_type = 'membership'
+		AND action = 'deleted' AND reason = 'login' AND before->>'user' = $2::text`, w.tenant, person),
+		"and removed at the second, whose groups no longer hold the mapped one")
 }

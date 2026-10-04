@@ -24,6 +24,20 @@ const (
 	PersonAmbiguous
 )
 
+// PersonLookup is what FindPerson looks a person up by.
+type PersonLookup struct {
+	TenantID uuid.UUID
+	// Key is an e-mail address — a key with "@" — or a local account's
+	// username.
+	Key string
+	// Issuer is the configured issuer, whose persons alone an address finds.
+	Issuer string
+	// EmailTrusted lets an address match a person about whose address the
+	// issuer said nothing; without it only one the issuer marked verified
+	// matches (COWORK_OIDC_EMAIL_TRUSTED).
+	EmailTrusted bool
+}
+
 // FindPerson looks up a person a tenant's administrator grants a role to
 // (docs/adr/0030 D3): by e-mail address — a key with "@" — among the persons of
 // the configured issuer, or by a local account's username. The person must
@@ -31,7 +45,8 @@ const (
 // the administrator's, in their tenant, and names the key in
 // app.person_lookup: the users policy admits the persons that match it and no
 // other person of the installation.
-func (db *DB) FindPerson(ctx context.Context, tenantID uuid.UUID, key, issuer string) (uuid.UUID, PersonMatch, error) {
+func (db *DB) FindPerson(ctx context.Context, in PersonLookup) (uuid.UUID, PersonMatch, error) {
+	tenantID, key := in.TenantID, in.Key
 	caller, _ := CallerFrom(ctx)
 	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -55,7 +70,7 @@ func (db *DB) FindPerson(ctx context.Context, tenantID uuid.UUID, key, issuer st
 		}
 		return id, PersonFound, nil
 	}
-	ids, err := r.FindPersonsByEmail(ctx, readq.FindPersonsByEmailParams{Email: key, Issuer: issuer})
+	ids, err := r.FindPersonsByEmail(ctx, readq.FindPersonsByEmailParams{Email: key, EmailTrusted: in.EmailTrusted, Issuer: in.Issuer})
 	if err != nil {
 		return uuid.Nil, PersonNone, fmt.Errorf("find the person: %w", err)
 	}

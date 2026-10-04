@@ -27,6 +27,8 @@ export type { GetCoworkYamlSchema$Params as GetCoworkYamlSchema$Params } from '.
 export { getCoworkYamlSchema as getCoworkYamlSchema } from './fn/meta/get-cowork-yaml-schema';
 export type { GetVersion$Params as GetVersion$Params } from './fn/meta/get-version';
 export { getVersion as getVersion } from './fn/meta/get-version';
+export type { ListTenants$Params as ListTenants$Params } from './fn/tenants/list-tenants';
+export { listTenants as listTenants } from './fn/tenants/list-tenants';
 export type { CreateTenant$Params as CreateTenant$Params } from './fn/tenants/create-tenant';
 export { createTenant as createTenant } from './fn/tenants/create-tenant';
 export type { GetTenant$Params as GetTenant$Params } from './fn/tenants/get-tenant';

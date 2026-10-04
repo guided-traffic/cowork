@@ -17,7 +17,8 @@ import { SessionService } from './session.service';
 /**
  * The group mappings of the tenant the pages show (docs/adr/0030 D2, D7): each gives a role in the
  * tenant to everyone whose identity-provider groups include its group. Only the tenant's
- * administrators read them, so the list is not asked for anybody else: it would be a `403`. A
+ * administrators read them, and a global administrator who holds no role in the tenant, so the list
+ * is not asked for anybody else: it would be a `403`. A
  * mapping's change re-derives the memberships of its group at once, so every act loads the members
  * again, and the person's own memberships where the mapping is theirs; `membership.changed`, a
  * resync and the fallback's poll load the list again (docs/adr/0054), and a load again that fails
@@ -30,12 +31,14 @@ export class GroupMappingsService {
   private readonly injector = inject(Injector);
 
   /**
-   * The tenant of the page while the person administers it, and nothing else. A computed, so that
-   * the person loaded again with the same role leaves the list alone.
+   * The tenant of the page while the person administers it, or oversees it as a global
+   * administrator without a role there (docs/adr/0034 D2), and nothing else. A computed, so that the
+   * person loaded again with the same role leaves the list alone.
    */
   private readonly administered = computed(() => {
     const tenant = this.session.tenant();
-    return tenant !== null && this.session.membership()?.role === 'admin' ? tenant : undefined;
+    const reads = this.session.membership()?.role === 'admin' || this.session.oversight();
+    return tenant !== null && reads ? tenant : undefined;
   });
 
   readonly mappings: ResourceRef<GroupMapping[] | undefined> = resource({

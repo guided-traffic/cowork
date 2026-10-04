@@ -114,8 +114,15 @@ export class Shell {
     { initialValue: null },
   );
 
+  /**
+   * The tenants of the switch: the person's, and for a global administrator every other tenant of
+   * the installation, marked as one they hold no role in (docs/adr/0034 D2).
+   */
   protected readonly tenants = computed(() =>
-    this.session.memberships().map((membership) => membership.tenant),
+    this.session.tenants().map(({ slug, name, role }) => ({
+      slug,
+      name: role ? name : `${name} (no role)`,
+    })),
   );
   protected readonly themeText = computed(() => themeTexts[this.theme.preference()]);
   protected readonly initials = computed(() => initials(this.session.person()?.display_name ?? ''));

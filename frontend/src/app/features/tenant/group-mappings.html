@@ -9,7 +9,7 @@
   <header class="head">
     <h1 tabindex="-1">Group mappings</h1>
     <span class="spacer"></span>
-    @if (tenant.isAdmin()) {
+    @if (tenant.isAdmin() && mayMap()) {
       <button
         pButton
         type="button"
@@ -22,13 +22,18 @@
     }
   </header>
 
-  @if (tenant.isAdmin()) {
+  @if (tenant.isAdmin() || session.oversight()) {
     <p class="muted lead">
       A mapping gives everyone whose groups at the identity provider include its group a role in
       this tenant; several mapped groups give the highest of their roles. A change applies at once
       to everyone whose groups cowork knows from their last sign-in, and to everyone else when they
       next sign in. Grants made under Members stay as they are.
     </p>
+    @if (tenant.isAdmin() && !mayMap()) {
+      <p class="muted lead" data-testid="mappings-global-only">
+        Only a global administrator creates mappings and changes their roles; you can remove them.
+      </p>
+    }
 
     @if (notice(); as message) {
       <p-message
@@ -77,35 +82,41 @@
               </span>
             </td>
             <td class="col-role">
-              <p-select
-                [options]="roles"
-                [ngModel]="shownRole(mapping)"
-                (ngModelChange)="changeRole(mapping, $event)"
-                size="small"
-                appendTo="body"
-                [disabled]="pending().has(mapping.id)"
-                [ariaLabel]="'Role of the group ' + mapping.group"
-                [attr.data-testid]="'mapping-role-' + mapping.group"
-              />
+              @if (mayMap()) {
+                <p-select
+                  [options]="roles"
+                  [ngModel]="shownRole(mapping)"
+                  (ngModelChange)="changeRole(mapping, $event)"
+                  size="small"
+                  appendTo="body"
+                  [disabled]="pending().has(mapping.id)"
+                  [ariaLabel]="'Role of the group ' + mapping.group"
+                  [attr.data-testid]="'mapping-role-' + mapping.group"
+                />
+              } @else {
+                <span [attr.data-testid]="'mapping-role-' + mapping.group">{{ mapping.role }}</span>
+              }
             </td>
             <td class="muted">{{ dateTime(mapping.updated_at) }}</td>
             <td class="col-actions">
-              <button
-                pButton
-                type="button"
-                class="remove"
-                [text]="true"
-                [rounded]="true"
-                severity="danger"
-                size="small"
-                [iconOnly]="true"
-                pTooltip="Remove mapping"
-                [attr.aria-label]="'Remove the mapping of ' + mapping.group"
-                [attr.data-testid]="'mapping-remove-' + mapping.group"
-                (click)="remove(mapping)"
-              >
-                <i class="pi pi-trash"></i>
-              </button>
+              @if (tenant.isAdmin()) {
+                <button
+                  pButton
+                  type="button"
+                  class="remove"
+                  [text]="true"
+                  [rounded]="true"
+                  severity="danger"
+                  size="small"
+                  [iconOnly]="true"
+                  pTooltip="Remove mapping"
+                  [attr.aria-label]="'Remove the mapping of ' + mapping.group"
+                  [attr.data-testid]="'mapping-remove-' + mapping.group"
+                  (click)="remove(mapping)"
+                >
+                  <i class="pi pi-trash"></i>
+                </button>
+              }
             </td>
           </tr>
         </ng-template>

@@ -8,6 +8,28 @@ JOIN memberships m ON m.tenant_id = t.id
 WHERE t.slug = sqlc.arg(slug) AND m.user_id = sqlc.arg(user_id)
 GROUP BY t.id, t.slug, t.name;
 
+-- name: GetTenantBySlug :one
+-- A tenant by slug, whoever is a member: the tenant boundary's read for a
+-- global administrator who holds no role in it (docs/adr/0034 D2). The tenants
+-- policy admits the row to a global administrator and to the tenant's members
+-- only (migration 26), so for anybody else it is no row.
+SELECT id, slug, name
+FROM tenants
+WHERE slug = sqlc.arg(slug);
+
+-- name: ListTenants :many
+-- Every tenant of the installation by slug, a page after the cursor's slug,
+-- with the person's highest role in each — '' where they hold none: the
+-- tenant list of a global administrator (docs/adr/0034 D2), whom alone the
+-- tenants policy shows every row.
+SELECT t.slug, t.name, COALESCE(max(m.role)::text, '')::text AS role
+FROM tenants t
+LEFT JOIN memberships m ON m.tenant_id = t.id AND m.user_id = sqlc.arg(user_id)
+WHERE sqlc.narg(after)::text IS NULL OR t.slug > sqlc.narg(after)::text
+GROUP BY t.id, t.slug, t.name
+ORDER BY t.slug
+LIMIT sqlc.arg(page_size);
+
 -- name: GetTenant :one
 SELECT id, slug, name, version, time_visible_to_members, time_locked_until,
        members_create_projects, chat_external_allowed, chat_external_provider, created_at, updated_at

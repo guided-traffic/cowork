@@ -14,9 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/bootstrap"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/test/fakeissuer"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
@@ -26,19 +28,21 @@ import (
 // identity provider in the test's process whose persons the tests make.
 type adminWorld struct {
 	world
-	s      apiServer
-	names  map[string]string
-	admin  *browser
-	token  string
-	issuer string
+	s        apiServer
+	names    map[string]string
+	admin    *browser
+	token    string
+	issuer   string
+	provider *oidc.Provider
 }
 
 func newAdminWorld(t *testing.T) adminWorld {
 	t.Helper()
 	w := newWorld(t)
 	is := fakeissuer.Start(t)
-	a := adminWorld{world: w, names: withAccounts(t, w), issuer: is.URL,
-		s: newAPI(t, withLogin, withIdentity(fakeProvider(t, is), []string{"cowork-users"}, ""))}
+	provider := fakeProvider(t, is)
+	a := adminWorld{world: w, names: withAccounts(t, w), issuer: is.URL, provider: provider,
+		s: newAPI(t, withLogin, withIdentity(provider, []string{"cowork-users"}, ""))}
 	a.admin = a.s.browser(t)
 	a.admin.mustLogin(a.names["adminA"], testPassword)
 	plaintext, _, err := fixtures(t).Token(context.Background(), fixture.TokenSpec{UserID: w.AdminA, Scope: domain.ScopeAdmin})
@@ -48,6 +52,13 @@ func newAdminWorld(t *testing.T) adminWorld {
 }
 
 func (a adminWorld) path(rest string) string { return "/api/v1/tenants/" + a.SlugA + rest }
+
+// globalAdmin makes the tenant's administrator a global administrator as well,
+// who alone makes a group mapping or changes its role (docs/adr/0030 D7).
+func (a adminWorld) globalAdmin(t *testing.T) {
+	t.Helper()
+	require.NoError(t, fixtures(t).GlobalAdmin(context.Background(), a.AdminA))
+}
 
 // person makes a person of the identity provider with an address and groups.
 func (a adminWorld) person(t *testing.T, email string, verified *bool, groups ...string) uuid.UUID {
@@ -96,7 +107,7 @@ func TestAddMemberByAddressOrUsername(t *testing.T) {
 	assertProblem(t, add(unverified, "member"), http.StatusNotFound, "person_not_found")
 	silent := address("silent")
 	a.person(t, silent, nil)
-	assert.Equal(t, http.StatusCreated, add(silent, "member").StatusCode, "an issuer that says nothing about the address is taken at its word")
+	assertProblem(t, add(silent, "member"), http.StatusNotFound, "person_not_found") // the next test
 
 	// The issuer made two persons of one address, as it does for an account it
 	// re-created.
@@ -139,6 +150,35 @@ func TestAddMemberByAddressOrUsername(t *testing.T) {
 	assert.True(t, list[a.MemberB].Local)
 }
 
+// docs/adr/0030 D3, COWORK_OIDC_EMAIL_TRUSTED (the owner's answer of
+// 2026-10-04): by default an address finds a person only when the issuer
+// marked it verified; with the setting, also when the issuer said nothing about
+// it; never when it marked it unverified.
+func TestAnAddressTheIssuerSaidNothingAboutIsTrustedOnlyWhenConfigured(t *testing.T) {
+	a := newAdminWorld(t)
+	yes, no := true, false
+	silent, unverified, verified := address("silent"), address("unv"), address("ver")
+	silentID := a.person(t, silent, nil)
+	a.person(t, unverified, &no)
+	a.person(t, verified, &yes)
+	add := func(b *browser, person string) *http.Response {
+		return b.request(http.MethodPost, a.path("/members"), map[string]string{"person": person, "role": "viewer"})
+	}
+
+	assertProblem(t, add(a.admin, silent), http.StatusNotFound, "person_not_found")
+	assertProblem(t, add(a.admin, unverified), http.StatusNotFound, "person_not_found")
+	require.Equal(t, http.StatusCreated, add(a.admin, verified).StatusCode)
+
+	trusting := newAPI(t, withLogin, withIdentity(a.provider, []string{"cowork-users"}, ""),
+		func(o *api.Options) { o.OIDC.EmailTrusted = true })
+	admin := trusting.browser(t)
+	admin.mustLogin(a.names["adminA"], testPassword)
+	res := add(admin, silent)
+	require.Equal(t, http.StatusCreated, res.StatusCode, "the issuer's silence is taken as its word")
+	assert.Equal(t, silentID, decode[apigen.Member](t, res).Person.Id)
+	assertProblem(t, add(admin, unverified), http.StatusNotFound, "person_not_found")
+}
+
 // docs/adr/0030 D3, docs/adr/0034 D1: a grant is set and removed by an
 // administrator; setting is a session's, removing a token may do too; no
 // change leaves the tenant without an administrator.
@@ -176,6 +216,7 @@ func TestGrantsAndTheLastAdministrator(t *testing.T) {
 // removal a token's too.
 func TestGroupMappingsDeriveAtOnce(t *testing.T) {
 	a := newAdminWorld(t)
+	a.globalAdmin(t)
 	yes := true
 	gA, gB := uniqueSlug("ga"), uniqueSlug("gb")
 	p1 := a.person(t, address("p1"), &yes, gA)
@@ -236,6 +277,68 @@ func TestGroupMappingsDeriveAtOnce(t *testing.T) {
 	list = members(t, a.admin, a.path("/members"))
 	assert.NotContains(t, list, p1)
 	assert.NotContains(t, list, p2)
+}
+
+// docs/adr/0030 D7: only a global administrator who administers the tenant
+// makes a mapping or changes its role. Another administrator of the tenant is
+// refused before anything is written — no mapping, no record, no membership,
+// no idempotency key — and still removes a mapping, which only takes access
+// away; a global administrator who does not administer the tenant is refused
+// as well.
+func TestOnlyAGlobalAdministratorMapsAGroup(t *testing.T) {
+	ctx := context.Background()
+	a := newAdminWorld(t)
+	yes := true
+	group := uniqueSlug("everyone")
+	person := a.person(t, address("everyone"), &yes, group)
+	key := uuid.NewString()
+	create := func(b *browser) *http.Response {
+		return b.request(http.MethodPost, a.path("/group-mappings"), map[string]string{"group": group, "role": "admin"},
+			withHeader("Idempotency-Key", key))
+	}
+	records := func() int64 { return scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1`, a.A) }
+	mappings := func() int64 { return scalar[int64](t, `SELECT count(*) FROM group_mappings WHERE tenant_id = $1`, a.A) }
+
+	before := records()
+	refused := assertProblem(t, create(a.admin), http.StatusForbidden, "forbidden")
+	assert.Equal(t, "mapping a group needs a global administrator who administers the tenant", refused["detail"])
+	assert.Zero(t, mappings(), "no mapping")
+	assert.Equal(t, before, records(), "no record")
+	assert.NotContains(t, members(t, a.admin, a.path("/members")), person, "nobody joined")
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM idempotency_keys WHERE key = $1`, key), "no key kept")
+
+	// A global administrator who is a member of the tenant, not its administrator.
+	require.NoError(t, fixtures(t).GlobalAdmin(ctx, a.MemberA))
+	global := a.s.browser(t)
+	global.mustLogin(a.names["memberA"], testPassword)
+	assertProblem(t, create(global), http.StatusForbidden, "forbidden")
+	assert.Zero(t, mappings())
+
+	require.Equal(t, http.StatusOK, a.admin.request(http.MethodPut, a.path("/members/"+a.MemberA.String()+"/grant"),
+		map[string]string{"role": "admin"}).StatusCode)
+	res := create(global)
+	require.Equal(t, http.StatusCreated, res.StatusCode, "a global administrator who administers the tenant")
+	mapping := decode[apigen.GroupMapping](t, res)
+	assert.Equal(t, apigen.RoleAdmin, members(t, a.admin, a.path("/members"))[person].Role)
+
+	patch := a.path("/group-mappings/" + mapping.Id.String())
+	before = records()
+	refused = assertProblem(t, a.admin.request(http.MethodPatch, patch, map[string]string{"role": "viewer"}, withHeader("If-Match", `"1"`)),
+		http.StatusForbidden, "forbidden")
+	assert.Equal(t, "changing a group mapping needs a global administrator who administers the tenant", refused["detail"])
+	assert.Equal(t, "admin", scalar[string](t, `SELECT role::text FROM group_mappings WHERE id = $1`, mapping.Id), "the role stays")
+	assert.EqualValues(t, 1, scalar[int32](t, `SELECT version FROM group_mappings WHERE id = $1`, mapping.Id))
+	assert.Equal(t, before, records(), "no record")
+	assert.Equal(t, apigen.RoleAdmin, members(t, a.admin, a.path("/members"))[person].Role, "the membership as it was")
+
+	changed := global.request(http.MethodPatch, patch, map[string]string{"role": "viewer"}, withHeader("If-Match", `"1"`))
+	require.Equal(t, http.StatusOK, changed.StatusCode)
+	assert.Equal(t, apigen.RoleViewer, members(t, a.admin, a.path("/members"))[person].Role)
+
+	require.Equal(t, http.StatusNoContent, a.admin.request(http.MethodDelete, patch, nil).StatusCode,
+		"removing a mapping only takes access away: any administrator of the tenant may")
+	assert.Zero(t, mappings())
+	assert.NotContains(t, members(t, a.admin, a.path("/members")), person)
 }
 
 // docs/adr/0034 D3, D4, docs/adr/0050 D3: a restricted project is its
@@ -314,6 +417,7 @@ func nextMembership(t *testing.T, s *stream) (membershipData, bool) {
 // administrators and the person it names.
 func TestMembershipEventsReachTheirAudience(t *testing.T) {
 	a := newAdminWorld(t)
+	a.globalAdmin(t)
 	tokens := issueTokens(t, a.world)
 	var env ticketEnv
 	admin := env.openStream(t, a.s, caller{Token: tokens.AdminA}, a.SlugA, "")

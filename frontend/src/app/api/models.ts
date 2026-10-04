@@ -102,6 +102,8 @@ export type { Tenant } from './models/tenant';
 export type { TenantCreate } from './models/tenant-create';
 export type { TenantPatch } from './models/tenant-patch';
 export type { TenantRef } from './models/tenant-ref';
+export type { TenantSummary } from './models/tenant-summary';
+export type { TenantSummaryList } from './models/tenant-summary-list';
 export type { Ticket } from './models/ticket';
 export type { TicketBodyReplace } from './models/ticket-body-replace';
 export type { TicketCreate } from './models/ticket-create';

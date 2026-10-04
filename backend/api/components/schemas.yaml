@@ -62,6 +62,29 @@ TenantRef:
   properties:
     slug: {type: string}
     name: {type: string}
+TenantSummary:
+  type: object
+  required: [slug, name, role]
+  properties:
+    slug: {type: string}
+    name: {type: string}
+    role:
+      description: |
+        The role the caller holds in the tenant, the higher of their mapping and
+        their grant; null where they hold none (docs/adr/0034 D2)
+      oneOf:
+        - $ref: '#/Role'
+        - type: 'null'
+TenantSummaryList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/TenantSummary'
+    next_cursor:
+      type: [string, 'null']
 Membership:
   type: object
   required: [tenant, role, origins]

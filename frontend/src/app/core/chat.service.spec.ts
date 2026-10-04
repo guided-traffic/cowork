@@ -164,7 +164,7 @@ describe('ChatService', () => {
         provideApiConfiguration(''),
         provideRouter([]),
         MessageService,
-        { provide: SessionService, useValue: { tenant, person } },
+        { provide: SessionService, useValue: { tenant, workTenant: tenant, person } },
         { provide: CHAT_FETCH, useValue: fakeFetch },
       ],
     });
