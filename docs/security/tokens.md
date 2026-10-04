@@ -298,7 +298,8 @@ the columns released before keep their places. The mark tells, it does not bind:
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
   filters the tenant's audit view (`GET …/audit`) by token, person, action, entity type and
-  period, as JSON or CSV. In CSV, a cell a spreadsheet would read as a formula — one starting
+  period, as JSON or CSV — in the browser on the tenant's audit page, where an act's token is one
+  click away from the acts it made ([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)). In CSV, a cell a spreadsheet would read as a formula — one starting
   with `=`, `+`, `-`, `@`, a tab or a carriage return — is prefixed with an apostrophe
   ([`api/tenants.go`](../../backend/internal/api/tenants.go) `neutralise`).
 

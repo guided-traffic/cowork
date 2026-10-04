@@ -1,0 +1,253 @@
+<section class="page">
+  <header class="head">
+    <h1>Audit record</h1>
+    <span class="spacer"></span>
+    @if (tenantInfo.isAdmin()) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        severity="secondary"
+        [outlined]="true"
+        [disabled]="!query() || downloading()"
+        (click)="download()"
+        data-testid="audit-csv"
+      >
+        @if (downloading()) {
+          <i class="pi pi-spinner pi-spin"></i>
+        } @else {
+          <i class="pi pi-download"></i>
+        }
+        Download CSV
+      </button>
+    }
+  </header>
+
+  @if (tenantInfo.isAdmin()) {
+    <p class="muted lead">
+      Every act recorded in this tenant, newest first: who made it — a person, an agent in their
+      name, a token —, what it did to which entity, and the fields it changed. The record is
+      append-only. The CSV holds what the filters select, up to the moment it is downloaded.
+    </p>
+    @if (downloadNote(); as note) {
+      <p class="note" role="status" data-testid="audit-csv-note">{{ note }}</p>
+    }
+
+    <div class="filters" role="group" aria-label="Filters" data-testid="audit-filters">
+      <div class="field">
+        <span id="audit-actor-label">Actor</span>
+        <p-select
+          [options]="people()"
+          optionLabel="label"
+          optionValue="id"
+          [ngModel]="actor()"
+          (ngModelChange)="actor.set($event)"
+          placeholder="Anyone"
+          [showClear]="true"
+          [filter]="true"
+          filterBy="label"
+          size="small"
+          ariaLabelledBy="audit-actor-label"
+          data-testid="audit-actor"
+        />
+      </div>
+      <div class="field">
+        <label for="audit-token">Token</label>
+        <input
+          pInputText
+          id="audit-token"
+          pSize="small"
+          autocomplete="off"
+          placeholder="A token's id"
+          [ngModel]="token()"
+          (ngModelChange)="token.set($event)"
+          [attr.aria-invalid]="tokenInvalid()"
+          [attr.aria-describedby]="tokenInvalid() ? 'audit-token-error' : null"
+          data-testid="audit-token"
+        />
+        @if (tokenInvalid()) {
+          <small class="error" id="audit-token-error" role="alert" data-testid="audit-token-error"
+            >Not a token's id: copy it from an act's token, or pick the token there.</small
+          >
+        }
+      </div>
+      <div class="field">
+        <span id="audit-action-label">Action</span>
+        <p-select
+          [options]="actions"
+          [multiple]="true"
+          [ngModel]="action()"
+          (ngModelChange)="action.set($event ?? [])"
+          placeholder="Any action"
+          [filter]="true"
+          size="small"
+          ariaLabelledBy="audit-action-label"
+          data-testid="audit-action"
+        />
+      </div>
+      <div class="field">
+        <label for="audit-entity">Entity</label>
+        <input
+          pInputText
+          id="audit-entity"
+          pSize="small"
+          autocomplete="off"
+          list="audit-entities"
+          placeholder="Any entity"
+          [ngModel]="entity()"
+          (ngModelChange)="entity.set($event)"
+          data-testid="audit-entity"
+        />
+        <datalist id="audit-entities">
+          @for (type of entityTypes; track type) {
+            <option [value]="type"></option>
+          }
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="audit-from">From</label>
+        <input
+          pInputText
+          id="audit-from"
+          type="date"
+          pSize="small"
+          [ngModel]="fromDay()"
+          (ngModelChange)="fromDay.set($event ?? '')"
+          data-testid="audit-from"
+        />
+      </div>
+      <div class="field">
+        <label for="audit-until">Until</label>
+        <input
+          pInputText
+          id="audit-until"
+          type="date"
+          pSize="small"
+          [ngModel]="untilDay()"
+          (ngModelChange)="untilDay.set($event ?? '')"
+          data-testid="audit-until"
+        />
+      </div>
+      @if (filtered()) {
+        <button
+          pButton
+          type="button"
+          size="small"
+          [text]="true"
+          severity="secondary"
+          (click)="clear()"
+          data-testid="audit-clear"
+        >
+          Clear filters
+        </button>
+      }
+    </div>
+
+    <div class="panel">
+      <table class="acts" data-testid="audit-acts">
+        <caption class="sr-only">
+          The acts of the tenant, newest first
+        </caption>
+        <thead>
+          <tr>
+            <th class="col-when">When</th>
+            <th class="col-who">Who</th>
+            <th class="col-action">Action</th>
+            <th class="col-entity">Entity</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (event of rows(); track event.id) {
+            <tr [attr.data-testid]="'act-' + event.id">
+              <td class="col-when tabular">{{ dateTime(event.created_at) }}</td>
+              <td class="col-who">
+                @if (event.actor.person; as person) {
+                  <span class="person" data-testid="act-person">{{ person.display_name }}</span>
+                } @else {
+                  <code class="system" data-testid="act-system">{{ event.actor.system }}</code>
+                }
+                @if (event.agent || event.token_id) {
+                  <app-agent-mark [mark]="event.agent ?? null" [token]="tokenOf(event)" />
+                }
+                @if (event.token_id; as id) {
+                  <button
+                    pButton
+                    type="button"
+                    size="small"
+                    [text]="true"
+                    severity="secondary"
+                    class="by-token"
+                    pTooltip="Show what this token did"
+                    [showDelay]="400"
+                    [attr.aria-label]="'Show what the token ' + (event.token_name ?? id) + ' did'"
+                    (click)="byToken(id)"
+                    data-testid="act-by-token"
+                  >
+                    <i class="pi pi-filter"></i>
+                  </button>
+                }
+              </td>
+              <td class="col-action" data-testid="act-action">{{ event.action }}</td>
+              <td class="col-entity">
+                <span class="entity" data-testid="act-entity">{{ event.entity_type }}</span>
+                @if (event.ticket_key; as key) {
+                  <a
+                    class="key"
+                    [routerLink]="['/t', session.tenant(), 'tickets', shortKey(key)]"
+                    data-testid="act-ticket"
+                    >{{ shortKey(key) }}</a
+                  >
+                }
+              </td>
+              <td class="details">
+                @if (event.reason) {
+                  <span class="line" data-testid="act-reason">Reason: {{ event.reason }}</span>
+                }
+                @if (event.note) {
+                  <span class="line" data-testid="act-note">Note: {{ event.note }}</span>
+                }
+                @for (line of changes(event); track $index) {
+                  <code class="line change" data-testid="act-change">{{ line }}</code>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="5" class="muted empty" data-testid="audit-empty">
+                @if (tokenInvalid()) {
+                  Type a token's id to filter by it.
+                } @else if (failure(); as failure) {
+                  {{ failure }}
+                } @else if (record.isLoading()) {
+                  <p-skeleton width="16rem" height="1rem" />
+                } @else {
+                  No act matches.
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (total() > 0 && !failure()) {
+      <p-paginator
+        [first]="(page() - 1) * perPage()"
+        [rows]="perPage()"
+        [totalRecords]="total()"
+        [rowsPerPageOptions]="perPageOptions"
+        [showCurrentPageReport]="true"
+        currentPageReportTemplate="{first}–{last} of {totalRecords}"
+        (onPageChange)="turn($event)"
+        data-testid="audit-pages"
+      />
+    }
+  } @else if (session.me.isLoading()) {
+    <p-skeleton width="24rem" height="2rem" />
+  } @else {
+    <p class="muted" data-testid="audit-notice">
+      Only the administrators of this tenant read its audit record.
+    </p>
+  }
+</section>

@@ -19,6 +19,7 @@ import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
 import { Accounts } from './features/tenant/accounts';
+import { Audit } from './features/tenant/audit';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
 import { TenantOverview } from './features/tenant/overview';
@@ -55,6 +56,7 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/tickets/:key', TicketDetail],
   ['t/:tenant/members', Members],
   ['t/:tenant/accounts', Accounts],
+  ['t/:tenant/audit', Audit],
   ['t/:tenant/group-mappings', GroupMappings],
   ['t/:tenant/time', TimeReport],
   ['dev/design', DesignPreview],

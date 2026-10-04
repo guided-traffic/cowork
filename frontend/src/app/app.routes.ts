@@ -69,6 +69,10 @@ export const routes: Routes = [
             loadComponent: () => import('./features/tenant/accounts').then((m) => m.Accounts),
           },
           {
+            path: 'audit',
+            loadComponent: () => import('./features/tenant/audit').then((m) => m.Audit),
+          },
+          {
             path: 'group-mappings',
             loadComponent: () =>
               import('./features/tenant/group-mappings').then((m) => m.GroupMappings),

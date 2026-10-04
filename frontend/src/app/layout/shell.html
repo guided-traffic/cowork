@@ -113,6 +113,15 @@
             ><i class="pi pi-sitemap"></i>Group mappings</a
           >
         }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'audit']"
+            routerLinkActive="active"
+            data-testid="nav-audit"
+            ><i class="pi pi-history"></i>Audit record</a
+          >
+        }
         @if (!session.oversight()) {
           <a
             class="item"

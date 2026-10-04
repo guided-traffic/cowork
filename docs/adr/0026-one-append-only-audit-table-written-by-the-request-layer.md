@@ -37,6 +37,10 @@ global administrator's reading arrive with their routes; D7 needs nothing yet. S
 system actor name no person and are read by no route. Since 2026-10-04 a row carries its token's
 name beside its id ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql),
 `tokenName` in [`store/tx.go`](../../backend/internal/store/tx.go)), and the activity shows it.
+Since 2026-10-04 the tenant's view of D6 has numbered pages with a total and a page in the browser
+for the tenant's administrators — its filters, its pages and its CSV
+([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)); the per-token view
+and the global administrator's reading still arrive with their routes.
 
 ## Context
 

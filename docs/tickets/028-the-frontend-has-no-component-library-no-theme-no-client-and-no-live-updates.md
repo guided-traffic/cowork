@@ -1,11 +1,11 @@
 ---
 id: T28
-title: the frontend's polls reload every list in full, six forms send a new idempotency key on every attempt, and the bundle budget's number is open
+title: the bundle budget's number is open, and nobody has looked at a released frontend image for the license notice
 state: in-progress
-severity: medium
+severity: low
 security: none
 threat:
-urgency: next         # rule 3: severity medium, live — a retry of a released form creates its object twice
+urgency: later        # rule 4: a check by hand and a budget whose fix waits for Q1
 effort: M
 blocked-by:
 filed-from: T26
@@ -41,29 +41,37 @@ The foundation is released (0.2.0 and later):
   `PRIMEUI_LICENSE`, which is set and reaches the release's frontend image
   ([`build.yml`](../../.github/workflows/build.yml#L89-L92), ADR 0052 D9).
 
-Not as decided:
+Built on this branch, items 1, 2 and 4 of the work list:
 
-- **A poll reloads every list in full.** The fallback's `poll`
-  ([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts#L249)) loads
-  every open list again — the ticket lists
-  ([`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts#L224-L235)), the projects,
-  a ticket's relations, the members — without `If-None-Match`, and the parameters of a list
-  followed cursor by cursor leave the header out
-  ([`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts#L60-L63)). Both ticket
-  lists answer `304` to it ([`tenants.yaml`](../../backend/api/tenants.yaml#L371-L386) and lines
-  432-447); the other lists carry no list `ETag`, which
-  [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-  D7 gives every list.
-- **Six forms send a new `Idempotency-Key` on every attempt:** a ticket
-  ([`ticket-actions.service.ts`](../../frontend/src/app/core/ticket-actions.service.ts#L63)), a
-  comment and a question ([`conversation.service.ts`](../../frontend/src/app/core/conversation.service.ts#L29)
-  and line 37), a project ([`projects.service.ts`](../../frontend/src/app/core/projects.service.ts#L73)),
-  an attachment and a time entry ([`ticket-records.service.ts`](../../frontend/src/app/core/ticket-records.service.ts#L20)
-  and line 28). A retry after a lost answer creates the thing twice. The first tenant keeps one
-  key per form content ([`first-tenant.ts`](../../frontend/src/app/features/home/first-tenant.ts#L178-L186)),
-  as a new local account, a group mapping and a member's grant do; a token takes a new key per
-  act on purpose, because a repeated answer carries no plaintext (ADR 0045 D6).
-- **The bundle budget warns on every production build** (Q1).
+- **A poll asks whether a list changed.** Every list the client loads again — the ticket lists,
+  the projects, the members, the group mappings, an access list and the seven lists of a ticket —
+  answers a weak `ETag` of the caller's page and `304` without a body to it in `If-None-Match`,
+  in the API document first (`ListETag`, `NotModified`); the client sends the tag of every page it
+  holds, cursor by cursor, and keeps the page on a `304`
+  ([`conditional.ts`](../../frontend/src/app/core/conditional.ts);
+  `TestThePolledListsAnswerNotModified`, `conditional.spec.ts` and a `304` test per list service).
+- **Six forms hold one `Idempotency-Key` per content** — a ticket, a comment, a question, a
+  project and a booking in a `linkedSignal` over their fields and their place, a file per ticket
+  and file until its upload went through — and the services take it from the form; a unit test per
+  form that a retry of the same content sends the same key and a changed content a new one.
+- **A stream recomputes what it admits on the acts that change it** — a project created, every
+  membership act — before it filters the next event
+  ([`hub.go`](../../backend/internal/events/hub.go) `Changes`, `Refilter`,
+  [`events.go`](../../backend/internal/api/events.go) `refilter`);
+  `TestTheStreamAdmitsWhatAnActOpensAtOnce` files a ticket in a project created, opened and let
+  into after the stream opened, each arriving within a second with an hour's heartbeat, and fails
+  without the change.
+
+ADR 0054 (D3 amended, D7's client side built), ADR 0045's Status, the README reference,
+[api.md](../developer/api.md), [events.md](../developer/events.md),
+[data-access.md](../developer/data-access.md), [frontend.md](../developer/frontend.md) and
+[tenancy.md](../security/tenancy.md) carry it.
+
+Left:
+
+- **The bundle budget warns on every production build** (Q1). Measured on this branch with
+  `ng build`: the initial bundle is 1,027,630 bytes, 7,120 more than the 1,020,510 of the commit it
+  branched from — above Angular's 1,000,000 and below the 1,048,576 of ADR 0052 D6.
 - **A check by hand is outstanding:** nobody has looked at a released frontend image for the
   license notice.
 
@@ -71,26 +79,11 @@ Not as decided:
 
 ### Independent of the open question
 
-1. The polling fallback sends `If-None-Match` with each list's weak `ETag` and keeps the list on
-   `304` (ADR 0054 D7); the lists without one gain it and the `304`, in the API document first.
-   Unit tests that a `304` keeps what a list shows.
-2. One `Idempotency-Key` per form content in the six forms, reused on a retry and new when the
-   content changes, as the first tenant does
-   ([frontend.md](../developer/frontend.md#where-state-lives)); unit tests per form that a retry
-   of the same content sends the same key and a changed content a new one.
-3. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
-4. A stream admits the projects that were visible when it opened, and recomputes them only at its
-   heartbeat ([`events.go`](../../backend/internal/api/events.go) `pump`, `streamFilter`): the
-   events of a project created, opened or granted after that are dropped for up to the heartbeat
-   interval, twenty seconds by default, and a page that follows them misses them. The stream
-   recomputes what it admits on the events that change it — a project created, restricted or
-   opened, a membership or an access entry changed — before it filters the next one; an
-   integration test that a ticket filed in a project created after the stream opened arrives
-   within a second.
+1. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
 
 ### Depends on the answer
 
-5. The budget in [`angular.json`](../../frontend/angular.json#L52-L57) as Q1's answer has it, and
+2. The budget in [`angular.json`](../../frontend/angular.json#L52-L57) as Q1's answer has it, and
    ADR 0052's D6 and Status settled with it.
 
 ## Open questions

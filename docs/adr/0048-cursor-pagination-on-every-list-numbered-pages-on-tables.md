@@ -26,7 +26,8 @@ tickets in its rank since 2026-10-03, the unranked after the ranked by number
 D2's numbered pages on the two ticket lists and the tenant's time entries — ~~the audit view,
 members, tokens and projects carry the cursor only so far~~ *(built 2026-10-04: the audit view,
 the members, the person's tokens and the projects take them as well,
-[`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`)*; D4's markings and client helpers arrive with the generated frontend
+[`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`; the tenant's audit page in
+the browser reads them with page numbers and a choice of 25, 50 or 100, as D4 has tables do)*; D4's markings and client helpers arrive with the generated frontend
 client.
 
 ## Context
