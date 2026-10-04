@@ -10,6 +10,16 @@ session:
 localAdmin:
   username: admin
   password: change-me-before-use
+# The identity provider with the client id as a value and a gate without an
+# administrator group; the client secret comes from a Secret in every shape
+# (docs/adr/0058 D3).
+auth:
+  oidc:
+    issuer: https://dex.example.test/dex
+    clientId: cowork
+    existingSecret: cowork-oidc
+    allowedGroups:
+      - cowork-users
 backend:
   config:
     baseURL: http://localhost:4200

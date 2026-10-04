@@ -205,3 +205,40 @@ or the release Secret rendered from the inline values. The existing Secret wins.
 {{- "password" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Whether the login through an identity provider is configured (docs/adr/0029
+D4): auth.oidc.issuer is set. It needs the public URL for the redirect URI, a
+client id and a client secret. Without the issuer the other auth.oidc values
+are not rendered, so emptying the issuer alone switches the provider off. A
+group name with a comma would split in COWORK_OIDC_ALLOWED_GROUPS and admit a
+group nobody listed.
+*/}}
+{{- define "cowork.oidcEnabled" -}}
+{{- $oidc := .Values.auth.oidc -}}
+{{- if $oidc.issuer -}}
+{{- if not .Values.backend.config.baseURL -}}
+{{- fail "set backend.config.baseURL: the identity provider redirects to <baseURL>/auth/callback (docs/adr/0029 D4)" -}}
+{{- end -}}
+{{- if not (or $oidc.clientId (and $oidc.existingSecret $oidc.keys.clientId)) -}}
+{{- fail "set auth.oidc.clientId, or auth.oidc.existingSecret with auth.oidc.keys.clientId" -}}
+{{- end -}}
+{{- if not $oidc.existingSecret -}}
+{{- fail "set auth.oidc.existingSecret: the client secret comes from a Secret only, never from the values (docs/adr/0058 D3)" -}}
+{{- end -}}
+{{- range toStrings $oidc.allowedGroups -}}
+{{- if contains "," . -}}
+{{- fail (printf "auth.oidc.allowedGroups: %q holds a comma, which separates the groups in COWORK_OIDC_ALLOWED_GROUPS and cannot be part of one" .) -}}
+{{- end -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The key of auth.oidc.existingSecret that holds the client secret
+(docs/adr/0058 D3).
+*/}}
+{{- define "cowork.oidcClientSecretKey" -}}
+{{- .Values.auth.oidc.keys.clientSecret }}
+{{- end }}

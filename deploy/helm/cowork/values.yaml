@@ -75,15 +75,17 @@ localAdmin:
   password: ""
 
 # The bootstrap tenant (docs/adr/0032 D6): created at start while no tenant
-# exists, with the local administrator as its first administrator; once a
-# tenant exists these values do nothing. Both, and localAdmin, or neither.
+# exists, with the local administrator, when set, as its first administrator
+# and auth.oidc.adminGroup, when set, mapped to its admin role; once a tenant
+# exists these values do nothing. Both, and localAdmin or auth.oidc.adminGroup,
+# or neither.
 bootstrap:
   tenant:
     slug: ""
     name: ""
 
-# Local accounts (docs/adr/0033): administrators create them, nobody registers.
 auth:
+  # Local accounts (docs/adr/0033): administrators create them, nobody registers.
   local:
     # COWORK_PASSWORD_MIN_LENGTH: length only, no character classes; the floor
     # is 8, and below it the backend refuses to start (D3).
@@ -100,6 +102,53 @@ auth:
     # backend.config.trustedProxies the client is the frontend pod, so this is
     # a limit for the whole installation (docs/security/local-accounts.md).
     addressLimit: 20
+  # The login through an OpenID Connect identity provider (docs/adr/0029,
+  # docs/adr/0030). The issuer turns it on, and emptying it alone turns it
+  # off: every other value here is read only with it. Register
+  # <backend.config.baseURL>/auth/callback as the redirect URI at the
+  # provider; rendering fails without backend.config.baseURL.
+  oidc:
+    # COWORK_OIDC_ISSUER, e.g. https://login.example.com. The backend fetches
+    # its discovery document at every start and refuses to start when it
+    # cannot (docs/adr/0029 D4): the provider must be reachable from the pod.
+    issuer: ""
+    # COWORK_OIDC_CLIENT_ID: cowork's client at the provider. With
+    # keys.clientId set it comes from existingSecret instead.
+    clientId: ""
+    # COWORK_OIDC_CLIENT_SECRET from an existing Secret, required with the
+    # issuer: the client secret has no inline value, so it never enters the
+    # Helm values or the release history (docs/adr/0058 D3). The key names
+    # are yours to choose.
+    existingSecret: ""
+    keys:
+      clientSecret: clientSecret
+      # Empty: the client id is clientId above.
+      clientId: ""
+    # COWORK_OIDC_SCOPES, space-separated, openid among them. Most providers
+    # issue a refresh token only for offline_access; without one the groups
+    # refresh cannot run, and a session keeps its login's groups until it
+    # ends (docs/adr/0030 D5).
+    scopes: openid profile email groups offline_access
+    # COWORK_OIDC_GROUPS_CLAIM: the claim that carries the groups, read from
+    # the ID token and from UserInfo when the token has none (docs/adr/0029 D2).
+    groupsClaim: groups
+    # COWORK_OIDC_ALLOWED_GROUPS, rendered comma-separated: the gate. Only a
+    # person in one of these groups or in adminGroup logs in through the
+    # provider; both empty admits nobody (docs/adr/0030 D1, D8). Group names
+    # match exactly, case and all.
+    allowedGroups: []
+    # COWORK_ADMIN_GROUP: its members are global administrators — they create
+    # tenants and become the first administrator of each they create
+    # (docs/adr/0034 D2). Whoever may change this group at the provider
+    # decides who administers the installation.
+    adminGroup: ""
+    # COWORK_OIDC_GROUPS_REFRESH: how often a browser session re-reads its
+    # groups from the provider, a Go duration of at least 1m (docs/adr/0030
+    # D5). A person removed from a group at the provider keeps what the group
+    # gave until the session's next refresh.
+    groupsRefresh: 15m
+    # COWORK_OIDC_DISPLAY_NAME: the login page offers "Sign in with <name>".
+    displayName: single sign-on
 
 # S3-compatible object storage for the attachments (docs/adr/0016,
 # docs/adr/0058 D3). Without an endpoint the backend refuses uploads.

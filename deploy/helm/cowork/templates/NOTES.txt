@@ -21,11 +21,23 @@ Login:    the local administrator from Secret {{ include "cowork.localAdminSecre
   stored in plain text in the release Secret and in `helm get values`; use
   localAdmin.existingSecret for anything beyond a throw-away installation.
 {{- end }}
-{{- if .Values.bootstrap.tenant.slug }}
+{{- end }}
+{{- if include "cowork.oidcEnabled" . }}
+Login:    "Sign in with {{ .Values.auth.oidc.displayName }}" through the issuer {{ .Values.auth.oidc.issuer }}, client secret from
+          Secret {{ .Values.auth.oidc.existingSecret }}; register {{ .Values.backend.config.baseURL }}/auth/callback there as the redirect URI
+{{- if not (or .Values.auth.oidc.allowedGroups .Values.auth.oidc.adminGroup) }}
+  WARNING: auth.oidc.allowedGroups and auth.oidc.adminGroup are empty, so the gate admits
+  nobody: no person can log in through the identity provider (docs/adr/0030 D8).
+{{- end }}
+{{- end }}
+{{- if not (or (include "cowork.localAdminEnabled" .) (include "cowork.oidcEnabled" .)) }}
+Login:    no local administrator and no identity provider (localAdmin and auth.oidc.issuer are empty); nobody can log in until one is set
+{{- else if .Values.bootstrap.tenant.slug }}
           creates the tenant "{{ .Values.bootstrap.tenant.slug }}" at start while none exists
 {{- end }}
-{{- else }}
-Login:    no local administrator (localAdmin is empty); nobody can log in until one is set
+{{- if and (not .Values.auth.oidc.issuer) (or .Values.auth.oidc.clientId .Values.auth.oidc.existingSecret .Values.auth.oidc.allowedGroups .Values.auth.oidc.adminGroup) }}
+  NOTE: auth.oidc.issuer is empty, so the login through an identity provider is off and the
+  other auth.oidc values are not used.
 {{- end }}
 {{- if .Values.networkPolicy.enabled }}
 Network:  NetworkPolicy {{ include "cowork.backend.fullname" . }} admits only the frontend pods to the backend (a network plugin that implements NetworkPolicy enforces it)

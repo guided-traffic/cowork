@@ -118,9 +118,43 @@ spec:
                   name: {{ include "cowork.localAdminSecretName" . }}
                   key: {{ include "cowork.localAdminPasswordKey" . }}
             {{- end }}
+            {{- if include "cowork.oidcEnabled" . }}
+            - name: COWORK_OIDC_ISSUER
+              value: {{ .Values.auth.oidc.issuer | quote }}
+            - name: COWORK_OIDC_CLIENT_ID
+              {{- if and .Values.auth.oidc.existingSecret .Values.auth.oidc.keys.clientId }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.keys.clientId }}
+              {{- else }}
+              value: {{ .Values.auth.oidc.clientId | quote }}
+              {{- end }}
+            - name: COWORK_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ include "cowork.oidcClientSecretKey" . }}
+            - name: COWORK_OIDC_SCOPES
+              value: {{ .Values.auth.oidc.scopes | quote }}
+            - name: COWORK_OIDC_GROUPS_CLAIM
+              value: {{ .Values.auth.oidc.groupsClaim | quote }}
+            {{- with .Values.auth.oidc.allowedGroups }}
+            - name: COWORK_OIDC_ALLOWED_GROUPS
+              value: {{ join "," (toStrings .) | quote }}
+            {{- end }}
+            {{- with .Values.auth.oidc.adminGroup }}
+            - name: COWORK_ADMIN_GROUP
+              value: {{ . | quote }}
+            {{- end }}
+            - name: COWORK_OIDC_GROUPS_REFRESH
+              value: {{ .Values.auth.oidc.groupsRefresh | quote }}
+            - name: COWORK_OIDC_DISPLAY_NAME
+              value: {{ .Values.auth.oidc.displayName | quote }}
+            {{- end }}
             {{- if or .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
-            {{- if not (include "cowork.localAdminEnabled" .) }}
-            {{- fail "bootstrap.tenant needs the local administrator: it becomes the tenant's first administrator (docs/adr/0032 D7); set localAdmin" }}
+            {{- if not (or (include "cowork.localAdminEnabled" .) (and (include "cowork.oidcEnabled" .) .Values.auth.oidc.adminGroup)) }}
+            {{- fail "bootstrap.tenant needs a first administrator (docs/adr/0032 D6, D7): set localAdmin, or auth.oidc with auth.oidc.adminGroup" }}
             {{- end }}
             - name: COWORK_BOOTSTRAP_TENANT_SLUG
               value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.slug | quote }}

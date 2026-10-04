@@ -1,0 +1,34 @@
+# The identity provider shape (docs/adr/0029, docs/adr/0030): the client id
+# and secret from one Secret with key names of its own, the gate and the
+# administrator group, a bootstrap tenant without a local administrator (the
+# administrator group is mapped to its admin role, docs/adr/0032 D6), and
+# every other value changed from its default. The redirect URI needs the
+# public origin.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+session:
+  existingSecret: cowork-session
+bootstrap:
+  tenant:
+    slug: acme
+    name: Acme Corp
+auth:
+  oidc:
+    issuer: https://login.example.com/realms/cowork
+    existingSecret: cowork-oidc
+    keys:
+      clientId: client-id
+      clientSecret: client-secret
+    scopes: openid email groups offline_access
+    groupsClaim: roles
+    allowedGroups:
+      - cowork-users
+      - cowork-guests
+    adminGroup: cowork-admins
+    groupsRefresh: 5m
+    displayName: Example SSO
+backend:
+  config:
+    baseURL: https://cowork.example.com
