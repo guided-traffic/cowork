@@ -113,8 +113,10 @@ the mechanics are [api.md](api.md)).
 2. `make generate`: the `ProblemCode` enum in `api/components/problem-codes.yaml` and the table in
    [README.md, Problem codes](../../README.md#problem-codes) follow.
 3. Answer it with `problem.New` or a `&problem.Error{…}`; an integration test asserts status and
-   code (`assertProblem`). A code nginx answers itself also needs its static body in the
-   template (as `backend_unreachable`).
+   code (`assertProblem`). nginx answers no code of the catalogue but `not_found`, for an API
+   path that reaches the frontend by mistake, in
+   [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf); a code nothing answers
+   any more leaves the catalogue.
 
 ## A configuration variable
 
@@ -140,8 +142,10 @@ the mechanics are [api.md](api.md)).
    without it (`oidcVariables` in [`config/oidc.go`](../../backend/internal/config/oidc.go),
    `chatVariables` in [`config/chat.go`](../../backend/internal/config/chat.go)) and is rendered by
    the chart only with it.
-4. A limit nginx must stay above also moves the computation in
-   [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl).
+4. A limit the Ingress controller must stay above also moves the figures the chart's notes print
+   (`cowork.ingressBodySize`, `cowork.ingressReadTimeout` in
+   [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl)) and the annotations
+   [docs/operations/installation.md](../operations/installation.md#expose-it) names.
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).
 
 ## A frontend feature
@@ -165,27 +169,26 @@ the mechanics are [api.md](api.md)).
 
 ## A path nginx must treat differently
 
-1. Edit [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template). An
-   API path gets a location nested inside `location ^~ /api/`, as the event stream's does, which
-   repeats `set $backend ${BACKEND_URL}` and `proxy_pass $backend`; a stream the backend marks
-   `X-Accel-Buffering: no` and keeps alive within the read timeout needs none, as a chat turn shows.
+1. Edit [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf), a plain file copied
+   into the image; nothing in it is substituted, so it may use nginx's `$variables` freely and
+   reads no environment. nginx serves the UI only: a path of the backend is not nginx's but the
+   Ingress's ([`ingress.yaml`](../../deploy/helm/cowork/templates/ingress.yaml), with its local
+   stand-ins [`hack/ingress/default.conf`](../../hack/ingress/default.conf) and
+   [`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs)), and a new prefix of the backend
+   beside `/api/` and `/auth/` goes into all three, and into the frontend's `404` locations.
    A location that serves the UI adds `add_header Content-Security-Policy $ui_csp always;` — an
    `add_header` inside a location replaces the server's.
-2. Keep the four substituted variables — `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
-   `NGINX_CLIENT_MAX_BODY_SIZE`, `NGINX_PROXY_READ_TIMEOUT` — the only ones. A fifth is deliberate:
-   `NGINX_ENVSUBST_FILTER` and the image default in
-   [`frontend/Containerfile`](../../frontend/Containerfile), the `env` entry in
-   [`frontend-deployment.yaml`](../../deploy/helm/cowork/templates/frontend-deployment.yaml).
-3. A status nginx answers itself gets a static problem body ([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6).
-4. Rebuild the image and run it read-only as in
-   [build-test-lint.md](build-test-lint.md#run-the-images-together), once without a backend;
-   there is no unit test for nginx. Record the behaviour in
+2. A status nginx answers itself gets a static problem body ([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6),
+   typed under an empty `types {}` so the path's ending does not decide it.
+3. Rebuild the image and run it read-only behind the Ingress stand-in as in
+   [build-test-lint.md](build-test-lint.md#run-the-images-together); there is no unit test for
+   nginx. Record the behaviour in
    [docs/operations/runtime.md](../operations/runtime.md#the-frontend).
 
 ## A chart value
 
 1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `session.`,
-   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `networkPolicy.`, `ingress.` — with a comment, the template, and
+   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `ingress.` — with a comment, the template, and
    — when it maps to an environment variable — the `env` entry.
 2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI.
 3. The README's values block and, when operators need to understand it,

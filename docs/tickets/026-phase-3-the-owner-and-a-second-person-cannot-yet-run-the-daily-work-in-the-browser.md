@@ -66,10 +66,9 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **The children, in this order.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T27 — the login's remainder: a token's project by key, the token form's longest lifetime, and
-     its open question on other pods and the frontend
-   - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, two
-     checks by hand, and its open question on the bundle budget
+   - T27 — the login's remainder: a token's project by key and the token form's longest lifetime
+   - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, a check
+     by hand, and its open question on the bundle budget
    - T29 — the end-to-end tier: Playwright against the built images, two identities, both
      schemes, the login's paths and every view's
    - T30 — the ticket page edits the title, the body, the parent, the urgency override and the

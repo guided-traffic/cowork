@@ -199,8 +199,8 @@ first half alone, for the login. A token's request is never checked.
 API document, in [`auth.yaml`](../../backend/api/auth.yaml), so the pipeline validates their bodies
 and parameters, the generated Go and Angular clients know them and the document says which
 credential each takes — **with paths outside `/api/v1`**, as [ADR 0037] D5 names them. `httpserver.New` mounts the API handler
-at `/auth/` as well as `/api/`; the frontend's nginx and the dev proxy forward `/auth` like
-`/api`. They are browser flows, but they are no secret: the served document lists them, and a
+at `/auth/` as well as `/api/`; the Ingress routes `/auth/` to the backend like `/api/`, and the
+dev proxy forwards it the same way. They are browser flows, but they are no secret: the served document lists them, and a
 script that wants a session can read how.
 
 [`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `throttled` (the limit per

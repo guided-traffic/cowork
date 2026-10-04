@@ -1,7 +1,8 @@
-// The Angular dev server's proxy (make frontend-serve, make dev): /api, /auth, /healthz and
-// /readyz go to the backend on :8080, the same shape nginx has in the container. It holds no
-// credential: the browser logs in like on an installation, and the session cookie travels in
-// both directions (docs/adr/0038 D2).
+// The Angular dev server's proxy (make frontend-serve, make dev), the developer's stand-in for the
+// Ingress: /api and /auth go to the backend on :8080 as the Ingress routes them on an installation
+// (docs/adr/0001 D3), and so do the backend's /healthz and /readyz; the dev server serves the rest.
+// It holds no credential: the browser logs in like on an installation, and the session cookie
+// travels in both directions (docs/adr/0038 D2).
 const backend = process.env['COWORK_DEV_BACKEND'] ?? 'http://localhost:8080';
 
 // Node keeps response headers until the first body byte, and an event stream may send none for
@@ -11,7 +12,8 @@ const backend = process.env['COWORK_DEV_BACKEND'] ?? 'http://localhost:8080';
 // A browser that aborts a request — the chat's Stop — closes only its own side, and the proxy
 // keeps the request to the backend open: the backend would go on with the turn and its model.
 // Ending the backend's request when the browser's side closes before the answer ended is what
-// nginx does in the container (proxy_ignore_client_abort off).
+// nginx does by default (proxy_ignore_client_abort off), the Ingress stand-in of local runs
+// among it.
 function configure(proxy) {
   proxy.on('proxyReq', (proxyReq, req, res) => {
     res.on('close', () => {

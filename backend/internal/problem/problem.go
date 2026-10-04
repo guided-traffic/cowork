@@ -84,10 +84,6 @@ var (
 	ChatProviderFailed     = Code{"chat_provider_failed", http.StatusBadGateway, "Chat provider failed", "The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076)"}
 	NotReady               = Code{"not_ready", http.StatusServiceUnavailable, "Not ready", "The backend cannot do the work now: it cannot reach its database, it streams no events, or it is shutting down and ends a turn of the chat"}
 	Timeout                = Code{"timeout", http.StatusGatewayTimeout, "Timeout", "The request took longer than the configured limit (docs/adr/0039 D2)"}
-	// BackendUnreachable is answered by the frontend's nginx, never by the
-	// backend: its static problem body for a backend it cannot reach
-	// (docs/adr/0047 D6).
-	BackendUnreachable = Code{"backend_unreachable", http.StatusBadGateway, "Backend unreachable", "The frontend's proxy could not reach the backend; answered by nginx without a request id (docs/adr/0047 D6)"}
 )
 
 // Catalogue lists every code; the generators read it.
@@ -100,7 +96,7 @@ var Catalogue = []Code{
 	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
 	ChatUnavailable, PreconditionFailed, PayloadTooLarge,
 	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts, ChatBusy,
-	Internal, ChatProviderFailed, NotReady, Timeout, BackendUnreachable,
+	Internal, ChatProviderFailed, NotReady, Timeout,
 }
 
 // FieldError is one entry of errors[] (docs/adr/0047 D2, docs/adr/0050 D5).

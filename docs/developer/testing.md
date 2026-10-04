@@ -319,8 +319,8 @@ Neither image has a unit test; what proves them is building and running them. CI
 `Containerfile` from its directory and scans the image (one `container-malware-scan` leg per
 image). Locally, `make docker-build` builds both, and
 [build-test-lint.md](build-test-lint.md#run-the-images-together) is the recipe for running them
-together read-only; `make verify-phase-2` scripts the API half of that run by hand, and the
-nginx checks stay manual until the end-to-end tier exists.
+together read-only behind the Ingress stand-in; `make verify-phase-2` scripts the API half of that
+run by hand, and the nginx checks stay manual until the end-to-end tier exists.
 
 ## Chart tests
 

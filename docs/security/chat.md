@@ -332,7 +332,8 @@ same holds for the `chat_busy` notice's Stop when its request lands on another r
 turns. Mitigation: one backend replica; with more, a proxy in front that closes the backend's request
 when the browser's ends, and `COWORK_CHAT_TURN_TIMEOUT` as the bound of a turn nobody can reach. Not
 verified: whether session affinity anywhere in front of the backend would pin a person's requests to
-one replica — the frontend's nginx, not the browser, is the backend Service's client.
+one replica — the Ingress controller, not the browser, is the backend's client, and whether it pins a
+client to one replica is the controller's configuration; none was tried.
 
 ### What a provider does with what it receives
 

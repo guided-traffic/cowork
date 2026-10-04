@@ -15,12 +15,13 @@ model, is [chat.md](chat.md).
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's database URL, the server key, the object storage's access key | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
 | The backend process | The chat's providers at their `COWORK_CHAT_<ID>_URL`, each with what a turn that picked it sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
 | The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
-| The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` and `/auth/` for anyone and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
+| The frontend (nginx) | Nothing from its environment: its configuration is a file in the image. Every TCP peer that reaches it, which through an Ingress is the internet; it serves the UI's files to anyone, answers `/api/` and `/auth/` with a `404` problem, proxies nothing and reaches no backend | [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf) |
+| The Ingress controller (the installation's) | What the cluster administrator configures it with. It routes `/api/` and `/auth/` to the backend Service and everything else to the frontend Service for anyone, as the chart's Ingress says, and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing of cowork's. The trust rule for forwarded addresses needs it to write the address it saw as the last entry of `X-Forwarded-For`; ingress-nginx writes it in place of what the client sent | [`ingress.yaml`](../../deploy/helm/cowork/templates/ingress.yaml); ingress-nginx v1.15.1 in a kind cluster, 2026-10-04 ([installation.md](../operations/installation.md#expose-it)) |
 | The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
 | The database | Two roles: the owner role, which owns every object and runs the migrations, and the runtime role the server connects as, which owns nothing and is subject to forced row-level security | [`store/migrate.go`](../../backend/internal/store/migrate.go), [`store/roles.go`](../../backend/internal/store/roles.go), [tenancy.md](tenancy.md) "Two database roles" |
 | The object storage | The access key pair the backend presents | [`backend/internal/storage/storage.go`](../../backend/internal/storage/storage.go) |
@@ -66,18 +67,18 @@ body nor runs its own security check, which would read every body first
 bounded ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D1).
 
-Reachability is the cluster's, with one policy of the chart's: both Services are `ClusterIP`
-by default, an Ingress, when enabled, routes to the frontend Service, and the chart's
-NetworkPolicy ([`networkpolicy.yaml`](../../deploy/helm/cowork/templates/networkpolicy.yaml),
-`networkPolicy.enabled`, on by default) admits only the frontend's pods to the backend's pods,
-on the backend's port. It exists for the one rule that trusts the network: the backend reads
-`X-Forwarded-For` from the proxies in `COWORK_TRUSTED_PROXIES`, and a pod that is no proxy of
-ours must not be able to reach the backend and write it. The frontend Service still answers
-every pod that reaches it. A network plugin that does not implement NetworkPolicy ignores the
-object; Kubernetes says so itself, and says that traffic from the node a pod runs on — the
-kubelet's probes — is always allowed. Not verified against a cluster: the policy has been
-rendered and linted, not enforced; and `kubectl port-forward`, which reaches the pod through
-its own network namespace, is not expected to be blocked either.
+Reachability is the cluster's: both Services are `ClusterIP` by default; an Ingress, when
+enabled, routes `/api/` and `/auth/` to the backend Service and everything else to the frontend
+Service ([`ingress.yaml`](../../deploy/helm/cowork/templates/ingress.yaml),
+[ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3); and the chart ships no NetworkPolicy, so every pod of the cluster reaches both Services unless
+a policy of the cluster's says otherwise. That matters for the one rule that trusts the network:
+the backend reads `X-Forwarded-For` from the peers in `COWORK_TRUSTED_PROXIES`, and a pod inside
+those networks that reaches the backend chooses its client address
+([local-accounts.md](local-accounts.md#h-17) H-17; verified in a kind cluster on 2026-10-04). With
+the list empty — the default — no peer is trusted, and a pod that reaches the backend is its own
+client. Which pods a policy should admit is
+[installation.md](../operations/installation.md#network-policies-are-the-clusters).
 
 ## The identity provider
 
@@ -99,8 +100,8 @@ fails the rule is dropped. The backend's client follows no redirect of the issue
 1 MiB of any answer, and writes no answer's body into an error
 ([`oidc/client.go`](../../backend/internal/oidc/client.go)). The backend calls out to the issuer at
 every start (discovery), at a login (the token endpoint, the keys, UserInfo) and at every groups
-refresh; the chart's NetworkPolicy restricts no egress, and a policy of the installation's own must
-admit the issuer
+refresh; the chart ships no NetworkPolicy, and a policy of the cluster's that restricts the
+backend's egress must admit the issuer
 ([installation.md](../operations/installation.md#the-identity-provider)). The issuer never calls
 the backend: everything it sends comes through the browser, to `/auth/callback`.
 
@@ -124,8 +125,8 @@ What is checked rather than trusted: the address is configuration only, never a 
 begun to answer in two minutes or stays silent for ninety seconds, reads bounded answers, and keeps
 the provider's error message out of what the person sees and out of the log but for a clip without
 the key ([`llm/client.go`](../../backend/internal/llm/client.go)). The backend calls out to the
-provider at every call of the model in a turn, never at start; the chart's NetworkPolicy restricts no
-egress, and a policy of the installation's own must admit the provider and DNS
+provider at every call of the model in a turn, never at start; the chart ships no NetworkPolicy, and a
+policy of the cluster's that restricts the backend's egress must admit the provider and DNS
 ([docs/operations/chat.md](../operations/chat.md#in-the-chart)). The provider never calls the
 backend.
 
@@ -190,12 +191,15 @@ itself states that a malformed string can defeat the masking. Not verified: whet
 of the storage client can carry the access key id; the secret key never travels, because an
 S3 signature does not transmit it.
 
-nginx's access log is the template's own `cowork` format on stdout: the time, the method, the
+nginx's access log is the configuration's own `cowork` format on stdout: the time, the method, the
 path without its query, the protocol, the status, the size and the duration — no client
 address, no header and no query string, like the backend's request log
-([`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template); verified
-in the built image). `/healthz` is not logged. nginx's error log is the image's default on
-stderr, and its line for a request nginx itself failed carries the query — H-14.
+([`frontend/nginx/default.conf`](../../frontend/nginx/default.conf); verified in the built
+image). `/healthz` is not logged. nginx's error log is the image's default on stderr, and its line
+for a request nginx refuses itself carries the request line, the query included — H-14. The
+Ingress controller's logs are the installation's: a controller that logs the request line — the
+default access log of ingress-nginx does — carries the client address and the query of every
+request, H-14 as well.
 
 ## The pods
 
@@ -211,10 +215,10 @@ whose token is not mounted ([`values.yaml`](../../deploy/helm/cowork/values.yaml
 binding: neither container has a Kubernetes API client.
 
 The backend writes no files: an upload is buffered in memory under the container's memory
-limit, 256 MiB by default ([attachments.md](attachments.md) H-12). nginx writes its pid, its
-temporary files — request bodies and proxied responses larger than its memory buffers among
-them — and the rendered configuration under `/tmp` and `/etc/nginx/conf.d`; the chart mounts
-`emptyDir`s there and nothing else is writable. When `backend.config.migrateOnStart` is true
+limit, 256 MiB by default ([attachments.md](attachments.md) H-12). nginx writes its pid and its
+temporary files under `/tmp`; the chart mounts an `emptyDir` there and nothing else is writable.
+It proxies nothing, so no request body and no answer of the backend passes through it — an
+upload is buffered, if at all, by the Ingress controller. When `backend.config.migrateOnStart` is true
 (the default), the init container `migrate` alone holds the owner credential; the serving
 container gets `COWORK_MIGRATE_ON_START=false` and refuses to start on pending migrations or
 on a runtime role that could bypass row-level security. With the setting false, the chart
@@ -225,22 +229,20 @@ release's values, readable with `helm get values`, so leave it empty.
 there reaches the serving container ([tenancy.md](tenancy.md) "The owner credential in the
 serving process").
 
-The nginx template is rendered with `envsubst` at start. The image is told to substitute
-`BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`, `NGINX_CLIENT_MAX_BODY_SIZE` and
-`NGINX_PROXY_READ_TIMEOUT` and nothing else (`NGINX_ENVSUBST_FILTER` in the
-[`Containerfile`](../../frontend/Containerfile)), so an unexpected environment variable
-cannot change the configuration; the chart computes the last two from the backend's limits
-([`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl)). All four are trusted as
-given: whoever can set the frontend pod's environment can point `/api/` anywhere — and then
-receives every bearer token sent through the frontend — or lift the body limit, and whoever
-controls the pod's `/etc/resolv.conf` — the cluster DNS — controls where the backend name
-resolves to on every request. That is the chart, the kubelet and the cluster administrator.
+The frontend's configuration is a file in the image, owned by root
+([`Containerfile`](../../frontend/Containerfile)): nothing is substituted at start, so no
+environment variable changes it, and it resolves no name. Whoever can change the image, or mount a
+volume over `/etc/nginx/conf.d`, changes what the UI is, its content-security policy included —
+the image's publisher and whoever may edit the Deployment. Every bearer token and session cookie
+passes the Ingress controller, not the frontend: whoever may change the Ingress object or the
+controller's configuration can send `/api/` or `/auth/` anywhere and receive what passes — the
+cluster administrator and whoever may write Ingress objects in the namespace.
 
 ## The shell's content-security policy
 
 The frontend's nginx sends one `Content-Security-Policy` with everything it serves of the UI —
 `index.html` for every path the router owns, the hashed bundles and fonts, the icons
-([`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) `$ui_csp`; an
+([`frontend/nginx/default.conf`](../../frontend/nginx/default.conf) `$ui_csp`; an
 `add_header` in a location replaces the server's, so each of the three locations adds it). It exists
 since the chat put a model's output into the page
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
@@ -264,39 +266,48 @@ restyle the page — hide a control, imitate one — but not load anything from 
 PrimeUI license is checked in the page, offline, and needs no source of its own. The answers of
 `/api/` and `/auth/` carry no policy of the shell's — they are no documents — and an attachment's
 content carries its own `sandbox` ([attachments.md](attachments.md)). Verified on 2026-10-04 against
-the production bundle behind nginx with this template, in Chromium and WebKit, in both colour schemes,
+the production bundle behind nginx with this policy, in Chromium and WebKit, in both colour schemes,
 with the API mocked: no violation was reported while the shell, the settings and the chat panel ran
-a turn. Not verified: every page of the UI under the policy — a page that needs another source fails
+a turn; and again on 2026-10-04, after the routing moved to the Ingress, in Chromium behind the
+Ingress stand-in and behind ingress-nginx with the real backend: no violation through the login,
+the tenant page and the backlog. Not verified: every page of the UI under the policy — a page that needs another source fails
 in the browser with a violation in the console, and nginx has no unit test.
 
 ## What this does not cover
 
 <a id="h-14"></a>
-### H-14 — nginx's error log carries the query of a request nginx failed
+### H-14 — The Ingress controller's log, and nginx's error log, carry a request's query
 
-Live today. When nginx fails a request itself — the backend unreachable (`502`), no answer in
-time (`504`), a body over `client_max_body_size` (`413`) — it writes an error line on stderr
-with the client address and the whole request line, the query string included. A full-text
-search (`?q=`) then lands in the frontend's log and in whatever collects the pod logs; a
-request nginx passes on is not logged with its query. The template sets no `error_log`, and
-raising its level to `crit` would drop the diagnosis along with the query. Mitigation: treat
-the frontend's log as holding search terms, and keep its retention and its readers to those
-who may read the tickets.
+Live today. Every request passes the Ingress controller, and what it logs is the installation's,
+not cowork's: a controller that writes the request line into its access log writes the query string
+with it, so a full-text search (`?q=`) and the identity provider's `code` and `state` on
+`/auth/callback` land in the controller's log and in whatever collects it. ingress-nginx's default
+access log does exactly that (`log_format upstreaminfo`, with the client address and `"$request"`,
+verified in v1.15.1's generated configuration on 2026-10-04). The frontend's nginx logs no query in
+its access log, but when it refuses a request itself — a body above its 1 MiB limit on a path that
+reached it by mistake — it writes an error line on stderr with the client address and the whole
+request line; it proxies nothing, so no failed proxying is logged there any more. The configuration
+sets no `error_log`, and raising its level to `crit` would drop the diagnosis along with the query.
+Mitigation: treat the controller's log and the frontend's error log as holding search terms and
+one-time login codes, and keep their retention and their readers to those who may read the
+tickets; where the controller's log format is configurable, leave the query out of it.
 
 ### The forwarded headers
 
-nginx sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Real-IP` in each of its three proxied
-locations; a caller that reaches the backend directly can set the same headers to any value.
+The Ingress controller writes `X-Forwarded-For` — the trust rule needs the address it saw as the
+header's last entry, which ingress-nginx writes in place of what the client sent — and may set
+`X-Forwarded-Proto` and `X-Real-IP`; a caller that reaches the backend directly can set the same
+headers to any value.
 The trust rule of [ADR 0035](../adr/0035-personal-access-tokens.md) D2 decides what the backend
 does with that: `X-Forwarded-For` is read only when the TCP peer is inside
 `COWORK_TRUSTED_PROXIES`, from the right, up to the first address that is not a proxy of ours,
 and nothing to the left of it is ever read ([local-accounts.md](local-accounts.md) "The client
 address"). Two readers use what it finds: the login's throttle and the keyed hash every audit row
 of a request carries ([tokens.md](tokens.md#what-is-recorded)). The request log carries no
-address. Where the rule is wrong — an empty list, a list too narrow or too wide, a policy that is
-not enforced — what it costs is [local-accounts.md](local-accounts.md) H-17, and an audit row's
-hash names the wrong client in the same way; `X-Forwarded-Proto` and `X-Real-IP` are read by
-nothing.
+address. Where the rule is wrong — an empty list, a list too narrow or too wide, a trusted network
+that holds pods no policy of the cluster's keeps away from the backend — what it costs is
+[local-accounts.md](local-accounts.md) H-17, and an audit row's hash names the wrong client in the
+same way; `X-Forwarded-Proto` and `X-Real-IP` are read by nothing.
 
 ### The identity provider's own controls
 

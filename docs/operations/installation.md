@@ -2,8 +2,9 @@
 
 cowork is installed with the Helm chart in [`deploy/helm/cowork/`](../../deploy/helm/cowork/).
 A release is two Deployments — the backend (the API; its pods migrate the schema in an init
-container) and the frontend (nginx with the Angular bundle, proxying `/api/` and `/auth/` to the
-backend).
+container) and the frontend (nginx with the Angular bundle, and nothing else) — and, when enabled,
+an Ingress that routes `/api/` and `/auth/` to the backend and everything else to the frontend
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3).
 The chart brings neither the database nor the object storage
 ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D8,
 [ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D1):
@@ -210,7 +211,8 @@ base URL, and the chart refuses to render). A cookie is only stored by a browser
 or on `localhost` — so the URL is the one your TLS-terminating Ingress serves.
 
 ```bash
-helm upgrade --install cowork cowork/cowork --version 0.1.0 -n cowork --reuse-values \
+# 0.4.0 is an example: the first release whose Ingress routes the API to the backend, or a later one
+helm upgrade --install cowork cowork/cowork --version 0.4.0 -n cowork --reuse-values \
   --set localAdmin.existingSecret=cowork-local-admin \
   --set backend.config.baseURL=https://cowork.example.com \
   --set bootstrap.tenant.slug=acme --set bootstrap.tenant.name="Acme Corp"   # optional
@@ -282,10 +284,10 @@ shows the UI (scheme, host, port):
 https://cowork.example.com/auth/callback       # example: <backend.config.baseURL>/auth/callback
 ```
 
-The frontend proxies `/auth/` to the backend, so the Ingress rule of [Expose it](#expose-it)
-carries the callback. The provider must be reachable from the backend pods: the backend fetches
-the discovery document, the keys, the tokens and UserInfo from it. The chart's NetworkPolicy
-restricts nothing outgoing; a policy of your own that does must admit the provider.
+The Ingress of [Expose it](#expose-it) routes `/auth/` to the backend, so its rule carries the
+callback. The provider must be reachable from the backend pods: the backend fetches the discovery
+document, the keys, the tokens and UserInfo from it. The chart ships no NetworkPolicy; a policy of
+the cluster's that restricts the backend's egress must admit the provider.
 
 **In cowork**, the client secret goes into a Secret ([the Secrets](#the-secrets)), the rest into
 values:
@@ -541,9 +543,9 @@ confidential tickets included — the owner's decision, with the risk accepted
 ([chat.md H-37](../security/chat.md#h-37)). List a hosted provider only where every tenant's data may
 go to it ([chat.md, adding a hosted provider](chat.md#adding-a-hosted-provider)).
 
-**The backend's pods reach the providers.** The browser never does. The chart's NetworkPolicy
-restricts nothing outgoing; a policy of your own that does must admit the providers and DNS. The
-stream of a turn passes the Ingress like the event stream, unbuffered
+**The backend's pods reach the providers.** The browser never does. The chart ships no
+NetworkPolicy; a policy of the cluster's that restricts the backend's egress must admit the
+providers and DNS. The stream of a turn passes the Ingress like the event stream, unbuffered
 ([runtime.md, behind an Ingress](runtime.md#behind-an-ingress)).
 
 LM Studio, OpenAI and Anthropic one by one, the context LM Studio loads a model with, the limits
@@ -553,7 +555,8 @@ and what the log says are [chat.md](chat.md).
 
 ```bash
 helm repo add cowork https://guided-traffic.github.io/cowork/
-helm upgrade --install cowork cowork/cowork --version 0.1.0 --namespace cowork \
+# 0.4.0 is an example: the first release whose Ingress routes the API to the backend, or a later one
+helm upgrade --install cowork cowork/cowork --version 0.4.0 --namespace cowork \
   --set database.existingSecret=cowork-database \
   --set database.owner.existingSecret=cowork-database-owner \
   --set session.existingSecret=cowork-session \
@@ -565,26 +568,34 @@ The last two lines are optional; leave them out and uploads are refused. What th
 contains: the Deployments `<fullname>-backend` and `<fullname>-frontend` — `<fullname>` is
 `<release>-cowork`, or the release name itself when it contains `cowork`, so `cowork-backend`
 and `cowork-frontend` for the release `cowork` — a Service for each
-(backend on 8080, frontend on 80), one ServiceAccount without an API token, the NetworkPolicy
-`<fullname>-backend` ([below](#the-client-address-and-the-trusted-proxies)), the `migrate` init
+(backend on 8080, frontend on 80), one ServiceAccount without an API token, the `migrate` init
 container in every backend pod, and — only when the values ask for them — the Secrets rendered
-from inline URLs, the CA volume and the Ingress. No RBAC objects: neither container talks to
-the Kubernetes API. The frontend pod gets `BACKEND_URL` set to the backend Service, and its
-body size and read timeout computed from the backend's limits
-([runtime.md, what nginx answers itself](runtime.md#what-nginx-answers-itself)).
+from inline URLs, the CA volume and the Ingress ([Expose it](#expose-it)). No NetworkPolicy
+([network policies are the cluster's](#network-policies-are-the-clusters)) and no RBAC objects:
+neither container talks to the Kubernetes API. The frontend pod takes no configuration: its
+nginx serves the UI from a file in the image and reaches no backend.
 
 Verify:
 
 ```bash
 kubectl -n cowork rollout status deploy/cowork-backend deploy/cowork-frontend
 kubectl -n cowork logs deploy/cowork-backend -c migrate   # "database schema is current" with the version
-kubectl -n cowork port-forward svc/cowork-frontend 8080:80 &
-curl -s localhost:8080/healthz          # {"status":"ok"} — nginx itself
-curl -s localhost:8080/api/v1/version   # proxied to the backend
-open http://localhost:8080              # the UI shell, with the version in the footer
 kubectl -n cowork port-forward svc/cowork-backend 8081:8080 &
 curl -s localhost:8081/readyz           # {"status":"ready"} — the backend and its database
+curl -s localhost:8081/api/v1/version   # the backend's version
+kubectl -n cowork port-forward svc/cowork-frontend 8080:80 &
+curl -s localhost:8080/healthz          # {"status":"ok"} — nginx itself
+curl -s localhost:8080/api/v1/version   # a 404 problem: the frontend serves no API, the Ingress routes it
+# once the Ingress is set up (below):
+curl -s https://cowork.example.com/api/v1/version   # the backend's version, through the Ingress
+open https://cowork.example.com                     # the UI shell, with the version in the footer
 ```
+
+The UI needs the Ingress, or a route of your own with the same paths: a port-forward to the
+frontend alone serves the shell without its API, and the page then shows "Not found — the
+frontend serves the UI only; the Ingress must route /api/ and /auth/ to the backend Service" with
+"backend unreachable" in the footer — what an Ingress that sends every path to the frontend shows
+as well.
 
 **Log in.** Without a local administrator or an identity provider nobody can: an installation
 answers the health endpoints, the version, the API document, what the login page offers and the
@@ -623,121 +634,183 @@ leaves behind and how it is repaired: [runtime.md, the migration run](runtime.md
 
 ## Expose it
 
-`ingress.enabled=true` renders a standard `networking.k8s.io/v1` Ingress named `<fullname>`
-that targets the **frontend** Service; the frontend proxies `/api/` to the backend, so one
-rule covers the UI and the API. Set `ingress.className`, the host and, for TLS, `ingress.tls`
-with a Secret your certificate issuer fills. The event stream and the uploads pass the Ingress
-too: the annotations it needs — no buffering, a long read timeout, a body size above the
-backend's limits — are in [runtime.md, behind an Ingress](runtime.md#behind-an-ingress). Set
-`backend.config.baseURL` to the public URL at the same time: it is the origin the CSRF check
-compares every write of a session with, so it must be exactly what the browser shows — scheme,
-host, port, no path — and a mismatch is `403 csrf` on every write
-([runtime.md, the login](runtime.md#the-login)). `/auth/` is proxied by the frontend like
-`/api/`, so the same Ingress rule carries the login.
+`ingress.enabled=true` renders a standard `networking.k8s.io/v1` Ingress named `<fullname>` with
+three paths for every host of `ingress.hosts`
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3):
 
-An installation that prefers path routing at the Ingress (`/api` and `/auth` straight to the
-backend Service) can write that Ingress itself; both Services exist. It then loses what the
-frontend's nginx does for `/api/`: the unbuffered event stream location and the problem bodies
-for the errors nginx answers itself — and the chart's NetworkPolicy, which admits the frontend
-pods and no Ingress controller, refuses it: set `networkPolicy.enabled=false` or add a policy of
-your own that admits the controller. Neither container terminates TLS. Whatever you put in front — an
-Ingress controller, a mesh — terminates it; both pods speak plain HTTP on 8080.
+```yaml
+- path: /api/      # the API → Service <fullname>-backend, port http (8080)
+  pathType: Prefix
+- path: /auth/     # the browser's login flows, the identity provider's /auth/callback among them → <fullname>-backend
+  pathType: Prefix
+- path: /          # the UI → Service <fullname>-frontend, port http (80)
+  pathType: Prefix
+```
+
+The paths are the chart's: a host names nothing but `host`, and the `paths` an older values file
+gives a host are ignored. Set `ingress.className`, the hosts and, for TLS, `ingress.tls` with a
+Secret your certificate issuer fills. Set `backend.config.baseURL` to the public URL at the same
+time: it is the origin the CSRF check compares every write of a session with, so it must be
+exactly what the browser shows — scheme, host, port, no path — and a mismatch is `403 csrf` on
+every write ([runtime.md, the login](runtime.md#the-login)).
+
+**The controller stands in front of the backend, and its settings are yours.** The frontend's
+nginx proxies nothing: what the controller lets through reaches the backend, and what it refuses
+never does. The chart does not know which controller runs and sets none of its settings; set them
+in `ingress.annotations` or in the controller's own configuration. What any controller must do:
+
+| What | Must be | Otherwise |
+|---|---|---|
+| request body limit | above the backend's larger limit: `max(maxJsonBody, attachmentMaxBytes)` rounded up to MiB, plus 1 MiB — `11m` with the defaults; none when either is `0`. The chart's notes print the figure | an upload or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
+| read timeout | above `backend.config.requestTimeout` plus 10 s — `40` seconds with the default; an hour when it is `0`. The chart's notes print the figure. The two streams send something at least every twenty seconds — the event stream's heartbeat, the chat's comment every ten — so they stay open within any timeout above that | a slow request gets the controller's `504` page instead of the backend's `504` problem with its request id; below twenty seconds the streams are cut |
+| buffering of `text/event-stream` | off. The backend answers the event stream and a turn of the chat with `X-Accel-Buffering: no`; a controller that honours that header — nginx does — needs no setting, one that does not must be told not to buffer | events arrive late and in bursts, a turn's text all at once at its end |
+| `X-Forwarded-For` | the address the controller saw as the header's last entry, written in place of the client's header or appended to it | `backend.config.trustedProxies` finds the wrong client ([below](#the-client-address-and-the-trusted-proxies)) |
+
+**ingress-nginx is retired**: Kubernetes ended it in March 2026 — no releases, no bug fixes and no
+security fixes since ([the announcement](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/),
+[the statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/)). Do not install it
+for a new installation.
+
+**A worked example, for a cluster that still runs ingress-nginx.** Its own defaults are a body
+limit of `1m`, a read timeout of 60 seconds, no response buffering, and `X-Forwarded-For` set to the
+address it saw; so for the backend's defaults the body limit is the annotation it needs, and the
+read timeout one once `requestTimeout` is above 50 seconds:
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx                                       # example
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 11m     # example: the figure for the default limits
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "40" # example: the figure for the default requestTimeout
+  hosts:
+    - host: cowork.example.com                           # example
+  tls:
+    - secretName: cowork-tls                             # example
+      hosts: [cowork.example.com]
+```
+
+**Verified on 2026-10-04** with ingress-nginx v1.15.1 in a kind cluster, the chart installed with
+its Ingress: the controller routed `/api/`, `/auth/` and `/auth/callback` to the backend and the
+rest to the frontend; its generated configuration had `client_max_body_size 1m`,
+`proxy_read_timeout 60s` and `proxy_buffering off` by default, and a 2 MiB body got the
+controller's `413` page until `proxy-body-size: 11m` let it through to the backend's own `413`
+problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
+60 s and of 40 s on its heartbeats — with `proxy-buffering: "on"` forced as well, so the backend's
+header alone keeps it unbuffered. The chat's stream carries the same header and was not run through
+the controller. No other controller was tried here: give yours the four settings above in its own
+terms.
+
+**What the controller answers itself is its page, not a problem body:** a `502` or `503` while no
+backend pod is ready — ingress-nginx answered `503 Service Temporarily Unavailable` in the run
+above, the Ingress stand-in of local runs `502` —, its `413` above its body limit, its `504` past
+its read timeout. The UI shows a `502`, `503` or `504` without a problem body as the backend out of
+reach — "The backend cannot be reached: The Ingress answered 503: no backend took the request.
+cowork tries again on its own." — and any other status without one as an unexpected answer that
+names the status; the backend's own errors always come as problem bodies with a request id
+([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6).
+
+**Without the chart's Ingress** — an Ingress, an `HTTPRoute` or a mesh route of your own — route
+the same three paths on one host: `/api/` and `/auth/` to `<fullname>-backend:8080`, everything
+else to `<fullname>-frontend:80`. A request for `/api/` or `/auth/` that reaches the frontend all
+the same answers `404` with a problem whose detail says so ("the frontend serves the UI only; the
+Ingress must route /api/ and /auth/ to the backend Service"), and the UI shows that detail on its
+page. Neither container terminates TLS. Whatever you put in front — an Ingress controller, a mesh —
+terminates it; both pods speak plain HTTP on 8080.
 
 ## The client address and the trusted proxies
 
-The login throttle counts attempts per **client address**, and the backend has to be told how
-to find it. A browser reaches the backend through the frontend's nginx and, with an Ingress, a
-controller before it — a cloud load balancer in front of that is a third — and each of them
-appends the address it saw to `X-Forwarded-For`:
+The login throttle counts attempts per **client address**, and every audit row of a request
+carries a keyed hash of it; the backend has to be told how to find it. A browser reaches the
+backend through the Ingress controller — a cloud load balancer in front of that is a second hop —
+and each proxy writes the address it saw into `X-Forwarded-For`:
 
 ```
-browser ──▶ Ingress controller ──▶ frontend nginx ──▶ backend
- 203.0.113.9   sees 203.0.113.9       sees 10.244.2.7     sees 10.244.1.20 (the frontend pod)
-               sends  203.0.113.9     sends  203.0.113.9, 10.244.2.7
+browser ──▶ Ingress controller ──▶ backend
+ 203.0.113.9   sees 203.0.113.9       sees 10.244.0.7 (the controller pod)
+               sends  203.0.113.9
 ```
 
-The backend's TCP peer is the frontend pod; the header says who was before it. With
-`backend.config.trustedProxies` (`COWORK_TRUSTED_PROXIES`) set to the networks of the proxies
-— here `10.244.0.0/16`, the pod network that holds the frontend and the controller — the backend
-walks the header from the right: the peer is trusted, so it takes `10.244.2.7`; that is trusted
-too, so it takes `203.0.113.9`; that is not, so it is the client. Entries to the left of the
-client were written by the client and are never read; an entry that is no address stops the walk
-at the hop before it. [local-accounts.md](../security/local-accounts.md#the-client-address)
-has the rule and its tests.
+The backend's TCP peer is the controller pod; the header says who was before it. With
+`backend.config.trustedProxies` (`COWORK_TRUSTED_PROXIES`) set to the networks of the proxies —
+here `10.244.0.0/16`, the pod network the controller runs in — the backend walks the header from
+the right: the peer is trusted, so it takes `203.0.113.9`; that is not, so it is the client.
+Entries to the left of the client were written by the client and are never read; an entry that is
+no address stops the walk at the hop before it.
+[local-accounts.md](../security/local-accounts.md#the-client-address) has the rule and its tests.
 
-**Verified on 2026-10-03** with the frontend's real nginx template on nginx 1.31 and a backend
-that echoes its headers: each of the three proxied locations — `/api/`, the event stream's
-`/api/v1/tenants/<slug>/events` and `/auth/` — sets `X-Forwarded-For` to
-`$proxy_add_x_forwarded_for`, which is what the caller sent with its own address appended, so
-a client reaching the frontend with `X-Forwarded-For: 198.51.100.77` arrives as
-`198.51.100.77, <the client's real address>`. Behind a stand-in controller that writes the
-address it saw instead of passing the header on — which is what ingress-nginx does by default,
-`use-forwarded-headers: "false"`, by its documentation — the same request arrives as `<the
-address the controller saw>, <the controller>`: the forged entry is gone. Not tried against a
-real ingress-nginx. What stands to the left is never read.
+**The controller has to write the address it saw as the last entry of `X-Forwarded-For`** — in
+place of the client's header, or appended to it: either way the walk stops at that entry, and what
+the client wrote to its left is never read. A controller that passed the client's header on
+unchanged would let every client choose its address through it. ingress-nginx writes the address
+it saw in place of what the client sent (`X-Forwarded-For $remote_addr` in its generated
+configuration, with `use-forwarded-headers` `"false"`, its default), so a forged header does not
+reach the backend through it. **Verified on 2026-10-04** with v1.15.1 in a kind cluster, the backend trusting the pod network and allowing
+three attempts a minute: four logins through the controller, each with another forged
+`X-Forwarded-For`, were throttled at the fourth — one bucket; the Ingress stand-in of local runs
+does the same.
 
-**What to set.** `trustedProxies` is the networks of the *proxies* — the frontend pods and the
-Ingress controller's pods — and no more:
+**What to set.** `trustedProxies` is the networks of the *proxies* — the Ingress controller's
+pods, and a load balancer that adds its own hop — and no more:
 
 ```yaml
 backend:
   config:
     baseURL: https://cowork.example.com
-    trustedProxies: "10.244.0.0/16"   # example: the pod network of a cluster whose frontend and Ingress controller run in it
+    trustedProxies: "10.244.0.0/16"   # example: the pod network of a cluster whose Ingress controller runs in it
 ```
 
 Take the real ranges from your cluster — the pod CIDR (`kubectl get nodes -o
 jsonpath='{.items[*].spec.podCIDR}'` lists the per-node ranges on a cluster whose node
 controller allocates them; a network plugin with its own address management keeps them
-elsewhere), and, when the controller runs on the host network or behind a load balancer that adds
-its own hop, that hop's address too. IPv4 and IPv6 are separate entries; a single host is `/32`
-or `/128`. The list is validated at start: an entry that is no CIDR refuses the start, naming
-`COWORK_TRUSTED_PROXIES` and that entry only, and the start logs the networks it parsed
-(`client addresses are read through trusted proxies`).
+elsewhere), or the nodes' addresses for a controller on the host network, and, behind a load
+balancer that adds its own hop, that hop's address too. IPv4 and IPv6 are separate entries; a
+single host is `/32` or `/128`. The list is validated at start: an entry that is no CIDR refuses
+the start, naming `COWORK_TRUSTED_PROXIES` and that entry only, and the start logs the networks it
+parsed (`client addresses are read through trusted proxies`). The frontend's pods are no hop: they
+proxy nothing.
 
 The controller has to see the browser's address to pass it on. Behind a cloud load balancer or a
 `NodePort`, Kubernetes may rewrite the source address before the controller sees it — its
 documentation says it is not defined whether that happens before or after NetworkPolicy
 processing — and then the "client" is the node or the balancer. `externalTrafficPolicy: Local`,
-the PROXY protocol, or `use-forwarded-headers: "true"` behind a layer-7 balancer you list in
-`proxy-real-ip-cidr` are the controller's ways; they are the controller's to configure.
+the PROXY protocol, or a controller told to read the forwarded header of a layer-7 balancer in front
+of it are the ways; they are the controller's to configure, and the balancer then belongs in
+`trustedProxies` as well.
 
 **What goes wrong:**
 
 | The list | What happens |
 |---|---|
-| empty (the default) | the client is the frontend pod, for every browser: `auth.local.addressLimit` attempts a minute for the whole installation. One client's failures use it up for everybody. The chart's notes say so while a local administrator is set |
-| too narrow — the controller's network missing | the walk stops at the controller: every client shares the controller's address, one bucket per controller pod |
+| empty (the default) | the client is the controller pod, for every browser behind it: `auth.local.addressLimit` attempts a minute shared by all of them, one bucket per controller pod. One client's failures use it up for everybody. The chart's notes say so while a local administrator is set |
+| too narrow — the controller's network missing | the walk stops at the controller: the same as empty |
 | too wide — `0.0.0.0/0`, a whole private range, a network that holds clients | a client inside it is a hop itself, the walk goes on into the entries it wrote, and it chooses its own address: it dodges the throttle by changing the address with every attempt, and fills another client's bucket to keep that person from logging in |
-| a pod network that other workloads share, with their access to the frontend | a pod that reaches the frontend directly arrives with its real address appended to whatever it wrote; its address is inside the trusted network, so the walk reads what it wrote. A narrower list does not help, because the frontend pods' own addresses come from the same network: keep other pods away from the frontend with a NetworkPolicy of your own that admits only the Ingress controller |
+| a pod network other workloads share, with their access to the backend | a pod that calls the backend Service directly is a trusted peer, and the walk reads what it wrote: it chooses its address for the throttle and the audit's source hash. Verified as above: a pod calling the backend Service with a forged header per attempt was never throttled, and the same pod without one was at its fourth. A narrower list helps only where the controller's addresses are narrower than the pod network (the host network, a fixed range); otherwise a network policy of the cluster's that admits only the controller to the backend's pods is what closes it — the chart ships none ([H-17](../security/local-accounts.md#h-17)) |
 
 **Check it.** With the list set, fail the login more often than `auth.local.addressLimit` in a
 minute from one machine: that machine gets `429`, and a login from another machine in the same
 minute still works. If both get `429`, the walk stopped at a proxy that is not in the list.
 
-### The NetworkPolicy
+### Network policies are the cluster's
 
-`networkPolicy.enabled` (default `true`) renders a NetworkPolicy for the backend pods that
-admits ingress from the frontend pods of the release, on the backend's port, and from nothing
-else; egress is not restricted. It is there for the one rule that trusts the network: a pod that
-is no proxy of ours must not reach the backend and write `X-Forwarded-For` itself.
+The chart renders no NetworkPolicy
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3): who may reach which pod is the cluster administrator's policy, and the chart does not know
+where your controller runs. What cowork's pods need, for a policy you write:
 
-- It is enforced by a network plugin that implements NetworkPolicy, and by nothing else:
-  Kubernetes says that creating one without such a plugin "will have no effect". Calico and
-  Cilium do; a cluster on a plugin that does not implement it has no such protection, whatever
-  the chart renders. Not verified against any cluster: the policy has been rendered and linted
-  in this repository, not enforced.
-- **The kubelet's probes are not affected.** Kubernetes states that traffic to and from the node
-  a pod runs on is always allowed; the probes of both pods come from there.
-- **In-cluster scripts** that call the backend Service directly are refused. Send them through
-  the frontend Service, which proxies `/api/` with the same tokens, or add a NetworkPolicy of
-  your own that admits them — policies add up. `kubectl port-forward` reaches the pod through its
-  own network namespace, which Kubernetes does not let a policy block ("Pods cannot currently
-  block localhost access"); not tried here, and the install notes still show it for the API.
+- **The backend's pods**, port 8080: the Ingress controller's pods, for `/api/` and `/auth/`; and
+  whatever else calls the API inside the cluster — a script, an agent — with a token. With
+  `trustedProxies` set, this is the policy that keeps every other pod from choosing its address
+  (H-17 above). Out of them: the database, the object storage, the identity provider, the chat's
+  providers, and DNS.
+- **The frontend's pods**, port 8080: the Ingress controller's pods. The frontend reaches nothing.
+- **The kubelet's probes** of both pods come from the node, which Kubernetes always admits.
 - **A scrape of the metrics port** ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md),
-  not built) will need its own rule for the monitoring namespace beside this one.
-- `networkPolicy.enabled=false` removes it. With `trustedProxies` set, the chart's notes warn
-  about that combination.
+  not built) will need its own rule for the monitoring namespace.
+
+A policy is enforced by a network plugin that implements NetworkPolicy and by nothing else;
+Kubernetes says that creating one without such a plugin "will have no effect". Nothing of this was
+run against a plugin that enforces policies.
 
 ## Upgrade
 
@@ -748,7 +821,8 @@ helm upgrade cowork cowork/cowork --version <new> -n cowork --reuse-values
 
 Both images carry the release's version, and the chart of that version names them; set
 `backend.image.tag` and `frontend.image.tag` only to pin images apart from the chart, and then
-move them together. The new backend pods
+move them together — across the release below, the frontend image and the chart move together as
+well. The new backend pods
 apply the pending migrations in their init container before their server starts. **Rolling
 back is rolling the image back:** deploy the previous tags and leave the schema where it is.
 The previous image's init container finds the schema ahead of it and applies nothing, and its
@@ -757,12 +831,32 @@ reads, which is what makes that safe
 ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md));
 there is no schema rollback and no `migrate down`.
 
-**A release that brings the NetworkPolicy** (`networkPolicy.enabled`, on by default) changes who
-reaches the backend: on a cluster whose network plugin enforces NetworkPolicy, a pod that called
-the backend Service directly — a script, an agent, an Ingress that routes to the backend — is
-refused after the upgrade. Send it through the frontend Service, or set
-`networkPolicy.enabled=false`, or add a policy of your own that admits it
-([the NetworkPolicy](#the-networkpolicy)).
+**The release whose Ingress routes the API to the backend**
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3, amended 2026-10-04) changes what stands in front of the backend:
+
+- **Set the controller's limits before the upgrade** ([Expose it](#expose-it)): the Ingress sends
+  `/api/` and `/auth/` to the backend itself now, and a controller whose body limit is below the
+  backend's answers a larger upload with its own `413` page — ingress-nginx's default limit is
+  1 MiB.
+- **The upgrade deletes the chart's NetworkPolicy** `<fullname>-backend`. With `trustedProxies`
+  set, a policy of the cluster's that admits only the controller to the backend's pods is what
+  keeps other pods from choosing their client address ([network policies are the
+  cluster's](#network-policies-are-the-clusters)). A script that went through the frontend
+  Service calls the backend Service now: the frontend answers `/api/` with a `404` problem.
+- **`trustedProxies` names the controller's networks only**: the frontend's pods are no hop any
+  more, so a list that named their range for them alone can be narrowed.
+- **The chart and the frontend image of that release go together.** The new image's
+  configuration lives in `/etc/nginx/conf.d`, where an older chart mounts an empty volume: the
+  pod then answers nothing and never gets ready. An older image renders its configuration into
+  `/etc/nginx/conf.d` at start, which the new chart leaves on the read-only root filesystem: the
+  container exits 1. Both measured with the images on 2026-10-04. So pin no `frontend.image.tag`
+  apart from the chart across this release, and roll back with `helm rollback`, chart and images
+  together, not the frontend image alone.
+- **An Ingress of your own** that sent every path to the frontend Service needs the two backend
+  paths of [Expose it](#expose-it).
+- `networkPolicy.enabled` and a host's `paths` are no values any more; `--reuse-values` carries
+  them along, and nothing reads them.
 
 ## Uninstall
 

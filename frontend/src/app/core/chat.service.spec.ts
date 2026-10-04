@@ -778,7 +778,8 @@ describe('ChatService', () => {
           kind: 'problem',
           problem: expect.objectContaining({
             status: 502,
-            detail: 'The server answered 502 without a problem body.',
+            code: 'backend_unreachable',
+            detail: 'The Ingress answered 502: no backend took the request. cowork tries again on its own.',
           }),
         }),
       );

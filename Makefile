@@ -71,6 +71,12 @@ DEX_PORT ?= 5556
 DEX_ISSUER = http://localhost:$(DEX_PORT)/dex
 TEST_OIDC_ISSUER ?= $(DEX_ISSUER)
 
+# The stand-in for the Ingress when the two images run together
+# (hack/ingress/default.conf, docs/adr/0001 D3): the frontend's base image with
+# the chart's path routing copied over its default server.
+# renovate: datasource=docker depName=nginxinc/nginx-unprivileged
+INGRESS_IMAGE ?= nginxinc/nginx-unprivileged:1.31-alpine
+
 # Setting SHELL to bash allows bash commands like 'source' to be used
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -311,10 +317,10 @@ postgres-down: ## Remove the local PostgreSQL container and its data.
 	docker rm -f -v $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: verify-phase-2
-verify-phase-2: ## Verify phase 2 by hand: both built images against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
+verify-phase-2: ## Verify phase 2 by hand: both built images behind the Ingress stand-in, against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
 	POSTGRES_CONTAINER=$(POSTGRES_CONTAINER) POSTGRES_PORT=$(POSTGRES_PORT) MINIO_PORT=$(MINIO_PORT) \
 	MINIO_ACCESS_KEY=$(MINIO_ACCESS_KEY) MINIO_SECRET_KEY=$(MINIO_SECRET_KEY) \
-	BACKEND_IMG=$(BACKEND_IMG) FRONTEND_IMG=$(FRONTEND_IMG) hack/verify-phase-2.sh
+	BACKEND_IMG=$(BACKEND_IMG) FRONTEND_IMG=$(FRONTEND_IMG) INGRESS_IMAGE=$(INGRESS_IMAGE) hack/verify-phase-2.sh
 
 .PHONY: minio-up
 minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests.

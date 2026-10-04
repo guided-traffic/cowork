@@ -20,7 +20,11 @@ every tenant among them,
 D2), and on 2026-10-04 by the owner's answers on the chat recorded in
 [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) (D5:
 sixteen operations — stopping the person's turns of the chat and choosing the chat's capabilities
-among them —, and the tenant's consent field gone with the consent; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
+among them —, and the tenant's consent field gone with the consent; built the same day), and on
+2026-10-04 by the owner's decision on the routing recorded in
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
+(D2: the hop in front of the backend is the Ingress controller, and the chart ships no
+NetworkPolicy; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -53,7 +57,7 @@ refusal rows, and the event stream's re-check at every heartbeat.
 [docs/security/tokens.md](../security/tokens.md)) — and D2's trust rule for forwarded addresses,
 which the login throttle counts under
 ([`api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress`,
-`COWORK_TRUSTED_PROXIES`, the chart's NetworkPolicy;
+`COWORK_TRUSTED_PROXIES`, ~~the chart's NetworkPolicy~~ *(gone 2026-10-04, D2)*;
 [docs/security/local-accounts.md](../security/local-accounts.md)); in the UI, the person's tokens
 page lists, creates — the plaintext shown once, in a dialog that forgets it when it closes — and
 revokes ([`features/me/tokens.ts`](../../frontend/src/app/features/me/tokens.ts)). Not built: D5's administrator
@@ -98,8 +102,14 @@ address of a request is found by walking `X-Forwarded-For` from the right, start
 peer: while the current address is inside a trusted network the entry to its left becomes the
 current address, and the first address that is not trusted is the client — entries to its left
 are never read, an entry that is no address stops the walk at the hop before it, and with the
-list empty the peer is the client. The chart's NetworkPolicy admits only the frontend pods to the
-backend, so no other pod can write the header to it. The login throttle of
+list empty the peer is the client. ~~The chart's NetworkPolicy admits only the frontend pods to the
+backend, so no other pod can write the header to it.~~ *(Amended 2026-10-04 by the owner,
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3: the Ingress routes `/api/` and `/auth/` to the backend, so the hop the list names is the
+Ingress controller, and the chart ships no NetworkPolicy. Every pod inside a trusted network that
+reaches the backend can write the header and choose its address; only a policy of the cluster's
+that admits the controller alone prevents it, and with the list empty nobody can
+([docs/security/local-accounts.md](../security/local-accounts.md#h-17) H-17).)* The login throttle of
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D6 counts
 that address — an IPv6 address by its /64 — keyed-hashed, in its own table; ~~the hash in the audit row stays for the phase that
 builds the identity provider, and no audit row carries an address yet~~)* *(amended 2026-10-04:

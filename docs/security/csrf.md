@@ -59,10 +59,13 @@ its own, which would bring a synchroniser token with it.
   to look at when the UI loads but nothing saves
   ([runtime.md](../operations/runtime.md#the-login)). A wrong value locks the browser out; it
   never lets another origin in.
-- **One origin.** The UI and the API are one origin behind nginx
+- **One origin.** The UI and the API are one origin behind the Ingress, which routes `/api/` and
+  `/auth/` to the backend and the rest to the frontend
   ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-  D3, D4); nginx passes `Origin`, `Referer` and `X-Requested-With` through untouched
-  (`/auth/` and `/api/` are proxied with no header removed).
+  D3, D4); the controller passes `Origin`, `Referer` and `X-Requested-With` through — ingress-nginx
+  v1.15.1 did on 2026-10-04, when a session's writes passed the check through it in a kind cluster.
+  A controller configured to drop or rewrite one of them makes every write of a session
+  `403 csrf`.
 - **The frontend's interceptor** sets `X-Requested-With: cowork` on every request of the
   `HttpClient` ([`frontend/src/app/core/http.ts`](../../frontend/src/app/core/http.ts); D4). The
   chat's turn is a `fetch` — the `HttpClient` waits for a whole body, and the turn is a stream —

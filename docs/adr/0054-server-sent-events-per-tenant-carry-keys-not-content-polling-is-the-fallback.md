@@ -18,13 +18,16 @@ as well), and again on 2026-10-04 after the security review (D3: a project-restr
 stream hears only the membership events of its project and its own person), and on 2026-10-04 for
 the chat in the UI (D9: the shutdown ends the chat's turns as well; built the same day —
 `ChatOptions.Shutdown` in [`api/chat.go`](../../backend/internal/api/chat.go),
-`TestTheChatsTurnLimitAndShutdown`).
+`TestTheChatsTurnLimitAndShutdown`), and on 2026-10-04 by the owner's decision on the routing
+recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3 (D6: the Ingress routes the stream to the backend and the frontend's nginx has no location for
+it; built the same day).
 
 **Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
 with the inbox), D2 without `inbox.changed` and ~~`membership.changed` (no route changes a
 membership yet)~~ — built 2026-10-04, below —, D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
 [`notify.go`](../../backend/internal/store/notify.go) and [`events.go`](../../backend/internal/api/events.go);
-the nginx template has the events location. D3's recomputation on `membership.changed`
+~~the nginx template has the events location~~ *(gone 2026-10-04 with the frontend's proxy, D6)*. D3's recomputation on `membership.changed`
 arrives with that event. D7's client side and D8's hidden tab since phase 3 (2026-10-03):
 [`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) opens one
 `EventSource` per tenant page, falls back after three failures or `unavailable`, ticks every
@@ -44,8 +47,9 @@ on it.
 The owner wants a change to reach every open client in under a second. Two boards, a
 dashboard, the inbox and the detail page show the same tickets ([ADR 0018](0018-the-views-of-the-first-release.md));
 every mutation goes through one wrapper in one transaction ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
-D3); the backend may run as several replicas behind nginx and an Ingress
-([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md));
+D3); the backend may run as several replicas behind ~~nginx and~~ an Ingress
+([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md);
+*since 2026-10-04 the Ingress alone, D3 of that record*);
 a restricted project must stay invisible to people outside it ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D3, D4), and nothing crosses a tenant ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
 D3). PostgreSQL's `NOTIFY` is delivered at commit, which is exactly the moment an event
@@ -115,9 +119,12 @@ is due, without moving the idle clock, and a provider person's token meets the g
 is due ([ADR 0035](0035-personal-access-tokens.md) D8).)*
 
 **D6 — The proxies are told not to buffer.** The backend sets `X-Accel-Buffering: no`,
-`Cache-Control: no-cache` and `Content-Type: text/event-stream`; the nginx template gets a
+`Cache-Control: no-cache` and `Content-Type: text/event-stream`; ~~the nginx template gets a
 location for `…/events` with `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout`
-of one hour and HTTP/1.1 keep-alive; the operations page lists the Ingress annotations an
+of one hour and HTTP/1.1 keep-alive~~ *(amended 2026-10-04 by the owner, ADR 0001 D3: the Ingress
+routes the stream to the backend, and the frontend's nginx proxies nothing; an nginx-based Ingress
+controller obeys `X-Accel-Buffering: no` itself, and the heartbeat of D5 every twenty seconds keeps
+the stream inside any read timeout above that)*; the operations page lists the Ingress annotations an
 installation needs for the same (read timeout, no buffering).
 
 **D7 — Polling is the fallback, not the default.** A client whose `EventSource` fails
@@ -147,9 +154,9 @@ not send a turn again by itself; the person does, on another replica.)*
 - The backend gains long-lived connections: one listener connection per replica, one goroutine
   and a bounded buffer per stream; memory per stream is small and the per-person limit bounds
   it. These are the first metrics the metrics record will want.
-- The nginx template and the Ingress need timeout and buffering settings; a wrong Ingress
-  default shows as streams that die every minute, which the operations page names as the
-  symptom.
+- ~~The nginx template and the Ingress need~~ *(since 2026-10-04: the Ingress needs)* timeout and
+  buffering settings; a wrong Ingress default shows as streams that die every minute, which the
+  operations page names as the symptom.
 - Browsers cap HTTP/1.1 connections per origin at six; HTTP/2 at the Ingress lifts that, and
   D8's per-person limit keeps a person with many tabs from starving their own API calls.
 - D7 means the polling path is built and tested too — the owner accepted that the fallback
@@ -189,4 +196,6 @@ not send a turn again by itself; the person does, on another replica.)*
 - [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D3, D4, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 — what the stream must not leak
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D4, [ADR 0053](0053-signals-and-services-no-store-framework.md) — amended by this record
 - [ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md) D2 — the version an event names
-- [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) — where D6's location lands
+- ~~`frontend/nginx/default.conf.template` — where D6's location lands~~ *(until 2026-10-04)*;
+  [docs/operations/installation.md](../operations/installation.md#expose-it) — the Ingress
+  settings D6 names

@@ -17,7 +17,10 @@ installation's tenants (D6: fourteen routes, [ADR 0035](0035-personal-access-tok
 on 2026-10-04 by the owner's answers on the chat
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md); D6:
 sixteen routes, no consent field; a session's request the agent header marks holds the person's
-chat capabilities; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
+chat capabilities; built the same day), and on 2026-10-04 by the owner's decision on the routing
+(Context: the one origin is the Ingress's,
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3; nothing of the decision changes). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -49,7 +52,8 @@ rotation that keeps the old key; what a change of the key does is D1's rule, and
 
 ## Context
 
-The UI and the API share one origin behind nginx ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+The UI and the API share one origin ~~behind nginx~~ *(since 2026-10-04 behind the Ingress, which
+routes `/api/` and `/auth/` to the backend)* ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3, D4); people log in through a standard OIDC code flow ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md));
 their groups are re-evaluated during a session and a person who leaves the allow-list is
 logged out at the next request ([ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)

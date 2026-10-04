@@ -1,7 +1,7 @@
 // Package httpserver assembles the HTTP handler — the health endpoints, the
 // API under /api/ and the browser's login flows under /auth/ — and runs the
 // server. The web UI is not served here; it is the frontend container's job,
-// which proxies /api/ and /auth/ to this one.
+// and the Ingress routes /api/ and /auth/ to this one (docs/adr/0001 D3).
 // Every request gets an id (X-Request-Id), a recovery from panics and one
 // line in the request log; every error is an RFC 9457 problem details body
 // (docs/adr/0047).

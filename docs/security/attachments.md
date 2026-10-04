@@ -56,13 +56,15 @@ like any other SVG — as a download.
 - **Without storage.** Uploads answer `501 uploads_disabled`, lists and metadata still answer,
   and a download answers `404` saying the bytes are not reachable.
 - **On the way.** The backend writes no file: it buffers an upload in memory (H-12) and
-  streams a download. nginx does write: the template leaves request and response buffering at
-  nginx's defaults for `/api/` and switches response buffering off only for the event stream,
-  so a body larger than nginx's memory buffer, and a response larger than its proxy buffers,
-  is written for the duration of the request to a temporary file under `/tmp` — the image's
-  `client_body_temp_path` and `proxy_temp_path`, on an `emptyDir` of the frontend pod.
-  Verified: the template and the image's `nginx.conf`. Not verified here: that nginx removes
-  the files when the request ends, which is its documented behaviour.
+  streams a download. The frontend's nginx sees neither: the Ingress routes `/api/` to the
+  backend ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+  D3). The Ingress controller may write: a controller that buffers request bodies writes one
+  larger than its memory buffer to a temporary file in its own pod for the duration of the request
+  — ingress-nginx buffers request bodies (`proxy_request_buffering on`) and no response
+  (`proxy_buffering off`) by default, its generated configuration of v1.15.1 shows on 2026-10-04,
+  and nginx writes such a file by its documentation; the Ingress stand-in of local runs logged
+  exactly that for a 10 MiB upload. That pod is the installation's. Not verified here: that a
+  controller removes the file when the request ends, which is nginx's documented behaviour.
 
 ## Delivery makes the browser treat the bytes as data
 
@@ -89,14 +91,15 @@ a ticket's text has nothing to act on.
 ## Limits before anything is stored
 
 - **Size.** The per-file maximum, `COWORK_ATTACHMENT_MAX_BYTES` (10 MiB by default), is
-  enforced four times: by nginx's `client_max_body_size`, which the chart sizes above the
-  backend's limits; by a declared `Content-Length` above the maximum plus 64 KiB of multipart
+  enforced up to four times: by the Ingress controller's body limit, which the installation sets
+  above the backend's — the chart documents it and prints the figure, and a controller's own
+  default may be below it, as ingress-nginx's 1 MiB is; by a declared `Content-Length` above the maximum plus 64 KiB of multipart
   overhead; by reading the body through a limit of the same size; and by reading the file
   part up to the maximum and one byte more. Each answers `413` before a row or an object
   exists ([`api/validate.go`](../../backend/internal/api/validate.go) `limitBody`,
   [`api/attachments.go`](../../backend/internal/api/attachments.go) `readUpload`). `0`
-  switches the maximum off, in the backend and — through the chart — in nginx: an upload is
-  then read whole, whatever its size (H-12).
+  switches the maximum off in the backend, and the chart's notes then ask the controller for no
+  limit either: an upload is then read whole, whatever its size (H-12).
 - **Count.** The per-ticket count, `COWORK_ATTACHMENT_MAX_PER_TICKET` (100 by default, `0` for
   none), is checked in the upload's transaction, under the ticket's attachment lock, before
   the object is put: `409 attachment_limit`. Simultaneous uploads to one ticket wait for each

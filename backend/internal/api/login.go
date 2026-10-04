@@ -89,9 +89,9 @@ func (h *handler) sourceHash(client string) []byte {
 // addressHash is the keyed hash of a client address: what the throttle counts
 // by, and all it keeps of an address. The address is the client's under the
 // rule of docs/adr/0035 D2 (clientAddress), so behind the trusted proxies it is
-// the browser's and not nginx's; with no trusted proxy it is the TCP peer's, and
-// behind the frontend's nginx every browser shares one address
-// (docs/security/local-accounts.md). An IPv6 client counts by its /64, the
+// the browser's and not the Ingress controller's; with no trusted proxy it is
+// the TCP peer's, and every browser behind one controller pod shares its
+// address (docs/security/local-accounts.md). An IPv6 client counts by its /64, the
 // network one subscriber is given: it holds 2^64 addresses, and a bucket per
 // address would give it a fresh one with every attempt.
 func (h *handler) addressHash(client string) []byte {

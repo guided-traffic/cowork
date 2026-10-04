@@ -133,16 +133,40 @@ describe('ProblemService', () => {
     });
 
     it('calls an answer without a problem body unexpected and names its status', () => {
-      const view = service.read(failure('<html>Bad Gateway</html>', 502, 'Bad Gateway'));
+      const view = service.read(failure('<html>Teapot</html>', 418, "I'm a teapot"));
 
       expect(view).toEqual({
-        status: 502,
+        status: 418,
         code: 'unexpected',
         title: 'Unexpected answer',
-        detail: 'The server answered 502 without a problem body.',
+        detail: 'The server answered 418 without a problem body.',
         fields: {},
         current: {},
       });
+    });
+
+    it.each([502, 503, 504])(
+      'calls a gateway status %i without a problem body the backend out of reach — the Ingress answered',
+      (status) => {
+        const view = service.read(failure('<html>Bad Gateway</html>', status, 'Gateway'));
+
+        expect(view).toEqual({
+          status,
+          code: 'backend_unreachable',
+          title: 'The backend cannot be reached',
+          detail: `The Ingress answered ${status}: no backend took the request. cowork tries again on its own.`,
+          fields: {},
+          current: {},
+        });
+      },
+    );
+
+    it('keeps the problem body of a gateway status the backend wrote itself', () => {
+      const view = service.read(
+        failure({ type: 'about:blank', title: 'Not ready', status: 503, code: 'not_ready' }, 503, 'x'),
+      );
+
+      expect(view.code).toBe('not_ready');
     });
 
     it.each([
@@ -152,7 +176,7 @@ describe('ProblemService', () => {
     ])(
       'titles that answer Unexpected answer whatever it comes with: %s',
       (_description, statusText) => {
-        expect(service.read(failure(null, 503, statusText)).title).toBe('Unexpected answer');
+        expect(service.read(failure(null, 501, statusText)).title).toBe('Unexpected answer');
         expect(service.read(failure('plain text', 500, statusText)).title).toBe(
           'Unexpected answer',
         );
@@ -335,12 +359,23 @@ describe('ProblemService', () => {
     });
 
     it('shows an answer without a problem body as an unexpected one, an error for a 5xx', () => {
-      service.report(failure('<html>Bad Gateway</html>', 502, 'Bad Gateway'));
+      service.report(failure('<html>Internal Server Error</html>', 500, 'Internal Server Error'));
 
       expect(messages.add).toHaveBeenCalledWith({
         severity: 'error',
         summary: 'Unexpected answer',
-        detail: 'The server answered 502 without a problem body.',
+        detail: 'The server answered 500 without a problem body.',
+        life: 6000,
+      });
+    });
+
+    it('shows a gateway status without a problem body as the backend out of reach, an error', () => {
+      service.report(failure('<html>Bad Gateway</html>', 502, 'Bad Gateway'));
+
+      expect(messages.add).toHaveBeenCalledWith({
+        severity: 'error',
+        summary: 'The backend cannot be reached',
+        detail: 'The Ingress answered 502: no backend took the request. cowork tries again on its own.',
         life: 6000,
       });
     });

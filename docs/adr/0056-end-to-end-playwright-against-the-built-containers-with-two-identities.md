@@ -8,7 +8,10 @@ Cypress, over end-to-end only in the hardening phase, and over end-to-end agains
 server. The owner's two conditions — functionality must be verifiable continuously, and
 there must be faster tests as well with line coverage for the frontend — are D5 and D6; the
 unit tiers and the frontend coverage they name exist already. The rules of D7–D8 were put to
-the owner with the question and not objected to.
+the owner with the question and not objected to. Amended 2026-10-04 by the owner's decision on the
+routing recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3 (D1: the two images run behind a stand-in for the Ingress, since the frontend alone serves no
+API).
 
 **Partly built.** The unit tiers and the frontend coverage report exist
 ([ADR 0003](0003-test-and-ci-policy.md), `make test`, `make frontend-test-coverage`, the
@@ -31,7 +34,10 @@ images work together must run the shipped images, not the dev server.
 **D1 — Playwright Test, in `frontend/e2e/`, against the built containers.** The target is
 the frontend and backend images of the same commit, with PostgreSQL, MinIO and the minimal
 Dex from the development `compose.yaml` ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D2) as services. Never `ng serve`, never a mocked API, in CI. Locally, `make e2e` runs the
+D2) as services. *(Amended 2026-10-04: the two images run behind the stand-in for the Ingress of
+[`hack/ingress/default.conf`](../../hack/ingress/default.conf), which routes `/api/` and `/auth/`
+to the backend and the rest to the frontend as the chart's Ingress does; the suite talks to the
+stand-in.)* Never `ng serve`, never a mocked API, in CI. Locally, `make e2e` runs the
 same against `make dev-up` plus locally built images; a developer may point the suite at
 `ng serve` for iteration, which is not a gate.
 

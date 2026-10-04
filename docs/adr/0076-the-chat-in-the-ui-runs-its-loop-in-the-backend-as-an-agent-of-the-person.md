@@ -52,7 +52,7 @@ replaced the unreleased migration of the tenant's consent under the same version
 ([`layout/chat-panel.ts`](../../frontend/src/app/layout/chat-panel.ts),
 [`core/chat.service.ts`](../../frontend/src/app/core/chat.service.ts),
 [`core/chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts)) with the provider's choice and
-the capabilities' switches; D6 — [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template),
+the capabilities' switches; D6 — [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf),
 `"inlineCritical": false` in [`angular.json`](../../frontend/angular.json); D7 — the limits; D8 —
 `DELETE /api/v1/tenants/{tenant}/chat/turns` (`StopChatTurns`, `stopTurns` in `api/chat.go`) and the
 panel's Stop. Removed with the answers: ~~the tenant's consent (`chat_external_allowed`, its

@@ -23,9 +23,11 @@ change.
 ## What has to be in your head first
 
 - **Two containers, one origin.** The Go backend in `backend/` serves the API and migrates
-  the schema; the nginx frontend in `frontend/` serves the Angular bundle and proxies
-  `/api/` to the backend
-  ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)).
+  the schema; the nginx frontend in `frontend/` serves the Angular bundle and nothing else; the
+  Ingress routes `/api/` and `/auth/` to the backend and everything else to the frontend
+  ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+  D3). Locally the dev server's proxy stands in for the Ingress, and a small nginx does for runs of
+  the two images.
 - **Two database roles.** The owner role owns the schema and runs the migrations; the runtime
   role the server connects as owns nothing and is held by row-level security on every table.
   `cowork serve` refuses a runtime role that could see past it
@@ -95,7 +97,7 @@ change.
 | [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
 | [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage |
-| [events.md](events.md) | You touch the event stream, from `NOTIFY` to nginx |
+| [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
@@ -117,7 +119,7 @@ change.
 | A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
 | A write | `Mutate` commits the change with one audit row per act, stores a keyed response, and publishes a ticket's acts and the membership acts with `NOTIFY` (not downloads, exports or time entries) — or commits nothing | [data-access.md](data-access.md#mutate-acts-idempotency-publication) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
-| Frontend request | nginx: `/healthz` itself, `/api/` and `/auth/` proxied to `BACKEND_URL` with its own problem bodies, the event stream unbuffered, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI | [architecture.md](architecture.md#frontend-container) |
+| Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
 | A Claude Code session | The SessionStart hook runs `cowork-mcp session-context`, which finds the binding by the git remotes and prints the active ticket's context; the tools of `internal/tools` call the API through the generated client with the token and the agent header; the Stop hook reminds of a ticket left standing | [mcp.md](mcp.md) |

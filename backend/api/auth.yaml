@@ -1,6 +1,6 @@
 # The browser's login flows (docs/adr/0029, 0031, 0033, 0037 D5). Their paths are
-# outside /api/v1, as ADR 0037 D5 names them: the frontend's nginx and the
-# development proxy send /auth/ to the backend beside /api/. They are in this
+# outside /api/v1, as ADR 0037 D5 names them: the Ingress and the development
+# proxy route /auth/ to the backend beside /api/. They are in this
 # document so the pipeline validates them, the generated clients know them and
 # the document tells which route needs which credential; the session cookie
 # they set is the credential of every other route that declares `sessionCookie`.

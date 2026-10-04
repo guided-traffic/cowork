@@ -11,8 +11,10 @@ question and not objected to.
 **Built** (phase 2, 2026-10-02): every rule — the envelope with `request_id` and `errors[]` on
 every route, the catalogue in [`internal/problem`](../../backend/internal/problem/problem.go)
 that generates the document's enum and the README's table, the indistinguishable `404`, and
-nginx's static problem bodies for what it answers itself (`413`, `502`, `503`, `504`, without
-`instance` and `request_id`; the code `backend_unreachable` is nginx's alone).
+nginx's static problem bodies for what it answers itself ~~(`413`, `502`, `503`, `504`, without
+`instance` and `request_id`; the code `backend_unreachable` is nginx's alone)~~ *(since
+2026-10-04 the `404` for an API path that reaches the frontend, without `instance` and
+`request_id`; `backend_unreachable` left the catalogue, D6)*.
 
 Amended 2026-10-04 for the chat in the UI
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
@@ -23,6 +25,13 @@ installation configures no provider)*; `chat_busy` `429`, the person runs as man
 `chat_provider_failed` `502`, the provider could not be reached, refused or answered what cowork
 cannot read — and `not_ready` widened from "the backend cannot reach its database" to work the
 backend cannot do now: no database, no event stream, or a turn of the chat its shutdown ends).
+
+Amended 2026-10-04 by the owner's decision on the routing recorded in
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3, and built the same day (D6: the Ingress routes `/api/` and `/auth/` to the backend, so nginx
+answers only the `404` of a path that reaches the frontend by mistake, and what the Ingress
+controller answers itself is the controller's page; D4: `backend_unreachable`, which nginx alone
+answered, left the catalogue).
 
 ## Context
 
@@ -65,10 +74,28 @@ documentation page are generated from it, so the three cannot disagree.
 ticket all answer `not_found` ([ADR 0023](0023-the-tenant-is-in-the-path.md) D5); nothing in
 `detail` says which.
 
-**D6 — nginx answers in the same shape for what it answers itself.** The `502` while the
+**D6 — nginx answers in the same shape for what it answers itself.** ~~The `502` while the
 backend is down ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D3) and the `413` above `client_max_body_size` carry a static `problem+json` body through
-`error_page`, so a client never sees an HTML error page from `/api/`.
+`error_page`, so a client never sees an HTML error page from `/api/`.~~ *(Amended 2026-10-04 by
+the owner, ADR 0001 D3: the Ingress routes `/api/` and `/auth/` to the backend, and the frontend's
+nginx never reaches it. What nginx answers itself is a request for `/api/` or `/auth/` that reaches
+the frontend by mistake — an Ingress that sends every path there —, and that is a static
+`404 not_found` problem whose `detail` names the cause, without `instance` and `request_id`, a body
+above nginx's own limit included, never the UI shell. The code `backend_unreachable`, which only
+nginx's proxy answered, is no longer answered by anything and left the catalogue; the UI keeps the
+name for a request that reached no backend. What the Ingress controller answers itself — a `502`
+or `503` without a ready backend pod, a `413` above its body limit, a `504` past its read timeout —
+is the controller's own page, not a problem body: the chart does not know the controller, and its
+limits are documented to sit above the backend's so that the backend answers its own `413` and
+`504` ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+D3 as amended). A client reads such an answer by its status. Since the backend answers every error
+with a problem body, the UI shows a `502`, `503` or `504` without one as the backend out of reach —
+"The backend cannot be reached: The Ingress answered 503: no backend took the request. cowork tries
+again on its own." —, as it shows a request that got no answer at all, and any other status without
+one as an unexpected answer that names it
+([`problem.service.ts`](../../frontend/src/app/core/problem.service.ts) `read`); `cowork-mcp` reports
+an answer without a problem body with its status.)*
 
 **D7 — The validation middleware of ADR 0046 D4 produces `400 validation_failed`** with
 `errors[]`; a handler never hand-rolls a validation error for what the document already
@@ -99,8 +126,11 @@ describes.
 
 - `type` URIs under `cowork.dev` are identifiers; if the domain ever hosts something, the
   paths should resolve to the generated page of D4. Not required.
-- D6 depends on nginx's `error_page` for `/api/` only; a static HTML page is still what a
-  browser gets for the UI's own `502`, which is intended.
+- ~~D6 depends on nginx's `error_page` for `/api/` only; a static HTML page is still what a
+  browser gets for the UI's own `502`, which is intended.~~ *(Amended 2026-10-04:)* an HTML page,
+  or whatever a controller writes, is what a client gets from `/api/` when the Ingress controller
+  answers itself — no backend pod ready, a body above the controller's limit, an answer later than
+  its timeout; D6 covers what cowork's own servers answer, and no more.
 
 ## References
 

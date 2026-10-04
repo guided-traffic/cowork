@@ -99,8 +99,8 @@ D2).
 ## The client address
 
 The throttle counts the address of the client, and the backend has to take it from somewhere:
-the TCP peer cannot be forged, but behind the frontend it is the frontend pod, and every
-browser would share it. `COWORK_TRUSTED_PROXIES` names the networks of the proxies that stand
+the TCP peer cannot be forged, but behind the Ingress it is a controller pod, and every browser
+behind it would share it. `COWORK_TRUSTED_PROXIES` names the networks of the proxies that stand
 in front of the backend — a comma-separated list of CIDRs, IPv4 and IPv6, validated at start,
 empty by default — and the client is found by walking `X-Forwarded-For` from the right
 ([`api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress`;
@@ -124,13 +124,14 @@ client); `TestAddressThrottleCountsTheClientBehindTrustedProxies` puts two clien
 trusted proxy, throttled apart, and shows that a spoofed entry moves nobody to another bucket;
 `TestAddressThrottleIgnoresTheHeaderOfAnUntrustedPeer` holds the other half.
 
-What the rule rests on: every proxy of ours appends the address it saw. nginx does, in each of
-the three proxied locations of the frontend template —
-`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`, the header the client sent with
-`$remote_addr` appended — and an Ingress controller does by its own setting
-([installation.md](../operations/installation.md#the-client-address-and-the-trusted-proxies)
-names the chain and what to set). It also rests on the list being the proxies and no more
-([H-17](#h-17)).
+What the rule rests on: every proxy in the list writes the address it saw as the rightmost entry,
+in place of what the client sent or appended to it. The one proxy of a chart installation is the
+Ingress controller — the frontend proxies nothing
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3); ingress-nginx writes `X-Forwarded-For $remote_addr`, another controller does by its own
+setting ([installation.md](../operations/installation.md#the-client-address-and-the-trusted-proxies)
+names the chain and what to set). It also rests on the list being the proxies and no more, and on
+no other pod inside it reaching the backend ([H-17](#h-17)).
 
 ## Lockout
 
@@ -281,32 +282,41 @@ work.
 ### H-17 — The address throttle is as good as the trusted proxies it is given
 
 Live today. The throttle counts the client address under [the rule above](#the-client-address),
-and the rule is only as sound as `COWORK_TRUSTED_PROXIES` is right:
+and the rule is only as sound as `COWORK_TRUSTED_PROXIES` is right — and as the network behind it
+is closed:
 
-- **Empty, which is the default.** The client is the TCP peer, which behind the frontend is the
-  nginx pod: `COWORK_LOGIN_ADDRESS_LIMIT` is then one limit for the installation, not one per
-  client — twenty attempts a minute from anyone, which is also the pace at which a guesser can
-  try passwords across many usernames, and a way for one client to keep every other from
-  logging in for as long as it keeps trying. The chart notes say so at install time while a
-  local administrator is configured.
+- **Empty, which is the default.** The client is the TCP peer, which behind the Ingress is a
+  controller pod: `COWORK_LOGIN_ADDRESS_LIMIT` is then one limit for every browser behind that
+  pod, not one per client — twenty attempts a minute from anyone, which is also the pace at which
+  a guesser can try passwords across many usernames, and a way for one client to keep every other
+  from logging in for as long as it keeps trying. The chart notes say so at install time while a
+  local administrator is configured. Nothing that reaches the backend can choose its address: a
+  pod that calls the backend Service directly is its own client.
 - **Too narrow.** An Ingress controller whose address is not listed stops the walk at the
   controller: every client behind it shares the controller's address, one bucket per
   controller pod.
-- **Too wide.** A trusted network that holds clients, or pods that are no proxy of ours — an
-  entry such as `0.0.0.0/0`, or all of a private range for an installation whose users sit in
-  it — makes those clients hops themselves: the walk goes on into the entries they wrote, and
-  they choose their own address. They dodge the throttle by changing it with every attempt,
-  and they can fill another client's bucket to keep that person from logging in. The same
-  holds for a pod that reaches the frontend: nginx appends the pod's own address, which lies
-  inside a trusted pod network, and the walk then reads what the pod wrote. A narrower list
-  does not help: the frontend's pods are hops the walk has to trust, and their addresses are
-  given out from the pod network at every start, so the list holds that network and every pod
-  in it. The chart's NetworkPolicy keeps pods that are not the frontend away from the backend,
-  not from the frontend; where other workloads share the cluster, what closes this is a policy
-  of the operator's own that admits only the Ingress controller to the frontend.
-- **No enforcement.** The NetworkPolicy is enforced only by a network plugin that implements
-  it, and `networkPolicy.enabled=false` removes it: any pod that reaches the backend Service
-  then writes `X-Forwarded-For` itself, from a peer the list trusts.
+- **Too wide.** A trusted network that holds clients — an entry such as `0.0.0.0/0`, or all of a
+  private range for an installation whose users sit in it — makes those clients hops themselves:
+  the walk goes on into the entries they wrote, and they choose their own address. They dodge the
+  throttle by changing it with every attempt, and they can fill another client's bucket to keep
+  that person from logging in.
+- **A trusted network that holds other pods.** The Ingress controller commonly runs as an ordinary
+  Deployment, so its address comes from the pod network at every start, and the list has to name
+  that network — and with it every pod in the cluster. Any of those pods that reaches the backend
+  directly — the backend Service answers every pod of the cluster — is a trusted peer, and the walk
+  reads what it wrote into `X-Forwarded-For`: it chooses its client address, for the throttle's
+  bucket and for the source hash of every audit row of its requests. Verified on 2026-10-04 in a
+  kind cluster behind ingress-nginx v1.15.1, the list naming the pod network and the limit three:
+  a pod that sent each attempt to the backend Service with another forged header was never
+  throttled, the same pod without the header was at its fourth attempt, and the same forgery
+  through the controller moved nothing, because ingress-nginx writes the address it saw in place
+  of the header. The chart ships no NetworkPolicy
+  ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+  D3): restricting who reaches the backend's pods — the controller, and the scripts that must —
+  is the cluster administrator's network policy, enforced only by a network plugin that implements
+  NetworkPolicy ([installation.md](../operations/installation.md#network-policies-are-the-clusters)).
+  A narrower list helps only where the controller's addresses are narrower than the pod network:
+  the host network, a fixed range. The chart's notes warn whenever the list is set.
 - **One address is one bucket.** An IPv6 client counts by its /64, but a client that holds
   many networks or addresses — a shorter IPv6 prefix, which some providers give out, or a
   botnet — has a bucket for each and is slowed by this limit only that much; the lockout of

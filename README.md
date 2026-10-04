@@ -31,11 +31,12 @@ is accountable.
 
 ```mermaid
 flowchart LR
-  B[Browser] --> F
+  B[Browser] --> G[Ingress]
   B -.->|login redirects| I[OpenID Connect<br/>identity provider]
   C[Claude Code] -->|stdio| X[cowork-mcp<br/>personal access token]
-  X -->|HTTPS| F
-  F[cowork-frontend<br/>nginx + Angular bundle] -->|/api/ /auth/ proxied| S
+  X -->|HTTPS| G
+  G -->|/| F[cowork-frontend<br/>nginx + Angular bundle]
+  G -->|/api/ /auth/| S
   K[kubelet] -->|/healthz /readyz| S
   M[migrate<br/>init container] -->|owner role| P
   S[cowork-backend<br/>Go API] -->|runtime role| P[(PostgreSQL 18)]
@@ -46,7 +47,7 @@ flowchart LR
 
 ## ✨ Key features
 
-- 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
+- 🧩 **Two containers, one origin** — the Go backend serves the JSON API, the nginx frontend serves the Angular bundle and nothing else, and the chart's Ingress routes `/api/` and `/auth/` to the backend and the rest to the frontend, so the browser sees one origin.
 - 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
 - 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
 - 💬 **An assistant in the browser** — a chat panel whose model works on the same tools as the person's agent, with the capabilities the person chooses (by default not deciding, closing, dropping or recording answers); the providers are a list in the chart, the person picks one, and Stop ends a turn at once.
@@ -60,7 +61,7 @@ flowchart LR
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
-- ⎈ **One Helm chart** — two hardened Deployments, every credential from an existing Secret, nginx sized from the backend's limits, no RBAC because neither container talks to the Kubernetes API.
+- ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
 - 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18, MinIO and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
 - 🆕 **Newest toolchains** — Go 1.27 and Angular 22, moved by Renovate as grouped updates.
 - 🗂️ **Documentation with five homes** — decisions in ADRs, work lists in tickets that get archived, one security page per perspective.
@@ -71,8 +72,7 @@ flowchart LR
 ### Environment variables
 
 Every backend setting is `COWORK_<NAME>`; the full table is under [Configuration](#configuration).
-The frontend container substitutes four variables into its nginx configuration, `BACKEND_URL`,
-`NGINX_LOCAL_RESOLVERS`, `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT`
+The frontend container takes no variable: its nginx configuration is a file in the image
 ([frontend container](#frontend-container)). The integration tier reads
 `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and
 `COWORK_TEST_OIDC_ISSUER`, every one of them required; `make dev-seed` reads
@@ -91,9 +91,8 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Object | Name | Notes |
 |---|---|---|
 | Backend Deployment and Service | `<fullname>-backend` | `<fullname>` is `<release>-cowork`, or the release name itself when it contains `cowork`; `fullnameOverride` replaces it |
-| Frontend Deployment and Service | `<fullname>-frontend` | the Ingress targets this Service |
-| Ingress | `<fullname>` | only with `ingress.enabled` |
-| NetworkPolicy | `<fullname>-backend` | admits ingress to the backend pods from the frontend pods only, on the backend's port; `networkPolicy.enabled`, on by default |
+| Frontend Deployment and Service | `<fullname>-frontend` | the Ingress sends every path but `/api/` and `/auth/` here |
+| Ingress | `<fullname>` | only with `ingress.enabled`; per host `/api/` and `/auth/` (`Prefix`) to `<fullname>-backend`, `/` (`Prefix`) to `<fullname>-frontend` |
 | ServiceAccount | `<fullname>` | shared by both pods, no token mounted |
 | Init container of the backend pod | `migrate` | runs `cowork migrate` as the owner role; only with `backend.config.migrateOnStart` |
 | Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url` |
@@ -173,14 +172,17 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 
 ### HTTP
 
+The chart's Ingress routes `/api/` and `/auth/` to the backend Service and every other path to the
+frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3).
+
 | Path | Backend | Frontend (nginx) |
 |---|---|---|
-| `/healthz` | liveness | nginx's own health, `{"status":"ok"}` |
-| `/readyz` | readiness: a database ping | not proxied: nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend — the backend's `/readyz` is reached through the backend Service |
-| `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged; the `413`, `502`, `503` and `504` nginx answers itself are problem bodies without a `request_id` |
-| `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | proxied like `/api/`, cookies in both directions |
-| `/api/v1/tenants/<slug>/events` | the event stream | proxied unbuffered and uncached, with a read timeout of one hour |
-| `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream | proxied as any `/api/` path, unbuffered because the backend answers `X-Accel-Buffering: no` |
+| `/healthz` | liveness, through the backend Service | the Ingress sends it here: nginx's own health, `{"status":"ok"}` |
+| `/readyz` | readiness: a database ping, through the backend Service | the Ingress sends it here, and nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend |
+| `/api/v1/…` | the JSON API, routed here by the Ingress; errors are RFC 9457 `application/problem+json` with a stable `code` | not routed here; a request that arrives all the same gets `404` with a problem naming the cause |
+| `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, routed here like `/api/`, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | the same `404` problem |
+| `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no` | — |
+| `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream with `X-Accel-Buffering: no` | — |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
 
@@ -198,7 +200,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Document | What it is for |
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
@@ -232,7 +234,7 @@ self-signed certificate — HTTPS, because Safari stores no `Secure` session coo
 make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds MinIO and Dex
 make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
 make run                # the backend on :8080: migrates as cowork_owner, serves as cowork_app (text logs)
-make frontend-serve     # the Angular dev server on :4200, /api proxied to :8080
+make frontend-serve     # the Angular dev server on :4200, /api and /auth proxied to :8080 — the stand-in for the Ingress
 ```
 
 `make run` needs no server key: it makes a throw-away one per start, so list cursors from an
@@ -322,12 +324,22 @@ kubectl -n cowork create secret generic cowork-database-owner \
 kubectl -n cowork create secret generic cowork-session \
   --from-literal=sessionKey="$(openssl rand -base64 32)"
 helm repo add cowork https://guided-traffic.github.io/cowork/
-helm upgrade --install cowork cowork/cowork --version 0.1.0 -n cowork \
+# 0.4.0, the class and the host are examples; 0.4.0 is the first release whose Ingress routes the API
+helm upgrade --install cowork cowork/cowork --version 0.4.0 -n cowork \
   --set database.existingSecret=cowork-database \
   --set database.owner.existingSecret=cowork-database-owner \
-  --set session.existingSecret=cowork-session
-kubectl -n cowork port-forward svc/cowork-frontend 8080:80     # the UI, /api/ proxied
+  --set session.existingSecret=cowork-session \
+  --set ingress.enabled=true --set ingress.className=my-ingress-class \
+  --set 'ingress.hosts[0].host=cowork.example.com'
 ```
+
+The Ingress sends `/api/` and `/auth/` to the backend and everything else to the frontend; the chart
+and the frontend image of a release move together. Its controller must pass a body above the
+backend's limit and wait past its request timeout — the chart's notes print both figures —, pass
+`text/event-stream` unbuffered, and write the address it saw into `X-Forwarded-For`; the chart sets
+none of that ([expose it](docs/operations/installation.md#expose-it)). ingress-nginx is retired
+(March 2026, no security fixes since): do not install it for a new installation. There is no UI
+without a route like this: a port-forward to the frontend alone serves the shell without its API.
 
 The login needs a local administrator and the public URL: a Secret with its username and
 password, and the origin the browser shows. The administrator logs in, creates the first tenant
@@ -361,10 +373,12 @@ tenant's `admin` role, and the installation needs no local administrator. The ba
 start while it cannot fetch the provider's discovery document
 ([installation.md](docs/operations/installation.md#the-identity-provider)).
 
-Behind the frontend and an Ingress the login throttle has to be told which networks are the
-proxies, or it counts one address for every browser:
-`--set backend.config.trustedProxies=<the pod network that holds the frontend and the Ingress
-controller>` ([the client address](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
+Behind an Ingress the login throttle has to be told which networks are the proxies, or it counts
+one address for every browser behind a controller pod:
+`--set backend.config.trustedProxies=<the Ingress controller's network>`. Every other pod inside
+that network that reaches the backend can then choose its address, which only a network policy of
+the cluster's prevents — the chart ships none
+([the client address](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
 
 Attachments need an S3-compatible bucket and three more values; without them uploads are
 refused. Without a local administrator or an identity provider nobody can log in. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
@@ -447,8 +461,8 @@ Chart values are in [Helm chart values](#helm-chart-values); the pages are
 | `COWORK_PASSWORD_MIN_LENGTH` | `12` `# default` | `8` to `1024` | The shortest password of a local account, counted in characters; the policy is length only — no character classes, no history — and it holds for the local administrator too. Below `8` the start is refused |
 | `COWORK_LOGIN_LOCKOUT` | `window` `# default` | `window`, `admin` | `window`: a username locked by failures is free again when the 15-minute window passes. `admin`: it stays locked until a tenant administrator unlocks it (`DELETE …/accounts/{username}/lockout`) — or, for the local administrator, until the Secret is rotated and the backend restarted. **Security:** `admin` lets anyone who knows a username keep its account locked |
 | `COWORK_LOGIN_MAX_FAILURES` | `5` `# default` | a count; `0` never locks | Failed attempts of one username within fifteen minutes that lock it — a username nobody has too, so neither the answer nor the lock says whether an account exists |
-| `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind the frontend's nginx the peer is nginx and the limit holds for the whole installation |
-| `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address — which the login throttle counts and whose keyed hash every audit row of a request carries — is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; an empty list leaves one address for the whole installation ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
+| `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind an Ingress the peer is a controller pod and the limit holds for every browser behind it |
+| `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address — which the login throttle counts and whose keyed hash every audit row of a request carries — is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. The proxy in front of the backend is the Ingress controller. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; a network that holds other pods lets each of them that reaches the backend do the same, which only a network policy of the cluster's prevents — the chart ships none; an empty list leaves one address for every browser behind a controller pod ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
 | `COWORK_SESSION_LIFETIME` | `12h` `# default` | a positive duration | The absolute lifetime of a session; it is also the cookie's `Max-Age` |
 | `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; a request within it extends the session up to the lifetime. The idle clock moves at most once a minute |
 | `COWORK_TOKEN_DEFAULT_LIFETIME` | `2160h` (90 days) `# default` | a positive duration, not above the maximum | The lifetime of a token whose creator named none |
@@ -533,15 +547,11 @@ second table. Source: [`backend/internal/config/chat.go`](backend/internal/confi
 
 #### Frontend container
 
-The image's entrypoint substitutes these four variables into the nginx configuration, and
-nothing else:
-
-| Variable | Image default | The chart sets it to | Meaning |
-|---|---|---|---|
-| `BACKEND_URL` | `http://backend:8080` | the backend Service, `http://<fullname>-backend:8080` | Where nginx proxies `/api/`; resolved per request (cached 30 s), so the frontend starts before the backend |
-| `NGINX_LOCAL_RESOLVERS` | the nameservers of `/etc/resolv.conf`, exported by the entrypoint (`NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true`) | — | The DNS servers of that lookup |
-| `NGINX_CLIENT_MAX_BODY_SIZE` | `11m` | the larger of `backend.config.maxJsonBody` and `attachmentMaxBytes`, rounded up to MiB, plus 1 MiB; `0` (no limit) when either is `0` | nginx's body limit, kept above the backend's so the backend answers its own `413` |
-| `NGINX_PROXY_READ_TIMEOUT` | `40s` | `backend.config.requestTimeout` plus 10 s; `3600s` when it is `0` | nginx's read timeout on `/api/`, kept above the backend's so the backend answers its own `504`; the event stream has an hour of its own |
+The frontend image takes no variable of cowork's: its nginx configuration,
+[`frontend/nginx/default.conf`](frontend/nginx/default.conf), is a file in the image, nothing in it
+is substituted at start, and it serves the UI and nothing else — the Ingress routes `/api/` and
+`/auth/` to the backend. `frontend.extraEnv` reaches the image's entrypoint, whose own switches
+(`NGINX_ENTRYPOINT_QUIET_LOGS`, for instance) are all it reads.
 
 ### CLI (backend)
 
@@ -930,7 +940,6 @@ every error body carries one of these as `code`.
 | `chat_provider_failed` | 502 | The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076) |
 | `not_ready` | 503 | The backend cannot do the work now: it cannot reach its database, it streams no events, or it is shutting down and ends a turn of the chat |
 | `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
-| `backend_unreachable` | 502 | The frontend's proxy could not reach the backend; answered by nginx without a request id (docs/adr/0047 D6) |
 <!-- problem-codes:end -->
 
 ### Helm chart values
@@ -1012,17 +1021,12 @@ chat:                                 # the chat in the UI; every value is rende
                                       # Every provider receives what the chat reads in every tenant, confidential tickets included
   turnTimeout: 5m                     # COWORK_CHAT_TURN_TIMEOUT; 0 disables
   maxSteps: 8                         # COWORK_CHAT_MAX_STEPS; 0 disables
-networkPolicy:                        # which pods may reach the backend
-  enabled: true                       # ingress to the backend pods from the frontend pods only; enforced only by a network plugin that implements NetworkPolicy
-ingress:                              # targets the frontend Service
+ingress:                              # per host: /api/ and /auth/ (Prefix) to the backend Service, / (Prefix) to the frontend Service
   enabled: false
   className: ""
-  annotations: {}                     # the event stream and uploads need some: docs/operations/runtime.md
+  annotations: {}                     # the controller's settings: body limit and read timeout above the backend's, text/event-stream unbuffered — docs/operations/installation.md#expose-it
   hosts:
-    - host: cowork.example.com        # example
-      paths:
-        - path: /
-          pathType: Prefix
+    - host: cowork.example.com        # example; the paths are the chart's, a host has none of its own
   tls: []
 backend:
   replicaCount: 1                     # every pod migrates in its init container; they serialise on an advisory lock
@@ -1040,9 +1044,9 @@ backend:
     logFormat: json                   # COWORK_LOG_FORMAT, also for the init container
     shutdownTimeout: 15s              # COWORK_SHUTDOWN_TIMEOUT; keep below terminationGracePeriodSeconds
     baseURL: ""                       # COWORK_BASE_URL, set only when non-empty: the origin the browser shows; required with localAdmin or auth.oidc.issuer
-    trustedProxies: ""                # COWORK_TRUSTED_PROXIES, set only when non-empty: the networks of the proxies in front of the backend, comma-separated CIDRs
+    trustedProxies: ""                # COWORK_TRUSTED_PROXIES, set only when non-empty: the Ingress controller's networks, comma-separated CIDRs
     maxJsonBody: 1048576              # COWORK_MAX_JSON_BODY, bytes; 0 disables
-    attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (nginx then has no body limit either)
+    attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (the notes then ask the controller for no body limit either)
     attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
     requestTimeout: 30                # COWORK_REQUEST_TIMEOUT, seconds; 0 disables; the event stream is exempt
     maxPageSize: 200                  # COWORK_MAX_PAGE_SIZE; 0 disables
@@ -1092,7 +1096,7 @@ frontend:
   service:
     type: ClusterIP
     port: 80
-  extraEnv: []                        # the chart sets BACKEND_URL, NGINX_CLIENT_MAX_BODY_SIZE, NGINX_PROXY_READ_TIMEOUT
+  extraEnv: []                        # the chart sets none; the image's entrypoint switches, e.g. NGINX_ENTRYPOINT_QUIET_LOGS
   podAnnotations: {}
   podLabels: {}
   podSecurityContext:                 # nginx-unprivileged user
@@ -1102,7 +1106,7 @@ frontend:
     fsGroup: 101
     seccompProfile:
       type: RuntimeDefault
-  securityContext:                    # emptyDirs at /tmp and /etc/nginx/conf.d are all nginx writes
+  securityContext:                    # the emptyDir at /tmp is all nginx writes; the configuration is in the image
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
@@ -1168,21 +1172,25 @@ The modes that change what is exposed:
   `database.url`, with a warning in the notes. The account follows the Secret at every start —
   a changed value reaches the pods when they restart; rotate the Secret **and** restart to end a
   leaked password ([operations](docs/operations/installation.md#the-local-administrator)).
-- **`backend.config.trustedProxies` and the NetworkPolicy.** Empty, the login throttle counts the
-  frontend pod as the one client of every browser; set to the proxies' networks it counts the
-  browser. Too wide a list lets a client choose its address. The NetworkPolicy
-  (`networkPolicy.enabled`, on by default) admits only the frontend pods to the backend, so no
-  other pod can write `X-Forwarded-For` to it; it also refuses an in-cluster script or an Ingress
-  that calls the backend Service directly, and a network plugin without NetworkPolicy support
-  ignores it. The chart's notes warn about the empty list and about the policy switched off
-  while the list is set ([operations](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
+- **`backend.config.trustedProxies` and network policies.** Empty, the login throttle counts the
+  Ingress controller pod as the one client of every browser behind it; set to the controller's
+  networks it counts the browser. Too wide a list lets a client choose its address, and a network
+  that holds other pods lets every one of them that reaches the backend choose its own. The chart
+  ships no NetworkPolicy — `networkPolicy.*` is gone, and network policies are the cluster
+  administrator's —, so keeping other pods away from the backend is a policy of the cluster's. The
+  chart's notes warn about the empty list and about the list set
+  ([operations](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
+- **`ingress.annotations` are the controller's limits.** The Ingress routes `/api/` and `/auth/`
+  to the backend, so the controller's body limit and read timeout must sit above the backend's or
+  it answers the `413` and `504` itself, as its own page; the chart does not know the controller
+  and prints the figures in its notes ([expose it](docs/operations/installation.md#expose-it)).
 - **The storage key comes from a Secret only**; endpoint, bucket and region are plain values.
   Without `storage.endpoint` the backend runs without object storage and refuses uploads.
-- **`0` in `backend.config`** switches a backend limit off and opens nginx along with it —
-  `maxJsonBody: 0` leaves nginx without a body limit, `requestTimeout: 0` gives it an hour's
-  read timeout. No production values file should carry one
+- **`0` in `backend.config`** switches a backend limit off, and the chart's notes then ask the
+  Ingress controller for no limit either — `maxJsonBody: 0` for no body limit, `requestTimeout: 0`
+  for an hour's read timeout. No production values file should carry one
   ([runtime.md, limits](docs/operations/runtime.md#limits)). `attachmentMaxBytes: 0` removes the
-  upload maximum and nginx's body limit with it; one upload at a time is then read whole
+  upload maximum; one upload at a time is then read whole
   ([attachments.md H-12](docs/security/attachments.md#h-12)).
 
 ## 🛠 Development
