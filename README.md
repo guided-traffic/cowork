@@ -200,6 +200,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | Document | What it is for |
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
+| [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
 | [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |

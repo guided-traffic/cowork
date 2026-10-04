@@ -570,12 +570,11 @@ the database for a fresh seed. The design preview is at `/dev/design`, in develo
 (`fileReplacements` swap [`dev.routes.ts`](../../frontend/src/app/dev/dev.routes.ts) for an empty
 list in production).
 
-**The browser logs in like on an installation**: as `dev` with the development-only password
-`dev-only-cowork` ([ADR 0038] D2, D4; `COWORK_DEV_ADMIN` and `COWORK_DEV_ADMIN_PASSWORD` change
-them), or with *Sign in with Dex* as one of the four users of
-[`hack/dex/config.yaml`](../../hack/dex/config.yaml) — `ada`, `bob`, `cyd` and `dan` at
-`example.com`, with `dev-only-dex` — which show the administrator group, a mapped member, a person
-in no tenant and a refusal at the gate ([testing.md](testing.md#the-identity-provider-in-the-tests)). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the
+**The browser logs in like on an installation** ([ADR 0038] D2, D4): with the form as the local
+administrator `dev`, or with *Sign in with Dex* as one of the four users of
+[`hack/dex/config.yaml`](../../hack/dex/config.yaml), which show the administrator group, a mapped
+member, a person in no tenant and a refusal at the gate — the usernames and their development-only
+passwords are on [development-credentials.md](development-credentials.md#signing-in-to-the-ui-under-make-dev). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the
 developer's stand-in for the Ingress and holds no credential: it forwards `/api` and `/auth` to the
 backend, as the Ingress routes them on an installation, and the session cookie travels as it does
 through the Ingress. **HTTPS**, with the Angular CLI's self-signed certificate the browser asks about once,

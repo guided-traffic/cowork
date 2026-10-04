@@ -100,7 +100,10 @@ users with passwords and groups that together cover the test matrix of the earli
 viewer of tenant A, a member of tenant B, one person in both tenants, and one person who
 passes the gate but is in no mapped group (the grant case).~~ Their names, groups and
 passwords are listed in [docs/developer/testing.md](../developer/testing.md) when the file
-exists; the passwords are visibly development-only (`dev-only-…`). *(Amended 2026-10-04: Dex
+exists; the passwords are visibly development-only (`dev-only-…`) *(amended 2026-10-04: the
+passwords, with every other credential of the development environment and the test tiers, are on
+[docs/developer/development-credentials.md](../developer/development-credentials.md); testing.md
+lists what each user is to the tests)*. *(Amended 2026-10-04: Dex
 holds four users, one for each case of the gate — `ada` in `cowork-admins` and `cowork-users`, a
 global administrator by the administrator group; `bob` in `cowork-users` and `team-red`, behind the
 gate and a member by a mapping; `cyd` in `cowork-users` alone, behind the gate and in no mapped

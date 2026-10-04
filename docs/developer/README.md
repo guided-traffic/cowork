@@ -103,6 +103,7 @@ change.
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
 | [chat.md](chat.md) | You touch the chat in the UI: the turn and its stop, the loop, the loopback, the person's capabilities, the providers and the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
+| [development-credentials.md](development-credentials.md) | You need a username, password, key or token of `make dev`, its containers or the test tiers |
 | [testing.md](testing.md) | You are adding a test, choosing a tier, or a suite is failing and you need to know what it is for and what it needs |
 | [ci-and-release.md](ci-and-release.md) | You touch a workflow, Renovate or the release |
 | [adding-things.md](adding-things.md) | You add an API operation, a table, a migration, a problem code, a configuration variable, a frontend feature, an nginx path, a chart value or a CI job |

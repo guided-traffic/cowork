@@ -100,10 +100,9 @@ the local administrator, and keeps the demo data's token in `.dev/token` and a s
 `.dev/session-key` (all untracked). The dev server's proxy
 ([`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the developer's stand-in for the
 Ingress: it sends `/api` and `/auth` to the backend on `:8080` as the Ingress routes `/api/` and
-`/auth/` on an installation, and the dev server serves the rest. Two ways in: the form as `dev` with the development-only
-password `dev-only-cowork`, or *Sign in with Dex* as `ada@example.com`, `bob@example.com`,
-`cyd@example.com` or `dan@example.com` with `dev-only-dex` (what each is:
-[testing.md](testing.md#the-identity-provider-in-the-tests)). When LM Studio answers on
+`/auth/` on an installation, and the dev server serves the rest. Two ways in, the form as the local
+administrator or *Sign in with Dex* as one of four users — who they are and their development-only
+passwords: [development-credentials.md](development-credentials.md#signing-in-to-the-ui-under-make-dev). When LM Studio answers on
 `localhost:1234` and lists the model `COWORK_DEV_CHAT_MODEL` (`qwen/qwen3-30b-a3b-2507` `# default`),
 the backend gets it as the chat's one provider, `lmstudio`, and the UI has its assistant; load the
 model with a context of 16k tokens or more and one prediction first — `make dev` never loads it, and

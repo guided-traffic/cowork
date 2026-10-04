@@ -196,11 +196,11 @@ Two issuers, for two purposes ([ADR 0029](../adr/0029-standard-oidc-with-a-confi
 D3):
 
 - **Dex**, the reference: [`hack/dex/config.yaml`](../../hack/dex/config.yaml) in the container
-  `cowork-dex` of `make dex-up`, at `COWORK_TEST_OIDC_ISSUER`. One static client, `cowork` with the
-  secret `cowork-dev-dex-secret`, whose redirect URIs are `make dev`'s and the tests'
+  `cowork-dex` of `make dex-up`, at `COWORK_TEST_OIDC_ISSUER`. One static client, `cowork`
+  ([its secret](development-credentials.md#the-containers)), whose redirect URIs are `make dev`'s and the tests'
   `http://cowork.test/auth/callback` — a name that never has to resolve, because the test intercepts
-  the redirect and replays it against its own server. Four static users with the password
-  `dev-only-dex`; under the gate of `make dev` and the tests (`cowork-users` allowed, `cowork-admins`
+  the redirect and replays it against its own server. Four static users
+  ([their password](development-credentials.md#signing-in-to-the-ui-under-make-dev)); under the gate of `make dev` and the tests (`cowork-users` allowed, `cowork-admins`
   the administrator group, the mapping `team-red` → `member` in the tenant `dev`):
 
   | User | Groups | Is to cowork |
