@@ -316,11 +316,15 @@ func (s *Server) ListAttachments(ctx context.Context, req apigen.ListAttachments
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(a readq.ListAttachmentsRow) string { return a.ID.String() })
-	out := apigen.ListAttachments200JSONResponse{Items: make([]apigen.Attachment, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.AttachmentList{Items: make([]apigen.Attachment, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, a := range rows {
 		out.Items = append(out.Items, attachmentView(t, tc, attachment(a)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListAttachments304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListAttachments200JSONResponse{Body: out, Headers: apigen.ListAttachments200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetAttachment answers an attachment's metadata.

@@ -95,12 +95,16 @@ func (s *Server) ListProjects(ctx context.Context, req apigen.ListProjectsReques
 	if !lp.numbered {
 		rows, next = page(s.h, rows, lp.size, op, scope, func(p readq.ListProjectsRow) string { return p.Key })
 	}
-	out := apigen.ListProjects200JSONResponse{Items: []apigen.Project{}, NextCursor: nullableString(next)}
+	out := apigen.ProjectList{Items: []apigen.Project{}, NextCursor: nullableString(next)}
 	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	for _, p := range rows {
 		out.Items = append(out.Items, projectView(project(p)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListProjects304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListProjects200JSONResponse{Body: out, Headers: apigen.ListProjects200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // CreateProject creates a project and its ticket counter. A write act, for

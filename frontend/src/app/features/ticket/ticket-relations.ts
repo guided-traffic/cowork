@@ -18,15 +18,7 @@ import {
   listTicketLinks,
   listTicketTime,
 } from '../../api/functions';
-import {
-  ActivityList,
-  AttachmentList,
-  CommentList,
-  InterestList,
-  LinkList,
-  QuestionList,
-  TimeEntryList,
-} from '../../api/models';
+import { ConditionalPages, PageFetcher } from '../../core/conditional';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { keepShown, refresh } from '../../core/refresh';
 
@@ -58,45 +50,17 @@ export class TicketRelations {
   private readonly injector = inject(Injector);
   readonly at = signal<TicketAddress | undefined>(undefined);
 
-  readonly comments: ResourceRef<CommentList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.comments, () => this.api.invoke(listComments, { ...params, limit: 200 })),
-  });
-  readonly activity: ResourceRef<ActivityList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.activity, () =>
-        this.api.invoke(listActivity, { ...params, order: 'desc', limit: 100 }),
-      ),
-  });
-  readonly questions: ResourceRef<QuestionList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.questions, () => this.api.invoke(listQuestions, { ...params, limit: 200 })),
-  });
-  readonly links: ResourceRef<LinkList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.links, () => this.api.invoke(listTicketLinks, { ...params, limit: 200 })),
-  });
-  readonly interest: ResourceRef<InterestList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.interest, () => this.api.invoke(listInterest, { ...params, limit: 200 })),
-  });
-  readonly attachments: ResourceRef<AttachmentList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.attachments, () =>
-        this.api.invoke(listAttachments, { ...params, limit: 200 }),
-      ),
-  });
-  readonly time: ResourceRef<TimeEntryList | undefined> = resource({
-    params: () => this.at(),
-    loader: ({ params }) =>
-      keepShown(this.time, () => this.api.invoke(listTicketTime, { ...params, limit: 200 })),
-  });
+  readonly comments = this.part((params, page) => page(listComments, { ...params, limit: 200 }));
+  readonly activity = this.part((params, page) =>
+    page(listActivity, { ...params, order: 'desc', limit: 100 }),
+  );
+  readonly questions = this.part((params, page) => page(listQuestions, { ...params, limit: 200 }));
+  readonly links = this.part((params, page) => page(listTicketLinks, { ...params, limit: 200 }));
+  readonly interest = this.part((params, page) => page(listInterest, { ...params, limit: 200 }));
+  readonly attachments = this.part((params, page) =>
+    page(listAttachments, { ...params, limit: 200 }),
+  );
+  readonly time = this.part((params, page) => page(listTicketTime, { ...params, limit: 200 }));
 
   constructor() {
     inject(EventStreamService)
@@ -141,6 +105,22 @@ export class TicketRelations {
       refresh(this.attachments, this.injector);
     }
     refresh(this.activity, this.injector);
+  }
+
+  /**
+   * One part of the page: a list of the ticket the page shows, which keeps the weak `ETag` of its
+   * last answer and is answered `304` while it is unchanged (docs/adr/0054 D7).
+   */
+  private part<T>(
+    load: (params: TicketAddress, page: PageFetcher) => Promise<T>,
+  ): ResourceRef<T | undefined> {
+    const pages = new ConditionalPages(this.api);
+    const ref: ResourceRef<T | undefined> = resource({
+      params: () => this.at(),
+      loader: ({ params }) => keepShown(ref, () => pages.load((page) => load(params, page))),
+      injector: this.injector,
+    });
+    return ref;
   }
 
   /** After the person booked or corrected time: no event says so. */

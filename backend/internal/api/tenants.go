@@ -249,13 +249,17 @@ func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestO
 	if !lp.numbered {
 		rows, next = page(s.h, rows, lp.size, op, scope, func(m readq.ListMembersRow) string { return m.ID.String() })
 	}
-	out := apigen.ListMembers200JSONResponse{Items: []apigen.Member{}, NextCursor: nullableString(next)}
+	out := apigen.MemberList{Items: []apigen.Member{}, NextCursor: nullableString(next)}
 	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	admin := t.Role == domain.RoleAdmin
 	for _, m := range rows {
 		out.Items = append(out.Items, memberView(m.ID, m.Username, m.DisplayName, m.Email, admin, m.Role, m.Sources, m.Roles, m.Local))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMembers304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMembers200JSONResponse{Body: out, Headers: apigen.ListMembers200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // uuidCursor decodes the cursor of a list ordered by id.

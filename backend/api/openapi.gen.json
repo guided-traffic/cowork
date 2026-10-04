@@ -7,6 +7,12 @@
           "type": "string"
         }
       },
+      "ListETag": {
+        "description": "A weak validator of this page for this caller, `W/\"…\"`, for `If-None-Match` (docs/adr/0054 D7)\n",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Location": {
         "description": "The new entity's URL",
         "schema": {
@@ -557,6 +563,14 @@
       }
     },
     "responses": {
+      "NotModified": {
+        "description": "The page is unchanged since the weak `ETag` in `If-None-Match`; the client keeps what it holds\n(docs/adr/0054 D7)\n",
+        "headers": {
+          "ETag": {
+            "$ref": "#/components/headers/ListETag"
+          }
+        }
+      },
       "Problem": {
         "content": {
           "application/problem+json": {
@@ -5657,6 +5671,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5668,7 +5685,15 @@
                 }
               }
             },
-            "description": "A page of mappings"
+            "description": "A page of mappings",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5833,6 +5858,9 @@
           },
           {
             "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5844,7 +5872,15 @@
                 }
               }
             },
-            "description": "A page of members, by person id"
+            "description": "A page of members, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6015,6 +6051,9 @@
           },
           {
             "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6026,7 +6065,15 @@
                 }
               }
             },
-            "description": "A page of projects, by key"
+            "description": "A page of projects, by key",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6205,6 +6252,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6216,7 +6266,15 @@
                 }
               }
             },
-            "description": "A page of entries, by person id"
+            "description": "A page of entries, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6811,6 +6869,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6822,7 +6883,15 @@
                 }
               }
             },
-            "description": "A page of acts"
+            "description": "A page of acts",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6854,6 +6923,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6865,7 +6937,15 @@
                 }
               }
             },
-            "description": "A page of attachments"
+            "description": "A page of attachments",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7129,6 +7209,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7140,7 +7223,15 @@
                 }
               }
             },
-            "description": "A page of comments; a withdrawn one without its text"
+            "description": "A page of comments; a withdrawn one without its text",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7526,6 +7617,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7537,7 +7631,15 @@
                 }
               }
             },
-            "description": "A page of stakes"
+            "description": "A page of stakes",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7613,6 +7715,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7624,7 +7729,15 @@
                 }
               }
             },
-            "description": "A page of links"
+            "description": "A page of links",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7765,6 +7878,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7776,7 +7892,15 @@
                 }
               }
             },
-            "description": "A page of questions"
+            "description": "A page of questions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8097,6 +8221,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8108,7 +8235,15 @@
                 }
               }
             },
-            "description": "A page of entries with the ticket's visible total"
+            "description": "A page of entries with the ticket's visible total",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"

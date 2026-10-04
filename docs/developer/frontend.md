@@ -231,7 +231,16 @@ latest event of each ticket, then the membership events as they came.
 **The fallback** (ADR 0054 D7): three `EventSource` errors in a row, a `CLOSED` source, or
 `event: unavailable` switch to polling — a `poll` every 15 s and a new stream every 60 s; the
 first `open` ends it. The live indicator in the top bar shows `Live`, `Connecting` or `Polling`.
-A poll reloads the lists in full; the `If-None-Match` of D7 is outstanding.
+
+**A load again asks whether anything changed** (D7). Every list that loads again on events, a
+`resync` or a `poll` — the ticket lists of `TicketsService`, the projects, the members, the group
+mappings, an access list and the seven parts of `TicketRelations` — runs its requests through its
+own [`ConditionalPages`](../../frontend/src/app/core/conditional.ts): a request sends the weak
+`ETag` of the same request's last answer in `If-None-Match`, and a `304` — which `HttpClient`
+hands on as an error — answers with the page held. A page is its request, so a list followed
+cursor by cursor sends each page's tag with that page's cursor; the pages a load no longer asks for
+are forgotten when it ends, and a load that fails keeps the ones held before it. A poll that finds
+nothing new therefore moves no list and costs the backend a hash per page, not a body.
 
 ## The backlog
 

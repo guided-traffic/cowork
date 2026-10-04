@@ -45,13 +45,19 @@ members:
       - $ref: './components/parameters.yaml#/Limit'
       - $ref: './components/parameters.yaml#/Page'
       - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of members, by person id
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/MemberList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
@@ -175,13 +181,19 @@ groupMappings:
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of mappings
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/GroupMappingList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
@@ -338,13 +350,19 @@ projectAccessList:
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of entries, by person id
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ProjectAccessList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 projectAccess:

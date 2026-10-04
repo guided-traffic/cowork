@@ -35,6 +35,11 @@ export interface ListInterest$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listInterest(http: HttpClient, rootUrl: string, params: ListInterest$Params, context?: HttpContext): Observable<StrictHttpResponse<InterestList>> {
@@ -45,6 +50,7 @@ export function listInterest(http: HttpClient, rootUrl: string, params: ListInte
     rb.path('number', params.number, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

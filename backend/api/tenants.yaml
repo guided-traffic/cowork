@@ -204,13 +204,19 @@ projects:
       - $ref: './components/parameters.yaml#/Limit'
       - $ref: './components/parameters.yaml#/Page'
       - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of projects, by key
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ProjectList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:

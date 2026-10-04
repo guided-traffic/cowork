@@ -2988,6 +2988,9 @@ type ListGroupMappingsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // CreateGroupMappingParams defines parameters for CreateGroupMapping.
@@ -3015,6 +3018,9 @@ type ListMembersParams struct {
 	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
 	Page    *Page                     `form:"page,omitempty" json:"page,omitempty"`
 	PerPage *ListMembersParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListMembersParamsPerPage defines parameters for ListMembers.
@@ -3040,6 +3046,9 @@ type ListProjectsParams struct {
 	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
 	Page    *Page                      `form:"page,omitempty" json:"page,omitempty"`
 	PerPage *ListProjectsParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListProjectsParamsPerPage defines parameters for ListProjects.
@@ -3066,6 +3075,9 @@ type ListProjectAccessParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListRepositoriesParams defines parameters for ListRepositories.
@@ -3175,6 +3187,9 @@ type ListActivityParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListActivityParamsOrder defines parameters for ListActivity.
@@ -3187,6 +3202,9 @@ type ListAttachmentsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // UploadAttachmentMultipartBody defines parameters for UploadAttachment.
@@ -3225,6 +3243,9 @@ type ListCommentsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListCommentsParamsOrder defines parameters for ListComments.
@@ -3276,6 +3297,9 @@ type ListInterestParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListTicketLinksParams defines parameters for ListTicketLinks.
@@ -3285,6 +3309,9 @@ type ListTicketLinksParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListQuestionsParams defines parameters for ListQuestions.
@@ -3294,6 +3321,9 @@ type ListQuestionsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // AskQuestionParams defines parameters for AskQuestion.
@@ -3324,6 +3354,9 @@ type ListTicketTimeParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // BookTimeParams defines parameters for BookTime.
@@ -9441,6 +9474,21 @@ func NewListGroupMappingsRequest(server string, tenant TenantSlug, params *ListG
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -9710,6 +9758,21 @@ func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembers
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -9976,6 +10039,21 @@ func NewListProjectsRequest(server string, tenant TenantSlug, params *ListProjec
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -10226,6 +10304,21 @@ func NewListProjectAccessRequest(server string, tenant TenantSlug, project Proje
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -11307,6 +11400,21 @@ func NewListActivityRequest(server string, tenant TenantSlug, project ProjectKey
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -11392,6 +11500,21 @@ func NewListAttachmentsRequest(server string, tenant TenantSlug, project Project
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -11757,6 +11880,21 @@ func NewListCommentsRequest(server string, tenant TenantSlug, project ProjectKey
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -12420,6 +12558,21 @@ func NewListInterestRequest(server string, tenant TenantSlug, project ProjectKey
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -12566,6 +12719,21 @@ func NewListTicketLinksRequest(server string, tenant TenantSlug, project Project
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -12825,6 +12993,21 @@ func NewListQuestionsRequest(server string, tenant TenantSlug, project ProjectKe
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -13325,6 +13508,21 @@ func NewListTicketTimeRequest(server string, tenant TenantSlug, project ProjectK
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -17929,6 +18127,16 @@ func (r StopChatTurnsResponse) ContentType() string {
 	return ""
 }
 
+// ListGroupMappingsResponse200Headers the declared response headers of an HTTP 200 response for ListGroupMappings
+type ListGroupMappingsResponse200Headers struct {
+	ETag *string
+}
+
+// ListGroupMappingsResponse304Headers the declared response headers of an HTTP 304 response for ListGroupMappings
+type ListGroupMappingsResponse304Headers struct {
+	ETag *string
+}
+
 // ListGroupMappingsResponseDefaultHeaders the declared response headers of an HTTP default response for ListGroupMappings
 type ListGroupMappingsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -17941,6 +18149,10 @@ type ListGroupMappingsResponse struct {
 	JSON200 *GroupMappingList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListGroupMappingsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListGroupMappingsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListGroupMappingsResponseDefaultHeaders
 }
@@ -18157,6 +18369,16 @@ func (r UpdateGroupMappingResponse) ContentType() string {
 	return ""
 }
 
+// ListMembersResponse200Headers the declared response headers of an HTTP 200 response for ListMembers
+type ListMembersResponse200Headers struct {
+	ETag *string
+}
+
+// ListMembersResponse304Headers the declared response headers of an HTTP 304 response for ListMembers
+type ListMembersResponse304Headers struct {
+	ETag *string
+}
+
 // ListMembersResponseDefaultHeaders the declared response headers of an HTTP default response for ListMembers
 type ListMembersResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18169,6 +18391,10 @@ type ListMembersResponse struct {
 	JSON200 *MemberList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMembersResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMembersResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMembersResponseDefaultHeaders
 }
@@ -18370,6 +18596,16 @@ func (r SetMemberGrantResponse) ContentType() string {
 	return ""
 }
 
+// ListProjectsResponse200Headers the declared response headers of an HTTP 200 response for ListProjects
+type ListProjectsResponse200Headers struct {
+	ETag *string
+}
+
+// ListProjectsResponse304Headers the declared response headers of an HTTP 304 response for ListProjects
+type ListProjectsResponse304Headers struct {
+	ETag *string
+}
+
 // ListProjectsResponseDefaultHeaders the declared response headers of an HTTP default response for ListProjects
 type ListProjectsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18382,6 +18618,10 @@ type ListProjectsResponse struct {
 	JSON200 *ProjectList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListProjectsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListProjectsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListProjectsResponseDefaultHeaders
 }
@@ -18627,6 +18867,16 @@ func (r UpdateProjectResponse) ContentType() string {
 	return ""
 }
 
+// ListProjectAccessResponse200Headers the declared response headers of an HTTP 200 response for ListProjectAccess
+type ListProjectAccessResponse200Headers struct {
+	ETag *string
+}
+
+// ListProjectAccessResponse304Headers the declared response headers of an HTTP 304 response for ListProjectAccess
+type ListProjectAccessResponse304Headers struct {
+	ETag *string
+}
+
 // ListProjectAccessResponseDefaultHeaders the declared response headers of an HTTP default response for ListProjectAccess
 type ListProjectAccessResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18639,6 +18889,10 @@ type ListProjectAccessResponse struct {
 	JSON200 *ProjectAccessList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListProjectAccessResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListProjectAccessResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListProjectAccessResponseDefaultHeaders
 }
@@ -19337,6 +19591,16 @@ func (r UpdateTicketResponse) ContentType() string {
 	return ""
 }
 
+// ListActivityResponse200Headers the declared response headers of an HTTP 200 response for ListActivity
+type ListActivityResponse200Headers struct {
+	ETag *string
+}
+
+// ListActivityResponse304Headers the declared response headers of an HTTP 304 response for ListActivity
+type ListActivityResponse304Headers struct {
+	ETag *string
+}
+
 // ListActivityResponseDefaultHeaders the declared response headers of an HTTP default response for ListActivity
 type ListActivityResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19349,6 +19613,10 @@ type ListActivityResponse struct {
 	JSON200 *ActivityList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListActivityResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListActivityResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListActivityResponseDefaultHeaders
 }
@@ -19392,6 +19660,16 @@ func (r ListActivityResponse) ContentType() string {
 	return ""
 }
 
+// ListAttachmentsResponse200Headers the declared response headers of an HTTP 200 response for ListAttachments
+type ListAttachmentsResponse200Headers struct {
+	ETag *string
+}
+
+// ListAttachmentsResponse304Headers the declared response headers of an HTTP 304 response for ListAttachments
+type ListAttachmentsResponse304Headers struct {
+	ETag *string
+}
+
 // ListAttachmentsResponseDefaultHeaders the declared response headers of an HTTP default response for ListAttachments
 type ListAttachmentsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19404,6 +19682,10 @@ type ListAttachmentsResponse struct {
 	JSON200 *AttachmentList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListAttachmentsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListAttachmentsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListAttachmentsResponseDefaultHeaders
 }
@@ -19691,6 +19973,16 @@ func (r ReplaceTicketBodyResponse) ContentType() string {
 	return ""
 }
 
+// ListCommentsResponse200Headers the declared response headers of an HTTP 200 response for ListComments
+type ListCommentsResponse200Headers struct {
+	ETag *string
+}
+
+// ListCommentsResponse304Headers the declared response headers of an HTTP 304 response for ListComments
+type ListCommentsResponse304Headers struct {
+	ETag *string
+}
+
 // ListCommentsResponseDefaultHeaders the declared response headers of an HTTP default response for ListComments
 type ListCommentsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19703,6 +19995,10 @@ type ListCommentsResponse struct {
 	JSON200 *CommentList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListCommentsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListCommentsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListCommentsResponseDefaultHeaders
 }
@@ -20208,6 +20504,16 @@ func (r RemoveInterestResponse) ContentType() string {
 	return ""
 }
 
+// ListInterestResponse200Headers the declared response headers of an HTTP 200 response for ListInterest
+type ListInterestResponse200Headers struct {
+	ETag *string
+}
+
+// ListInterestResponse304Headers the declared response headers of an HTTP 304 response for ListInterest
+type ListInterestResponse304Headers struct {
+	ETag *string
+}
+
 // ListInterestResponseDefaultHeaders the declared response headers of an HTTP default response for ListInterest
 type ListInterestResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20220,6 +20526,10 @@ type ListInterestResponse struct {
 	JSON200 *InterestList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListInterestResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListInterestResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListInterestResponseDefaultHeaders
 }
@@ -20325,6 +20635,16 @@ func (r SetInterestResponse) ContentType() string {
 	return ""
 }
 
+// ListTicketLinksResponse200Headers the declared response headers of an HTTP 200 response for ListTicketLinks
+type ListTicketLinksResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketLinksResponse304Headers the declared response headers of an HTTP 304 response for ListTicketLinks
+type ListTicketLinksResponse304Headers struct {
+	ETag *string
+}
+
 // ListTicketLinksResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketLinks
 type ListTicketLinksResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20337,6 +20657,10 @@ type ListTicketLinksResponse struct {
 	JSON200 *LinkList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketLinksResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketLinksResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListTicketLinksResponseDefaultHeaders
 }
@@ -20545,6 +20869,16 @@ func (r ExportTicketResponse) ContentType() string {
 	return ""
 }
 
+// ListQuestionsResponse200Headers the declared response headers of an HTTP 200 response for ListQuestions
+type ListQuestionsResponse200Headers struct {
+	ETag *string
+}
+
+// ListQuestionsResponse304Headers the declared response headers of an HTTP 304 response for ListQuestions
+type ListQuestionsResponse304Headers struct {
+	ETag *string
+}
+
 // ListQuestionsResponseDefaultHeaders the declared response headers of an HTTP default response for ListQuestions
 type ListQuestionsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20557,6 +20891,10 @@ type ListQuestionsResponse struct {
 	JSON200 *QuestionList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListQuestionsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListQuestionsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListQuestionsResponseDefaultHeaders
 }
@@ -20973,6 +21311,16 @@ func (r MoveTicketRankResponse) ContentType() string {
 	return ""
 }
 
+// ListTicketTimeResponse200Headers the declared response headers of an HTTP 200 response for ListTicketTime
+type ListTicketTimeResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketTimeResponse304Headers the declared response headers of an HTTP 304 response for ListTicketTime
+type ListTicketTimeResponse304Headers struct {
+	ETag *string
+}
+
 // ListTicketTimeResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketTime
 type ListTicketTimeResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20985,6 +21333,10 @@ type ListTicketTimeResponse struct {
 	JSON200 *TimeEntryList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketTimeResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketTimeResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListTicketTimeResponseDefaultHeaders
 }
@@ -25741,6 +26093,9 @@ func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsRespo
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -25751,6 +26106,26 @@ func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsRespo
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListGroupMappingsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListGroupMappingsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListGroupMappingsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -25948,6 +26323,9 @@ func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -25958,6 +26336,26 @@ func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) 
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMembersResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMembersResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMembersResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26128,6 +26526,9 @@ func ParseListProjectsResponse(rsp *http.Response) (*ListProjectsResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26138,6 +26539,26 @@ func ParseListProjectsResponse(rsp *http.Response) (*ListProjectsResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListProjectsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListProjectsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListProjectsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26373,6 +26794,9 @@ func ParseListProjectAccessResponse(rsp *http.Response) (*ListProjectAccessRespo
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26383,6 +26807,26 @@ func ParseListProjectAccessResponse(rsp *http.Response) (*ListProjectAccessRespo
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListProjectAccessResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListProjectAccessResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListProjectAccessResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -27014,6 +27458,9 @@ func ParseListActivityResponse(rsp *http.Response) (*ListActivityResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27024,6 +27471,26 @@ func ParseListActivityResponse(rsp *http.Response) (*ListActivityResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListActivityResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListActivityResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListActivityResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -27060,6 +27527,9 @@ func ParseListAttachmentsResponse(rsp *http.Response) (*ListAttachmentsResponse,
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27070,6 +27540,26 @@ func ParseListAttachmentsResponse(rsp *http.Response) (*ListAttachmentsResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListAttachmentsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListAttachmentsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListAttachmentsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -27347,6 +27837,9 @@ func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27357,6 +27850,26 @@ func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListCommentsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListCommentsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListCommentsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -27807,6 +28320,9 @@ func ParseListInterestResponse(rsp *http.Response) (*ListInterestResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27817,6 +28333,26 @@ func ParseListInterestResponse(rsp *http.Response) (*ListInterestResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListInterestResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListInterestResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListInterestResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -27906,6 +28442,9 @@ func ParseListTicketLinksResponse(rsp *http.Response) (*ListTicketLinksResponse,
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27916,6 +28455,26 @@ func ParseListTicketLinksResponse(rsp *http.Response) (*ListTicketLinksResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketLinksResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketLinksResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListTicketLinksResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -28096,6 +28655,9 @@ func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, err
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28106,6 +28668,26 @@ func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, err
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListQuestionsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListQuestionsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListQuestionsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -28485,6 +29067,9 @@ func ParseListTicketTimeResponse(rsp *http.Response) (*ListTicketTimeResponse, e
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28495,6 +29080,26 @@ func ParseListTicketTimeResponse(rsp *http.Response) (*ListTicketTimeResponse, e
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketTimeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketTimeResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListTicketTimeResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -30770,6 +31375,27 @@ func (siw *ServerInterfaceWrapper) ListGroupMappings(w http.ResponseWriter, r *h
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListGroupMappings(w, r, tenant, params)
 	}))
@@ -30995,6 +31621,27 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r, tenant, params)
 	}))
@@ -31209,6 +31856,27 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListProjects(w, r, tenant, params)
 	}))
@@ -31415,6 +32083,27 @@ func (siw *ServerInterfaceWrapper) ListProjectAccess(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32407,6 +33096,27 @@ func (siw *ServerInterfaceWrapper) ListActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListActivity(w, r, tenant, project, number, params)
 	}))
@@ -32478,6 +33188,27 @@ func (siw *ServerInterfaceWrapper) ListAttachments(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32830,6 +33561,27 @@ func (siw *ServerInterfaceWrapper) ListComments(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33423,6 +34175,27 @@ func (siw *ServerInterfaceWrapper) ListInterest(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInterest(w, r, tenant, project, number, params)
 	}))
@@ -33538,6 +34311,27 @@ func (siw *ServerInterfaceWrapper) ListTicketLinks(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33779,6 +34573,27 @@ func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34224,6 +35039,27 @@ func (siw *ServerInterfaceWrapper) ListTicketTime(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35830,6 +36666,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	return m
 }
 
+type NotModifiedResponseHeaders struct {
+	ETag *string
+}
+type NotModifiedResponse struct {
+	Headers NotModifiedResponseHeaders
+}
+
 type ProblemResponseHeaders struct {
 	XRequestId *string
 }
@@ -36900,18 +37743,38 @@ type ListGroupMappingsResponseObject interface {
 	VisitListGroupMappingsResponse(w http.ResponseWriter) error
 }
 
-type ListGroupMappings200JSONResponse GroupMappingList
+type ListGroupMappings200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListGroupMappings200JSONResponse struct {
+	Body    GroupMappingList
+	Headers ListGroupMappings200ResponseHeaders
+}
 
 func (response ListGroupMappings200JSONResponse) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListGroupMappings304Response = NotModifiedResponse
+
+func (response ListGroupMappings304Response) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListGroupMappingsdefaultApplicationProblemPlusJSONResponse struct {
@@ -37097,18 +37960,38 @@ type ListMembersResponseObject interface {
 	VisitListMembersResponse(w http.ResponseWriter) error
 }
 
-type ListMembers200JSONResponse MemberList
+type ListMembers200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMembers200JSONResponse struct {
+	Body    MemberList
+	Headers ListMembers200ResponseHeaders
+}
 
 func (response ListMembers200JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMembers304Response = NotModifiedResponse
+
+func (response ListMembers304Response) VisitListMembersResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMembersdefaultApplicationProblemPlusJSONResponse struct {
@@ -37269,18 +38152,38 @@ type ListProjectsResponseObject interface {
 	VisitListProjectsResponse(w http.ResponseWriter) error
 }
 
-type ListProjects200JSONResponse ProjectList
+type ListProjects200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListProjects200JSONResponse struct {
+	Body    ProjectList
+	Headers ListProjects200ResponseHeaders
+}
 
 func (response ListProjects200JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListProjects304Response = NotModifiedResponse
+
+func (response ListProjects304Response) VisitListProjectsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListProjectsdefaultApplicationProblemPlusJSONResponse struct {
@@ -37511,18 +38414,38 @@ type ListProjectAccessResponseObject interface {
 	VisitListProjectAccessResponse(w http.ResponseWriter) error
 }
 
-type ListProjectAccess200JSONResponse ProjectAccessList
+type ListProjectAccess200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListProjectAccess200JSONResponse struct {
+	Body    ProjectAccessList
+	Headers ListProjectAccess200ResponseHeaders
+}
 
 func (response ListProjectAccess200JSONResponse) VisitListProjectAccessResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListProjectAccess304Response = NotModifiedResponse
+
+func (response ListProjectAccess304Response) VisitListProjectAccessResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListProjectAccessdefaultApplicationProblemPlusJSONResponse struct {
@@ -38149,18 +39072,38 @@ type ListActivityResponseObject interface {
 	VisitListActivityResponse(w http.ResponseWriter) error
 }
 
-type ListActivity200JSONResponse ActivityList
+type ListActivity200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListActivity200JSONResponse struct {
+	Body    ActivityList
+	Headers ListActivity200ResponseHeaders
+}
 
 func (response ListActivity200JSONResponse) VisitListActivityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListActivity304Response = NotModifiedResponse
+
+func (response ListActivity304Response) VisitListActivityResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListActivitydefaultApplicationProblemPlusJSONResponse struct {
@@ -38195,18 +39138,38 @@ type ListAttachmentsResponseObject interface {
 	VisitListAttachmentsResponse(w http.ResponseWriter) error
 }
 
-type ListAttachments200JSONResponse AttachmentList
+type ListAttachments200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListAttachments200JSONResponse struct {
+	Body    AttachmentList
+	Headers ListAttachments200ResponseHeaders
+}
 
 func (response ListAttachments200JSONResponse) VisitListAttachmentsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListAttachments304Response = NotModifiedResponse
+
+func (response ListAttachments304Response) VisitListAttachmentsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListAttachmentsdefaultApplicationProblemPlusJSONResponse struct {
@@ -38491,18 +39454,38 @@ type ListCommentsResponseObject interface {
 	VisitListCommentsResponse(w http.ResponseWriter) error
 }
 
-type ListComments200JSONResponse CommentList
+type ListComments200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListComments200JSONResponse struct {
+	Body    CommentList
+	Headers ListComments200ResponseHeaders
+}
 
 func (response ListComments200JSONResponse) VisitListCommentsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListComments304Response = NotModifiedResponse
+
+func (response ListComments304Response) VisitListCommentsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListCommentsdefaultApplicationProblemPlusJSONResponse struct {
@@ -38963,18 +39946,38 @@ type ListInterestResponseObject interface {
 	VisitListInterestResponse(w http.ResponseWriter) error
 }
 
-type ListInterest200JSONResponse InterestList
+type ListInterest200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListInterest200JSONResponse struct {
+	Body    InterestList
+	Headers ListInterest200ResponseHeaders
+}
 
 func (response ListInterest200JSONResponse) VisitListInterestResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListInterest304Response = NotModifiedResponse
+
+func (response ListInterest304Response) VisitListInterestResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListInterestdefaultApplicationProblemPlusJSONResponse struct {
@@ -39069,18 +40072,38 @@ type ListTicketLinksResponseObject interface {
 	VisitListTicketLinksResponse(w http.ResponseWriter) error
 }
 
-type ListTicketLinks200JSONResponse LinkList
+type ListTicketLinks200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketLinks200JSONResponse struct {
+	Body    LinkList
+	Headers ListTicketLinks200ResponseHeaders
+}
 
 func (response ListTicketLinks200JSONResponse) VisitListTicketLinksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListTicketLinks304Response = NotModifiedResponse
+
+func (response ListTicketLinks304Response) VisitListTicketLinksResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListTicketLinksdefaultApplicationProblemPlusJSONResponse struct {
@@ -39276,18 +40299,38 @@ type ListQuestionsResponseObject interface {
 	VisitListQuestionsResponse(w http.ResponseWriter) error
 }
 
-type ListQuestions200JSONResponse QuestionList
+type ListQuestions200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListQuestions200JSONResponse struct {
+	Body    QuestionList
+	Headers ListQuestions200ResponseHeaders
+}
 
 func (response ListQuestions200JSONResponse) VisitListQuestionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListQuestions304Response = NotModifiedResponse
+
+func (response ListQuestions304Response) VisitListQuestionsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListQuestionsdefaultApplicationProblemPlusJSONResponse struct {
@@ -39667,18 +40710,38 @@ type ListTicketTimeResponseObject interface {
 	VisitListTicketTimeResponse(w http.ResponseWriter) error
 }
 
-type ListTicketTime200JSONResponse TimeEntryList
+type ListTicketTime200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketTime200JSONResponse struct {
+	Body    TimeEntryList
+	Headers ListTicketTime200ResponseHeaders
+}
 
 func (response ListTicketTime200JSONResponse) VisitListTicketTimeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListTicketTime304Response = NotModifiedResponse
+
+func (response ListTicketTime304Response) VisitListTicketTimeResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListTicketTimedefaultApplicationProblemPlusJSONResponse struct {

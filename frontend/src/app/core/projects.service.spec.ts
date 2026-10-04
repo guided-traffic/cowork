@@ -805,6 +805,33 @@ describe('ProjectsService', () => {
       expect(keys()).toEqual(['VKO']);
     });
 
+    it("sends each page's weak ETag on a poll and keeps the projects on a 304 (docs/adr/0054 D7)", async () => {
+      // The projects as they were loaded with their tags: two pages.
+      stream.next({ name: 'resync' });
+      await settle();
+      page('acme').flush(pageOf(['VKO'], 'c1'), { headers: { ETag: 'W/"one"' } });
+      answerMe();
+      (await nextPage('acme', 'c1')).flush(pageOf(['SEC'], null), {
+        headers: { ETag: 'W/"two"' },
+      });
+      await settle();
+      expect(keys()).toEqual(['VKO', 'SEC']);
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const first = page('acme');
+      expect(first.request.headers.get('If-None-Match')).toBe('W/"one"');
+      first.flush(null, { status: 304, statusText: 'Not Modified' });
+      answerMe();
+      const second = await nextPage('acme', 'c1');
+      expect(second.request.headers.get('If-None-Match')).toBe('W/"two"');
+      second.flush(null, { status: 304, statusText: 'Not Modified' });
+      await settle();
+
+      expect(service.projects.status()).toBe('resolved');
+      expect(keys()).toEqual(['VKO', 'SEC']);
+    });
+
     it.each([401, 403, 404])(
       'lists nothing when loading them again answers %i: they are gone for the person',
       async (status) => {

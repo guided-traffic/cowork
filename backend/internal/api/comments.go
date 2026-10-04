@@ -77,11 +77,15 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(c readq.ListCommentsRow) string { return c.ID.String() })
-	out := apigen.ListComments200JSONResponse{Items: make([]apigen.Comment, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.CommentList{Items: make([]apigen.Comment, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, c := range rows {
 		out.Items = append(out.Items, commentView(comment(c)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListComments304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListComments200JSONResponse{Body: out, Headers: apigen.ListComments200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // uuidAfter decodes the cursor of a list ordered by id.
@@ -414,11 +418,15 @@ func (s *Server) ListActivity(ctx context.Context, req apigen.ListActivityReques
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(a readq.ListTicketActivityRow) string { return a.ID.String() })
-	out := apigen.ListActivity200JSONResponse{Items: make([]apigen.Activity, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.ActivityList{Items: make([]apigen.Activity, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, a := range rows {
 		out.Items = append(out.Items, activityView(a, visible))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListActivity304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListActivity200JSONResponse{Body: out, Headers: apigen.ListActivity200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func activityView(a readq.ListTicketActivityRow, visible map[uuid.UUID]bool) apigen.Activity {

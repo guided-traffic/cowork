@@ -47,13 +47,17 @@ func (s *Server) ListInterest(ctx context.Context, req apigen.ListInterestReques
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(i readq.ListInterestRow) string { return i.UserID.String() })
-	out := apigen.ListInterest200JSONResponse{Items: make([]apigen.Interest, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.InterestList{Items: make([]apigen.Interest, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, i := range rows {
 		out.Items = append(out.Items, apigen.Interest{Person: personView(i.UserID, i.Username, i.DisplayName),
 			Weight: apigen.InterestWeight(i.Weight), Note: i.Note, Agent: nullableOf(i.Agent),
 			Token: tokenMarkView(i.TokenID, i.TokenName), Since: i.Since, UpdatedAt: i.UpdatedAt, Settled: i.Settled})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListInterest304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListInterest200JSONResponse{Body: out, Headers: apigen.ListInterest200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // interestNeed is what a stake of the weight needs: watch is open to viewers

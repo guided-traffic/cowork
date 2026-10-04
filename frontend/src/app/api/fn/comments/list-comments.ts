@@ -40,6 +40,11 @@ export interface ListComments$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listComments(http: HttpClient, rootUrl: string, params: ListComments$Params, context?: HttpContext): Observable<StrictHttpResponse<CommentList>> {
@@ -51,6 +56,7 @@ export function listComments(http: HttpClient, rootUrl: string, params: ListComm
     rb.query('order', params.order, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

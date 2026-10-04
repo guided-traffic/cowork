@@ -684,7 +684,10 @@ full.
   the members, the person's tokens and the projects also take numbered pages, `page` and
   `per_page` (`25`, `50`, `100`; `50` without it, clamped like `limit`), answered with `total`,
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
-  the ticket lists answer `304` to an unchanged page's weak `ETag` in `If-None-Match`. A query
+  the ticket lists, the projects, the members, the group mappings, a project's access list and
+  the lists of a ticket — comments, activity, questions, links, interest, attachments, time
+  entries — answer a weak `ETag`, the caller's page, and `304` without a body to it in
+  `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
   `404`.
 - **Every response** carries `Cache-Control: no-store` (the event stream `no-cache`) and

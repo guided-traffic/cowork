@@ -264,6 +264,25 @@ describe('MembersService', () => {
       expect(names()).toEqual(['Ada', 'Bob']);
     });
 
+    it("sends the list's weak ETag on a poll and keeps the members on a 304 (docs/adr/0054 D7)", async () => {
+      stream.next({ name: 'resync' });
+      await settle();
+      page('acme').flush(pageOf(['Ada', 'Bob'], null), { headers: { ETag: 'W/"one"' } });
+      http.expectOne('/api/v1/me').flush(hans);
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const again = page('acme');
+      expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+      again.flush(null, { status: 304, statusText: 'Not Modified' });
+      http.expectOne('/api/v1/me').flush(hans);
+      await settle();
+
+      expect(service.members.status()).toBe('resolved');
+      expect(names()).toEqual(['Ada', 'Bob']);
+    });
+
     it('leaves the members alone on an event that names a ticket', async () => {
       stream.next({ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' });
       await settle();

@@ -32,6 +32,11 @@ export interface ListProjects$Params {
  */
   page?: number;
   per_page?: 25 | 50 | 100;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listProjects(http: HttpClient, rootUrl: string, params: ListProjects$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectList>> {
@@ -43,6 +48,7 @@ export function listProjects(http: HttpClient, rootUrl: string, params: ListProj
     rb.query('limit', params.limit, {});
     rb.query('page', params.page, {});
     rb.query('per_page', params.per_page, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

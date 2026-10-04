@@ -12,13 +12,19 @@ comments:
       - $ref: './components/parameters.yaml#/Order'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of comments; a withdrawn one without its text
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/CommentList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
@@ -162,12 +168,18 @@ activity:
       - $ref: './components/parameters.yaml#/Order'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of acts
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ActivityList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'

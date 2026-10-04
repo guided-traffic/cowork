@@ -31,8 +31,10 @@ membership yet)~~ — built 2026-10-04, below —, D3–D6, D8 and D9 — [`inte
 arrives with that event. D7's client side and D8's hidden tab since phase 3 (2026-10-03):
 [`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) opens one
 `EventSource` per tenant page, falls back after three failures or `unavailable`, ticks every
-fifteen seconds, retries every minute and holds events while the tab is hidden; a poll still
-reloads the lists in full — the `If-None-Match` of D7 is outstanding. Measured on 2026-10-03
+fifteen seconds, retries every minute and holds events while the tab is hidden; ~~a poll still
+reloads the lists in full — the `If-None-Match` of D7 is outstanding~~ *(built 2026-10-04: every
+list the client loads again answers a weak `ETag` and `304`, and the client sends the tag of each
+page it holds — [`core/conditional.ts`](../../frontend/src/app/core/conditional.ts))*. Measured on 2026-10-03
 through the Angular dev server's proxy: a comment's event reached an open stream 29 ms after the
 write began.
 

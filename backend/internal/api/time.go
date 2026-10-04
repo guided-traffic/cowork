@@ -112,11 +112,15 @@ func (s *Server) ListTicketTime(ctx context.Context, req apigen.ListTicketTimeRe
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(e readq.ListTicketTimeRow) string { return e.ID.String() })
 	total := int(sum)
-	out := apigen.ListTicketTime200JSONResponse{Items: make([]apigen.TimeEntry, 0, len(rows)), NextCursor: nullableString(next), TotalMinutes: &total}
+	out := apigen.TimeEntryList{Items: make([]apigen.TimeEntry, 0, len(rows)), NextCursor: nullableString(next), TotalMinutes: &total}
 	for _, e := range rows {
 		out.Items = append(out.Items, timeView(key, timeEntry(e)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListTicketTime304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListTicketTime200JSONResponse{Body: out, Headers: apigen.ListTicketTime200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetTimeEntry answers one entry.

@@ -373,8 +373,14 @@ and an access entry are addressed by their person and written without it, like a
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
 
-The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
-page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
+The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
+`listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
+`listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime` — answer a
+weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
+`304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
+`tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
+is the caller's: two callers who read the same list differently — an administrator the members'
+addresses, a member not — get two tags. An
 attachment's content answers its quoted hex SHA-256 and `304` likewise.
 
 ## Paging
@@ -466,3 +472,4 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
+[ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
