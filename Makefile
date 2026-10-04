@@ -298,8 +298,8 @@ test-release-tooling: ## Verify the semantic-release dependency set renders rele
 
 .PHONY: postgres-up
 postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
-	@docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1 && echo "$(POSTGRES_CONTAINER) already exists" || \
-	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(CONTAINER_BIND):$(POSTGRES_PORT):5432 $(POSTGRES_IMAGE)
+	@if docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1; then echo "$(POSTGRES_CONTAINER) already exists" && docker start $(POSTGRES_CONTAINER) >/dev/null; else \
+	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(CONTAINER_BIND):$(POSTGRES_PORT):5432 $(POSTGRES_IMAGE); fi
 	@echo "Waiting for PostgreSQL..."
 	@for i in $$(seq 1 30); do docker exec $(POSTGRES_CONTAINER) pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; [ $$i -lt 30 ] || { echo "PostgreSQL did not become ready"; exit 1; }; done
 	@docker exec $(POSTGRES_CONTAINER) psql -U postgres -q -v ON_ERROR_STOP=1 -c "DO \$$\$$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_owner') THEN CREATE ROLE cowork_owner LOGIN PASSWORD 'cowork_owner'; END IF; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_app') THEN CREATE ROLE cowork_app LOGIN PASSWORD 'cowork_app'; END IF; END \$$\$$;"
@@ -318,8 +318,8 @@ verify-phase-2: ## Verify phase 2 by hand: both built images against make postgr
 
 .PHONY: minio-up
 minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests.
-	@docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1 && echo "$(MINIO_CONTAINER) already exists" || \
-	    docker run -d --name $(MINIO_CONTAINER) -p $(CONTAINER_BIND):$(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data
+	@if docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1; then echo "$(MINIO_CONTAINER) already exists" && docker start $(MINIO_CONTAINER) >/dev/null; else \
+	    docker run -d --name $(MINIO_CONTAINER) -p $(CONTAINER_BIND):$(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data; fi
 	@echo "Waiting for MinIO..."
 	@for i in $$(seq 1 30); do curl -sf http://localhost:$(MINIO_PORT)/minio/health/live >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { echo "MinIO did not become ready"; exit 1; }; done
 	@echo "MinIO is ready on port $(MINIO_PORT): access key $(MINIO_ACCESS_KEY); the tests create their own bucket"
@@ -332,12 +332,12 @@ minio-down: ## Remove the local MinIO container and its data.
 # copy readable by Dex's own user with the issuer moved to DEX_PORT.
 .PHONY: dex-up
 dex-up: ## Start a local Dex with the static client and users of hack/dex/config.yaml, the identity provider of make dev and the login tests.
-	@docker inspect $(DEX_CONTAINER) >/dev/null 2>&1 && echo "$(DEX_CONTAINER) already exists; make dex-down dex-up loads a changed hack/dex/config.yaml" || { \
+	@if docker inspect $(DEX_CONTAINER) >/dev/null 2>&1; then echo "$(DEX_CONTAINER) already exists; make dex-down dex-up loads a changed hack/dex/config.yaml" && docker start $(DEX_CONTAINER) >/dev/null; else \
 	    config=$$(mktemp) && trap 'rm -f "$$config"' EXIT && \
 	    sed 's#http://localhost:5556/dex#$(DEX_ISSUER)#' hack/dex/config.yaml >"$$config" && chmod 644 "$$config" && \
 	    docker create --name $(DEX_CONTAINER) -p $(CONTAINER_BIND):$(DEX_PORT):5556 $(DEX_IMAGE) dex serve /etc/dex/cowork.yaml >/dev/null && \
 	    docker cp "$$config" $(DEX_CONTAINER):/etc/dex/cowork.yaml && \
-	    docker start $(DEX_CONTAINER) >/dev/null; }
+	    docker start $(DEX_CONTAINER) >/dev/null; fi
 	@echo "Waiting for Dex..."
 	@for i in $$(seq 1 30); do curl -sf $(DEX_ISSUER)/.well-known/openid-configuration >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { docker logs --tail 20 $(DEX_CONTAINER); echo "Dex did not become ready"; exit 1; }; done
 	@echo "Dex is ready: issuer $(DEX_ISSUER), client cowork and the users of hack/dex/config.yaml, every credential development-only"
