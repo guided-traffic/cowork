@@ -12,7 +12,9 @@ and [ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised-remote-ide
 to [ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md); the
 subcommands and variables are [README.md, CLI (cowork-mcp)](../../README.md#cli-cowork-mcp);
 what the client holds and leaves open is
-[docs/security/agent-client.md](../security/agent-client.md).
+[docs/security/agent-client.md](../security/agent-client.md). The other way to work with a model
+is the assistant in the UI, which runs the same tools in the backend with the person's browser
+session: [chat.md](chat.md).
 
 ```
  laptop                                                         cluster
@@ -143,7 +145,7 @@ Residual risks). Use the plugin or this block, not both: the hooks would run twi
 |---|---|
 | The session starts | `session-context` reads the git remotes of the working directory and a `.cowork.yaml`, asks the installation which project binds the repository, and prints the block Claude reads before the first prompt: the binding, the active ticket — assigned to you and `in-progress` — with its context, or the top of the backlog, and what happened since the last session. In a directory without a remote and without a binding file it prints nothing. A failure is one line naming the cause and the token page; the session is never blocked |
 | An unbound repository | The block carries a proposal — tenant, key, name — and Claude asks you; on your yes it calls `create_project`, which creates the project and binds the repository in one act |
-| During the work | The 15 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block |
+| During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block |
 | Claude stops | `session-end` reminds you — a message in the transcript, never a block — when a ticket of yours is in progress, the repository shows work since the session started (a commit, or a file changed after it), and nothing was recorded on the ticket since |
 
 The time of the last session is kept per installation and binding in one small file under the

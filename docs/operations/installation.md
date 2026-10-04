@@ -26,13 +26,15 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 | The server key | yes | a Secret; there is no inline value |
 | A local administrator, an identity provider, or both, and the public URL | yes, to log in at all — without one of the two nobody can | the administrator's username and password from a Secret ([below](#the-local-administrator)); the provider's issuer and client id as values, its client secret from a Secret ([below](#the-identity-provider)); `backend.config.baseURL` for either |
 | An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values, the key from a Secret, a private authority from a ConfigMap |
+| A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
 
 Rendering fails, naming the missing value, without a database URL, without an owner URL while
 `backend.config.migrateOnStart` is `true` (the default), without `session.existingSecret`, with
 a `storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`, with a local
 administrator or an `auth.oidc.issuer` but no `backend.config.baseURL`, with an issuer but no
-client id or no client secret, with a group in `auth.oidc.allowedGroups` that holds a comma, and
-with half of what belongs together —
+client id or no client secret, with a group in `auth.oidc.allowedGroups` that holds a comma, with
+a `chat.provider` but no `chat.url` or `chat.model` — or `anthropic` without `chat.existingSecret` —,
+and with half of what belongs together —
 `localAdmin.username` without `.password`, `bootstrap.tenant.slug` without `.name`, a bootstrap
 tenant with neither a local administrator nor `auth.oidc.adminGroup`.
 
@@ -123,6 +125,8 @@ kubectl -n cowork create secret generic cowork-local-admin \
   --from-literal=username=admin --from-literal=password="$(openssl rand -base64 24)"
 kubectl -n cowork create secret generic cowork-oidc \
   --from-literal=clientSecret='CHANGE-ME'     # with an identity provider: the secret it issued for cowork's client
+kubectl -n cowork create secret generic cowork-chat \
+  --from-literal=apiKey='CHANGE-ME'           # with a chat provider that takes a key: its API key
 ```
 
 | Secret | Values naming it | Key `# default` | Read by |
@@ -133,6 +137,7 @@ kubectl -n cowork create secret generic cowork-oidc \
 | the local administrator | `localAdmin.existingSecret` | `localAdmin.keys.username`: `username`, `localAdmin.keys.password`: `password` | the backend container; the account follows it at every start |
 | the identity provider's client | `auth.oidc.existingSecret` | `auth.oidc.keys.clientSecret`: `clientSecret`; `auth.oidc.keys.clientId`: empty — set, it reads the client id from the Secret too, in place of `auth.oidc.clientId` | the backend container |
 | the storage access key | `storage.existingSecret` | `storage.keys.accessKeyId`: `accessKeyId`, `storage.keys.secretAccessKey`: `secretAccessKey` | the backend container |
+| the chat's API key | `chat.existingSecret` | `chat.keys.apiKey`: `apiKey` | the backend container, which sends it to the chat's provider |
 
 **The server key** is standard base64 of at least 32 random bytes; `openssl rand -base64 32`
 makes one. It signs the list cursors, keys the hashes of a client's address — the login
@@ -153,8 +158,8 @@ server process the power to switch row-level security off.
 
 **The inline values**, `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password`, render the Secrets `<fullname>-database`, `<fullname>-database-owner` and
-`<fullname>-local-admin` for you; the identity provider's client secret has no inline value and
-comes from `auth.oidc.existingSecret` only
+`<fullname>-local-admin` for you; the identity provider's client secret and the chat's API key have
+no inline value and come from `auth.oidc.existingSecret` and `chat.existingSecret` only
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). Use them for
 a throw-away installation only: the values are
 stored in plain text in the Helm release Secret and shown by `helm get values`, and the chart
@@ -455,6 +460,38 @@ uploaded` once at start. The backend does not contact the storage at start and `
 not check it: a wrong endpoint, key or bucket shows on the first upload, as
 `500 internal` and a `request failed` log line with the storage's error
 (`put object: Access Denied.` for a bucket the key does not reach).
+
+## The chat
+
+The assistant at the right edge of the UI talks to a model the backend calls for the person
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+provisional). `chat.provider` turns it on — `openai` for OpenAI Chat Completions, which LM Studio,
+Ollama and vLLM serve as well, or `anthropic` — with the provider's base URL and the model; a key,
+where the provider takes one, comes from a Secret ([the Secrets](#the-secrets)):
+
+```yaml
+chat:
+  provider: openai                       # example; empty: no chat
+  url: http://ollama.ai.svc:11434/v1     # example: https://, or http:// on a host of your own network
+  model: llama3:8b                       # example: the model's name at the provider
+  existingSecret: ""                     # required for anthropic; the key under chat.keys.apiKey, default apiKey
+  inside: false                          # default: a tenant's administrators allow the provider first
+```
+
+**Inside or outside.** `chat.inside: true` states that the model runs inside the installation's
+trust boundary — on machines its operators run — and every tenant has the chat; nothing checks it.
+`false`, the default, counts the provider as outside: a tenant has the chat once one of its
+administrators allows it in the tenant's settings, and from then on the provider receives what the
+chat reads in that tenant, confidential tickets included
+([chat.md H-37](../security/chat.md#h-37)).
+
+**The backend's pods reach the provider.** The browser never does. The chart's NetworkPolicy
+restricts nothing outgoing; a policy of your own that does must admit the provider and DNS. The
+stream of a turn passes the Ingress like the event stream, unbuffered
+([runtime.md, behind an Ingress](runtime.md#behind-an-ingress)).
+
+LM Studio, OpenAI and Anthropic one by one, the context LM Studio loads a model with, the limits
+and what the log says are [chat.md](chat.md).
 
 ## Install
 

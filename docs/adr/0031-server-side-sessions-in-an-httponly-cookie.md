@@ -8,7 +8,9 @@ Safari, so development serves HTTPS) and 2026-10-04 (D1, D3: the groups snapshot
 the sealed refresh token built; D4: the issuer's logout is handed to the browser, not called; D6:
 twelve routes take a session only; D7: the identity provider's ends), and again on 2026-10-04 after
 the security review (D3: the refresh claims a lease and holds nothing while it asks the issuer; D4:
-the sessions of a person of another issuer end at once). Date: 2026-10-01. Decided by the owner as the answer to the
+the sessions of a person of another issuer end at once), and for the chat in the UI (D6: thirteen
+routes and the consent field take a session only; the agent header marks a session's request).
+Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -152,9 +154,16 @@ only and answer a token `403 session_required`: creating a token, a tenant or a 
 resetting a password, changing one's own password and logging out
 ([ADR 0035](0035-personal-access-tokens.md) D5,
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1, D5).)*
-*(Amended 2026-10-04: twelve routes — the six above and the administration acts that can give
+*(Amended 2026-10-04: ~~twelve~~ routes — the six above and the administration acts that can give
 access: adding a member, setting a grant, making or changing a group mapping, restricting or opening
-a project, putting a person on its access list (ADR 0035 D5).)*
+a project, putting a person on its access list (ADR 0035 D5).)* *(Amended 2026-10-04 for the chat in
+the UI, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
+thirteen routes, a turn of the chat the thirteenth, and one field — switching the tenant's
+`chat_external_allowed` on — that a token is refused (ADR 0035 D5). A session cookie still yields
+the person with no agent flag, but an `X-Cowork-Agent` header on the session's request marks that
+request as an agent's, every capability and the hard-off list
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3): the chat's tool calls are such requests, and such a request is refused the thirteen routes.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))

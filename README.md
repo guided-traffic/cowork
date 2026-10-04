@@ -22,7 +22,10 @@ is accountable.
 > group, creates the first tenant, its administrators add its people, and each person makes their
 > own personal access tokens in the session. Claude Code works on the backlog through `cowork-mcp`,
 > an MCP server with hooks that runs on the person's machine
-> ([Claude Code](docs/operations/claude-code.md)). What comes next is
+> ([Claude Code](docs/operations/claude-code.md)); in the browser an assistant works on the same
+> tools as the person's agent, with a model the operator names — LM Studio on the operator's
+> machine, a server of the OpenAI format or Anthropic — and leaves the acts a person owes a reason
+> for to the person's decision ([the chat](docs/operations/chat.md)). What comes next is
 > [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
@@ -37,6 +40,7 @@ flowchart LR
   S[cowork-backend<br/>Go API] -->|runtime role| P[(PostgreSQL 18)]
   S -->|attachments| O[(S3-compatible<br/>object storage)]
   S -->|discovery, code, refresh| I
+  S -->|the chat's model calls| L[LLM provider<br/>OpenAI format or Anthropic]
 ```
 
 ## ✨ Key features
@@ -189,7 +193,7 @@ under those names.
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
 | [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules |
-| [docs/planning/](docs/planning/) | The project plan and the VS Code workflow plan — consumed into ADRs and tickets as work proceeds; the question catalog is consumed already |
+| [docs/planning/](docs/planning/) | The project plan — consumed into ADRs and tickets as work proceeds; the question catalog and the VS Code workflow plan are consumed already |
 | [CLAUDE.md](CLAUDE.md) | The working rules for an LLM session in this repository |
 
 ## 🚀 Fast start
@@ -562,7 +566,7 @@ A key is `tenant/PROJECT-n`, or `PROJECT-n` in a bound session.
 |---|---|---|---|
 | `session_start` | — | the session block of `session-context`, again; the binding it finds is the session's | — |
 | `get_ticket` | `key`, `comments` (10), `activity` (10) | the ticket's context document and the commit strings for it; read only | — |
-| `search` | `query`, `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
+| `search` | `query` (optional in one project: without it, the project's tickets in rank order), `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
 | `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]` | files a ticket in the bound or the named project, then its links | — |
 | `record_state` | `key`, `body`, `comment` | replaces the body as a whole with `If-Match` of the version it read | — |
 | `comment` | `key`, `text` | comments, in the person's name with the agent's mark | — |
@@ -672,7 +676,7 @@ An administrator's own account is off limits for a password reset, an unlock and
 | `POST …/accounts` | a session only: create one: `{"username","display_name","temporary_password","role"}`; the person changes the password at the first login; a marked grant with that role; `409 username_taken` (the installation has one namespace) |
 | `PUT …/accounts/{username}/password` | a session only: set a new temporary password; every session of the account ends |
 | `DELETE …/accounts/{username}/lockout` | forget the failures and the lock of the username |
-| `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay |
+| `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay; `409 last_admin`, changing nothing, when the tenant would be left without an administrator who can log in — the deactivation takes the tenant's lock, so two administrators who deactivate each other at once are decided one after the other; the other tenants the person administers are not asked |
 | `DELETE …/accounts/{username}/sessions` | end every session of the account, at once; tokens are not affected |
 
 </details>
@@ -846,14 +850,17 @@ every error body carries one of these as `code`.
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
+| `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider, or its provider is not declared inside the installation's trust boundary and the tenant's administrators have not allowed it; `GET …/chat` says which (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
 | `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |
 | `unsupported_media_type` | 415 | The body's type is not one the route accepts |
 | `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
 | `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
 | `too_many_attempts` | 429 | More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
+| `chat_busy` | 429 | The person has as many turns of the chat running as COWORK_CHAT_TURNS_PER_PERSON allows on this replica — in another tab, say; one ends or is stopped first (docs/adr/0076) |
 | `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
-| `not_ready` | 503 | The backend cannot reach its database |
+| `chat_provider_failed` | 502 | The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076) |
+| `not_ready` | 503 | The backend cannot do the work now: it cannot reach its database, it streams no events, or it is shutting down and ends a turn of the chat |
 | `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
 | `backend_unreachable` | 502 | The frontend's proxy could not reach the backend; answered by nginx without a request id (docs/adr/0047 D6) |
 <!-- problem-codes:end -->

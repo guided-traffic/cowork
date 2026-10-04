@@ -19,7 +19,18 @@ the unit tier asserts each tool's requests against a fake API, the integration t
 tool through the MCP server against the real API and asserts its answers and the acts it
 records, and a unit test holds every operation a tool calls to the document. The tools take a
 surface: `session_start` reads the working directory and is for a terminal; a host inside the
-backend runs the others in process — which credential such a host presents is not decided.
+backend runs the others in process — ~~which credential such a host presents is not decided~~.
+
+Amended 2026-10-04 (D1: `set_urgency`, and the preconditions `from` and `version` a caller may pin),
+with the chat in the UI provisionally
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
+built the same day: sixteen tools. The host inside the backend is the chat: it presents the
+person's session marked as its agent, `chat/<model>/<conversation>`, offers the tools that take
+everything as arguments but `api`, with three of its own that open a page, and holds each to a
+policy of its own (ADR 0076 D2). A tool call of `cowork-mcp` in a working directory without a
+binding resolves the binding once before it runs (`Session.bindOnce` in
+[`tools/session.go`](../../backend/internal/tools/session.go)), so a short key works without
+`session_start` when the hook said the session is bound.
 
 ## Context
 
@@ -42,7 +53,7 @@ D2), and the agent limits hold server-side whatever tool is called (the next rec
 |---|---|---|
 | `session_start()` | reads the binding, returns the active ticket of the bound project (assigned to the person and `in-progress`) or the top candidates by score, the person's unread inbox grouped by ticket, and the activity of the bound tickets since the last session, as one Markdown block; reports binding drift and missing configuration as results | `/tenants/{slug}/projects/{KEY}`, `/me/next`, `/me/inbox`, the ticket activity routes |
 | `get_ticket(key)` | the Markdown export plus links, the prerequisite tree and the last comments | the ticket, `…/markdown`, `…/prerequisites`, `…/comments` |
-| `search(query, filters?)` | full text within the bound project, the tenant, or the person's tenants | `/tenants/{slug}/search`, `/me/search` |
+| ~~`search(query, filters?)`~~ `search(query?, filters?)` *(amended 2026-10-04)* | full text within the bound project, the tenant, or the person's tenants; without a query, a project's tickets in rank order | `/tenants/{slug}/search`, `/me/search` |
 | `file_ticket(type, title, body, severity, security, threat?, effort, parent?, links?)` | creates a ticket and returns its canonical key | `POST …/tickets` (+ links) |
 | `record_state(key, body)` | replaces the body (the current state) | `PUT …/tickets/{n}/body` |
 | `open_question(key, question, options, recommendation, asked_of?)` | creates a question entity | `POST …/questions` |
@@ -61,7 +72,10 @@ each tool calls the routes that exist — `get_ticket` and the active ticket of 
 `…/context`, `search` the ticket lists with `q`, `link` `PUT …/links/{type}/{other}` —, listed
 per tool in its `Operations`. Optional arguments beside the table's: `get_ticket` `comments`
 and `activity`; `search` `scope`, `project`, `state`, `type`, `assigned_to_me`,
-`include_terminal`; `file_ticket` `project`; `record_state` `comment`; `transition`
+`include_terminal` — and `query` itself is optional in one project, where a search without words lists
+the project's tickets in rank order, and asks for words outside one *(amended 2026-10-04: on a
+live run of the chat a model asked "which tickets are in WEB?" sent an empty query, which the
+required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; `transition`
 `block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
 candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
 is not built, and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
@@ -72,7 +86,15 @@ the explanation of an own act is the `comment` argument of `record_state`, `tran
 ~~`set_progress(key, percent)`~~ `set_progress(key, percent, stage?, note?, reason?, comment?)`
 — one of the three stages of [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
 D2 as amended, the implementation stage by default, with the note of the write that closes the
-ticket and the reason of the one that reopens it.)*
+ticket and the reason of the one that reopens it.)* *(Amended 2026-10-04: a sixteenth name,
+`set_urgency(key, urgency?, reason?, withdraw?)` — the urgency override of
+[ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3 to `now`, `release`,
+`next`, `later` or `icebox` with a reason, or its withdrawal, through `PUT` and `DELETE
+…/urgency-override` with the version read; it needs the `override-urgency` capability and gives
+"rank it to now" a tool. And three preconditions a caller may pin: `transition(…, from?)` and
+`finish_work(…, from?)` act only while the ticket is in the state named, `set_progress(…, version?)`
+only while the ticket has the version named — the chat pins what it read before the person decides
+(ADR 0076 D2); left out, the state or version read at the call.)*
 
 **D2 — ~~`answer_question` is not a tool and never will be;~~** *(amended 2026-10-01:
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and
@@ -136,4 +158,5 @@ that every route a tool uses exists in the OpenAPI document.
 - [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D1, D2, D4 — body replacement, questions, the Markdown export
 - [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6, [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D2 — the prerequisite tree, the explaining comment
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5 — the pull at session start
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the daily loop these tools serve
+- [docs/operations/claude-code.md](../operations/claude-code.md) — the daily loop these tools serve (the workflow plan once linked here is consumed, [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) D3)
+- [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) — the chat in the UI, which runs the catalogue in the backend

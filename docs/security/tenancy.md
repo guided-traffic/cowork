@@ -66,6 +66,14 @@ restricted to a tenant reads that tenant only, and one restricted to a project r
 project's bindings only ([`api/repositories.go`](../../backend/internal/api/repositories.go)
 `LookupRepository`, `TestLookingUpARepository`).
 
+**A turn of the chat stays in its tenant** on top of the boundary. Its tool calls are the person's
+requests and could reach every tenant the person belongs to; the loopback that sends them refuses
+every path outside the turn's tenant — the person's other tenants and the `/api/v1/me` routes
+included — and a search of every tenant looks through the turn's alone
+([`chat.Loopback`](../../backend/internal/chat/loopback.go); `TestTheChatStaysInItsTenant`). A
+tenant's consent to the chat's provider therefore covers what that tenant's turns send, and nothing
+of another tenant reaches the provider through them ([chat.md](chat.md#a-turn-works-in-its-tenant)).
+
 ## Two database roles
 
 | Role | Owns | Holds | Used by |
@@ -327,18 +335,21 @@ administrator's `admin`-scope token may do it too ([tokens.md](tokens.md#what-on
 The mappings and a project's access list are read by the tenant's administrators — with a token's
 `read` scope — and the member list by every member.
 
-**`409 last_admin`.** A change of a grant or of a mapping that would leave the tenant without an
-administrator who can log in — mapped or granted, active, and a local account or a person of the
-configured issuer whom the gate admitted at their last login, refresh or check — is refused and
-changes nothing, the administrator's own grant and their own mapping included (`lastAdmin`;
-`TestGrantsAndTheLastAdministrator`, `TestTheMappingEditorsOwnRole`,
-`TestTheLastAdministratorMustBeAbleToAct`). Each of these changes takes the tenant's lock first
-(`LockTenant`), so two administrators who take each other's role away at the same moment are
-decided one after the other, and the second meets `last_admin`
-(`TestTwoAdministratorsCannotRemoveEachOther`). Adding a member and the access list take no lock and
-meet no check: they take no administrator away. A derivation at a login, a refresh or a token's gate
-check is never refused ([identity-provider.md](identity-provider.md#h-29) H-29), and a deactivation
-is not held to the rule ([local-accounts.md](local-accounts.md#h-32) H-32).
+**`409 last_admin`.** A change of a grant or of a mapping, or the deactivation of a local account
+the tenant manages, that would leave the tenant without an administrator who can log in — mapped or
+granted, active, and a local account or a person of the configured issuer whom the gate admitted at
+their last login, refresh or check — is refused and changes nothing, the administrator's own grant
+and their own mapping included (`lastAdmin`; `TestGrantsAndTheLastAdministrator`,
+`TestTheMappingEditorsOwnRole`, `TestTheLastAdministratorMustBeAbleToAct`,
+`TestADeactivationLeavesTheTenantAnAdministrator`). Each of these changes takes the tenant's lock
+first (`LockTenant`), so two administrators who take each other's role away — or deactivate each
+other's account — at the same moment are decided one after the other, and the second meets
+`last_admin` (`TestTwoAdministratorsCannotRemoveEachOther`,
+`TestTwoAdministratorsCannotDeactivateEachOther`). Adding a member and the access list take no lock
+and meet no check: they take no administrator away. A derivation at a login, a refresh or a token's
+gate check is never refused ([identity-provider.md](identity-provider.md#h-29) H-29), and a
+deactivation is held to the rule in the tenant that manages the account and in no other
+([local-accounts.md](local-accounts.md#h-32) H-32).
 
 **Every change is recorded** — a grant, a mapping, a restriction and an access entry by the
 administrator; the memberships a mapping's change derives by `system:identity-provider` with the
@@ -396,6 +407,11 @@ predicate (ADR 0065 D1).
 - **Assignment admits** (ADR 0065 D9): a person who can see the ticket's project sees a
   confidential ticket from the moment it is assigned to them. An agent can do that too
   ([tokens.md](tokens.md) H-6).
+- **The chat reads it for a person who sees it** and sends what it read to its provider, which for a
+  provider outside the installation is a copy outside the tenant ([chat.md H-37](chat.md#h-37)). Once a
+  tool's answer held a confidential ticket, every later write of that conversation waits for the
+  person, so the model does not carry the text where people who may not read it would
+  ([chat.md](chat.md#what-waits-for-the-person)).
 
 ## The activity withholds what its reader cannot see
 

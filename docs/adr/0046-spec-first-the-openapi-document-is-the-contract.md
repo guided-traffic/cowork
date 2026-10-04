@@ -12,7 +12,9 @@ is served outside the generated server; D4: the validator leaves the security re
 the pipeline; D8: a Go test instead of `spectral`) and 2026-10-03 (D1: the families of the
 login; D6, D8: the three forms of an operation's security requirement) and 2026-10-04 (D1: the
 family `members.yaml` and the identity provider's paths; D6, D8: twelve session-only operations,
-and the one operation that takes query parameters it does not declare). `oapi-codegen`
+and the one operation that takes query parameters it does not declare), and again on 2026-10-04
+for the chat in the UI (D1: the family `chat.yaml`; D2: a turn of the chat is served outside the
+generated server like the event stream; D6, D8: thirteen session-only operations). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -51,7 +53,8 @@ paths of the login — `/auth/options`, `/auth/local`, `/auth/logout` — are ou
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5
 names them.)* *(Added 2026-10-04: `members.yaml` — the members and their grants, the group
 mappings, a project's restriction and access list — and, in `auth.yaml`, the identity provider's
-start and callback, `/auth/oidc/login` and `/auth/callback`.)*
+start and callback, `/auth/oidc/login` and `/auth/callback`.)* *(Added 2026-10-04: `chat.yaml` —
+the chat's availability and a turn, `/tenants/{tenant}/chat`, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md).)*
 
 **D2 — `oapi-codegen` generates the Go server interface and the Go client.** Handlers
 implement the generated strict server interface; the MCP server and the integration tests use
@@ -59,7 +62,11 @@ the generated client. `make generate` runs it beside `sqlc` ([ADR 0027](0027-dat
 D1), and the same CI job fails on a diff. *(Added 2026-10-02: the event stream of
 [ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
 is documented but excluded from the generated server and served by a handler of its own,
-after the same authentication, tenant boundary and request validation.)*
+after the same authentication, tenant boundary and request validation.)* *(Added 2026-10-04: so
+is a turn of the chat, `runChatTurn`, which answers a stream as well — after the same steps and the
+body limit; `exclude-operation-ids` names both in
+[`api/oapi-codegen.yaml`](../../backend/api/oapi-codegen.yaml), and `skip-prune` keeps the models
+of the turn's body and its events, which only the document's components name.)*
 
 **D3 — The Angular client is generated from the same document** into
 `frontend/src/app/api/`, by `ng-openapi-gen` or an equivalent that emits typed services; it
@@ -88,8 +95,8 @@ function), request and response examples, and its error responses declared throu
 `components/responses`. Security schemes `sessionCookie` and `bearerToken` are declared and
 applied per operation, so the document says which routes a token may call. *(Built 2026-10-03:
 an operation has one of three forms — both schemes, which is the default; `sessionCookie` alone,
-for the ~~six~~ routes a token must not call *(amended 2026-10-04: twelve —
-[ADR 0035](0035-personal-access-tokens.md) D5)*; or none, for the public ones — and the pipeline reads
+for the ~~six~~ routes a token must not call *(amended 2026-10-04: ~~twelve~~ thirteen, a turn of
+the chat among them — [ADR 0035](0035-personal-access-tokens.md) D5)*; or none, for the public ones — and the pipeline reads
 the credentials an operation takes from its own requirement. A public write carries the
 extension `x-cowork-origin-check: true`, which makes the pipeline hold it to the origin check of
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5.)*
@@ -109,7 +116,7 @@ document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) 
 `operationId`, the bearer requirement (or an explicit empty one on the public operations), the
 problem response and a tag on every operation. *(Amended 2026-10-03: the requirement is either
 credential, the session cookie alone for exactly the ~~six~~ session-only operations *(amended
-2026-10-04: twelve)*, or an explicit empty one on the public operations, which as writes also carry
+2026-10-04: ~~twelve~~ thirteen)*, or an explicit empty one on the public operations, which as writes also carry
 `x-cowork-origin-check`.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
 callback alone.)*
 

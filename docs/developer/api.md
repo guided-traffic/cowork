@@ -27,6 +27,7 @@ into the file of its path family.
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
+| [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose ([chat.md](chat.md)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
@@ -41,7 +42,9 @@ into the file of its path family.
    writes [`internal/api/apigen/api.gen.go`](../../backend/internal/api/apigen/api.gen.go): the
    models, the strict server interface on `net/http`'s mux, and the Go client the integration
    tests use. Nullable fields are `nullable.Nullable[T]`; every enum constant carries its type's
-   name (`EffortS`); `streamEvents` is excluded.
+   name (`EffortS`); `streamEvents` and `runChatTurn` are excluded, and `skip-prune` keeps the
+   models only their bodies and events name — the turn's body and the data of its events, which
+   `chat.go` reads and writes.
 4. `sqlc generate` (the data layer, [data-access.md](data-access.md)).
 
 The generated files are committed and never edited; `make generate-check` fails CI on a diff or
@@ -73,10 +76,11 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
    keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
-   **For a request authenticated by a session** two more rules run here, before the tenant
-   boundary: **the CSRF check** on an unsafe method (`403 csrf`), and the gate of a temporary
-   password (`403 password_change_required` for everything but `getMe`, `changeMyPassword` and
-   `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
+   **For a request authenticated by a session** three more rules run here, before the tenant
+   boundary: **the CSRF check** on an unsafe method (`403 csrf`); a session the agent header marks
+   is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
+   temporary password (`403 password_change_required` for everything but `getMe`,
+   `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
 5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
    context.
 6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
@@ -101,7 +105,9 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
 10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,
     `serveValidated` holds the response to the document as well ([testing.md](testing.md)); it
     reads the whole body before the handler runs, so a test of the body's timing switches it
-    off.
+    off. `runChatTurn` goes to `serveChat` instead, on the context from before step 7: the
+    timeout bounded reading its body, and the turn has limits of its own
+    ([chat.md](chat.md#a-turn)).
 
 A handler returns a `*problem.Error` or an error; `writeError` answers a problem as it is,
 `store.ErrNotFound` as `404`, `store.ErrIdempotencyMismatch` as `422 idempotency_mismatch`, a
@@ -114,14 +120,17 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-twelve session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+thirteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
-`createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`) declare
-`sessionCookie` alone, the seven public ones declare nothing — and `authenticate` decides. What they
-make — a token, a tenant, an account, a password only its setter knows, a role, a mapping, a way into
-a restricted project — would outlive the revocation of a leaked token, which is why a token cannot
-call them ([ADR 0033] D1, D5, [ADR 0035] D5; the rule is
-[tokens.md](../security/tokens.md#what-only-a-session-does)):
+`createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
+`runChatTurn`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
+its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
+of a leaked token, which is why a token cannot call them; a turn of the chat acts with the person's
+session, and a token's agent has the MCP server ([ADR 0033] D1, D5, [ADR 0035] D5; the rule is
+[tokens.md](../security/tokens.md#what-only-a-session-does)). One field is held the same way inside
+`updateTenant`: switching `chat_external_allowed` on takes a session (`consentRules` in
+[`tenants.go`](../../backend/internal/api/tenants.go)):
 
 - **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
   cookie is not looked at. A valid token on a session-only operation is `403 session_required`
@@ -150,16 +159,19 @@ call them ([ADR 0033] D1, D5, [ADR 0035] D5; the rule is
   its idle clock at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure
   is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
-  session has no scope, the role decides — no agent mark, `GlobalAdmin` and
+  session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
   is how the session policies find the row; no audit row ever carries it.
 - `X-Cowork-Agent: name/model/session` — three parts of 1 to 64 printable ASCII characters
   without a leading or trailing space; a malformed header is `400` on `header:X-Cowork-Agent`,
-  never ignored. It belongs to a token's request: `auth.Mark` decides the agent mark: a token
-  with the agent flag is an agent's with or without the header (recorded as the header or
-  `unknown-agent`) and holds the token's capabilities; a plain token with the header is an
-  agent's holding every capability; a plain token without it is the person ([ADR 0036],
-  [ADR 0043] D4). A session is never an agent's.
+  never ignored. `auth.Mark` decides the agent mark: a token with the agent flag is an agent's
+  with or without the header (recorded as the header or `unknown-agent`) and holds the token's
+  capabilities; a plain token with the header is an agent's holding every capability; a plain
+  token without it is the person ([ADR 0036], [ADR 0043] D4). A session is read the same way as a
+  plain token: with the header its request is an agent's holding every capability, which
+  `sessionRules` then refuses what only a session does — the chat in the UI marks its tool calls so,
+  `chat/<model>/<conversation>` ([chat.md](chat.md#the-loopback)); without it the session is the
+  person.
 - The token's `last_used_on` is written at most once per UTC day (a process-local note, then
   the column), outside `Mutate`, and a failure never fails the request.
 
@@ -262,9 +274,10 @@ override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
 (`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
 and the writes of [`members.go`](../../backend/internal/api/members.go) use `administer`, the
-member list `read`; a change of a grant or a mapping that would leave the tenant without an
-administrator who can log in is `409 last_admin` (`lastAdmin`, checked in the transaction after the
-change, which took the tenant's lock first);
+member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
+`409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
+tenant's lock first);
 creating a tenant (`CreateTenant`) needs `Principal.GlobalAdmin` and a session, which the pipeline
 has already settled. A session passes every scope check: its scope is `admin`. Rules about *whose* entity it is —
 the asker, the author, the person asked — are checked after `Authorize`, in the handler.
@@ -302,7 +315,9 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
   replay comes back as `*store.Result`, decoded
   with `replayed[T]` and `header`. The same key with another request is
-  `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours.
+  `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
+  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  from the conversation and the call, so a decision sent twice replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
 transition carries its `from` state instead; a key sent with it is recorded on the act, not
@@ -394,6 +409,11 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 - **The event stream** is no response a handler returns: oapi-codegen excludes `streamEvents`,
   and the pipeline calls `serveEvents` in [`events.go`](../../backend/internal/api/events.go)
   ([events.md](events.md)).
+- **A turn of the chat** is a `POST` answered with `text/event-stream` once it has begun: oapi-codegen
+  excludes `runChatTurn` as well, and `serveOperation` calls `serveChat` in
+  [`chat.go`](../../backend/internal/api/chat.go) after the body limit and the validation; a failure
+  after the stream began is its `error` event, a problem body from `problem.BodyOf`
+  ([chat.md](chat.md#a-turn)).
 
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md

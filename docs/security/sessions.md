@@ -107,23 +107,35 @@ session of the local login has no groups and no refresh.
 A session acts as its person with no agent flag and with the person's whole role: it has no
 scope of its own, which the pipeline writes as the scope `admin`, the one that leaves every
 decision to the person's role in the tenant ([ADR 0035](../adr/0035-personal-access-tokens.md)
-D3, [tokens.md](tokens.md)). No agent rule applies to it: the session path does not read
-`X-Cowork-Agent`, so nothing in a session's request marks an agent
-([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D6).
+D3, [tokens.md](tokens.md)). No agent rule applies to it — unless its request carries
+`X-Cowork-Agent`: the header marks that request as an agent's, with every capability and every
+agent rule, and only narrows it; a malformed one is `400`
+([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/internal/api/session.go)).
+The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
+person's.
 
-- **Twelve routes take a session only** and answer a token `403 session_required`
+- **Thirteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
   password (`PUT …/accounts/{username}/password`), changing one's own password
-  (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), and the six administration acts
+  (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
   that can give access — adding a member, setting a grant, making or changing a group mapping,
-  restricting or opening a project, putting a person on a project's access list. What they make
-  would outlive the revocation of a leaked token; the table and the rule are
-  [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these twelve
-  ([`backend/api/document_test.go`](../../backend/api/document_test.go)). Every other operation
+  restricting or opening a project, putting a person on a project's access list — and a turn of the
+  chat (`POST …/chat`). What the first twelve make would outlive the revocation of a leaked token,
+  and a turn acts with the person's session; the table and the rule are
+  [tokens.md](tokens.md#what-only-a-session-does), where switching a tenant's consent to the chat's
+  provider outside on is the one field held the same way. The API document declares them with
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these thirteen
+  ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
+  agent header marks is refused all thirteen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential.
+- **A turn of the chat presents the session again with every tool call.** Each call is a request of
+  its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is
+  authenticated anew, moves the idle clock like any request and may run the groups refresh, and a
+  session that ends while a turn runs refuses the turn's next call, which the model reads as a
+  failed call.
 - **A temporary password gates the session.** While the account's password is one an
   administrator set, the session may read `GET /api/v1/me`, change the password and log out;
   every other route is `403 password_change_required`

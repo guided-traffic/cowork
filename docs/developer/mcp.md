@@ -29,16 +29,17 @@ cmd/cowork-mcp ──► internal/mcpcli ──┬──► internal/mcpserver �
 ```
 
 `internal/tools` is the catalogue and everything a tool needs; it imports no MCP package and
-holds no global state, so another host — a chat inside the backend, say — runs the same tools
-with its own API client, memory and working directory. `internal/mcpserver` binds the
+holds no global state, so another host runs the same tools with its own API client, memory and
+working directory — the chat in the UI does, inside the backend
+([another host](#another-host-for-the-catalogue)). `internal/mcpserver` binds the
 catalogue to the MCP SDK; `internal/mcpcli` is the command line. The binary depends on nothing
 of the server: `TestTheBinaryIsAClientOnly` fails when it comes to import the store, the
 database driver, the object storage client or the API's handlers.
 
 | Package, file | Responsibility |
 |---|---|
-| [`tools/tools.go`](../../backend/internal/tools/tools.go) | `Tool` (name, description, surface, operations, schema, run), `define[In]` — the schema inferred from the input type —, `Catalogue(surfaces…)`, `Operations`, `Call` (validation, then the run, every failure a `Result` with `IsError`) |
-| [`tools/session.go`](../../backend/internal/tools/session.go) | `Session` — the API client, the installation, `Memory`, `Workspace`, the clock and the key maker —, `Binding`, `Token` with `Can`, `ReadToken`, `AgentHeader`, `Editor` (bearer token, agent header, user agent) |
+| [`tools/tools.go`](../../backend/internal/tools/tools.go) | `Tool` (name, description, surface, operations, schema, run), `define[In]` — the schema inferred from the input type — and `Define`, the same for a host's own tools, `Catalogue(surfaces…)`, `Operations`, `Valid`, `Call` (validation, the binding resolved once, then the run, every failure a `Result` with `IsError`), `Usage` |
+| [`tools/session.go`](../../backend/internal/tools/session.go) | `Session` — the API client, the installation, `Memory`, `Workspace`, the clock and the key maker, the `Person` and the `Tenants` a host may name —, `Binding` with `Bind`, `BindTenant` and `bindOnce`, `Token` with `Can`, `ReadToken`, `Assume`, `Me`, `AgentHeader`, `Editor` (bearer token, agent header, user agent) |
 | [`tools/client.go`](../../backend/internal/tools/client.go) | `check` and `APIError` (the API's problem, rendered with its code and the refusal note), `Retrying` (a transport failure retried where a repetition cannot act twice), `HandlerDoer` (a request served by an `http.Handler` in the same process) |
 | [`tools/binding.go`](../../backend/internal/tools/binding.go) | `Resolve`: the binding file, the remotes, the lookup, the drift, the session's binding |
 | [`tools/start.go`](../../backend/internal/tools/start.go) | `Start`, the procedure of `session_start` and the SessionStart hook: the unbound block with the proposal, or the bound block — the active ticket's context or the candidates, what happened since — within `MaxBlock` |
@@ -47,7 +48,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` (one file per installation and binding under the user's cache directory) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
-| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search, file_ticket, record_state, comment, link, watch), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
+| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search, file_ticket, record_state, comment, link, watch, set_urgency), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
 | [`mcpserver/server.go`](../../backend/internal/mcpserver/server.go) | `New(Options)`: the server, its `Instructions`, each tool with its schema, its described limits and its annotations; a handler that learns the client's name, asks `Ready` and runs the tool |
 | [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup` |
 | [`cmd/cowork-mcp/main.go`](../../backend/cmd/cowork-mcp/main.go) | The linker's variables, the signal context, standard input for a hook when it is not a terminal |
@@ -83,9 +84,12 @@ func watchTool() Tool {
   with the API's code, its message, the fields it named and — for `agent_forbidden` — that a
   refusal is the API's no; `usage` is a call the tool refuses itself, a key it cannot resolve; a
   `textError` (the `api` tool) is the answer as it is.
-- **A creating `POST`** sends `IdempotencyKey: s.key()`, a fresh UUIDv7 per act; a write that
-  overwrites reads the ticket first and sends its `ETag` in `If-Match`; a transition sends the
-  state it read as `from`. Nothing is retried on an answer.
+- **A creating `POST`** sends `IdempotencyKey: s.key()`, from the session's `NewKey` — a fresh
+  UUIDv7 per act in `cowork-mcp`, a key derived from the conversation and the call in the chat; a
+  write that overwrites reads the ticket first and sends its `ETag` in `If-Match`; a transition sends
+  the state it read as `from`. A caller may pin what it read before: `transition` and `finish_work`
+  take `from`, `set_progress` takes `version`, and the call is refused — or does nothing — when the
+  ticket has moved on since (`TestPreconditionsTheCallerRead`). Nothing is retried on an answer.
 - **`Operations`** lists every `operationId` the run calls. The start-up check refuses an
   installation whose document lacks one, and `TestEveryOperationOfAToolIsInTheDocument` holds
   them to this repository's document (ADR 0042 D6).
@@ -98,7 +102,10 @@ func watchTool() Tool {
 
 Short keys, `COW-12`, resolve against the session's binding; without one the tool asks for the
 full key. A host that knows the binding — a page that shows a project — sets it with
-`Session.Bind`.
+`Session.Bind`, or `Session.BindTenant` for a tenant without a project. A session that runs in a
+working directory and has no binding resolves it once, before its first tool call (`bindOnce` in
+`Call`), so a short key works without `session_start` once the SessionStart hook said the session is
+bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not tried again.
 
 ## The session start, the binding and the reminder
 
@@ -157,13 +164,18 @@ permission of its own.
 
 ## Another host for the catalogue
 
-A host inside the backend runs the same tools in process: the generated client over
-`tools.HandlerDoer{Handler: <the API handler>}`, so every call runs the whole pipeline —
-authentication, the boundary, validation, the agent rules — and a request editor that sets the
-caller's credential and its agent header; `tools.Catalogue(tools.Anywhere)`; `Session.Bind` for
-the page's project; `InMemory` or no memory. Which credential such a host presents, and whether
-its calls are an agent's, is an open decision; the API decides today that a browser session is
-never an agent's.
+The chat in the UI runs the same tools inside the backend
+([chat.md](chat.md), [ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)):
+the generated client over its loopback, which sends each call to the server's own handler through
+`tools.HandlerDoer`, so every call runs the whole pipeline — authentication, the CSRF check, the
+boundary, validation, the agent rules, the audit — with a request editor that sets the person's
+session cookie and the chat's agent header, `chat/<model>/<conversation>`. It takes
+`tools.Catalogue(tools.Anywhere)` without `api`, adds three page tools of its own through
+`tools.Define`, and offers each only under a policy of its own that may hold the call for the
+person; `Session.Bind` or `BindTenant` for the page; no memory; `Assume` instead of `ReadToken`, the
+mark and every capability being known; `Person` for `open_question`'s `me`; `Tenants` to keep a
+search of every tenant in the turn's. A tool added to the catalogue is not offered by the chat until
+its policy says how ([chat.md](chat.md#adding-a-tool-to-the-chat)).
 
 ## Adding a tool
 
@@ -179,5 +191,8 @@ never an agent's.
    refusal of the API surfacing as an error with its code.
 5. A step in [`test/integration/mcp_test.go`](../../backend/test/integration/mcp_test.go) that
    runs it through the server against the real API.
-6. The tool's row in [README.md, CLI (cowork-mcp)](../../README.md#cli-cowork-mcp), and ADR 0042's
+6. The tool's policy in the chat — `policies` in
+   [`chat/confirm.go`](../../backend/internal/chat/confirm.go), or `TestEveryToolIsClassified` fails —
+   as [chat.md](chat.md#adding-a-tool-to-the-chat) says.
+7. The tool's row in [README.md, CLI (cowork-mcp)](../../README.md#cli-cowork-mcp), and ADR 0042's
    status.

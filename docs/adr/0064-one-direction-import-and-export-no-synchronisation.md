@@ -7,7 +7,8 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 mirror written by cowork, and over an MCP convenience tool for the export. The rules of D4–D5
 were put to the owner with the question and not objected to.
 
-**Not built.** No importer, no exporter.
+**Not built.** No importer, no exporter. Amended 2026-10-04 (D4: the workflow plan that was to
+carry the sentence beside the operations page is consumed).
 
 ## Context
 
@@ -40,8 +41,11 @@ conflict; execution refuses while any conflict remains. The importer updates not
 ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3's
 atomicity stays simple).
 
-**D4 — The documentation says the sentence.** The operations page and the workflow plan
-state: after the import, cowork is the source; the files in the repository are history or
+**D4 — The documentation says the sentence.** The operations page ~~and the workflow plan~~
+*(amended 2026-10-04: the workflow plan is consumed and deleted —
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D3 — and its copy of the sentence with it; the operations page of the import carries it when the
+import is built)* state: after the import, cowork is the source; the files in the repository are history or
 are removed — the repository decides. This repository's own `docs/tickets/README.md` carries
 that note from the day its tickets are imported (phase 6, this repository first).
 
@@ -82,4 +86,4 @@ amendment if sessions do it often.
 - [ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) — what the importer handles
 - [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D2 — the scheduled export outside cowork
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5 — nothing leaves cowork on its own
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the cut-over stages
+- [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6, which holds the cut-over stages the workflow plan had

@@ -10,7 +10,8 @@ cowork/
 │   ├── api/                    # the API document, the contract (package apispec)
 │   │   ├── openapi.yaml        # the root: info, security, paths → one file per path family
 │   │   ├── meta.yaml, auth.yaml, me.yaml, tenants.yaml, accounts.yaml, members.yaml, tickets.yaml,
-│   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml, repositories.yaml
+│   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml, repositories.yaml,
+│   │   │   chat.yaml
 │   │   ├── cowork-yaml.schema.json  # the schema of a repository's .cowork.yaml, served
 │   │   ├── components/         # schemas, parameters, responses, headers; problem-codes.yaml (generated)
 │   │   ├── oapi-codegen.yaml   # the generator's configuration
@@ -23,10 +24,12 @@ cowork/
 │   │   │   └── apigen/         # oapi-codegen output: server interface, models, client (generated)
 │   │   ├── auth/               # tokens, sessions, passwords, the principal and agent mark, authorization, sealing
 │   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
+│   │   ├── chat/               # the chat in the UI: a turn's loop, the tool policies, the loopback, the page tools
 │   │   ├── config/             # COWORK_* environment variables → Config
 │   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
 │   │   ├── httpserver/         # health, request id, request log, recovery, server lifecycle
+│   │   ├── llm/                # the chat's gateway: OpenAI Chat Completions and Anthropic Messages, streaming
 │   │   ├── markdown/           # the Markdown export, grammar v1, and the context document
 │   │   │   └── testdata/       # golden files
 │   │   ├── mcpcli/             # cowork-mcp's command line: serve, the hooks, token check, lookup
@@ -45,6 +48,7 @@ cowork/
 │   │   ├── fixture/            # rows written past row-level security, for tests and dev-seed
 │   │   ├── devseed/            # make dev-seed
 │   │   ├── fakeissuer/         # an OpenID Connect issuer in the test's process, for what Dex cannot do
+│   │   ├── stubllm/            # a language model in the test's process, both wire formats, for the chat
 │   │   └── integration/        # build tag `integration`; needs PostgreSQL 18, an S3 server and Dex
 │   ├── tools/
 │   │   ├── problemdoc/         # writes the problem-code enum and the README table
@@ -57,7 +61,7 @@ cowork/
 │   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
 │   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
 │   ├── ng-openapi-gen.json     # the client generator's configuration
-│   ├── nginx/default.conf.template  # the container's nginx configuration, four substituted variables
+│   ├── nginx/default.conf.template  # the container's nginx configuration, four substituted variables, the shell's CSP
 │   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz; holds no credential
 │   ├── Containerfile           # node:26-alpine build → nginxinc/nginx-unprivileged
 │   └── eslint.config.js
@@ -69,10 +73,10 @@ cowork/
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions
-│   ├── operations/             # installation, runtime
+│   ├── operations/             # installation, runtime, the chat, Claude Code
 │   ├── security/               # one page per perspective
 │   ├── tickets/                # work lists (+ archive/); rules in its README
-│   └── planning/               # project plan, workflow plan, the consumed question catalog — transitional
+│   └── planning/               # the project plan and the consumed question catalog — transitional
 ├── .github/workflows/          # release.yml (Test and Release), build.yml (Release Docker & Helm), renovate.yml
 ├── Makefile                    # every target; bin/ and coverage/ land here
 ├── renovate.json, .releaserc.json, package.json (semantic-release)

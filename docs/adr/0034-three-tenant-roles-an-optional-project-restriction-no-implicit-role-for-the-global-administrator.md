@@ -7,8 +7,9 @@ reserves it to administrators) and 2026-10-04 (D1: no change leaves a tenant wit
 administrator; D3, D7: the administration built, and a restricted project's entries on its own
 access list, not in the member list), and again on 2026-10-04 after the security review (D1: only
 an administrator who can log in counts, and the changes take the tenant's lock; D3: a trigger holds
-the restriction to the tenant's administrators; D7: the address shown to administrators only).
-Date: 2026-10-01. Decided by the owner as the answer to the
+the restriction to the tenant's administrators; D7: the address shown to administrators only),
+and a third time on 2026-10-04 (D1: the deactivation of a local account is held to the rule in the
+tenant that manages the account). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "roles?": three tenant roles with an optional per-project restriction, over tenant roles
 alone, over a configurable permission matrix, and over an additional project-lead role. The
 rules of D6–D8 were put to the owner with the question and not objected to. D9 is the
@@ -44,7 +45,9 @@ a project's restriction and its access list — in
 announced as `membership.changed`; the writes of the restriction's list held to the tenant's
 administrators in the data layer by restrictive policies
 ([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql));
-D1's refusal to leave a tenant without an administrator (`409 last_admin`). The members of the
+D1's refusal to leave a tenant without an administrator (`409 last_admin`), and — built the same
+day — the deactivation of a local account held to it in the managing tenant under that tenant's
+lock ([`api/accounts.go`](../../backend/internal/api/accounts.go) `DeactivateAccount`). The members of the
 identity provider's administrator group are global administrators too (ADR 0030 D1). Still not
 built: D2's parts named above.
 
@@ -82,8 +85,16 @@ login, a refresh or a token's gate check is the issuer's word and is not refused
 security review, 2026-10-04: only a person who can log in counts — active, and a local account or a
 person of the configured issuer whom the gate admitted at their last login, refresh or check — and
 each such change takes the tenant's lock before any person's, so two administrators who take each
-other's role away at once are decided one after the other. Not held to the rule: the deactivation of
-a local account ([docs/security/local-accounts.md](../security/local-accounts.md) H-32).)*
+other's role away at once are decided one after the other. ~~Not held to the rule: the deactivation of
+a local account ([docs/security/local-accounts.md](../security/local-accounts.md) H-32).~~)*
+*(Amended 2026-10-04: the deactivation of a local account is such a change in the tenant that
+manages the account — a deactivated person is no administrator who can log in. It takes that
+tenant's lock first and is refused with `409 last_admin`, changing nothing, when no administrator
+who can log in would remain, so two administrators who deactivate each other's accounts at once are
+decided one after the other. The other tenants in which the person holds `admin` are not asked: the
+deactivation runs in the managing tenant's transaction, and row-level security keeps their rows out
+of it ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D3, D8;
+[docs/security/local-accounts.md](../security/local-accounts.md) H-32).)*
 
 **D2 — The global administrator has no implicit role in any tenant.** A global administrator
 creates and deletes tenants, reads installation-level audit rows and the allow-list, and in
@@ -180,6 +191,11 @@ D4). Archiving, restricting and deleting a project stay administration acts.
 - D5's default hides time from members; a tenant that is one team flips the setting once.
 - `viewer` with `watch` only (D1) may be too thin or too generous; the first client tenant
   will tell.
+- *(Added 2026-10-04.)* D1 holds a deactivation to the managing tenant alone. A local account
+  that another tenant manages and that is a tenant's only administrator who can log in is
+  deactivated without that tenant being asked, and leaves it without one
+  ([docs/security/local-accounts.md](../security/local-accounts.md) H-32); D2's self-grant, which
+  would recover such a tenant, is not built.
 
 ## References
 

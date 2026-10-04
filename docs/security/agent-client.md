@@ -18,6 +18,12 @@ fails when it comes to depend on the store, the database driver, the object stor
 the API's handlers. Every act it performs is an API request with its token, judged by the
 API's rules; a person with the same token and `curl` can do exactly as much (ADR 0040 D3).
 
+The same tool catalogue has a second host: the chat in the UI runs it inside the backend, with the
+person's browser session marked as its agent instead of a token, without the `api` escape hatch and
+`session_start`, and with a policy per tool that holds some acts for the person's decision. What that
+host holds, sends and leaves open is [chat.md](chat.md); this page is the client on the person's
+machine.
+
 **Every request is marked as an agent's.** The client sends `X-Cowork-Agent:
 <client>/<model>/<session>` on every request
 ([`tools.Editor`](../../backend/internal/tools/session.go)): the name is the MCP client's own
@@ -118,8 +124,8 @@ revocation on the token page when a machine is in doubt.
 Live by design. Anyone who may write a ticket, a comment or an answer that a person's session
 reads can write instructions into it; a model may follow them. Quoting and the instructions make
 that less likely, not impossible. What follows is bounded by the token and nothing else: a
-"full" agent token closes tickets in progress, decides, ranks, creates projects, binds and
-unbinds repositories, records answers, and the `api` tool reaches every route the token reaches,
+"full" agent token closes tickets in progress, decides, ranks, overrides urgencies, creates
+projects, binds and unbinds repositories, records answers, and the `api` tool reaches every route the token reaches,
 within the agent rules; the open acts of [tokens.md](tokens.md) H-6 are open to it too. Every act
 is recorded with the agent mark. Mitigation: "assisted" tokens where another person writes into
 the same projects, restricted tokens, and the timeline.

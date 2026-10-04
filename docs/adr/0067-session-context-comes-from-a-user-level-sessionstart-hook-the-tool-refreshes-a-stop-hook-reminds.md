@@ -108,4 +108,4 @@ five candidates, twenty inbox lines, one proposal; a session that wants more cal
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md), [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md) D3 — the procedure the hook runs
 - [ADR 0041](0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md) D3, D4 — the binary, its configuration and working directory
 - [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md) — the `/context` document in the block
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the daily loop
+- [docs/operations/claude-code.md](../operations/claude-code.md) — the daily loop as built (the workflow plan once linked here is consumed, [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) D3)

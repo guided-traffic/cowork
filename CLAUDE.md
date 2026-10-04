@@ -3,10 +3,13 @@
 Repo: https://github.com/guided-traffic/cowork — a multi-tenant backlog and kanban board for
 one person working across many projects with an LLM as co-worker. Two containers: a Go
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
-(`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart.
-**Status: phase 2 (core domain and API) is released as `0.1.0`; phase 3 (UI v1) is in
-progress** — its work lists are in [docs/tickets/](docs/tickets/README.md). Every founding
-decision is an ADR, and what comes after is [the project plan](docs/planning/project-plan.md).
+(`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart; and a third
+binary, `cowork-mcp`, on a person's machine for Claude Code.
+**Status: phase 3 (UI v1) is in progress, its first part released as `0.2.0`; phases 4 (the
+identity provider) and 5 (`cowork-mcp` and the chat in the UI) are built on this branch, on
+decisions the owner reviews before the release** — the work lists are in
+[docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and what comes after
+is [the project plan](docs/planning/project-plan.md).
 
 ## Language policy
 
@@ -27,7 +30,7 @@ A statement has exactly one home
 | Work still outstanding | a [ticket](docs/tickets/README.md), archived when the work lands |
 | The reference tables (configuration, CLI, API, Helm values) | [README.md](README.md) and nowhere else |
 | An open decision | the `## Open questions` section of a [ticket](docs/tickets/README.md) |
-| The plan, the workflow plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
+| The plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
 
 **Read the page for a subsystem before you change it, and update it in the same change.**
 
@@ -75,14 +78,16 @@ unanswered question.
   `dev-only-cowork`, and the dev proxy holds no credential. The container is
   `nginxinc/nginx-unprivileged` with [`frontend/nginx/default.conf.template`](frontend/nginx/default.conf.template):
   `/healthz` itself, `/api/` and `/auth/` proxied to `BACKEND_URL`, hashed bundles immutable, everything
-  else `index.html` with `no-store`. `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
+  else `index.html` with `no-store`, and the shell's `Content-Security-Policy` on all it serves of
+  the UI (every source `'self'`; `'unsafe-inline'` for styles only). `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
   `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT` are the only substituted
   variables (the chart sizes the last two from the backend's limits); the backend is resolved
   per request, so the frontend starts before it.
 - Both toolchains track the newest stable release (ADR 0001 D9); TypeScript stays in
   Angular's peer range. Do not pin back.
 - Backend configuration is `COWORK_*` environment variables only
-  ([`backend/internal/config`](backend/internal/config/config.go)).
+  ([`backend/internal/config`](backend/internal/config/config.go)); the chat's provider is
+  `COWORK_CHAT_*`, never a request's.
 - Migrations: `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n`
   without a gap, **no down files**; a unit test enforces it. A migration never drops, renames
   or narrows what the previous release reads (expand before contract, ADR 0028). They run as
@@ -91,20 +96,28 @@ unanswered question.
   schema or pending migrations.
 - The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*` (with
   `database.owner.*`), `session.*`, `storage.*`, `localAdmin.*`, `bootstrap.*`, `auth.*`,
-  `ingress.*` (targets the frontend Service). The runtime and the owner URL each come from an
+  `chat.*`, `ingress.*` (targets the frontend Service). The runtime and the owner URL each come from an
   `existingSecret` (preferred) or a `url` (throw-away only, plain text in the release); the owner
-  URL reaches only the `migrate` init container; the session key and the storage key come from
-  Secrets only, the local administrator's password from an `existingSecret` (preferred) or
-  inline values with the same warning as `database.url`.
+  URL reaches only the `migrate` init container; the session key, the storage key, the identity
+  provider's client secret and the chat's API key come from Secrets only, the local
+  administrator's password from an `existingSecret` (preferred) or inline values with the same
+  warning as `database.url`.
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
-  `X-Requested-With: cowork`; token creation, password changes, tenant creation, and creating or
-  resetting a local account are session-only — a token gets `403` (ADR 0031–0033, 0035, 0037).
+  `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating or
+  resetting a local account, the acts that give access and a turn of the chat are session-only —
+  a token gets `403` (ADR 0031–0033, 0035, 0037).
 - `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
   `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
   generated client and nothing else — it imports no store and no API handler, and a unit test
   holds that (ADR 0040). `make build-mcp`; the Claude Code plugin is `claude/cowork/`. How it is
   built: [docs/developer/mcp.md](docs/developer/mcp.md).
+- The chat in the UI (ADR 0076, provisional): `POST /api/v1/tenants/{tenant}/chat`, a session only,
+  streams a turn; the loop (`internal/chat`) calls the configured model through `internal/llm`
+  (OpenAI Chat Completions or Anthropic Messages) and runs the same `internal/tools` catalogue
+  in-process through the server's own handler as the person's agent, `chat/<model>/<conversation>`.
+  The integration tier talks to `test/stubllm`, never to a real model. How it is built:
+  [docs/developer/chat.md](docs/developer/chat.md).
 
 ## Testing
 

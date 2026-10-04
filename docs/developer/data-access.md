@@ -261,7 +261,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
-| `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
+| `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
 The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
 ([`jobs.go`](../../backend/internal/store/jobs.go)). The check that follows a lock is a new
@@ -269,7 +269,9 @@ statement and sees every write committed before the lock was granted, so two con
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
 never meets it. A transaction that takes a tenant's lock and persons' locks takes the tenant's first
 and the persons' in the order of their ids; none takes a tenant's lock after a person's, so the two
-cannot deadlock. Two orderings are row locks, not advisory: the `ticket_counters` row and the
+cannot deadlock. A transaction takes the lock of its own tenant and of no other, so the tenants'
+locks need no order among themselves. Two orderings are row locks, not advisory: the
+`ticket_counters` row and the
 tenant row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
 project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
 and a return from done or dropped — a reopen, a withdrawal of a done by hand, a lower stage that

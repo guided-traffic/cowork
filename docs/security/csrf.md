@@ -1,7 +1,7 @@
 # Cross-site writes: the CSRF check
 
 What keeps another site from writing with a person's session, what is checked and what is
-not, and what the check depends on, as built on 2026-10-03. The session it protects is
+not, and what the check depends on, as built on 2026-10-04. The session it protects is
 [sessions.md](sessions.md); how a request is authenticated at all is
 [trust-boundaries.md](trust-boundaries.md).
 
@@ -39,6 +39,7 @@ runs it through the whole server and asserts that a refused write changed nothin
 | `POST /auth/local` | the origin half only | no session yet carries the check, so the `Origin` or `Referer` must still be `COWORK_BASE_URL` — a cross-site login attempt is refused (D5); the custom header is not required, because the login is public and not a write of a session |
 | `GET /auth/oidc/login`, `GET /auth/callback` | no | the identity provider's browser navigations, which carry no session (D5): the callback makes one only when the `state` the issuer returns is the one sealed in the browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set, so a page of another site cannot log a person in as someone else — a link to the start logs a person in as themselves at most ([identity-provider.md](identity-provider.md#the-login)) |
 | `POST /auth/logout` | both halves | a page must not be able to log a person out (D5) |
+| a tool call of the chat in the UI | both halves, which the backend writes itself | the call is a request the backend makes in its own process with the person's cookie ([chat.md](chat.md)); it sets `Origin` to `COWORK_BASE_URL` and `X-Requested-With: cowork` because the turn that makes it, `POST …/chat`, passed the check as a write of the session — a page of another site cannot start a turn, and so cannot make a call |
 
 **The check fails closed.** Without a `COWORK_BASE_URL` there is no origin to compare with, so
 no write of a cookie and no login passes — `403 csrf` naming the variable; the backend refuses
@@ -62,9 +63,11 @@ its own, which would bring a synchroniser token with it.
   ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
   D3, D4); nginx passes `Origin`, `Referer` and `X-Requested-With` through untouched
   (`/auth/` and `/api/` are proxied with no header removed).
-- **The frontend's interceptor** sets `X-Requested-With: cowork` on every request
-  ([`frontend/src/app/core/http.ts`](../../frontend/src/app/core/http.ts); D4); nothing else in
-  the UI needs to know the rule.
+- **The frontend's interceptor** sets `X-Requested-With: cowork` on every request of the
+  `HttpClient` ([`frontend/src/app/core/http.ts`](../../frontend/src/app/core/http.ts); D4). The
+  chat's turn is a `fetch` — the `HttpClient` waits for a whole body, and the turn is a stream —
+  and sets the same header from the same constant (`requestedWithHeader`); the browser adds the
+  `Origin` to that `POST` itself.
 
 Not verified against any particular browser: the tests send the headers a browser sends and
 run no browser. A privacy-hardened browser that strips both `Origin` and `Referer` on
@@ -80,10 +83,13 @@ script inside the origin: an XSS in the page, or a browser extension, sets the h
 sends the cookie, and acts as the person within the page's reach. What limits that is the
 sanitiser of rendered Markdown
 ([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
-which is not built yet), the attachment delivery's `sandbox` and `nosniff`
-([attachments.md](attachments.md)), the `HttpOnly` cookie that such a script cannot carry away,
-and `PUT /api/v1/me/password` asking for the current password, which a script in the page does
-not know and which counts toward the lockout when guessed.
+which is not built yet — the UI renders no Markdown, and the chat shows a model's output as text),
+the shell's content-security policy, which runs the bundle's scripts and no other since 2026-10-04
+([trust-boundaries.md](trust-boundaries.md#the-shells-content-security-policy)), the attachment
+delivery's `sandbox` and `nosniff` ([attachments.md](attachments.md)), the `HttpOnly` cookie that
+such a script cannot carry away, and `PUT /api/v1/me/password` asking for the current password,
+which a script in the page does not know and which counts toward the lockout when guessed. A
+browser extension runs outside the page's policy.
 
 <a id="h-22"></a>
 ### H-22 — Two reads write an audit row, and a link can trigger them

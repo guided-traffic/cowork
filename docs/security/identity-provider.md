@@ -564,9 +564,10 @@ with an end-session endpoint; on a shared computer, log out at the issuer as wel
 
 Live in every tenant whose administrators hold the role through the identity provider. `409
 last_admin` holds an administrator's acts — changing or removing a grant, changing or removing a
-mapping — to leaving an administrator who can log in: active, and a local account or a person of
-the configured issuer whom the gate admitted at their last login, refresh or check
-(`TestTheLastAdministratorMustBeAbleToAct`). Nothing holds the issuer's word to it. A derivation at
+mapping, deactivating an account the tenant manages — to leaving an administrator who can log in:
+active, and a local account or a person of the configured issuer whom the gate admitted at their
+last login, refresh or check (`TestTheLastAdministratorMustBeAbleToAct`). Nothing holds the
+issuer's word to it. A derivation at
 a login, a refresh or a token's gate check is never refused: the tenant's last administrator by a
 mapping who leaves the group loses the role at their next login or refresh. A person who leaves the
 gate keeps their memberships but cannot log in, and their tenants keep no administrator who can. And
@@ -579,6 +580,7 @@ themselves into an existing tenant
 D2), and the local administrator has no role there unless given one. Recovery: put a person into the
 mapped group at the issuer — the mapping stays, so their next login makes them administrator — or
 write a grant into the database, outside the API and recorded nowhere. Mitigation: keep one
-administrator of every tenant by a grant to a local account, which neither a derivation nor the gate
-touches — and which a deactivation can still take ([local-accounts.md](local-accounts.md#h-32)
+administrator of every tenant by a grant to a local account the tenant manages itself, which neither
+a derivation nor the gate touches and whose deactivation the tenant's `last_admin` holds — an
+account another tenant manages, that tenant can still deactivate ([local-accounts.md](local-accounts.md#h-32)
 H-32).

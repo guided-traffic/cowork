@@ -9,7 +9,9 @@ are recorded at most once per token, reason and hour) and 2026-10-03 (D2: the tr
 forwarded addresses is decided; D4, D5: how creation is built, and what else only a session
 makes) and 2026-10-04 (D2: the address hash in the audit row built; D5: twelve operations take a
 session only, by one rule; D8: the gate built; D9: its refusal recorded), and again on 2026-10-04
-after the security review (D8: a person of another issuer is outside at once). Date: 2026-10-01. Decided by the owner as the answer to the
+after the security review (D8: a person of another issuer is outside at once), and for the chat
+in the UI (D5: thirteen operations, and the tenant's consent to an outside provider of the chat
+switched on in a session only). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -140,11 +142,23 @@ a leaked token's revocation, takes a session, and an act that only takes access 
 adds the administration of [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 and [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D3: adding a member, setting a grant, making or changing a group mapping, restricting or opening a
-project, putting a person on its access list — twelve operations in all, which the unit test over
-the document holds. Removing a grant, a mapping or an access entry stays open to an administrator's
+project, putting a person on its access list — ~~twelve~~ operations in all *(thirteen since the
+chat, below)*, which the unit test over the document holds. Removing a grant, a mapping or an access entry stays open to an administrator's
 `admin`-scope token, as listing, unlocking, deactivating a local account and ending its sessions
 do. A route that does both — a grant or a mapping raised or lowered, a project restricted or opened
-— takes a session for both.)*
+— takes a session for both.)* *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
+~~twelve~~ thirteen operations — a turn of the chat, `runChatTurn`, takes a session too, for a
+reason of its own: its tool calls act with the person's session, and an agent that holds a token
+has the MCP server ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)).
+Beside the thirteen, one field follows the rule: switching the tenant's `chat_external_allowed` on
+in `PATCH /api/v1/tenants/{tenant}` takes a session — the consent lets the tenant's data leave the
+installation, which outlives a leaked token's revocation — and a token that tries is
+`403 session_required`; switching it off only takes something away and stays open to an
+administrator's `admin`-scope token ([`api/tenants.go`](../../backend/internal/api/tenants.go)
+`UpdateTenant`). A session the agent header marks is refused all thirteen
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D7).)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

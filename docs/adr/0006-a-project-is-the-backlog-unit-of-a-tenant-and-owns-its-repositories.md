@@ -91,4 +91,4 @@ do not vanish with it.
 
 - [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) — the tenant a project belongs to
 - [ADR 0004](0004-cowork-is-a-team-product.md) — the people who work in a project
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the repository binding
+- [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md), [docs/operations/claude-code.md](../operations/claude-code.md) — the repository binding as built (the workflow plan once linked here is consumed, ADR 0074 D3)

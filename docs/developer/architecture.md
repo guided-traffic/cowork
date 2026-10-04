@@ -22,9 +22,12 @@ Everything described here exists; what is not built is listed at the end.
                           │   everything else → JSON 404      │──► S3-compatible storage
                           └───────────────────────────────────┘      (optional; attachments)
                                             │
-                                            └────────────────────► OpenID Connect issuer
-                                                                     (optional; discovery at start,
-                                                                      the code, the groups refresh)
+                                            ├────────────────────► OpenID Connect issuer
+                                            │                        (optional; discovery at start,
+                                            │                         the code, the groups refresh)
+                                            └────────────────────► the chat's model provider
+                                                                     (optional; every step of a turn,
+                                                                      COWORK_CHAT_URL)
 ```
 
 The frontend is the entry point and the only Service an Ingress targets; the browser sees one
@@ -34,8 +37,11 @@ schema of `.cowork.yaml` needs a personal access token or a session cookie
 ([api.md](api.md#authentication)); the login flows live at `/auth/…` beside `/api/`. During a
 login through the identity provider the browser goes to the issuer and comes back to
 `/auth/callback`; the backend itself calls the issuer at start, at a login and at a session's
-groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). The
-security architecture is [docs/security/](../security/README.md).
+groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). With a
+chat provider configured, the backend calls the model at every step of a turn of the chat in the
+UI — the browser never does — and the model's tool calls come back into the backend's own handler
+([a turn of the chat](#a-turn-of-the-chat)). The security architecture is
+[docs/security/](../security/README.md).
 
 A third program runs on a person's machine, not in the cluster: `cowork-mcp`, the MCP server
 Claude Code starts over stdio and the command its hooks run. It is a client of `/api/v1` with
@@ -80,6 +86,10 @@ the person's token, like a script — no path to the database, nothing the API d
    listener of this replica ([events.md](events.md)).
 9. `storage.New` builds the object storage client when `COWORK_S3_*` is set; without it a warning
    says uploads are refused ([storage.md](storage.md)).
+   `chatOf` builds the chat's gateway when `COWORK_CHAT_PROVIDER` is set — it contacts no provider —
+   and `api.ChatOptions` with the signal context, which ends the running turns at a shutdown, and a
+   function that returns the root handler of step 10, which the turns' tool calls go through
+   ([chat.md](chat.md)).
 10. `api.New` loads the embedded API document and builds the router and the generated server
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
     the server key the keys of the cursors, the fingerprints, the two address hashes and the two
@@ -124,10 +134,11 @@ Everything under `/api/` runs the API pipeline of
 [`internal/api/api.go`](../../backend/internal/api/api.go), `ServeHTTP`:
 
 ```
-route in the document ─► authenticate ─► session rules ─► tenant boundary ─┬─► timeout ─► body limit ─► validate ─► strict handler
-  404 / 405               401 / 403 / 400   403 csrf /      404            │                413          400 / 404
-                          (token or         password_change_required       └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
-                           session)
+route in the document ─► authenticate ─► session rules ─► tenant boundary ─┬─► timeout ─► body limit ─► validate ─┬─► strict handler
+  404 / 405               401 / 403 / 400   403 csrf /      404            │                413          400 / 404 │
+                          (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
+                           session)         password_change_required       │                                           (the turn's own limits; a stream)
+                                                                           └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
 ```
 
 Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an RFC 9457
@@ -153,6 +164,27 @@ rule](../security/local-accounts.md#the-client-address); the chain and what to s
 [installation.md](../operations/installation.md#the-client-address-and-the-trusted-proxies)). The
 chart's NetworkPolicy keeps every pod but the frontend's away from the backend, because the
 walk trusts what a trusted peer says.
+
+### A turn of the chat
+
+A turn is one request that makes more requests of the same server
+([chat.md](chat.md), [ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)):
+
+```
+POST …/chat (session) ─► the pipeline above ─► serveChat: availability · Check · chat_busy ─► 200 text/event-stream
+   ─► chat.Run, up to COWORK_CHAT_MAX_STEPS, within COWORK_CHAT_TURN_TIMEOUT, ended by a shutdown:
+        availability again ─► llm.Provider.Complete ──► the provider (text streamed out as `text`)
+        each tool call: review ─► waits? `confirm`, the turn ends
+                                └► runs: tools.Tool.Call ─► apigen client ─► chat.Loopback (the turn's tenant only)
+                                         ─► the root handler: request id ─► request log ─► recoverer ─► the pipeline
+                                            (cookie + X-Cowork-Agent: chat/<model>/<conversation> ─► an agent's request)
+                                         ─► `tool_result`
+   ─► `error` (a failure) ─► `done`: the messages the turn added
+```
+
+The outer request holds its connection, one database-free goroutine for its comments and, while the
+model writes, one connection to the provider; each tool call is a request of its own with its own
+request id, log line, transaction and audit rows, and the event streams hear its acts like any.
 
 ## The two logins
 
@@ -241,9 +273,10 @@ changes.
 | `/api/…` | `location ^~ /api/`, so no static-file rule takes an API path ending in `.png` or `.svg`: `proxy_pass` to `BACKEND_URL` resolved per request, path unchanged, `X-Forwarded-*` set, body size and read timeout from the variables above. What nginx answers itself — `413`, `502`, `503`, `504` — is a static `application/problem+json; charset=utf-8` body without `instance` or `request_id` (`502` is `backend_unreachable`); the backend's own errors pass through ([ADR 0047] D6) |
 | `/auth/…` | `location ^~ /auth/`, the same proxy and the same static problem bodies, for the login flows, the identity provider's start and callback among them; the cookies — the session's and the login's state — pass in both directions |
 | `/api/v1/tenants/<slug>/events` | a nested location: unbuffered, uncached, a one-hour read timeout ([events.md](events.md#nginx)) |
-| `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` | serves the file with `Cache-Control: no-cache`: the icons come from `public/` and keep their names across builds |
-| `*.js`, `*.css`, fonts, images | serves the file with `Cache-Control: public, max-age=31536000, immutable`; the bundle names are hashed |
-| everything else | `try_files $uri /index.html` with `Cache-Control: no-store`, so the Angular router resolves deep links and a cached shell never pins old bundle hashes |
+| `/api/v1/tenants/<slug>/chat` | no location of its own: `/api/` passes a turn's stream, unbuffered because the backend answers `X-Accel-Buffering: no`, and within the read timeout by the turn's comment every ten seconds |
+| `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` | serves the file with `Cache-Control: no-cache`: the icons come from `public/` and keep their names across builds; the shell's `Content-Security-Policy` |
+| `*.js`, `*.css`, fonts, images | serves the file with `Cache-Control: public, max-age=31536000, immutable`; the bundle names are hashed; the shell's `Content-Security-Policy` |
+| everything else | `try_files $uri /index.html` with `Cache-Control: no-store`, so the Angular router resolves deep links and a cached shell never pins old bundle hashes; the shell's `Content-Security-Policy` ([chat.md](chat.md#the-content-security-policy)) |
 
 The container runs as user 101 with a read-only root filesystem; it writes only under `/tmp`
 (pid, temp files) and `/etc/nginx/conf.d` (the rendered configuration), which the chart mounts
@@ -271,7 +304,9 @@ local administrator `dev`, Dex as its identity provider and `COWORK_BASE_URL=htt
 the dev server over HTTPS, the browser signing in as on an installation — with the form, or with
 *Sign in with Dex* as one of its four users
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D2). The commands are [build-test-lint.md](build-test-lint.md#run-locally).
+D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_DEV_CHAT_MODEL`
+(`qwen/qwen3-30b-a3b-2507` `# default`), the chat in the UI talking to it as a provider declared
+inside. The commands are [build-test-lint.md](build-test-lint.md#run-locally).
 
 ## What is not built
 

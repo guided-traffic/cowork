@@ -218,6 +218,21 @@ administrator of the current tenant and an account that tenant manages, and the 
   D5) revokes every token of the person, ends every session and refuses the login; the person,
   the grants and every act they made stay. No route reactivates a person, and the memberships
   of a deactivated person are not marked inactive: they stay as they were.
+- **A deactivation is held to `last_admin` in the managing tenant.** A deactivated
+  person counts as no tenant's administrator, so the deactivation is a change of who administers
+  the tenant and is held to the rule the changes of grants and mappings are held to
+  ([tenancy.md](tenancy.md#members-grants-and-group-mappings);
+  [ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+  D1): it takes the tenant's lock first (`LockTenant`), deactivates, and is refused with
+  `409 last_admin` when no administrator who can log in remains — the whole act rolls back, so no
+  token is revoked, no session ended and no act recorded (`DeactivateAccount`, `lastAdmin`;
+  `TestADeactivationLeavesTheTenantAnAdministrator`). The administrator acting counts unless
+  something took their own account or role away meanwhile, so what the refusal decides is the
+  race: two administrators who deactivate each other at the same moment are decided one after the
+  other, and the second, whose own account the first has just deactivated, meets `last_admin` —
+  or, authenticated only after the first committed, finds its session ended
+  (`TestTwoAdministratorsCannotDeactivateEachOther`, eight rounds). The other tenants the person
+  administers are not asked ([H-32](#h-32)).
 - **A username exists once in the installation**, so `409 username_taken` tells an
   administrator that a name is taken, whichever tenant has it.
 
@@ -347,22 +362,24 @@ route that creates an account for no tenant or lists the accounts of other tenan
 administrator; the reactivation of a deactivated person.
 
 <a id="h-32"></a>
-### H-32 — Deactivating an account does not ask whether it is a tenant's last administrator
+### H-32 — Deactivating an account does not ask the other tenants it administers
 
-Live in every tenant one of whose administrators is a local account. The `last_admin` rule holds a
-change of a grant or of a mapping to leaving the tenant an administrator who can log in, under the
-tenant's lock ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); the deactivation
-(`PUT …/accounts/{username}/deactivation`, `DeactivateAccount` in
-[`api/accounts.go`](../../backend/internal/api/accounts.go)) takes no lock and counts no
-administrator. Two ways it leaves a tenant without one:
+Live in every tenant one of whose administrators is a local account another tenant manages. Any
+tenant's administrator grants a role to a local account by its username
+([tenancy.md](tenancy.md#members-grants-and-group-mappings)), so an account one tenant manages may
+be an administrator of another — the only one there who can log in. The deactivation holds the
+managing tenant to `last_admin` under that tenant's lock
+([above](#who-may-manage-which-account)) and asks no other tenant: the managing tenant's
+administrators deactivate the account without seeing that it leaves another tenant without an
+administrator, and that tenant's own changes, which take its lock and not the managing tenant's,
+count the account until the deactivation has committed. What stands in the way of the check is
+the boundary itself: the deactivation runs in the managing tenant's transaction, where row-level
+security admits neither the person's memberships in other tenants nor those tenants'
+administrators ([tenancy.md](tenancy.md)), and reading them would open the boundary to a request of
+another tenant ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+D3, D7, D8).
 
-- **Two administrators deactivate each other at the same moment.** Each act writes another person's
-  row, neither sees the other's before it commits, and both succeed.
-- **The account administers another tenant.** Any tenant's administrator grants a role to a local
-  account by its username, so an account one tenant manages may be the only administrator of
-  another; the managing tenant's administrators deactivate it without seeing that.
-
-Read from the code; no test runs either. The tenant is then where
+Read from the code; no test runs it. The tenant is then where
 [identity-provider.md](identity-provider.md#h-29) H-29 leaves one: no route gives it an
 administrator, and no route reactivates a person. Mitigation: give every tenant an administrator
 whose account it manages itself, or a person of the identity provider, so no other tenant can

@@ -120,4 +120,4 @@ exist on a fresh installation is one decision, taken in the identity block of th
 
 - [ADR 0004](0004-cowork-is-a-team-product.md) — several people per tenant, the global administrator as an explicit grant
 - [`backend/internal/store/migrations/000001_tenants.up.sql`](../../backend/internal/store/migrations/000001_tenants.up.sql) — the slug rule and the key
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the repository binding that carries the slug
+- [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md), [docs/operations/claude-code.md](../operations/claude-code.md) — the repository binding that carries the slug (the workflow plan once linked here is consumed, ADR 0074 D3)

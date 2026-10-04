@@ -7,7 +7,8 @@ of a person outside the identity provider's gate are answered, and what is recor
 2026-10-04. Which tenants, projects and tickets a person can see at all is
 [tenancy.md](tenancy.md); how a token comes to exist — its person, in a browser session — is
 below and in [sessions.md](sessions.md); the identity provider whose groups a token's person is
-held to is [identity-provider.md](identity-provider.md).
+held to is [identity-provider.md](identity-provider.md); the chat in the UI, an agent that holds no
+token, is [chat.md](chat.md).
 
 ## A token is a bearer secret, stored as a hash
 
@@ -98,10 +99,10 @@ reaches further than its person does at that moment.
 
 ## What only a session does
 
-Twelve operations take a browser session only, and answer a token — whatever its scope, an
+Thirteen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these twelve ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these thirteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -118,6 +119,7 @@ set to exactly these twelve ([`backend/api/document_test.go`](../../backend/api/
 | `setProjectAccess` | `PUT …/projects/{project}/access/{person_id}` | a person's way into a restricted project |
 | `changeMyPassword` | `PUT /api/v1/me/password` | a password the person no longer knows |
 | `logout` | `POST /auth/logout` | — a token has no session to end |
+| `runChatTurn` | `POST …/chat` | — a turn's tool calls act with the person's session, and an agent that holds a token has the MCP server ([chat.md](chat.md)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
 takes a session; an act that only takes access away does not.** A route that does both — a grant
@@ -129,6 +131,14 @@ from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMap
 `TestProjectRestrictionAndAccessList`). No agent makes any administration act: an agent token's
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
+
+One field follows the same rule: switching the tenant's `chat_external_allowed` on — the consent that
+lets the chat send the tenant's text to a provider outside the installation — takes a session, and a
+token that sends it is `403 session_required`; switching it off stays open to an administrator's
+`admin` token ([`api/tenants.go`](../../backend/internal/api/tenants.go) `UpdateTenant`;
+`TestChatAvailability`). A session's request that the agent header marks is refused all thirteen,
+with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
+([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
 
 ## Restrictions
 
@@ -257,6 +267,11 @@ H-23.
   capability: the header adds the agent rules and takes nothing away. No header value turns a
   flagged token's request into a person's
   ([`auth/principal.go`](../../backend/internal/auth/principal.go) `Mark`; ADR 0036 D3).
+- A browser session's request becomes an agent's the same way: with the header it holds every
+  capability, meets every agent rule and is refused what only a session does; its acts record the
+  mark and no token ([`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`;
+  `TestTheAgentHeaderOnASession`). The chat in the UI marks every tool call so,
+  `chat/<model>/<conversation>` ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)).
 - The header is `name/model/session`, each part one to 64 printable ASCII characters that
   neither start nor end with a space; a malformed header is refused with `400`, never ignored.
 - An agent token's scope is at most `write`. An administration act therefore refuses an agent

@@ -136,9 +136,10 @@ the mechanics are [api.md](api.md)).
    an inline value is for a throw-away installation only — the database URLs and the local
    administrator have one, the server key and the identity provider's client secret none — and the
    chart says so when it is used. A variable that belongs to a switch, as every `COWORK_OIDC_*`
-   belongs to `COWORK_OIDC_ISSUER`, is an error without it (`oidcVariables` in
-   [`config/oidc.go`](../../backend/internal/config/oidc.go)) and is rendered by the chart only with
-   it.
+   belongs to `COWORK_OIDC_ISSUER` and every `COWORK_CHAT_*` to `COWORK_CHAT_PROVIDER`, is an error
+   without it (`oidcVariables` in [`config/oidc.go`](../../backend/internal/config/oidc.go),
+   `chatVariables` in [`config/chat.go`](../../backend/internal/config/chat.go)) and is rendered by
+   the chart only with it.
 4. A limit nginx must stay above also moves the computation in
    [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl).
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).
@@ -166,7 +167,10 @@ the mechanics are [api.md](api.md)).
 
 1. Edit [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template). An
    API path gets a location nested inside `location ^~ /api/`, as the event stream's does, which
-   repeats `set $backend ${BACKEND_URL}` and `proxy_pass $backend`.
+   repeats `set $backend ${BACKEND_URL}` and `proxy_pass $backend`; a stream the backend marks
+   `X-Accel-Buffering: no` and keeps alive within the read timeout needs none, as a chat turn shows.
+   A location that serves the UI adds `add_header Content-Security-Policy $ui_csp always;` — an
+   `add_header` inside a location replaces the server's.
 2. Keep the four substituted variables — `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
    `NGINX_CLIENT_MAX_BODY_SIZE`, `NGINX_PROXY_READ_TIMEOUT` — the only ones. A fifth is deliberate:
    `NGINX_ENVSUBST_FILTER` and the image default in
@@ -181,7 +185,7 @@ the mechanics are [api.md](api.md)).
 ## A chart value
 
 1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `session.`,
-   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `networkPolicy.`, `ingress.` — with a comment, the template, and
+   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `networkPolicy.`, `ingress.` — with a comment, the template, and
    — when it maps to an environment variable — the `env` entry.
 2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI.
 3. The README's values block and, when operators need to understand it,
@@ -192,7 +196,15 @@ the mechanics are [api.md](api.md)).
 The checklist is [mcp.md](mcp.md#adding-a-tool): first whether it should be a tool at all
 ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D1), then the route, the
 `define` in `backend/internal/tools/`, the unit tests against the fake API, a step of the
-integration test through the server, and the tool's row in the README.
+integration test through the server, the tool's policy in the chat, and the tool's row in the
+README.
+
+## A tool of the chat
+
+A shared tool reaches the chat in the UI only with a policy — read, write, decision, a review of
+its own, or left out — and a page tool of the chat's own sends its `ui` event only for a path the
+frontend's `navigable` accepts. The checklist is [chat.md](chat.md#adding-a-tool-to-the-chat); a new
+wire format of a model is [chat.md](chat.md#the-gateway).
 
 ## A CI job
 

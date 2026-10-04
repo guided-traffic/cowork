@@ -56,8 +56,12 @@ logs. The variables named here are explained one by one in
 8. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
    not contact the storage. Without them the log warns `no object storage configured;
    attachments cannot be uploaded` ([attachments](#attachments)).
-9. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
-   address, the version and the commit.
+9. **The chat's provider**, when `COWORK_CHAT_PROVIDER` is set: the gateway is set up and the log
+   says `the chat talks to a model` with the wire format, the model, whether the provider is
+   declared inside and the limits; it does not contact the provider, so a wrong URL or key shows at
+   the first turn ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
+10. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
+    address, the version and the commit.
 
 From then on each replica, at start and once an hour, removes the idempotency records older
 than a day, the sessions past their absolute or their idle limit, and the login's failed
@@ -160,6 +164,7 @@ an alert or a look:
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
 
@@ -300,11 +305,14 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413 payload_too_large` — before reading when the declared length is larger, while reading otherwise | no limit |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` | `413` before anything is stored; the upload's body may be 64 KiB larger, for the multipart framing | no limit: one upload at a time is buffered whole, so a single upload can exhaust the container's memory ([attachments.md H-12](../security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
-| `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt | no limit |
+| `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
 | `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10`, per replica | the next stream closes the person's oldest with `event: unavailable` | no limit |
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` | a reconnect beyond the window starts with `event: resync` | no replay: a reconnect that missed anything starts with `resync` |
+| `COWORK_CHAT_TURN_TIMEOUT` | `5m` | a turn of the chat ends with the `error` event `timeout` | no limit |
+| `COWORK_CHAT_MAX_STEPS` | `8` | the turn ends after that many calls of the model; a new message goes on | no limit |
+| `COWORK_CHAT_TURNS_PER_PERSON` | `2`, per replica | one more turn of the same person is `429 chat_busy` | no limit |
 
 Two bounds are fixed: a numbered page that would end past row 10 000 (`page` × `per_page`)
 is `400 page_too_deep`, and the uploads the backend holds in memory at once are bounded by a
@@ -382,9 +390,10 @@ How it behaves, as somebody running it sees it:
 ### Behind an Ingress
 
 Whatever stands in front of the frontend Service has to pass the stream through unbuffered
-and keep it open, and has to let uploads through. The frontend's nginx does not forward the
-backend's `X-Accel-Buffering` header to it — nginx keeps `X-Accel-*` headers to itself — so
-the Ingress needs its own settings. For ingress-nginx:
+and keep it open — the event stream, and the stream of a turn of the chat
+([below](#the-chats-stream)) — and has to let uploads through. The frontend's nginx does not
+forward the backend's `X-Accel-Buffering` header to it — nginx keeps `X-Accel-*` headers to
+itself — so the Ingress needs its own settings. For ingress-nginx:
 
 ```yaml
 ingress:
@@ -401,6 +410,32 @@ front that buffers the response or cuts it at a read timeout: set the two stream
 above, or their equivalent on another controller or load balancer. Not verified against an
 ingress-nginx in this repository; the annotations and the default are from that project's
 documentation.
+
+## The chat's stream
+
+`POST /api/v1/tenants/{tenant}/chat` runs one turn of the chat in the UI and answers it as
+server-sent events ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md);
+setting the chat up is [chat.md](chat.md)). What an operator meets:
+
+- **Refusals before the stream** are problem answers like any: `409 chat_unavailable` where the
+  tenant has no chat, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON`, `403 session_required`
+  for a token, `403 csrf`, `400 validation_failed` for a conversation the model could not read in
+  its place or one past its bounds, `413` past `COWORK_MAX_JSON_BODY`.
+- **Once the stream has begun** the answer is `200` with `Content-Type: text/event-stream` and
+  `X-Accel-Buffering: no`, every event flushed as it is written; a failure is the `error` event, a
+  problem body with the request id — `chat_provider_failed`, `timeout`, `internal` — and the turn
+  ends with `done` in every case it ends by itself.
+- **A comment, `: keep-alive`, after ten seconds without an event**, so no proxy closes a turn while
+  the model thinks. The frontend's nginx has no location of its own for the path: `/api/` passes it,
+  unbuffered by the backend's header, and its read timeout, `requestTimeout` plus ten seconds, stays
+  above the comments. An Ingress in front needs the stream annotations [above](#behind-an-ingress).
+- **The turn is exempt from `COWORK_REQUEST_TIMEOUT`**, which bounds reading its body; it is bounded
+  by `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` ([limits](#limits)).
+- **Each tool call is a request of its own** through the whole server, so the request log has a line
+  per call besides the turn's own line, which is written when the turn ends, with its whole duration.
+- **A turn is never repeated by the client**: a repeated turn would repeat its acts. A stream that
+  ends without `done` was cut — the network, a proxy, a shutdown — and the acts its results reported
+  have happened.
 
 ## Attachments
 
@@ -434,10 +469,15 @@ What nginx does with a request:
 |---|---|
 | `/healthz` | `{"status":"ok"}` from nginx itself — the frontend's liveness and readiness probes; it says nothing about the backend |
 | `/api/v1/tenants/<slug>/events` | proxied unbuffered and uncached, with a read timeout of one hour |
+| `/api/v1/tenants/<slug>/chat` | proxied as any `/api/` path; a turn's answer is passed unbuffered, because the backend sends `X-Accel-Buffering: no`, and kept within the read timeout by its comments |
 | `/api/…` | proxied to `BACKEND_URL` with the path unchanged and `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP` set; the errors nginx answers itself are problem bodies ([above](#what-nginx-answers-itself)). An API path that ends like a static file (`….png`) still goes to the backend |
 | `/auth/…` | the same, for the login flows: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout`; the cookies and the backend's `Set-Cookie` pass through, and the errors nginx answers itself are the same problem bodies — a callback nginx itself fails, the backend unreachable, leaves its query, the code and the state, in the error log ([trust-boundaries.md H-14](../security/trust-boundaries.md#h-14)) |
-| hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` |
-| everything else | `index.html` with `Cache-Control: no-store` — the Angular router resolves the path |
+| hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` and the shell's `Content-Security-Policy` |
+| everything else | `index.html` with `Cache-Control: no-store` and the shell's `Content-Security-Policy` — the Angular router resolves the path |
+
+The policy keeps every script, style sheet, font, image and request of the UI on its own origin and
+runs no inline script ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)).
+A page that broke under it shows a violation in the browser's console, never in nginx's log.
 
 The pod runs with a read-only root filesystem; the chart mounts `emptyDir`s at `/tmp` and
 `/etc/nginx/conf.d`, which is all nginx writes, and `fsGroup: 101` is what makes them

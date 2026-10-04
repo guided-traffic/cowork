@@ -4,7 +4,7 @@ title: phase 4 (OIDC and authorization) was built in one night on provisional de
 state: in-progress
 severity: medium
 security: hardening
-threat: the open questions would additionally cover a tenant administrator who pulls the people of any provider group into their tenant and learns who exists in the installation (Q1), a person who left the provider's groups but keeps working tokens because they never sign in to the browser (Q2), and a tenant left without an administrator (Q3)
+threat: the open questions would additionally cover a tenant administrator who pulls the people of any provider group into their tenant and learns who exists in the installation (Q1), a person who left the provider's groups but keeps working tokens because they never sign in to the browser (Q2), and a tenant left without an administrator (Q3, Q7)
 urgency: release      # rule 2: gates the release — merging the branch releases phase 4
 effort: S
 blocked-by: decision
@@ -49,20 +49,18 @@ best knowledge, leave a gate open when in doubt, file what the owner should look
   comes from a Secret only (ADR 0058 D3); the development containers bind to the loopback interface
   (ADR 0038 D4).
 - **Not built:** the global administrator's view of a tenant without a role and their self-grant
-  (ADR 0034 D2, Q3); the administrators' view of their members' tokens (T40); a last-administrator
-  guard on deactivating an account (`deactivateAccount` of phase 3: two administrators can
-  deactivate each other at the same moment); the sign-in through Dex in the end-to-end tier (T29).
+  (ADR 0034 D2, Q3); the administrators' view of their members' tokens (T40); the
+  last-administrator guard of the other tenants a deactivated account administers (Q7); the sign-in
+  through Dex in the end-to-end tier (T29).
 
 ## Required changes
 
-1. The owner answers Q1–Q6; an answer that changes the build amends its ADR and changes the code
+1. The owner answers Q1–Q7; an answer that changes the build amends its ADR and changes the code
    and the security page in the same change.
-2. `deactivateAccount` takes the tenant lock and the `last_admin` rule of the membership changes,
-   with the concurrent test the grant removal has.
-3. After the merge, when the development data may go: `make postgres-down minio-down dex-down`,
+2. After the merge, when the development data may go: `make postgres-down minio-down dex-down`,
    then `make dev` — containers made before the loopback rule keep listening on every interface
    until they are recreated.
-4. Phase close: the questions answered, the remaining items here or in T29/T40, the phase-4 lines
+3. Phase close: the questions answered, the remaining items here or in T29/T40, the phase-4 lines
    of [project-plan.md](../planning/project-plan.md) gone, this ticket archived.
 
 ## Open questions
@@ -115,7 +113,7 @@ existing tenant (H-29).
   tenant, a recorded act the tenant sees.
 
 Recommended: **(c)** — decided already, and it recovers a tenant whatever removed its last
-administrator, the deactivation race of required change 2 included.
+administrator, the deactivation of an account another tenant manages (Q7) included.
 
 **Answer:** _open_
 
@@ -161,6 +159,38 @@ its next refresh (fails closed), and every list cursor and login-throttle hash s
 
 Recommended: **(a)** — a session lives twelve hours at most, a rotation is rare and deliberate, and a
 second key is one more Secret to handle.
+
+**Answer:** _open_
+
+### Q7: Does the deactivation of an account ask the other tenants it administers?
+
+Any tenant's administrator grants a role to a local account by its username, so an account one
+tenant manages can be another tenant's only administrator who can log in. The deactivation holds the
+managing tenant to `last_admin` under its lock and asks no other tenant, which is then left without
+an administrator (H-32). The check needs that tenant's memberships and persons, and row-level
+security keeps them out of the managing tenant's transaction. Each of (b)–(d) also takes several
+tenants' locks, so it needs one order among them — by the lock's key, since two tenant ids can share
+one — and must hold the set of tenants still while it decides: a grant of `admin` in a further
+tenant can commit in between.
+
+- **(a) As built:** not asked; a stranded tenant is recovered by Q3 (c).
+- **(b) The deactivation steps into the other tenants:** the store names the person in
+  `app.user_id` to find the tenants they administer, then each tenant in `app.tenant_id` to take its
+  lock and count its administrators, and returns only a number — no migration, but for that moment
+  a request of one tenant reads another tenant's rows past the second line, an exception to ADR 0021
+  D3 like the identity provider's.
+- **(c) A migration with a dedicated read (ADR 0021 D7):** a setting-gated policy that admits, to
+  the deactivation's transaction, the `admin` memberships of the tenants the person administers and
+  those administrators' person rows — names and addresses the check does not need, readable for
+  good under that setting.
+- **(d) A function of a dedicated database role** (`SECURITY DEFINER`, owned by a role that may only
+  read those rows) that takes the tenants' locks and returns only how many tenants would be left
+  without an administrator — no row of another tenant reaches the request, but the migration must
+  create a third role (`CREATEROLE` for the owner) and every deactivation runs code as it.
+
+Recommended: **(a) with Q3 (c)** — the self-grant recovers a tenant whatever left it without an
+administrator, opens no boundary and is decided already; **(d)** if a stranded tenant must never
+happen, since it is the one option that keeps every row of the other tenant out of the request.
 
 **Answer:** _open_
 

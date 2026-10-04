@@ -1,13 +1,14 @@
 # Trust boundaries of the two containers
 
 What the backend, its migration init container and the frontend trust — the identity provider
-among it — whom they answer, and where the credentials they hold live, as built on 2026-10-04.
-Once a request is inside a tenant, how it is kept from other tenants and from what it may not see
-is [tenancy.md](tenancy.md); what a token or an agent may do is [tokens.md](tokens.md); how a
-person logs in, what a session is and what keeps another site from writing with one is
-[local-accounts.md](local-accounts.md), [identity-provider.md](identity-provider.md),
+and the chat's model among it — whom they answer, and where the credentials they hold live, as
+built on 2026-10-04. Once a request is inside a tenant, how it is kept from other tenants and from
+what it may not see is [tenancy.md](tenancy.md); what a token or an agent may do is
+[tokens.md](tokens.md); how a person logs in, what a session is and what keeps another site from
+writing with one is [local-accounts.md](local-accounts.md), [identity-provider.md](identity-provider.md),
 [sessions.md](sessions.md) and [csrf.md](csrf.md); what an upload may do is
-[attachments.md](attachments.md).
+[attachments.md](attachments.md); what the chat in the UI may do, and what of a tenant reaches its
+model, is [chat.md](chat.md).
 
 ## Components and what they trust
 
@@ -17,6 +18,7 @@ person logs in, what a session is and what keeps another site from writing with 
 | The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
+| The backend process | The chat's provider at `COWORK_CHAT_URL`, with what a turn sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
 | The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
 | The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` and `/auth/` for anyone and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
 | The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
@@ -102,6 +104,30 @@ admit the issuer
 ([installation.md](../operations/installation.md#the-identity-provider)). The issuer never calls
 the backend: everything it sends comes through the browser, to `/auth/callback`.
 
+## The chat's provider
+
+With `COWORK_CHAT_PROVIDER` set, the backend calls a model for the chat in the UI
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
+The provider is a boundary the other way round from the issuer: it is trusted with what a turn sends
+it — the instructions, the conversation, and every tool's answer of the turn, which is the text of
+the tenant's tickets — and with nothing it answers. Its text reaches the person as text; its tool
+calls are requests of the person's session marked as the chat's agent, which the API judges like any
+agent's; a refusal is an answer the model reads. Whether the provider may receive a tenant's text at
+all is the operator's statement (`COWORK_CHAT_INSIDE`, the provider runs inside the installation's
+trust boundary) or the tenant's consent, bound to the provider it was given to
+([chat.md](chat.md#what-leaves-the-installation-and-with-whose-consent)).
+
+What is checked rather than trusted: the address is configuration only, never a request's, and
+`https://` or `http://` on a host of the operator's own network by its name
+([chat.md H-41](chat.md#h-41)); the gateway follows no redirect, gives up on a provider that has not
+begun to answer in two minutes or stays silent for ninety seconds, reads bounded answers, and keeps
+the provider's error message out of what the person sees and out of the log but for a clip without
+the key ([`llm/client.go`](../../backend/internal/llm/client.go)). The backend calls out to the
+provider at every call of the model in a turn, never at start; the chart's NetworkPolicy restricts no
+egress, and a policy of the installation's own must admit the provider and DNS
+([docs/operations/chat.md](../operations/chat.md#in-the-chart)). The provider never calls the
+backend.
+
 ## Where the credentials live
 
 | Credential | Source in the chart | Held by |
@@ -113,6 +139,7 @@ the backend: everything it sends comes through the browser, to `/auth/callback`.
 | The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
 | The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container, which sends it to the issuer's token endpoint |
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
+| The chat's API key, `COWORK_CHAT_API_KEY` | `chat.existingSecret` only — there is no inline value — under `chat.keys.apiKey`; required for `anthropic`, optional for `openai` | the serving container, which sends it to the provider's host and to no other ([chat.md](chat.md#what-leaves-the-installation-and-with-whose-consent)) |
 | A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
@@ -125,7 +152,7 @@ value. The inline `database.url`, `database.owner.url` and `localAdmin.username`
 `localAdmin.password` put the credential in plain text
 into a release Secret and into `helm get values`; the chart notes warn at install time
 ([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The identity provider's client
-secret has no inline path at all.
+secret and the chat's API key have no inline path at all.
 
 The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
 label of its own, so no two uses share a key:
@@ -152,7 +179,9 @@ and no query ([`server.go`](../../backend/internal/httpserver/server.go) `reques
 refused dead token is logged by its id and the reason, never the token
 ([`authn.go`](../../backend/internal/api/authn.go) `recordRefusal`); a login through the identity
 provider logs no code and no token of the issuer, and stores none but the sealed refresh token
-([identity-provider.md](identity-provider.md#what-is-recorded-and-logged)). golang-migrate is handed
+([identity-provider.md](identity-provider.md#what-is-recorded-and-logged)); a failure of the chat's
+provider is logged as a clip of its message with the configured key taken out, and no turn's
+messages are logged at all ([chat.md](chat.md#what-is-recorded-and-logged), H-42). golang-migrate is handed
 an open connection, never the URL ([`migrate.go`](../../backend/internal/store/migrate.go)
 `applyMigrations`). A pgx connection error can name the host and the user, not the password;
 a malformed URL is reported by pgx with its password masked on a best-effort basis, and pgx
@@ -206,6 +235,39 @@ receives every bearer token sent through the frontend — or lift the body limit
 controls the pod's `/etc/resolv.conf` — the cluster DNS — controls where the backend name
 resolves to on every request. That is the chart, the kubelet and the cluster administrator.
 
+## The shell's content-security policy
+
+The frontend's nginx sends one `Content-Security-Policy` with everything it serves of the UI —
+`index.html` for every path the router owns, the hashed bundles and fonts, the icons
+([`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) `$ui_csp`; an
+`add_header` in a location replaces the server's, so each of the three locations adds it). It exists
+since the chat put a model's output into the page
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
+D6), as the second line behind the panel that shows that output as text
+([chat.md](chat.md#what-the-panel-shows)).
+
+| Directive | Allows | Why |
+|---|---|---|
+| `default-src 'self'` | the origin, for whatever no other directive names | — |
+| `script-src 'self'` | the bundle's files; no inline script, no `eval` | the production build inlines no critical CSS for it: the inliner loads the stylesheet through an inline `onload` handler (`"inlineCritical": false` in [`angular.json`](../../frontend/angular.json)) |
+| `style-src 'self' 'unsafe-inline'` | the stylesheet, and `<style>` elements and `style` attributes in the page | PrimeNG writes its theme, and Angular its components' styles, as `<style>` elements at run time, which no hash fixed at build time covers |
+| `img-src 'self' data: blob:` | the origin's images and the `data:` and `blob:` URLs the page makes | — |
+| `font-src 'self' data:` | the self-hosted fonts and icons | — |
+| `connect-src 'self'` | requests to the origin only — `/api/`, `/auth/`, the event stream, the chat's stream | `fetch`, `EventSource` and sockets of the page reach no other host; a top-level navigation is outside what a policy governs |
+| `frame-ancestors 'none'` | no page may frame the UI | clickjacking |
+| `base-uri 'self'`, `form-action 'self'`, `object-src 'none'` | no `<base>` of another origin, no form posting elsewhere, no plugin | — |
+
+`'unsafe-inline'` for styles is what the policy concedes: should markup ever reach the page, it could
+restyle the page — hide a control, imitate one — but not load anything from another origin, because
+`img-src`, `font-src` and `connect-src` keep every request on the origin, and run no script. The
+PrimeUI license is checked in the page, offline, and needs no source of its own. The answers of
+`/api/` and `/auth/` carry no policy of the shell's — they are no documents — and an attachment's
+content carries its own `sandbox` ([attachments.md](attachments.md)). Verified on 2026-10-04 against
+the production bundle behind nginx with this template, in Chromium and WebKit, in both colour schemes,
+with the API mocked: no violation was reported while the shell, the settings and the chat panel ran
+a turn. Not verified: every page of the UI under the policy — a page that needs another source fails
+in the browser with a violation in the console, and nginx has no unit test.
+
 ## What this does not cover
 
 <a id="h-14"></a>
@@ -256,7 +318,8 @@ as given. Who else may connect matters for the event channel: [tenancy.md](tenan
 Both containers speak plain HTTP. TLS, client certificates, IP allow-lists and rate limits
 are the Ingress controller's or the mesh's; cowork has no request budget
 ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
-D1). nginx's own hardening beyond `server_tokens off` — a `Content-Security-Policy`,
-`X-Content-Type-Options` and frame options for the UI shell — is not configured; the shell
-holds no credential today. An attachment download carries its own `nosniff` and `sandbox`
+D1). nginx's own hardening beyond `server_tokens off` and the shell's content-security policy
+([above](#the-shells-content-security-policy)) — `X-Content-Type-Options`, a `Referrer-Policy`,
+`Strict-Transport-Security` for the UI shell — is not configured; HSTS belongs to whatever
+terminates TLS in front. An attachment download carries its own `nosniff` and `sandbox`
 from the backend ([attachments.md](attachments.md)).

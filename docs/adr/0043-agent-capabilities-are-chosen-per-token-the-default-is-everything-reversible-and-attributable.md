@@ -37,6 +37,9 @@ the API takes as an empty list; only a list left out is every capability. Acts n
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
 (since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
 removing a stake, editing a question, editing a project — until a review after experience.
+Amended 2026-10-04 (D5: a session the agent header marks, and the chat in the UI, which is one —
+provisionally, with [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md))
+and built the same day.
 
 ## Context
 
@@ -93,7 +96,18 @@ and **assisted** (`decide`, `close`, `rank`, `create-project` and `record-answer
 **D5 — Enforcement is the API's, on every request marked as an agent's** (ADR 0036 D2, D3).
 A refused act answers `403` with the code `agent_forbidden` and the name of the missing
 capability or the hard-off rule; the audit row of every agent act records the capabilities
-the token had.
+the token had. *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+provisionally with it: a browser session's request that the header marks (ADR 0036 D3 as amended)
+holds every capability, as a plain token's with the header, and meets the hard-off list and the
+handlers' agent rules like any agent; its audit row records the full set. The chat is such a
+session: it may do whatever an agent with every capability may — no person chooses less for it yet
+— and before they run it proposes to the person the acts a person owes a reason, a note or a
+decision for: a move to `decided`, `done`, `dropped` or `blocked`, a backward move, a reopen, the
+withdrawal of a done, the progress write that closes or reopens a ticket, `finish_work`,
+`record_answer` and `create_project`, and every write once its conversation has read a confidential
+ticket. A proposal is the chat's own gate in front of the API's, not a capability: the API still
+decides what the call may do when the person runs it.)*
 
 **D6 — The MCP server reads the token's capabilities at start** (`GET /api/v1/me/token`)
 and puts them into its tool descriptions, so the model knows before calling what this token

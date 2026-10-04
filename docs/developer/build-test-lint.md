@@ -38,14 +38,14 @@ same toolchain builds them.
 | | `make postgres-up` / `postgres-down` | Docker | `postgres:18` on `localhost:5432` (`POSTGRES_PORT=` to move it) with the development database `cowork` and its roles `cowork_owner` and `cowork_app` |
 | | `make minio-up` / `minio-down` | Docker | MinIO on `localhost:9000` (`MINIO_PORT=`), the attachment tests' S3 server |
 | | `make dex-up` / `dex-down` | Docker | Dex on `localhost:5556` (`DEX_PORT=`, which moves the issuer with it), configured from [`hack/dex/config.yaml`](../../hack/dex/config.yaml): the identity provider of `make dev` and of the login tests ([testing.md](testing.md#the-identity-provider-in-the-tests)); it keeps nothing, so `dex-down` loses nothing, and `dex-down dex-up` loads a changed configuration |
-| | `make dev-up` | Docker | `postgres-up`, `minio-up` and `dex-up` together |
+| | `make dev-up` | Docker | `postgres-up`, `minio-up` and `dex-up` together; each `-up` starts its container again when it exists but stopped — after a restart of Docker or of the machine |
 | | `make test-integration` | PostgreSQL 18, S3 and Dex | `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_*` and `COWORK_TEST_OIDC_ISSUER` default to the three containers ([testing.md](testing.md#environment-variables-the-suites-read)) |
 | | `make test-integration-coverage` | the same | `coverage/integration.out` |
 | Frontend | `make frontend-install` | npm | `npm ci` when `frontend/package-lock.json` changed |
 | | `make frontend-lint` | | `ng lint` |
 | | `make frontend-test` | | vitest on jsdom, once |
 | | `make frontend-test-coverage` | | `frontend/coverage/frontend/` (`text-summary`, `lcovonly`, `json-summary`), through `@vitest/coverage-v8` |
-| | `make frontend-build` | | `frontend/dist/frontend/browser/` (with the PrimeUI key, when there is one) |
+| | `make frontend-build` | | `frontend/dist/frontend/browser/` (with the PrimeUI key, when there is one); warns while the initial bundle is above `angular.json`'s budget of 1,000,000 bytes, which it is — 1,016.52 kB on 2026-10-04, an open point of [ADR 0052](../adr/0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md) |
 | | `make frontend-serve` | | dev server on `:4200` with the proxy (and the PrimeUI key, when there is one) |
 | | `make frontend-generate` | npm | the Angular client in `frontend/src/app/api/` from `backend/api/openapi.gen.json` |
 | | `make frontend-generate-check` | | fails when the committed client differs from a fresh generation |
@@ -100,7 +100,11 @@ the local administrator, and keeps the demo data's token in `.dev/token` and a s
 `.dev/session-key` (all untracked). Two ways in: the form as `dev` with the development-only
 password `dev-only-cowork`, or *Sign in with Dex* as `ada@example.com`, `bob@example.com`,
 `cyd@example.com` or `dan@example.com` with `dev-only-dex` (what each is:
-[testing.md](testing.md#the-identity-provider-in-the-tests)). The browser asks once about the dev
+[testing.md](testing.md#the-identity-provider-in-the-tests)). When LM Studio answers on
+`localhost:1234` and lists the model `COWORK_DEV_CHAT_MODEL` (`qwen/qwen3-30b-a3b-2507` `# default`),
+the backend gets it as the chat's provider, declared inside, and the UI has its assistant; load the
+model with a context of 16k tokens or more first ([chat.md](../operations/chat.md#lm-studio-on-the-operators-machine)).
+Without it `make dev` runs without the chat and says so. The browser asks once about the dev
 server's self-signed certificate (HTTPS, because Safari stores no `Secure` cookie from
 `http://localhost`, and Dex knows `https://localhost:4200/auth/callback` as the redirect URI). A
 saved frontend file reloads the page; a backend change needs a restart. The PrimeUI license key
@@ -158,8 +162,11 @@ problem body. Then `curl` through the frontend: `/healthz`, `/api/v1/version`, a
 hashed asset; with a token, an authenticated route; a JSON body above `COWORK_MAX_JSON_BODY` (the
 backend's `413`, with a `request_id`) and one above `NGINX_CLIENT_MAX_BODY_SIZE` (nginx's `413`,
 without); the event stream, which must arrive unbuffered; and `SIGTERM` to the backend with a
-stream open, which must end the stream at once. There is no unit test for nginx: this run is the
-check, [ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+stream open, which must end the stream at once. A change to the shell's content-security policy, or
+to the build under it, is checked in a browser against the image: the UI's pages — the chat's panel
+among them — with the console showing no violation in Chromium and WebKit. There is no unit test for
+nginx: this run is the check,
+[ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 records the one of 2026-10-02. `make verify-phase-2` scripts the API half of it — both images
 read-only, driven as a `make dev-seed` agent — by hand, not as a CI job; the nginx checks above
 stay manual.

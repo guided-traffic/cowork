@@ -17,6 +17,11 @@ with its status and code; a failed connection is retried twice for a `GET`, `PUT
 or keyed `POST`, which cannot act twice, and an answer of the API is never retried. D4 reads
 `CLAUDE_PROJECT_DIR` beside the two variables, for the working directory.
 
+Amended 2026-10-04 for the chat in the UI
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) D1),
+provisionally with that record (D1, D3: the catalogue's second host is inside the backend and goes
+through the API all the same), and built the same day.
+
 ## Context
 
 An LLM is a first-class user of cowork ([ADR 0004](0004-cowork-is-a-team-product.md) D1); its
@@ -33,7 +38,10 @@ a native place for an MCP server and none for "a REST server".
 
 **D1 — The REST API with its OpenAPI document is the one interface to the data.** Every
 client — the Angular UI, the MCP server, the importer, a script — goes through it. There is
-no second path to the database.
+no second path to the database. *(Amended 2026-10-04: the chat in the UI is a client too, though it
+runs inside the backend: its tool calls are requests of this API, sent to the server's own handler
+in the same process, through the whole pipeline — authentication, the CSRF check, the tenant
+boundary, validation, the agent rules, the audit, the events — and never past it to the store.)*
 
 **D2 — The MCP server is a thin client of the API.** It lives in this repository as
 `backend/cmd/cowork-mcp`, shares the module and the generated API client with the backend,
@@ -43,7 +51,9 @@ request (ADR 0036 D3), and exposes the workflow tools the next records define.
 **D3 — The MCP server can do nothing the API cannot, and nothing the token cannot.** No
 tool exists without an API route behind it; every authorization decision is the API's; a
 tool's failure is the API's error, surfaced with its code, never swallowed or retried into
-success.
+success. *(Amended 2026-10-04: the same holds for the catalogue's second host, the chat in the UI,
+with the person's session marked as the chat's agent in place of the token — it can do nothing the
+API and that agent cannot; a tool's failure is an answer its model reads.)*
 
 **D4 — Configuration of the MCP server is environment only:** `COWORK_URL` and
 `COWORK_TOKEN`, passed through by the Claude Code MCP configuration; no configuration file,
@@ -102,4 +112,5 @@ are fixed; the list filters of the API record serve them.
 - [ADR 0035](0035-personal-access-tokens.md), [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) — the token and the marking the MCP server carries
 - [ADR 0023](0023-the-tenant-is-in-the-path.md) — the path families the client is generated from
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5 — the pull the session-start tool performs
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — where the MCP server sits in the daily loop
+- [docs/operations/claude-code.md](../operations/claude-code.md) — where the MCP server sits in the daily loop (the workflow plan once linked here is consumed, [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) D3)
+- [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) — the chat in the UI, the catalogue's second host

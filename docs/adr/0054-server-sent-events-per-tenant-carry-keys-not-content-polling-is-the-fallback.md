@@ -15,7 +15,10 @@ membership again, and a replica that lost its listener keeps no replay point fro
 Amended 2026-10-04 (D2: `membership.changed`, its payload and its audiences; D3: a membership event
 reaches its audience whatever project it names; D5: the heartbeat asks the identity provider's gate
 as well), and again on 2026-10-04 after the security review (D3: a project-restricted token's
-stream hears only the membership events of its project and its own person).
+stream hears only the membership events of its project and its own person), and on 2026-10-04 for
+the chat in the UI (D9: the shutdown ends the chat's turns as well; built the same day —
+`ChatOptions.Shutdown` in [`api/chat.go`](../../backend/internal/api/chat.go),
+`TestTheChatsTurnLimitAndShutdown`).
 
 **Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
 with the inbox), D2 without `inbox.changed` and ~~`membership.changed` (no route changes a
@@ -131,7 +134,12 @@ visible again.
 **D9 — Shutdown closes streams at once.** On `SIGTERM` the backend ends every stream before
 draining requests ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D5's timeout is for requests, not streams); clients reconnect to another replica and replay
-from `Last-Event-ID`.
+from `Last-Event-ID`. *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md): a
+turn of the chat is a stream as well, and the signal ends every turn that runs — its `error` event
+`503 not_ready`, "the server is shutting down: send the turn again", then `done` with the messages
+it added — instead of holding the drain for up to `COWORK_CHAT_TURN_TIMEOUT`. The client does
+not send a turn again by itself; the person does, on another replica.)*
 
 ## Consequences
 

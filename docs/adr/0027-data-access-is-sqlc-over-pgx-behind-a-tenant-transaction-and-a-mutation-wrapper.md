@@ -92,10 +92,10 @@ rollback — a session-level lock would outlive the job on an idle pooled connec
 re-parenting, a new `blocks` link, a question's number — take a transaction-level advisory
 lock of their own first (per project, per tenant, per ticket), so two of them cannot pass the
 check together. *(Added 2026-10-04:)* so do the changes of who administers a tenant — a grant's
-role or removal, a group mapping's creation, change or removal — which take the tenant's lock
-first, so the check that the tenant keeps an administrator reads what the change before committed;
-what the identity provider decides about a person takes the person's lock; and no transaction takes
-a tenant's lock after a person's.
+role or removal, a group mapping's creation, change or removal, the deactivation of a local account
+the tenant manages — which take the tenant's lock first, so the check that the tenant keeps an
+administrator reads what the change before committed; what the identity provider decides about a
+person takes the person's lock; and no transaction takes a tenant's lock after a person's.
 
 **D6 — `golang-migrate` stays for migrations; `database/sql` appears nowhere else.** The
 `pgx` stdlib adapter is used by the migration run only ([`migrate.go`](../../backend/internal/store/migrate.go)).
