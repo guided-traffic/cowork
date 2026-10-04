@@ -96,13 +96,6 @@ named. One of the two must be set; the existing Secret wins.
 {{- end }}
 
 {{/*
-The URL the frontend proxies /api/ to: the backend Service inside the cluster.
-*/}}
-{{- define "cowork.backendURL" -}}
-{{- printf "http://%s:%d" (include "cowork.backend.fullname" .) (int .Values.backend.service.port) }}
-{{- end }}
-
-{{/*
 The Secret and key that hold the owner role's URL (docs/adr/0021 D2):
 database.owner.existingSecret, or the release Secret rendered from
 database.owner.url. One of the two must be set where the init container
@@ -134,11 +127,13 @@ The Secret that holds the server key; there is no inline path.
 {{- end }}
 
 {{/*
-nginx's body limit: the larger backend limit rounded up to MiB plus one MiB of
-headroom; a backend without a limit leaves nginx without one
-(docs/adr/0039 D3).
+The smallest body limit the Ingress controller may have, for the notes: the
+larger backend limit rounded up to MiB plus one MiB of headroom, so the backend
+answers its own 413; "0", no limit, when a backend limit is off
+(docs/adr/0039 D3). The chart sets no controller's limit: it does not know the
+controller.
 */}}
-{{- define "cowork.nginxBodySize" -}}
+{{- define "cowork.ingressBodySize" -}}
 {{- $json := int64 .Values.backend.config.maxJsonBody }}
 {{- $upload := int64 .Values.backend.config.attachmentMaxBytes }}
 {{- if or (eq $json 0) (eq $upload 0) }}
@@ -150,10 +145,12 @@ headroom; a backend without a limit leaves nginx without one
 {{- end }}
 
 {{/*
-nginx's read timeout: the backend's request timeout plus ten seconds, so the
-backend answers its own 504; an hour when the backend has none.
+The smallest read timeout the Ingress controller may have, for the notes: the
+backend's request timeout plus ten seconds, so the backend answers its own 504;
+an hour when the backend has none. The two streams send something every twenty
+seconds at the most, so they stay open within it.
 */}}
-{{- define "cowork.nginxReadTimeout" -}}
+{{- define "cowork.ingressReadTimeout" -}}
 {{- $t := int64 .Values.backend.config.requestTimeout }}
 {{- if eq $t 0 }}
 {{- "3600s" }}

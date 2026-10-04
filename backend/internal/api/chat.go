@@ -26,7 +26,7 @@ import (
 const opRunChatTurn = "runChatTurn"
 
 // defaultKeepAlive is how long a turn stays silent before a comment keeps the
-// proxies from closing it, well below the frontend's read timeout.
+// proxies in front from closing it while the model thinks.
 const defaultKeepAlive = 10 * time.Second
 
 // stopWait is how long DELETE …/chat/turns waits for the turns it stopped to

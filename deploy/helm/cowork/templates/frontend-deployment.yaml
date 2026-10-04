@@ -38,19 +38,10 @@ spec:
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.frontend.securityContext | nindent 12 }}
+          {{- with .Values.frontend.extraEnv }}
           env:
-            # nginx proxies /api/ here; rendered into the configuration at start.
-            - name: BACKEND_URL
-              value: {{ include "cowork.backendURL" . | quote }}
-            # Sized from the backend's limits with headroom, so the backend
-            # answers its own 413 and 504 (docs/adr/0039 D3).
-            - name: NGINX_CLIENT_MAX_BODY_SIZE
-              value: {{ include "cowork.nginxBodySize" . | quote }}
-            - name: NGINX_PROXY_READ_TIMEOUT
-              value: {{ include "cowork.nginxReadTimeout" . | quote }}
-            {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.frontend.containerPort }}
@@ -68,16 +59,13 @@ spec:
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           volumeMounts:
-            # nginx-unprivileged keeps pid and temp files under /tmp; the image
-            # entrypoint renders the configuration template into conf.d.
+            # nginx-unprivileged keeps its pid and temp files under /tmp. The
+            # configuration is part of the image: a volume at /etc/nginx/conf.d
+            # would hide it.
             - name: tmp
               mountPath: /tmp
-            - name: nginx-conf
-              mountPath: /etc/nginx/conf.d
       volumes:
         - name: tmp
-          emptyDir: {}
-        - name: nginx-conf
           emptyDir: {}
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:

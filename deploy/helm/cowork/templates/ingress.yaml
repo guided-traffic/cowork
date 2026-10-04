@@ -1,4 +1,8 @@
 {{- if .Values.ingress.enabled -}}
+# The one origin the browser sees (docs/adr/0001 D3): the API and the browser's
+# login flows go to the backend Service, everything else to the frontend
+# Service, which serves the UI only. The paths are the chart's, not values:
+# the backend serves no UI and the frontend no /api/ or /auth/.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -28,14 +32,21 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- range .paths }}
-          - path: {{ .path }}
-            pathType: {{ .pathType }}
+          {{- range list "/api/" "/auth/" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "cowork.backend.fullname" $ }}
+                port:
+                  name: http
+          {{- end }}
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: {{ include "cowork.frontend.fullname" $ }}
                 port:
                   name: http
-          {{- end }}
     {{- end }}
 {{- end }}

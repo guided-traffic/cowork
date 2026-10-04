@@ -1,8 +1,7 @@
 cowork {{ .Chart.AppVersion }} is being rolled out as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
 
-Backend:  Deployment {{ include "cowork.backend.fullname" . }}, Service {{ include "cowork.backend.fullname" . }}:{{ .Values.backend.service.port }}
-Frontend: Deployment {{ include "cowork.frontend.fullname" . }}, Service {{ include "cowork.frontend.fullname" . }}:{{ .Values.frontend.service.port }}
-          proxies /api/ to {{ include "cowork.backendURL" . }}
+Backend:  Deployment {{ include "cowork.backend.fullname" . }}, Service {{ include "cowork.backend.fullname" . }}:{{ .Values.backend.service.port }}, for /api/ and /auth/
+Frontend: Deployment {{ include "cowork.frontend.fullname" . }}, Service {{ include "cowork.frontend.fullname" . }}:{{ .Values.frontend.service.port }}, the UI and nothing else
 Database: Secret {{ include "cowork.databaseSecretName" . }}, key {{ include "cowork.databaseSecretKey" . }}
 {{- if and .Values.database.url (not .Values.database.existingSecret) }}
   WARNING: database.url is set inline. The credential is stored in plain text in the
@@ -39,17 +38,16 @@ Login:    no local administrator and no identity provider (localAdmin and auth.o
   NOTE: auth.oidc.issuer is empty, so the login through an identity provider is off and the
   other auth.oidc values are not used.
 {{- end }}
-{{- if .Values.networkPolicy.enabled }}
-Network:  NetworkPolicy {{ include "cowork.backend.fullname" . }} admits only the frontend pods to the backend (a network plugin that implements NetworkPolicy enforces it)
-{{- else if .Values.backend.config.trustedProxies }}
-  WARNING: networkPolicy.enabled is false while backend.config.trustedProxies is set. Any pod
-  that can reach the backend can write X-Forwarded-For and choose its client address for the
-  login throttle.
+{{- if .Values.backend.config.trustedProxies }}
+  WARNING: backend.config.trustedProxies is set. Any pod inside those networks that reaches the
+  backend writes X-Forwarded-For and chooses its client address for the login throttle and the
+  audit rows. The chart ships no NetworkPolicy: admitting only the Ingress controller to the
+  backend's pods is a policy of the cluster's (docs/security/local-accounts.md, H-17).
 {{- end }}
 {{- if and (include "cowork.localAdminEnabled" .) (not .Values.backend.config.trustedProxies) (gt (int .Values.auth.local.addressLimit) 0) }}
-  NOTE: backend.config.trustedProxies is empty, so the login throttle counts the frontend pod as
-  the one client of every browser: auth.local.addressLimit attempts a minute for the whole
-  installation. Name the networks of the proxies in front of the backend
+  NOTE: backend.config.trustedProxies is empty, so the login throttle counts the TCP peer as the
+  client, and behind an Ingress that is a controller pod: auth.local.addressLimit attempts a
+  minute shared by every browser behind it. Name the Ingress controller's networks
   (docs/operations/installation.md).
 {{- end }}
 Migrations: {{ if .Values.backend.config.migrateOnStart }}an init container of every backend pod, as the owner role{{ else }}none; run `cowork migrate` with the owner credential before the pods start{{ end }}
@@ -71,10 +69,18 @@ Reach the UI:
 {{- range .Values.ingress.hosts }}
   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
 {{- end }}
+  The Ingress {{ include "cowork.fullname" . }} sends /api/ and /auth/ to Service {{ include "cowork.backend.fullname" . }} and
+  everything else to Service {{ include "cowork.frontend.fullname" . }}.
 {{- else }}
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "cowork.frontend.fullname" . }} 8080:{{ .Values.frontend.service.port }}
-  open http://localhost:8080          # the UI; /api/ is proxied to the backend
+  ingress.enabled is false. The UI needs one origin that sends /api/ and /auth/ to Service
+  {{ include "cowork.backend.fullname" . }}:{{ .Values.backend.service.port }} and everything else to Service {{ include "cowork.frontend.fullname" . }}:{{ .Values.frontend.service.port }}: enable the
+  Ingress or route it so yourself. A port-forward to the frontend alone serves the UI without its API.
 {{- end }}
+{{- $body := include "cowork.ingressBodySize" . }}
+  Whatever stands in front must pass {{ if eq $body "0" }}a body of any size{{ else }}a body of {{ $body }}{{ end }} and wait {{ include "cowork.ingressReadTimeout" . }} for an answer
+  at the least, so the backend answers its own 413 and 504, pass text/event-stream unbuffered, and
+  write the address it saw into X-Forwarded-For — settings of the controller's, which the chart
+  does not set (docs/operations/installation.md#expose-it).
 
 Reach the API directly (for tokens and scripts):
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "cowork.backend.fullname" . }} 8081:{{ .Values.backend.service.port }}

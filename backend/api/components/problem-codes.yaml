@@ -50,4 +50,3 @@ ProblemCode:
     - chat_provider_failed
     - not_ready
     - timeout
-    - backend_unreachable

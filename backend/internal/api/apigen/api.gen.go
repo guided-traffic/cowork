@@ -450,7 +450,6 @@ func (e MembershipSource) Valid() bool {
 const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
-	ProblemCodeBackendUnreachable     ProblemCode = "backend_unreachable"
 	ProblemCodeChatBusy               ProblemCode = "chat_busy"
 	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
 	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
@@ -504,8 +503,6 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeAgentForbidden:
 		return true
 	case ProblemCodeAttachmentLimit:
-		return true
-	case ProblemCodeBackendUnreachable:
 		return true
 	case ProblemCodeChatBusy:
 		return true

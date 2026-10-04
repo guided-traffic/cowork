@@ -53,6 +53,5 @@ export const PROBLEM_CODE: ProblemCode[] = [
   'internal',
   'chat_provider_failed',
   'not_ready',
-  'timeout',
-  'backend_unreachable'
+  'timeout'
 ];

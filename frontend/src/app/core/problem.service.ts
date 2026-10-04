@@ -38,6 +38,9 @@ function isProblem(body: unknown): body is Problem {
  * The one place the API's problem details are translated (docs/adr/0053 D5): into a toast, a
  * form's field errors or the values a `412` merge needs. Components never parse a problem body.
  */
+/** The statuses with which a proxy in front of the backend says it reached none. */
+const gatewayStatuses = new Set([502, 503, 504]);
+
 @Injectable({ providedIn: 'root' })
 export class ProblemService {
   private readonly messages = inject(MessageService);
@@ -62,6 +65,18 @@ export class ProblemService {
           code: 'backend_unreachable',
           title: 'The backend cannot be reached',
           detail: 'The connection failed; cowork tries again on its own.',
+          fields: {},
+          current: {},
+        };
+      }
+      // The backend answers every error with a problem body (docs/adr/0047); a gateway's status
+      // without one is the Ingress in front of it, which reached no backend.
+      if (gatewayStatuses.has(error.status)) {
+        return {
+          status: error.status,
+          code: 'backend_unreachable',
+          title: 'The backend cannot be reached',
+          detail: `The Ingress answered ${error.status}: no backend took the request. cowork tries again on its own.`,
           fields: {},
           current: {},
         };

@@ -2,8 +2,9 @@
 # "Helm chart values" section of README.md.
 #
 # The release runs two Deployments: the backend (Go, the API and the schema
-# migration) and the frontend (nginx serving the Angular build and proxying
-# /api/ to the backend Service). The Ingress points at the frontend.
+# migration) and the frontend (nginx serving the Angular build and nothing
+# else). The Ingress routes /api/ and /auth/ to the backend Service and
+# everything else to the frontend Service (docs/adr/0001 D3).
 
 nameOverride: ""
 fullnameOverride: ""
@@ -99,8 +100,9 @@ auth:
     maxFailures: 5
     # COWORK_LOGIN_ADDRESS_LIMIT: login attempts per client address (an IPv6
     # client by its /64) and minute before 429; 0 switches the throttle off. Without
-    # backend.config.trustedProxies the client is the frontend pod, so this is
-    # a limit for the whole installation (docs/security/local-accounts.md).
+    # backend.config.trustedProxies the client is the TCP peer, behind an
+    # Ingress a controller pod, so this is a limit shared by every browser
+    # behind it (docs/security/local-accounts.md).
     addressLimit: 20
   # The login through an OpenID Connect identity provider (docs/adr/0029,
   # docs/adr/0030). The issuer turns it on, and emptying it alone turns it
@@ -187,8 +189,8 @@ storage:
 
 # The chat in the UI (docs/adr/0076). The backend calls the model for the
 # person — the browser never does —, so every provider must be reachable from
-# the backend pods: the chart's NetworkPolicy restricts nothing outgoing, and a
-# policy of your own that does must admit it. The providers turn the chat on,
+# the backend pods: the chart ships no NetworkPolicy, and a policy of the
+# cluster's that restricts their egress must admit it. The providers turn the chat on,
 # and an empty list alone turns it off: the limits below are rendered only with
 # a provider, as the backend refuses to start on a chat variable without one.
 #
@@ -244,25 +246,40 @@ chat:
   # disables the limit.
   maxSteps: 8
 
-# Which pods may reach the backend (docs/adr/0001 D3, docs/adr/0035 D2). With
-# the policy on, only the frontend pods of this release do, on the backend's
-# port: the backend trusts X-Forwarded-For from the networks of
-# backend.config.trustedProxies, and a pod that is no proxy of ours must not
-# be able to write that header itself. The kubelet's probes are not affected.
-# Only a network plugin that implements NetworkPolicy enforces it; without one
-# the object does nothing.
-networkPolicy:
-  enabled: true
-
+# The Ingress (docs/adr/0001 D3): for every host it routes /api/ and /auth/
+# (Prefix) to the backend Service and / (Prefix) to the frontend Service; the
+# paths are the chart's, a host has no paths of its own. The chart ships no
+# NetworkPolicy: who may reach which pod is the cluster's.
+#
+# The controller stands in front of the backend itself, and the chart does not
+# know which controller it is: its settings are yours, in annotations or in the
+# controller's own configuration. It must
+#   - pass a request body above the backend's larger limit (maxJsonBody,
+#     attachmentMaxBytes, rounded up to MiB, plus 1 MiB: 11m with the defaults),
+#   - wait for an answer longer than backend.config.requestTimeout plus ten
+#     seconds (40 with the default; the two streams send something at least
+#     every twenty seconds, so they stay open within it),
+#   - pass text/event-stream unbuffered: the backend sends
+#     X-Accel-Buffering: no, and a controller that does not honour that header
+#     must be told not to buffer,
+#   - write the address it saw as the last entry of X-Forwarded-For, which
+#     backend.config.trustedProxies relies on,
+# so the backend answers its own 413 and 504 with a request id. The install
+# notes print the two figures for the values given
+# (docs/operations/installation.md#expose-it).
+# ingress-nginx is retired (March 2026: no releases, no security fixes since):
+# do not install it for a new installation. For a cluster that still runs it,
+# the worked example — 1m is its own body limit, 60 seconds its read timeout,
+# and it buffers no response and writes the address it saw by default:
+#   annotations:
+#     nginx.ingress.kubernetes.io/proxy-body-size: 11m
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "40"
 ingress:
   enabled: false
   className: ""
   annotations: {}
   hosts:
     - host: cowork.example.com
-      paths:
-        - path: /
-          pathType: Prefix
   tls: []
   #  - secretName: cowork-tls
   #    hosts:
@@ -301,17 +318,21 @@ backend:
     # is the URL the browser shows; required with localAdmin.
     baseURL: ""
     # COWORK_TRUSTED_PROXIES: the networks of the proxies in front of the
-    # backend, comma-separated CIDRs (IPv4 and IPv6), set only when non-empty.
-    # The login throttle counts the client address, found by walking
-    # X-Forwarded-For from the right through these networks (docs/adr/0035 D2).
-    # Empty: the TCP peer is the client, which behind the frontend is the
-    # frontend pod — one address for every browser. Name the proxies and no
-    # more, e.g. "10.244.0.0/16" for a pod network that holds the frontend and
-    # the Ingress controller: a client inside a trusted network chooses its
-    # own address (docs/operations/installation.md).
+    # backend — the Ingress controller's, and a load balancer's that adds a hop
+    # —, comma-separated CIDRs (IPv4 and IPv6), set only when non-empty. The
+    # login throttle and the audit rows take the client address, found by
+    # walking X-Forwarded-For from the right through these networks
+    # (docs/adr/0035 D2). Empty: the TCP peer is the client, which behind an
+    # Ingress is a controller pod — one address for every browser behind it.
+    # Name the controller's networks and no more, e.g. "10.244.0.0/16" for a
+    # pod network the controller runs in: every pod inside a trusted network
+    # that reaches the backend chooses its own address, and the chart ships no
+    # NetworkPolicy to keep other pods away — that is the cluster's
+    # (docs/operations/installation.md, docs/security/local-accounts.md H-17).
     trustedProxies: ""
-    # The limits of docs/adr/0039 D2; 0 disables each. nginx is sized from
-    # them with headroom (docs/adr/0039 D3).
+    # The limits of docs/adr/0039 D2; 0 disables each. The Ingress
+    # controller's body limit and read timeout must sit above them (see
+    # ingress above; docs/adr/0039 D3).
     # COWORK_MAX_JSON_BODY, in bytes.
     maxJsonBody: 1048576
     # COWORK_ATTACHMENT_MAX_BYTES, in bytes (docs/adr/0016 D6).
@@ -380,14 +401,14 @@ frontend:
   service:
     type: ClusterIP
     port: 80
-  # Extra environment variables appended to the container, verbatim.
-  # BACKEND_URL is set by the chart to the backend Service.
+  # Extra environment variables appended to the container, verbatim — the
+  # image's entrypoint switches, NGINX_ENTRYPOINT_QUIET_LOGS for one; the
+  # configuration reads none.
   extraEnv: []
   podAnnotations: {}
   podLabels: {}
-  # nginx-unprivileged runs as its nginx user (101). fsGroup makes the two
-  # emptyDir volumes below writable for it; without it the entrypoint cannot
-  # render the configuration and nginx serves nothing.
+  # nginx-unprivileged runs as its nginx user (101). fsGroup makes the
+  # emptyDir volume at /tmp writable for it.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 101
@@ -395,8 +416,8 @@ frontend:
     fsGroup: 101
     seccompProfile:
       type: RuntimeDefault
-  # nginx writes its pid, its temp files and the rendered configuration; the
-  # Deployment mounts emptyDirs at /tmp and /etc/nginx/conf.d for that.
+  # nginx writes its pid and its temp files, and the Deployment mounts an
+  # emptyDir at /tmp for that; its configuration is part of the image.
   securityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
