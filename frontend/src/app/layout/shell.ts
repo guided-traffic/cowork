@@ -51,10 +51,6 @@ export function initials(name: string): string {
   return letters.toUpperCase();
 }
 
-/** Says where the assistant is when the tenant has not allowed its model (docs/adr/0076). */
-export const chatNotAllowedText =
-  'The assistant is not allowed in this tenant: an administrator can allow the configured model in the tenant settings.';
-
 /** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
 export const overlayQuery = '(max-width: 64rem)';
 
@@ -95,16 +91,6 @@ export class Shell {
   protected readonly chat = inject(ChatService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
-  protected readonly chatNotAllowedText = chatNotAllowedText;
-  /** The tenant whose administrators could allow the assistant, for its administrator. */
-  protected readonly chatNotAllowed = computed(() => {
-    const availability = this.chat.availability;
-    return this.tenantInfo.isAdmin() &&
-      availability.hasValue() &&
-      availability.value().reason === 'not_allowed_in_tenant'
-      ? this.session.tenant()
-      : null;
-  });
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(

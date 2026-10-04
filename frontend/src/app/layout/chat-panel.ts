@@ -12,33 +12,39 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
 import { Message } from 'primeng/message';
+import { Select } from 'primeng/select';
 import { Textarea } from 'primeng/textarea';
+import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
+import { Capability } from '../api/models';
+import { CAPABILITY } from '../api/models/capability-array';
 import { CallState, ChatService } from '../core/chat.service';
+import { assisted, capabilityMeanings } from '../shared/capabilities';
 
 /** What a call's card says of where it stands. */
 const stateTexts: Record<CallState, string> = {
   running: 'running',
   ok: 'ok',
   failed: 'failed',
-  waiting: 'waits for you',
-  skipped: 'skipped',
   unanswered: 'no result',
 };
 
 /**
  * The assistant at the right edge of the shell (docs/adr/0076): the conversation of the tenant's
- * chat, the input, and Stop. Everything the model or a tool wrote is shown as text — never as
- * markup and never as rendered Markdown, because ticket text a tool reads can steer what the
- * model writes. A call is a card with its tool's name, its arguments as JSON (folded away until
- * opened), what it answered, and Run and Skip where it waits for the person.
+ * chat, the input, Stop, the provider the person picks where the installation configures more than
+ * one, and the capabilities the person gives the chat (docs/adr/0043 D5). Everything the model or a
+ * tool wrote is shown as text — never as markup and never as rendered Markdown, because ticket text
+ * a tool reads can steer what the model writes. A call is a card with its tool's name, its
+ * arguments as JSON (folded away until opened) and what it answered; it runs at once, nothing waits
+ * for the person.
  */
 @Component({
   selector: 'app-chat-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, Message, Textarea, Tooltip],
+  imports: [ButtonDirective, FormsModule, Message, Select, Textarea, ToggleSwitch, Tooltip],
   templateUrl: './chat-panel.html',
   styleUrl: './chat-panel.scss',
   host: {
@@ -57,11 +63,15 @@ export class ChatPanel {
 
   protected readonly draft = signal('');
   protected readonly stateTexts = stateTexts;
-  protected readonly model = computed(() =>
-    this.chat.availability.hasValue() ? this.chat.availability.value().model : null,
-  );
-  protected readonly inside = computed(
-    () => this.chat.availability.hasValue() && this.chat.availability.value().inside,
+  /** Whether the person's choice of the chat's capabilities is shown. */
+  protected readonly settings = signal(false);
+  /** A choice of the capabilities is on its way to the backend. */
+  protected readonly saving = signal(false);
+  protected readonly catalogue = CAPABILITY;
+  protected readonly meanings = capabilityMeanings;
+  /** The capabilities the chat holds, once read. */
+  protected readonly held = computed(() =>
+    this.chat.capabilities.hasValue() ? this.chat.capabilities.value() : undefined,
   );
   /** Whether the log follows the newest message: until the person scrolls up to read. */
   private follow = true;
@@ -128,9 +138,23 @@ export class ChatPanel {
     }
   }
 
-  protected decide(callId: string, run: boolean): void {
-    this.follow = true;
-    void this.chat.decide(callId, run);
+  /** One switch of the chat's capabilities: the set with it on or off, in the catalogue's order. */
+  protected toggle(held: Capability[], capability: Capability, on: boolean): void {
+    void this.choose(CAPABILITY.filter((each) => (each === capability ? on : held.includes(each))));
+  }
+
+  /** Full or assisted, the shortcuts of the token page (docs/adr/0043 D4). */
+  protected shortcut(which: 'full' | 'assisted'): void {
+    void this.choose(which === 'full' ? [...CAPABILITY] : assisted);
+  }
+
+  private async choose(capabilities: Capability[]): Promise<void> {
+    this.saving.set(true);
+    try {
+      await this.chat.setCapabilities(capabilities);
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   /** A new conversation from the notice, which goes with the old one: the keyboard goes to the input. */

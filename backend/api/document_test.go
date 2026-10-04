@@ -35,15 +35,18 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // make — a token, a tenant, an account, a password the administrator knows, a
 // role, a mapping, a person's way into a restricted project — outlives its
 // revocation; what only takes access away stays open to a token. A turn of
-// the chat acts with the person's session; an agent with a token has the MCP
-// server (docs/adr/0076, docs/adr/0040). The list of every tenant is a global
+// the chat acts with the person's session, and so does stopping one; an agent
+// with a token has the MCP server (docs/adr/0076, docs/adr/0040). Choosing the
+// chat's capabilities gives the person's agent access, which a token does not
+// give (docs/adr/0043 D5). The list of every tenant is a global
 // administrator's view across the installation's clients, which a token of
 // theirs does not get (docs/adr/0034 D2).
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true, "listTenants": true,
 	"createAccount": true, "resetAccountPassword": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
-	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true,
+	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true, "stopChatTurns": true,
+	"setMyChat": true,
 }
 
 // The document is part of the security documentation (docs/adr/0046 D8):

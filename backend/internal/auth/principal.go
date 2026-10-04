@@ -38,6 +38,12 @@ const (
 var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapOverrideUrgency,
 	CapInterest, CapUpload, CapCreateProject, CapRecordAnswer}
 
+// DefaultChatCapabilities is what the chat in the UI holds for a person who
+// never chose (docs/adr/0043 D5): every capability but decide, close and drop,
+// which the owner keeps a person's, and record-answer, because without a
+// confirmation an injected text could record an answer in the person's name.
+var DefaultChatCapabilities = []string{CapRank, CapOverrideUrgency, CapInterest, CapUpload, CapCreateProject}
+
 // Principal is who a request acts for, after authentication: a person through
 // a personal access token or through a browser session, resolved by one
 // authentication step (docs/adr/0031 D6).
@@ -119,11 +125,13 @@ func checkAgentPart(part string) error {
 	return nil
 }
 
-// Mark decides the agent mark and the capability set of a request: a flagged
-// token is an agent's whatever the header says, recorded by the header or as
-// unknown-agent; a plain token is an agent's only when the header says so,
-// and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
-// header is the validated header value or empty.
+// Mark decides the agent mark and the capability set of a token's request: a
+// flagged token is an agent's whatever the header says, recorded by the header
+// or as unknown-agent; a plain token is an agent's only when the header says
+// so, and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
+// header is the validated header value or empty. A session the header marks
+// holds the person's chat capabilities instead (docs/adr/0043 D5), which the
+// session's resolver reads.
 func Mark(flagged bool, tokenCapabilities []string, header string) (agent string, capabilities []string) {
 	switch {
 	case flagged && header != "":

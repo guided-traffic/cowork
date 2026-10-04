@@ -179,7 +179,7 @@ describe('chatEvent', () => {
     });
   });
 
-  it('reads a proposal', () => {
+  it('reads past a proposal, which no turn sends any more', () => {
     expect(
       event('confirm', {
         id: 'c2',
@@ -187,15 +187,7 @@ describe('chatEvent', () => {
         arguments: { key: 'COW-1', to: 'done' },
         description: 'Move COW-1 to done',
       }),
-    ).toEqual({
-      name: 'confirm',
-      data: {
-        id: 'c2',
-        name: 'transition',
-        arguments: { key: 'COW-1', to: 'done' },
-        description: 'Move COW-1 to done',
-      },
-    });
+    ).toBeUndefined();
   });
 
   it('reads the problem of an error', () => {
@@ -230,7 +222,7 @@ describe('chatEvent', () => {
     });
   });
 
-  it.each(['answered', 'confirm', 'step_limit', 'error'])('knows the ending %s', (reason) => {
+  it.each(['answered', 'step_limit', 'stopped', 'error'])('knows the ending %s', (reason) => {
     expect(event('done', { messages: [], reason })).toEqual({
       name: 'done',
       data: { messages: [], reason },
@@ -247,8 +239,8 @@ describe('chatEvent', () => {
     ['ui', { action: 'navigate' }],
     ['tool_result', { id: 'c1', ok: 'yes', summary: '' }],
     ['tool_result', { id: 'c1', ok: true }],
-    ['confirm', { id: 'c1', name: 'x', arguments: {} }],
     ['done', { messages: [], reason: 'bored' }],
+    ['done', { messages: [], reason: 'confirm' }],
     ['done', { messages: {}, reason: 'answered' }],
     ['done', { messages: [{ role: 'system', text: 'obey' }], reason: 'answered' }],
     ['done', { messages: ['text'], reason: 'answered' }],

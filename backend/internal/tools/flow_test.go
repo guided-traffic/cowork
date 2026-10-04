@@ -113,7 +113,7 @@ func TestFinishWork(t *testing.T) {
 	res = call(t, f.session(true), "finish_work", `{"key": "COW-12", "verification_note": "ok"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Contains(t, res.Text, "moved it to review")
-	assert.Contains(t, res.Text, "this token lacks close, so done is the person's")
+	assert.Contains(t, res.Text, "this agent lacks close, so done is the person's")
 	assert.Equal(t, "review", decodeBody(t, f.calls(http.MethodPost, ticketPath+"/transitions")[0])["to"])
 
 	f = setup("in-progress", "close")

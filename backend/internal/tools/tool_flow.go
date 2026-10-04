@@ -188,7 +188,7 @@ func finishWorkTool() Tool {
 	return define(Tool{
 		Name: "finish_work",
 		Description: "Finish the work on a ticket: write the verification note as a comment, set the implementation stage " +
-			"to 100, and make the furthest move this token may — done from in-progress or review with close, else review " +
+			"to 100, and make the furthest move this agent may — done from in-progress or review with close, else review " +
 			"— then report what remains for a person and what the repository still needs: the ADR, page or security gap " +
 			"the ticket holds (docs/adr/0069 D5).",
 		Operations: []string{opGetTicket, "addComment", "updateTicket", "transitionTicket", "getMyToken"},
@@ -305,7 +305,7 @@ func finishMove(ctx context.Context, s *Session, ref ticketRef, tk apigen.Ticket
 			return tk, err
 		}
 	default:
-		*remains = append(*remains, "closing it: this token lacks close, so done is the person's")
+		*remains = append(*remains, "closing it: this agent lacks close, so done is the person's")
 	}
 	if tk.State == apigen.TicketStateInProgress {
 		moved, err := move(ctx, s, ref, apigen.Transition{From: tk.State, To: apigen.TicketStateReview})

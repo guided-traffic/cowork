@@ -1,30 +1,50 @@
-import { signal, untracked } from '@angular/core';
+import { computed, signal, untracked } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ChatAvailability } from '../api/models';
+import { By } from '@angular/platform-browser';
+import { Select } from 'primeng/select';
+import { Capability, ChatCapabilities, ChatProvider } from '../api/models';
+import { CAPABILITY } from '../api/models/capability-array';
 import { CallEntry, ChatEntry, ChatService, NoticeEntry } from '../core/chat.service';
+import { capabilityMeanings } from '../shared/capabilities';
 import { ChatPanel } from './chat-panel';
 
-const available: ChatAvailability = {
-  available: true,
-  provider: 'openai',
-  model: 'qwen/qwen3.6-35b-a3b',
-  inside: true,
-  reason: null,
+const lmstudio: ChatProvider = {
+  id: 'lmstudio',
+  name: 'LM Studio',
+  kind: 'openai',
+  model: 'qwen/qwen3-30b-a3b-2507',
+};
+const claude: ChatProvider = {
+  id: 'claude',
+  name: 'Claude',
+  kind: 'anthropic',
+  model: 'claude-sonnet-4-5',
 };
 
 /** The part of the chat the panel reads, with what a test sets and what the panel asks of it. */
 class FakeChat {
-  readonly availabilityValue = signal<ChatAvailability | undefined>(available);
-  readonly availability = {
-    hasValue: () => this.availabilityValue() !== undefined,
-    value: () => this.availabilityValue(),
+  readonly providers = signal<ChatProvider[]>([lmstudio]);
+  readonly picked = signal<string | null>(null);
+  readonly provider = computed(
+    () => this.providers().find((each) => each.id === this.picked()) ?? this.providers()[0] ?? null,
+  );
+  readonly setProvider = vi.fn((id: string) => this.picked.set(id));
+  readonly capabilitiesValue = signal<ChatCapabilities | undefined>(undefined);
+  readonly capabilitiesError = signal<unknown>(undefined);
+  readonly capabilities = {
+    hasValue: () => this.capabilitiesValue() !== undefined,
+    value: () => this.capabilitiesValue(),
+    error: () => this.capabilitiesError(),
   };
+  readonly setCapabilities = vi
+    .fn<(capabilities: Capability[]) => Promise<boolean>>()
+    .mockResolvedValue(true);
   readonly entries = signal<ChatEntry[]>([]);
   readonly busy = signal(false);
   readonly open = signal(true);
   readonly send = vi.fn<(text: string) => Promise<boolean>>().mockResolvedValue(true);
-  readonly decide = vi.fn<(id: string, run: boolean) => Promise<boolean>>().mockResolvedValue(true);
   readonly stop = vi.fn<() => void>();
+  readonly stopElsewhere = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   readonly restart = vi.fn<() => void>();
 }
 
@@ -87,35 +107,33 @@ describe('ChatPanel', () => {
   });
 
   describe('before the first message', () => {
-    it('says what the assistant does and names the model, which runs inside the installation', async () => {
+    it('says what the assistant does, that nothing waits, and names the provider it reads to', async () => {
       await render();
 
       const empty = el('chat-empty')?.textContent?.replace(/\s+/g, ' ');
       expect(empty).toContain('works in this tenant as your agent');
-      expect(empty).toContain('waits for you to run or skip it');
+      expect(empty).toContain('Every act runs at once');
+      expect(empty).toContain('Stop ends a turn at once');
+      expect(empty).toContain('by default it does not decide, close or drop a ticket');
       expect(el('chat-model')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Model qwen/qwen3.6-35b-a3b, inside this installation.',
+        'LM Studio, model qwen/qwen3-30b-a3b-2507: what the assistant reads here is sent to it.',
       );
-      expect(el('chat-model')?.querySelector('code')?.textContent).toBe('qwen/qwen3.6-35b-a3b');
+      expect(el('chat-model')?.querySelector('code')?.textContent).toBe('qwen/qwen3-30b-a3b-2507');
     });
 
-    it('says that what the assistant reads goes to a provider outside the installation', async () => {
-      chat.availabilityValue.set({
-        ...available,
-        inside: false,
-        provider: 'anthropic',
-        model: 'm',
-      });
+    it('names the provider the person picked', async () => {
+      chat.providers.set([lmstudio, claude]);
+      chat.picked.set('claude');
 
       await render();
 
       expect(el('chat-model')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Model m, outside this installation: what the assistant reads here is sent to its provider.',
+        'Claude, model claude-sonnet-4-5: what the assistant reads here is sent to it.',
       );
     });
 
     it('names no model while none is known', async () => {
-      chat.availabilityValue.set(undefined);
+      chat.providers.set([]);
 
       await render();
 
@@ -196,15 +214,13 @@ describe('ChatPanel', () => {
         '{\n  "title": "Login fails",\n  "severity": "high"\n}',
       );
       expect(card.querySelector('[data-testid="chat-tool-summary"]')).toBeNull();
-      expect(card.querySelector('[data-testid="chat-confirm-run"]')).toBeNull();
+      expect(card.querySelector('button')).toBeNull();
     });
 
     it.each([
       ['ok', 'ok'],
       ['failed', 'failed'],
-      ['skipped', 'skipped'],
       ['unanswered', 'no result'],
-      ['waiting', 'waits for you'],
     ] as const)('says a call is %s', async (state, text) => {
       chat.entries.set([call({ state })]);
 
@@ -308,6 +324,183 @@ describe('ChatPanel', () => {
 
       expect(el('chat-notice')?.textContent).toBe('Stopped.');
       expect(el('chat-notice-new')).toBeNull();
+      expect(el('chat-notice-stop')).toBeNull();
+    });
+  });
+
+  describe("the person's turns running elsewhere", () => {
+    const busy: NoticeEntry = {
+      id: 1,
+      kind: 'notice',
+      text: 'A turn of yours is running elsewhere: wait for it, or stop it.',
+      stop: true,
+    };
+
+    it('offers to stop them right there, as a button that stops them', async () => {
+      chat.entries.set([busy]);
+      await render();
+
+      const button = el<HTMLButtonElement>('chat-notice-stop');
+      expect(button?.tagName).toBe('BUTTON');
+      expect(button?.type).toBe('button');
+      expect(button?.textContent?.trim()).toBe('Stop them');
+      expect(button?.previousElementSibling).toBe(el('chat-notice'));
+
+      button?.click();
+
+      expect(chat.stopElsewhere).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('the provider', () => {
+    it('is no choice while the installation configures one', async () => {
+      await render();
+
+      expect(el('chat-provider')).toBeNull();
+    });
+
+    it('is a choice in the header where it configures more, which the person picks from', async () => {
+      chat.providers.set([lmstudio, claude]);
+      await render();
+
+      const select = fixture.debugElement.query(By.directive(Select));
+      expect(select.nativeElement).toBe(el('chat-provider'));
+      expect(el('chat-provider')?.closest('header')).not.toBeNull();
+      expect((select.componentInstance as Select).options()).toEqual([lmstudio, claude]);
+      expect(select.nativeElement.querySelector('.p-select-label').textContent.trim()).toBe(
+        'LM Studio',
+      );
+
+      select.triggerEventHandler('ngModelChange', 'claude');
+
+      expect(chat.setProvider).toHaveBeenCalledExactlyOnceWith('claude');
+    });
+
+    it('cannot be changed while a turn runs', async () => {
+      chat.providers.set([lmstudio, claude]);
+      chat.busy.set(true);
+      await render();
+
+      const select = fixture.debugElement.query(By.directive(Select)).nativeElement as HTMLElement;
+      expect(select.classList).toContain('p-disabled');
+    });
+  });
+
+  describe('what the assistant may do', () => {
+    const toggle = () => el<HTMLButtonElement>('chat-settings-toggle') as HTMLButtonElement;
+    const settings = () => el('chat-settings') as HTMLElement;
+    const switchOf = (capability: Capability) =>
+      el(`chat-capability-${capability}`)?.querySelector<HTMLInputElement>('input');
+
+    it('is a section the header button shows and hides, folded away at first', async () => {
+      await render();
+
+      expect(toggle().getAttribute('aria-label')).toBe('What the assistant may do');
+      expect(toggle().getAttribute('aria-controls')).toBe('chat-settings');
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
+      expect(settings().id).toBe('chat-settings');
+      expect(settings().hidden).toBe(true);
+
+      toggle().click();
+      await fixture.whenStable();
+
+      expect(settings().hidden).toBe(false);
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+      toggle().click();
+      await fixture.whenStable();
+
+      expect(settings().hidden).toBe(true);
+    });
+
+    it('is the nine capabilities with their meaning, switched as the chat holds them', async () => {
+      chat.capabilitiesValue.set({ capabilities: ['rank', 'upload'], chosen: true });
+
+      await render();
+
+      for (const capability of CAPABILITY) {
+        const row = el(`chat-capability-${capability}`)?.closest('label');
+        expect(row?.querySelector('code')?.textContent).toBe(capability);
+        expect(row?.querySelector('small')?.textContent).toBe(capabilityMeanings[capability]);
+        expect(switchOf(capability)?.checked).toBe(['rank', 'upload'].includes(capability));
+      }
+      expect(el('chat-capabilities-count')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        '2 of 9 on. Full is everything; assisted leaves deciding, closing, ranking, creating projects and recording answers to you.',
+      );
+    });
+
+    it('says when the set is the default', async () => {
+      chat.capabilitiesValue.set({
+        capabilities: ['rank', 'override-urgency', 'interest', 'upload', 'create-project'],
+        chosen: false,
+      });
+
+      await render();
+
+      expect(el('chat-capabilities-count')?.textContent).toContain(
+        'The default: deciding, closing, dropping and recording answers stay yours.',
+      );
+    });
+
+    it('gives the chat a capability with its switch, and takes one away, in the order of the catalogue', async () => {
+      chat.capabilitiesValue.set({ capabilities: ['rank', 'upload'], chosen: true });
+      await render();
+
+      switchOf('close')?.click();
+      await settle();
+
+      expect(chat.setCapabilities).toHaveBeenLastCalledWith(['close', 'rank', 'upload']);
+
+      switchOf('rank')?.click();
+      await settle();
+
+      expect(chat.setCapabilities).toHaveBeenLastCalledWith(['upload']);
+    });
+
+    it('sets the full and the assisted set with their buttons', async () => {
+      chat.capabilitiesValue.set({ capabilities: [], chosen: true });
+      await render();
+
+      el('chat-capabilities-full')?.click();
+      await settle();
+      expect(chat.setCapabilities).toHaveBeenLastCalledWith([...CAPABILITY]);
+
+      el('chat-capabilities-assisted')?.click();
+      await settle();
+      expect(chat.setCapabilities).toHaveBeenLastCalledWith([
+        'drop',
+        'override-urgency',
+        'interest',
+        'upload',
+      ]);
+    });
+
+    it('takes no second choice while one is on its way', async () => {
+      let answer: (ok: boolean) => void = () => undefined;
+      chat.setCapabilities.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      chat.capabilitiesValue.set({ capabilities: [], chosen: true });
+      await render();
+
+      el('chat-capabilities-full')?.click();
+      await fixture.whenStable();
+
+      expect(el<HTMLButtonElement>('chat-capabilities-full')?.disabled).toBe(true);
+      expect(switchOf('close')?.disabled).toBe(true);
+      answer(true);
+      await settle();
+      expect(el<HTMLButtonElement>('chat-capabilities-full')?.disabled).toBe(false);
+    });
+
+    it('says while they are read, and when they cannot be', async () => {
+      await render();
+      expect(settings().textContent).toContain('Reading');
+
+      chat.capabilitiesError.set(new Error('down'));
+      await fixture.whenStable();
+
+      expect(el('chat-capabilities-error')?.textContent?.trim()).toBe(
+        'What the assistant may do could not be read.',
+      );
     });
   });
 
@@ -350,58 +543,6 @@ describe('ChatPanel', () => {
 
       expect(el<HTMLButtonElement>('chat-notice-new')?.disabled).toBe(true);
     });
-  });
-
-  describe('a proposal', () => {
-    const waiting = call({
-      call: { id: 'c9', name: 'transition', arguments: { key: 'COW-1', to: 'done' } },
-      state: 'waiting',
-      description: 'Move COW-1 to done',
-    });
-
-    it('says the act in words and offers Run and Skip', async () => {
-      chat.entries.set([waiting]);
-
-      await render();
-
-      expect(el('chat-proposal')?.textContent).toBe('Move COW-1 to done');
-      expect(el('chat-confirm-run')?.textContent?.trim()).toBe('Run');
-      expect(el('chat-confirm-skip')?.textContent?.trim()).toBe('Skip');
-    });
-
-    it('runs with Run and is skipped with Skip', async () => {
-      chat.entries.set([waiting]);
-      await render();
-
-      el('chat-confirm-run')?.click();
-      expect(chat.decide).toHaveBeenLastCalledWith('c9', true);
-
-      el('chat-confirm-skip')?.click();
-      expect(chat.decide).toHaveBeenLastCalledWith('c9', false);
-    });
-
-    it('cannot be decided while a turn runs', async () => {
-      chat.entries.set([waiting]);
-      chat.busy.set(true);
-
-      await render();
-
-      expect(el<HTMLButtonElement>('chat-confirm-run')?.disabled).toBe(true);
-      expect(el<HTMLButtonElement>('chat-confirm-skip')?.disabled).toBe(true);
-    });
-
-    it.each(['running', 'ok', 'skipped', 'unanswered'] as const)(
-      'offers no decision once it is %s, and keeps the act in words',
-      async (state) => {
-        chat.entries.set([{ ...waiting, state }]);
-
-        await render();
-
-        expect(el('chat-confirm-run')).toBeNull();
-        expect(el('chat-confirm-skip')).toBeNull();
-        expect(el('chat-proposal')?.textContent).toBe('Move COW-1 to done');
-      },
-    );
   });
 
   describe('the input', () => {
@@ -622,8 +763,8 @@ describe('ChatPanel', () => {
       expect(position.top).toBe(500);
     });
 
-    it('follows again once the person scrolls back down, or decides a proposal', async () => {
-      chat.entries.set([call({ state: 'waiting', description: 'Close it' })]);
+    it('follows again once the person scrolls back down', async () => {
+      chat.entries.set([call()]);
       await render();
       const position = measure(500);
       position.top = 0;
@@ -631,17 +772,7 @@ describe('ChatPanel', () => {
 
       position.top = 390;
       log().dispatchEvent(new Event('scroll'));
-      chat.entries.set([
-        call({ state: 'waiting', description: 'Close it' }),
-        { id: 3, kind: 'notice', text: 'x' },
-      ]);
-      await fixture.whenStable();
-      expect(position.top).toBe(500);
-
-      position.top = 0;
-      log().dispatchEvent(new Event('scroll'));
-      el('chat-confirm-run')?.click();
-      chat.entries.set([call({ state: 'running', description: 'Close it' })]);
+      chat.entries.set([call(), { id: 3, kind: 'notice', text: 'x' }]);
       await fixture.whenStable();
 
       expect(position.top).toBe(500);

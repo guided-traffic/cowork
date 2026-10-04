@@ -14,11 +14,19 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../api/api';
-import { getChatAvailability, runChatTurn } from '../api/functions';
 import {
-  ChatConfirmation,
+  getChatAvailability,
+  getMyChat,
+  runChatTurn,
+  setMyChat,
+  stopChatTurns,
+} from '../api/functions';
+import {
+  Capability,
+  ChatCapabilities,
   ChatMessage,
   ChatPageContext,
+  ChatProvider,
   ChatToolCall,
   ChatTurn,
   ChatTurnEnd,
@@ -52,11 +60,10 @@ export interface MessageEntry {
 }
 
 /**
- * Where a call stands: `running` until its result came, then `ok` or `failed`; `waiting` for the
- * person's Run or Skip; `skipped` by Skip, or by a new message written instead; `unanswered` when
+ * Where a call stands: `running` until its result came, then `ok` or `failed`; `unanswered` when
  * its turn ended before its result — it may have run.
  */
-export type CallState = 'running' | 'ok' | 'failed' | 'waiting' | 'skipped' | 'unanswered';
+export type CallState = 'running' | 'ok' | 'failed' | 'unanswered';
 
 /** A tool the assistant called, with what came of it. */
 export interface CallEntry {
@@ -66,8 +73,6 @@ export interface CallEntry {
   state: CallState;
   /** The start of what the tool answered. */
   summary?: string;
-  /** A proposal's act in words, for the person who decides it. */
-  description?: string;
   /** A page the call asked to open that is not one of this tenant, which the panel did not open. */
   refused?: string;
 }
@@ -81,8 +86,8 @@ export interface ProblemEntry {
 
 /**
  * How a turn ended, or why it did not begin, where that needs saying: stopped, cut off, out of
- * steps, no answer; the person's turns running elsewhere; a conversation too long for a turn, where
- * the notice offers a new one.
+ * steps, no answer; the person's turns running elsewhere, where the notice offers to stop them; a
+ * conversation too long for a turn, where the notice offers a new one.
  */
 export interface NoticeEntry {
   id: number;
@@ -90,6 +95,8 @@ export interface NoticeEntry {
   text: string;
   /** The conversation cannot go on: the notice offers a new conversation. */
   restart?: true;
+  /** The person's turns run elsewhere: the notice offers to stop them. */
+  stop?: true;
 }
 
 /** The conversation as the panel shows it, oldest first. */
@@ -114,8 +121,20 @@ const maxText = 100000;
 /** What the conversation says when it outgrew a turn; the panel offers a new one with it. */
 const tooLongText = 'This conversation is too long for another turn. A new one starts empty.';
 
+/**
+ * What a conversation under way says once the person changed the chat's capabilities: a model may
+ * hold to what it said before — on 2026-10-04 a local model went on refusing an act it had just been
+ * given, and did it in a new conversation; the panel offers one with it.
+ */
+const changedText =
+  'The new capabilities hold from the next message on, but the assistant may still go by what it ' +
+  'said earlier in this conversation. A new one starts clean.';
+
 /** What the conversation says when the person's turns run elsewhere (`chat_busy`). */
-const busyText = 'A turn of yours is running elsewhere: wait for it, or stop it there.';
+const busyText = 'A turn of yours is running elsewhere: wait for it, or stop it.';
+
+/** What the conversation says once the person's turns elsewhere are stopped. */
+const stoppedElsewhereText = 'Your turns in this tenant are stopped. Send your message again.';
 
 /** What the conversation says when the model answered nothing but white space. */
 const silentText = 'The assistant gave no answer.';
@@ -200,49 +219,27 @@ export function navigable(path: string, tenant: string): boolean {
 
 /**
  * What a turn's events reported, for a turn that ends without `done` — stopped by the person, or
- * cut — whose messages the backend never sent. Its messages are the turn as far as the events
- * tell it, so the model knows next time what it did: each step's text and the calls that came to
- * a result, each call followed by its tool message with the result's summary as its text, and a
- * proposal's call left waiting, as `done` leaves it. A call without its result is left out —
- * whether it ran is unknown. The calls the conversation leaves open — the proposal a decision
- * runs, and the calls after it in the same message — get their tool messages first, right behind
- * the message that holds them; any other call the conversation holds is not the turn's to answer.
- * The messages hold to the API document and the backend's check, so that the next turn is not
- * refused for them: a step of blank text and no call is left out, a step's text is cut to the
- * bound, which streamed text is not held to.
+ * cut — whose messages the backend never sent. Its messages are the turn as far as the events tell
+ * it, so the model knows next time what it did: each step's text and the calls that came to a
+ * result, each call followed by its tool message with the result's summary as its text. A call
+ * without its result is left out — whether it ran is unknown. The messages hold to the API document
+ * and the backend's check, so that the next turn is not refused for them: a step of blank text and
+ * no call is left out, a step's text is cut to the bound, which streamed text is not held to.
  */
 export class TurnRecord {
   private readonly steps: { text: string; calls: ChatToolCall[] }[] = [];
-  private readonly earlier: string[] = [];
   private readonly results = new Map<string, { ok: boolean; summary: string }>();
-  private readonly known = new Set<string>();
-  /** The calls of the conversation's last assistant message that no tool message answers. */
-  private open = new Set<string>();
-  private waiting: string | undefined;
-  /** A step ends with a result, or a proposal; what comes next is the model's next step. */
+  /** A step ends with a result; what comes next is the model's next step. */
   private ended = true;
-  /** Whether the turn called a tool, proposed one or reported a result. */
+  /** Whether the turn called a tool or reported a result. */
   private acted = false;
-
-  /** The conversation the turn was sent with. */
-  constructor(conversation: ChatMessage[]) {
-    for (const message of conversation) {
-      if (message.role === 'tool') {
-        this.open.delete(message.tool_call_id ?? '');
-      } else {
-        // A message of the person passes a proposal over; the backend answers it as skipped.
-        this.open = new Set((message.tool_calls ?? []).map((call) => call.id));
-        this.open.forEach((id) => this.known.add(id));
-      }
-    }
-  }
 
   /** Whether a call reported its result. */
   get reported(): boolean {
     return this.results.size > 0;
   }
 
-  /** Whether a tool was called, proposed or answered in the turn. */
+  /** Whether a tool was called or answered in the turn. */
   get called(): boolean {
     return this.acted;
   }
@@ -258,9 +255,7 @@ export class TurnRecord {
 
   call(call: ChatToolCall): void {
     this.acted = true;
-    if (this.open.has(call.id)) {
-      this.remember(call.id);
-    } else if (!this.known.has(call.id) && !this.held(call.id)) {
+    if (!this.steps.some((step) => step.calls.some((each) => each.id === call.id))) {
       this.step().calls.push(call);
     }
   }
@@ -268,40 +263,28 @@ export class TurnRecord {
   result(id: string, ok: boolean, summary: string): void {
     this.acted = true;
     this.results.set(id, { ok, summary });
-    if (this.open.has(id)) {
-      this.remember(id);
-    }
-    this.ended = true;
-  }
-
-  propose(call: ChatToolCall): void {
-    this.call(call);
-    this.waiting = call.id;
     this.ended = true;
   }
 
   messages(): ChatMessage[] {
-    const answer = (id: string): ChatMessage[] => {
-      const result = this.results.get(id);
-      return result
-        ? [{ role: 'tool', tool_call_id: id, ok: result.ok, text: result.summary }]
-        : [];
-    };
-    const messages = this.earlier.flatMap(answer);
+    const messages: ChatMessage[] = [];
     for (const step of this.steps) {
-      const calls = step.calls.filter(
-        (call) => this.results.has(call.id) || call.id === this.waiting,
-      );
-      if (step.text.trim() === '' && calls.length === 0) {
+      const answered = step.calls.flatMap((call) => {
+        const result = this.results.get(call.id);
+        return result ? [{ call, result }] : [];
+      });
+      if (step.text.trim() === '' && answered.length === 0) {
         continue;
       }
       const text = clipped(step.text);
       messages.push({
         role: 'assistant',
         ...(text !== '' ? { text } : {}),
-        ...(calls.length > 0 ? { tool_calls: calls } : {}),
+        ...(answered.length > 0 ? { tool_calls: answered.map(({ call }) => call) } : {}),
       });
-      messages.push(...calls.flatMap((call) => answer(call.id)));
+      for (const { call, result } of answered) {
+        messages.push({ role: 'tool', tool_call_id: call.id, ok: result.ok, text: result.summary });
+      }
     }
     return messages;
   }
@@ -313,32 +296,26 @@ export class TurnRecord {
     }
     return this.steps[this.steps.length - 1];
   }
-
-  private held(id: string): boolean {
-    return this.steps.some((step) => step.calls.some((call) => call.id === id));
-  }
-
-  private remember(id: string): void {
-    if (!this.earlier.includes(id)) {
-      this.earlier.push(id);
-    }
-  }
 }
 
 /**
- * How a turn's stream ended: its `done`'s reason, `silent` for an answer that said and added
- * nothing, or without `done`.
+ * How a turn's stream ended: its `done`'s reason — `stopped` when a stop ended it, from this page
+ * or another —, `silent` for an answer that said and added nothing, or without `done`: `aborted`
+ * by this page's Stop, `cut` otherwise.
  */
-type Ending = ChatTurnEnd | 'silent' | 'stopped' | 'cut';
+type Ending = ChatTurnEnd | 'silent' | 'aborted' | 'cut';
 
 /**
- * The chat of the tenant the pages show (docs/adr/0076): whether it is available, and one
+ * The chat of the tenant the pages show (docs/adr/0076): whether it is available and with which
+ * providers, the provider the person picked, the capabilities the person gives it, and one
  * conversation, which lives in the browser — the backend keeps nothing between turns, so each
  * turn sends the conversation so far. One turn runs at a time; a turn is never repeated by the
- * client, because a repeated turn repeats its acts. The conversation belongs to its tenant: it is
- * gone when another tenant's pages open (docs/adr/0053 D4), and a turn stops when the person leaves
- * the tenant's pages or the chat is no longer available there. Whether the panel is open is the
- * person's preference in browser storage (D6).
+ * client, because a repeated turn repeats its acts. Stop ends a turn at once: it aborts the
+ * turn's request and asks the backend to stop the person's turns, so a proxy that keeps the
+ * request open keeps no turn alive. The conversation belongs to its tenant: it is gone when another
+ * tenant's pages open (docs/adr/0053 D4), and a turn stops when the person leaves the tenant's
+ * pages or the chat is no longer available there. Whether the panel is open and which provider the
+ * person picked are the person's preferences in browser storage (D6).
  */
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -361,6 +338,35 @@ export class ChatService {
   readonly available = computed(
     () => this.availability.hasValue() && this.availability.value().available,
   );
+  /** The providers the installation configures, in its order; the first is the default. */
+  readonly providers = computed<ChatProvider[]>(() =>
+    this.availability.hasValue() ? this.availability.value().providers : [],
+  );
+
+  private readonly providerKey = computed(() => {
+    const person = this.session.person()?.id;
+    return person ? `cowork.chat.provider.${person}` : null;
+  });
+  /** The id of the provider the person picked last, as stored. */
+  private readonly picked = linkedSignal(() => this.storedText(this.providerKey()));
+  /**
+   * The provider a turn talks to: the person's pick while the installation configures it, else the
+   * first.
+   */
+  readonly provider = computed<ChatProvider | null>(() => {
+    const providers = this.providers();
+    return providers.find((each) => each.id === this.picked()) ?? providers[0] ?? null;
+  });
+
+  /**
+   * The capabilities the person gives the chat (docs/adr/0043 D5), read while the panel is open
+   * in a tenant that has the chat.
+   */
+  readonly capabilities = resource({
+    params: () =>
+      this.open() && this.available() ? (this.session.person()?.id ?? undefined) : undefined,
+    loader: () => this.api.invoke(getMyChat, {}),
+  });
 
   private readonly shown = signal<ChatEntry[]>([]);
   readonly entries = this.shown.asReadonly();
@@ -380,7 +386,8 @@ export class ChatService {
   private conversation = crypto.randomUUID();
   /** The tenant the conversation belongs to. */
   private owner: string | null = null;
-  private controller: AbortController | null = null;
+  /** The running turn: what aborts its request, and the tenant its Stop asks the backend to stop. */
+  private running$: { controller: AbortController; tenant: string } | null = null;
   /** Counts the conversations, so that a turn of an earlier one changes nothing of the next. */
   private generation = 0;
   private lastId = 0;
@@ -390,8 +397,8 @@ export class ChatService {
       const tenant = this.session.tenant();
       untracked(() => this.enter(tenant));
     });
-    // The panel and its Stop go when the chat does — an administrator withdrew the consent, or the
-    // availability cannot be read: a turn nobody can see or stop does not run on.
+    // The panel and its Stop go when the chat does — the installation configures no provider any
+    // more, or the availability cannot be read: a turn nobody can see or stop does not run on.
     effect(() => {
       if (!this.available()) {
         untracked(() => this.stop());
@@ -412,9 +419,52 @@ export class ChatService {
     }
   }
 
-  /** Asks again, after the tenant's consent to an outside provider changed. */
+  /** Asks again, after the backend answered that the tenant has no chat. */
   reloadAvailability(): void {
     refresh(this.availability, this.injector);
+  }
+
+  /** The person picks the provider of the next turns; the pick is remembered for this person. */
+  setProvider(id: string): void {
+    this.picked.set(id);
+    const key = this.providerKey();
+    if (!key) {
+      return;
+    }
+    try {
+      this.document.defaultView?.localStorage.setItem(key, id);
+    } catch {
+      // Storage refused (private mode, quota): the pick holds for this page only.
+    }
+  }
+
+  /**
+   * Gives the chat the capabilities named, the person's choice from the chat's next request on
+   * (docs/adr/0043 D5). True once the backend took it; a refusal shows as a problem, and the
+   * capabilities read stay.
+   */
+  async setCapabilities(capabilities: Capability[]): Promise<boolean> {
+    try {
+      const chosen: ChatCapabilities = await this.api.invoke(setMyChat, {
+        body: { capabilities },
+      });
+      this.capabilities.set(chosen);
+      this.noteChange();
+      return true;
+    } catch (error) {
+      this.problems.report(error);
+      return false;
+    }
+  }
+
+  /** Says once, in a conversation under way, that the capabilities changed ({@link changedText}). */
+  private noteChange(): void {
+    const list = this.shown();
+    const last = list.at(-1);
+    if (!last || (last.kind === 'notice' && last.text === changedText)) {
+      return;
+    }
+    this.shown.set([...list, { id: this.id(), kind: 'notice', text: changedText, restart: true }]);
   }
 
   /**
@@ -429,34 +479,52 @@ export class ChatService {
       return false;
     }
     const before = this.shown();
-    // A proposal the person writes past is answered as skipped by every later turn.
-    this.shown.set([
-      ...before.map((entry): ChatEntry =>
-        entry.kind === 'call' && entry.state === 'waiting' ? { ...entry, state: 'skipped' } : entry,
-      ),
-      { id: this.id(), kind: 'user', text: said },
-    ]);
-    return this.turn(tenant, [...this.messages, { role: 'user', text: said }], undefined, before);
+    this.shown.set([...before, { id: this.id(), kind: 'user', text: said }]);
+    return this.turn(tenant, [...this.messages, { role: 'user', text: said }], before);
   }
 
   /**
-   * The person's decision on a proposal: the next turn, with the conversation exactly as the last
-   * `done` left it. True once the turn began; a refused decision leaves the proposal waiting.
+   * Stops the running turn at once: its request is aborted, and the backend is asked to stop the
+   * person's turns in the turn's tenant, which ends it even where a proxy keeps the request open.
+   * What its calls reported has happened.
    */
-  async decide(callId: string, run: boolean): Promise<boolean> {
-    const tenant = this.session.tenant();
-    const card = this.lastCall(callId);
-    if (this.running() || !tenant || card?.state !== 'waiting') {
-      return false;
+  stop(): void {
+    const turn = this.running$;
+    if (!turn || turn.controller.signal.aborted) {
+      return;
     }
-    const before = this.shown();
-    this.changeCall(card.id, (entry) => ({ ...entry, state: run ? 'running' : 'skipped' }));
-    return this.turn(tenant, this.messages, [{ tool_call_id: callId, run }], before);
+    turn.controller.abort();
+    void this.stopTurns(turn.tenant);
   }
 
-  /** Stops the running turn; what its calls reported has happened. */
-  stop(): void {
-    this.controller?.abort();
+  /**
+   * Stops the person's turns in this tenant that run elsewhere — another tab, a request a proxy
+   * kept open —: the answer to `chat_busy`. The busy notice says when they are stopped.
+   */
+  async stopElsewhere(): Promise<void> {
+    const tenant = this.session.tenant();
+    if (!tenant || !(await this.stopTurns(tenant))) {
+      return;
+    }
+    this.shown.update((list) => [
+      ...list.map((entry): ChatEntry =>
+        entry.kind === 'notice' && entry.stop
+          ? { id: entry.id, kind: 'notice', text: entry.text }
+          : entry,
+      ),
+      { id: this.id(), kind: 'notice', text: stoppedElsewhereText },
+    ]);
+  }
+
+  /** Asks the backend to stop the person's turns in a tenant; true once it answered. */
+  private async stopTurns(tenant: string): Promise<boolean> {
+    try {
+      await this.api.invoke(stopChatTurns, { tenant });
+      return true;
+    } catch (error) {
+      this.problems.report(error);
+      return false;
+    }
   }
 
   /** Begins a new conversation; not while a turn runs. */
@@ -479,8 +547,8 @@ export class ChatService {
 
   private reset(): void {
     this.generation++;
-    this.controller?.abort();
-    this.controller = null;
+    this.running$?.controller.abort();
+    this.running$ = null;
     this.running.set(false);
     this.shown.set([]);
     this.messages = [];
@@ -490,16 +558,16 @@ export class ChatService {
   private async turn(
     tenant: string,
     messages: ChatMessage[],
-    confirmations: ChatConfirmation[] | undefined,
     before: ChatEntry[],
   ): Promise<boolean> {
     const generation = this.generation;
     const current = () => generation === this.generation;
     const controller = new AbortController();
-    this.controller = controller;
+    const turn = { controller, tenant };
+    this.running$ = turn;
     this.running.set(true);
     try {
-      const response = await this.post(tenant, messages, confirmations, controller.signal);
+      const response = await this.post(tenant, messages, controller.signal);
       if (!current()) {
         return false;
       }
@@ -508,15 +576,15 @@ export class ChatService {
         return false;
       }
       this.messages = messages;
-      const record = new TurnRecord(messages);
+      const record = new TurnRecord();
       const ending = await this.read(response.body, record, tenant, controller.signal, current);
       if (current()) {
         this.end(ending, record);
       }
       return true;
     } finally {
-      if (this.controller === controller) {
-        this.controller = null;
+      if (this.running$ === turn) {
+        this.running$ = null;
         this.running.set(false);
       }
     }
@@ -526,14 +594,14 @@ export class ChatService {
   private async post(
     tenant: string,
     messages: ChatMessage[],
-    confirmations: ChatConfirmation[] | undefined,
     abort: AbortSignal,
   ): Promise<Response | undefined> {
+    const provider = this.provider()?.id;
     const turn: ChatTurn = {
       conversation: this.conversation,
       messages,
       context: pageContext(this.router.url),
-      ...(confirmations ? { confirmations } : {}),
+      ...(provider ? { provider } : {}),
     };
     try {
       return await this.fetch(
@@ -558,8 +626,7 @@ export class ChatService {
 
   /**
    * A turn that did not begin shows what was shown before it, and why ({@link refusal}): the
-   * person's message goes, a decision waits again. Stopped before an answer came, it shows nothing
-   * more.
+   * person's message goes. Stopped before an answer came, it shows nothing more.
    */
   private async refused(
     response: Response | undefined,
@@ -596,7 +663,8 @@ export class ChatService {
 
   /**
    * How a refusal shows: a conversation too long for a turn as a notice that offers a new one, the
-   * person's turns running elsewhere as a notice to wait for them, anything else as its problem.
+   * person's turns running elsewhere as a notice that offers to stop them, anything else as its
+   * problem.
    */
   private refusal(problem: ProblemView): ChatEntry {
     const id = this.id();
@@ -604,7 +672,7 @@ export class ChatService {
       return { id, kind: 'notice', text: tooLongText, restart: true };
     }
     if (problem.code === 'chat_busy') {
-      return { id, kind: 'notice', text: busyText };
+      return { id, kind: 'notice', text: busyText, stop: true };
     }
     return { id, kind: 'problem', problem };
   }
@@ -620,7 +688,7 @@ export class ChatService {
     try {
       for await (const event of chatEvents(body)) {
         if (!current()) {
-          return 'stopped';
+          return 'aborted';
         }
         if (event.name === 'done') {
           const { messages, reason } = event.data;
@@ -633,7 +701,7 @@ export class ChatService {
       }
       return 'cut';
     } catch {
-      return abort.aborted ? 'stopped' : 'cut';
+      return abort.aborted ? 'aborted' : 'cut';
     }
   }
 
@@ -659,22 +727,12 @@ export class ChatService {
         record.call(event.data);
         this.track(event.data, 'running');
         return null;
-      case 'confirm': {
-        const { description, ...call } = event.data;
-        record.propose(call);
-        this.track(call, 'waiting', description);
-        return null;
-      }
       case 'tool_result': {
         const { id, ok, summary } = event.data;
         record.result(id, ok, summary);
         const card = this.lastCall(id);
         if (card) {
-          this.changeCall(card.id, (entry) => ({
-            ...entry,
-            state: card.state === 'skipped' ? 'skipped' : ok ? 'ok' : 'failed',
-            summary,
-          }));
+          this.changeCall(card.id, (entry) => ({ ...entry, state: ok ? 'ok' : 'failed', summary }));
         }
         return null;
       }
@@ -698,31 +756,9 @@ export class ChatService {
     }
   }
 
-  /**
-   * The card of a call: the one it has — a proposal decided to run, which a decision's turn calls
-   * again — or a new one.
-   */
-  private track(call: ChatToolCall, state: CallState, description?: string): void {
-    const card = this.lastCall(call.id);
-    if (card && (card.state === 'running' || card.state === 'waiting')) {
-      this.changeCall(card.id, (entry) => ({
-        ...entry,
-        call,
-        state,
-        ...(description !== undefined ? { description } : {}),
-      }));
-      return;
-    }
-    this.shown.update((list) => [
-      ...list,
-      {
-        id: this.id(),
-        kind: 'call',
-        call,
-        state,
-        ...(description !== undefined ? { description } : {}),
-      },
-    ]);
+  /** A new card for a call the model made. */
+  private track(call: ChatToolCall, state: CallState): void {
+    this.shown.update((list) => [...list, { id: this.id(), kind: 'call', call, state }]);
   }
 
   /**
@@ -766,12 +802,14 @@ export class ChatService {
           : entry,
       ),
     );
+    const happened = record.reported ? ' What the calls above report has happened.' : '';
     let notice: string | undefined;
-    if (ending === 'stopped' || ending === 'cut') {
+    if (ending === 'aborted' || ending === 'cut') {
       this.messages = [...this.messages, ...record.messages()];
-      notice =
-        (ending === 'stopped' ? 'Stopped.' : 'The answer was cut off.') +
-        (record.reported ? ' What the calls above report has happened.' : '');
+      notice = (ending === 'aborted' ? 'Stopped.' : 'The answer was cut off.') + happened;
+    } else if (ending === 'stopped') {
+      // Stopped from elsewhere: `done` brought the turn's messages.
+      notice = 'Stopped.' + happened;
     } else if (ending === 'step_limit') {
       notice = 'The assistant took as many steps as one turn allows. Write to let it go on.';
     } else if (ending === 'silent') {
@@ -825,13 +863,17 @@ export class ChatService {
   }
 
   private stored(key: string | null): boolean {
+    return this.storedText(key) === 'open';
+  }
+
+  private storedText(key: string | null): string | null {
     if (!key) {
-      return false;
+      return null;
     }
     try {
-      return this.document.defaultView?.localStorage.getItem(key) === 'open';
+      return this.document.defaultView?.localStorage.getItem(key) ?? null;
     } catch {
-      return false;
+      return null;
     }
   }
 }

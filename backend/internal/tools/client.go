@@ -79,7 +79,7 @@ func (e *APIError) Markdown() string {
 	}
 	switch e.Code() {
 	case "agent_forbidden":
-		b.WriteString("\n\nThis is the agent rules refusing the act, not a failure of the tool: the act is a person's, or needs a capability this token lacks. Tell the person what remains for them.")
+		b.WriteString("\n\nThis is the agent rules refusing the act, not a failure of the tool: the act is a person's, or needs a capability this agent lacks. Tell the person what remains for them.")
 	case "unauthenticated", "token_expired", "token_revoked":
 		b.WriteString("\n\nThe token in COWORK_TOKEN does not work; the person makes a new one on the installation's token page.")
 	}

@@ -3,6 +3,10 @@
 
 export type { GetMe$Params as GetMe$Params } from './fn/me/get-me';
 export { getMe as getMe } from './fn/me/get-me';
+export type { GetMyChat$Params as GetMyChat$Params } from './fn/me/get-my-chat';
+export { getMyChat as getMyChat } from './fn/me/get-my-chat';
+export type { SetMyChat$Params as SetMyChat$Params } from './fn/me/set-my-chat';
+export { setMyChat as setMyChat } from './fn/me/set-my-chat';
 export type { ChangeMyPassword$Params as ChangeMyPassword$Params } from './fn/me/change-my-password';
 export { changeMyPassword as changeMyPassword } from './fn/me/change-my-password';
 export type { GetMyToken$Params as GetMyToken$Params } from './fn/me/get-my-token';
@@ -71,6 +75,8 @@ export type { GetChatAvailability$Params as GetChatAvailability$Params } from '.
 export { getChatAvailability as getChatAvailability } from './fn/chat/get-chat-availability';
 export type { RunChatTurn$Params as RunChatTurn$Params } from './fn/chat/run-chat-turn';
 export { runChatTurn as runChatTurn } from './fn/chat/run-chat-turn';
+export type { StopChatTurns$Params as StopChatTurns$Params } from './fn/chat/stop-chat-turns';
+export { stopChatTurns as stopChatTurns } from './fn/chat/stop-chat-turns';
 export type { StreamEvents$Params as StreamEvents$Params } from './fn/events/stream-events';
 export { streamEvents as streamEvents } from './fn/events/stream-events';
 export type { ListProjects$Params as ListProjects$Params } from './fn/projects/list-projects';

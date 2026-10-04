@@ -3,9 +3,9 @@
 
 
 /**
- * Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
- * COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+ * Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+ * and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
  * before
  */
-export type ChatTurnEnd = 'answered' | 'confirm' | 'step_limit' | 'error';
+export type ChatTurnEnd = 'answered' | 'step_limit' | 'stopped' | 'error';
 

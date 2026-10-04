@@ -45,22 +45,6 @@
       >
         <i class="pi pi-sparkles"></i>
       </button>
-    } @else if (chatNotAllowed(); as tenant) {
-      <a
-        pButton
-        class="chat-blocked"
-        [routerLink]="['/t', tenant, 'settings']"
-        [text]="true"
-        [rounded]="true"
-        severity="secondary"
-        [pTooltip]="chatNotAllowedText"
-        tooltipPosition="bottom"
-        [iconOnly]="true"
-        [attr.aria-label]="chatNotAllowedText"
-        data-testid="chat-not-allowed"
-      >
-        <i class="pi pi-sparkles"></i>
-      </a>
     }
     <button
       pButton

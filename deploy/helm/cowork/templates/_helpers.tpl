@@ -244,33 +244,68 @@ The key of auth.oidc.existingSecret that holds the client secret
 {{- end }}
 
 {{/*
-Whether the chat is configured (docs/adr/0076): chat.provider is set. It needs
-a provider the backend speaks, the provider's URL and the model, and for
-anthropic the key, which comes from a Secret only. Without the provider the
-other chat values are not rendered, so emptying the provider alone switches
-the chat off; the backend refuses to start on a chat variable without it.
-chat.inside must be a boolean: the notes warn by it, and a string "false"
-would read as true there while the backend reads false.
+Whether the chat is configured (docs/adr/0076): chat.providers holds at least
+one provider. Each needs an id the backend takes — the variables are named
+after it —, a kind the backend speaks, its URL and its model, and for
+anthropic its key, which comes from a Secret of its own and never from the
+values (docs/adr/0058 D3). Without a provider the limits are not rendered, so
+emptying the list alone switches the chat off; the backend refuses to start on
+a chat variable without it.
 */}}
 {{- define "cowork.chatEnabled" -}}
-{{- $chat := .Values.chat -}}
-{{- if $chat.provider -}}
-{{- $provider := lower $chat.provider -}}
-{{- if not (has $provider (list "openai" "anthropic")) -}}
-{{- fail (printf "chat.provider: %q is not one of openai, anthropic" $chat.provider) -}}
+{{- $providers := .Values.chat.providers | default list -}}
+{{- if not (kindIs "slice" $providers) -}}
+{{- fail "chat.providers must be a list of providers, each with id, kind, url and model" -}}
 {{- end -}}
-{{- if not $chat.url -}}
-{{- fail "set chat.url: the provider's base URL is required with chat.provider, e.g. https://api.anthropic.com or http://ollama.ai.svc:11434/v1" -}}
+{{- $seen := dict -}}
+{{- range $i, $p := $providers -}}
+{{- $at := printf "chat.providers[%d]" $i -}}
+{{- if not (kindIs "map" $p) -}}
+{{- fail (printf "%s must be a provider with id, kind, url and model" $at) -}}
 {{- end -}}
-{{- if not $chat.model -}}
-{{- fail "set chat.model: the model by the name its provider knows it is required with chat.provider" -}}
+{{- $id := toString ($p.id | default "") -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$" $id) -}}
+{{- fail (printf "%s.id must be 1 to 32 lowercase letters, digits and dashes, a dash neither first nor last" $at) -}}
 {{- end -}}
-{{- if and (eq $provider "anthropic") (not $chat.existingSecret) -}}
-{{- fail "set chat.existingSecret: anthropic needs an API key, and the key comes from a Secret only, never from the values (docs/adr/0058 D3)" -}}
+{{- if hasKey $seen $id -}}
+{{- fail (printf "%s.id: %q names two providers" $at $id) -}}
 {{- end -}}
-{{- if not (kindIs "bool" $chat.inside) -}}
-{{- fail (printf "chat.inside must be the boolean true or false, without quotes; got %q" (toString $chat.inside)) -}}
+{{- $_ := set $seen $id true -}}
+{{- $kind := lower (toString ($p.kind | default "")) -}}
+{{- if not (has $kind (list "openai" "anthropic")) -}}
+{{- fail (printf "%s.kind must be openai or anthropic" $at) -}}
 {{- end -}}
+{{- if not $p.url -}}
+{{- fail (printf "set %s.url: the provider's base URL, e.g. https://api.anthropic.com or http://ollama.ai.svc:11434/v1" $at) -}}
+{{- end -}}
+{{- if not $p.model -}}
+{{- fail (printf "set %s.model: the model by the name its provider knows it" $at) -}}
+{{- end -}}
+{{- if hasKey $p "apiKey" -}}
+{{- fail (printf "%s.apiKey: a provider's key comes from a Secret only, never from the values — set %s.existingSecret (docs/adr/0058 D3)" $at $at) -}}
+{{- end -}}
+{{- if and (eq $kind "anthropic") (not $p.existingSecret) -}}
+{{- fail (printf "set %s.existingSecret: anthropic needs an API key, and the key comes from a Secret only, never from the values (docs/adr/0058 D3)" $at) -}}
+{{- end -}}
+{{- end -}}
+{{- if $providers -}}
 true
 {{- end -}}
+{{- end }}
+
+{{/*
+COWORK_CHAT_PROVIDERS: the providers' ids in their order.
+*/}}
+{{- define "cowork.chatProviderIds" -}}
+{{- $ids := list -}}
+{{- range .Values.chat.providers }}{{ $ids = append $ids (toString .id) }}{{ end -}}
+{{- join "," $ids -}}
+{{- end }}
+
+{{/*
+The variable prefix of a chat provider: COWORK_CHAT_ and the id upper-cased,
+its dashes as underscores (config.ChatEnv).
+*/}}
+{{- define "cowork.chatEnv" -}}
+{{- printf "COWORK_CHAT_%s" (upper (replace "-" "_" (toString .))) -}}
 {{- end }}

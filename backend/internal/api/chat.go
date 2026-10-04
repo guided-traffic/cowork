@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +18,6 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/llm"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
-	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/tools"
 )
 
@@ -31,19 +29,24 @@ const opRunChatTurn = "runChatTurn"
 // proxies from closing it, well below the frontend's read timeout.
 const defaultKeepAlive = 10 * time.Second
 
+// stopWait is how long DELETE …/chat/turns waits for the turns it stopped to
+// end, so that a turn sent right after the stop finds their places free.
+const stopWait = 5 * time.Second
+
+// ChatProvider is one model the chat talks to: what the availability shows of
+// it, and the gateway (docs/adr/0076).
+type ChatProvider struct {
+	// ID names it in a turn, Name for the person; Kind is its wire format and
+	// Model the model's name. Its address and key stay in the gateway.
+	ID, Name, Kind, Model string
+	Provider              llm.Provider
+}
+
 // ChatOptions configures the chat in the UI (docs/adr/0076).
 type ChatOptions struct {
-	// Provider is the gateway to the model; Kind its wire format and Model
-	// the model's name, which the availability shows.
-	Provider llm.Provider
-	Kind     string
-	Model    string
-	// Inside declares the provider inside the installation's trust boundary:
-	// the chat is available in every tenant, not only where the tenant's
-	// administrators allowed an outside one. Fingerprint names the provider
-	// a tenant's consent is given to (config.Chat.Fingerprint).
-	Inside      bool
-	Fingerprint string
+	// Providers are the models the person picks from, in the configured
+	// order: the first is a turn's default.
+	Providers []ChatProvider
 	// TurnTimeout bounds a turn, MaxSteps the calls of the model in it, and
 	// TurnsPerPerson the turns one person runs at once on this replica; 0
 	// switches each off (docs/adr/0039 D2).
@@ -64,69 +67,48 @@ type ChatOptions struct {
 }
 
 // GetChatAvailability answers whether the tenant's members may hold a
-// conversation, and with which model (docs/adr/0076).
+// conversation, and with which providers (docs/adr/0076).
 func (s *Server) GetChatAvailability(ctx context.Context, _ apigen.GetChatAvailabilityRequestObject) (apigen.GetChatAvailabilityResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
 	}
-	a, err := s.h.chatAvailability(ctx, t)
-	if err != nil {
-		return nil, err
-	}
-	return apigen.GetChatAvailability200JSONResponse(a), nil
+	return apigen.GetChatAvailability200JSONResponse(s.h.chatAvailability()), nil
 }
 
-// chatAvailability is the chat's availability in a tenant: a provider
-// configured, and declared inside the installation's trust boundary or
-// allowed by the tenant. The provider's address is never part of it.
-func (h *handler) chatAvailability(ctx context.Context, t tenantScope) (apigen.ChatAvailability, error) {
-	c := h.opts.Chat
-	if c == nil {
-		reason := apigen.ChatUnavailableReasonNotConfigured
-		return apigen.ChatAvailability{Provider: nullableOf[apigen.ChatProvider](nil), Model: nullableOf[string](nil),
-			Reason: nullableOf(&reason)}, nil
+// chatAvailability is the chat's availability: every tenant has it once a
+// provider is configured. A provider's address and key are never part of it.
+func (h *handler) chatAvailability() apigen.ChatAvailability {
+	a := apigen.ChatAvailability{Providers: []apigen.ChatProvider{}, Reason: nullableOf[apigen.ChatUnavailableReason](nil)}
+	if c := h.opts.Chat; c != nil {
+		for _, p := range c.Providers {
+			a.Providers = append(a.Providers, apigen.ChatProvider{Id: p.ID, Name: p.Name, Kind: apigen.ChatProviderKind(p.Kind), Model: p.Model})
+		}
 	}
-	kind := apigen.ChatProvider(c.Kind)
-	a := apigen.ChatAvailability{Provider: nullableOf(&kind), Model: nullableOf(&c.Model), Inside: c.Inside,
-		Reason: nullableOf[apigen.ChatUnavailableReason](nil), Available: c.Inside}
-	if c.Inside {
-		return a, nil
-	}
-	err := h.opts.DB.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		row, err := r.GetTenant(ctx, t.ID)
-		a.Available = consented(row.ChatExternalAllowed, row.ChatExternalProvider, c.Fingerprint)
-		return err
-	})
-	if err != nil {
-		return apigen.ChatAvailability{}, err
-	}
+	a.Available = len(a.Providers) > 0
 	if !a.Available {
-		reason := apigen.ChatUnavailableReasonNotAllowedInTenant
+		reason := apigen.ChatUnavailableReasonNotConfigured
 		a.Reason = nullableOf(&reason)
 	}
-	return a, nil
+	return a
 }
 
 // serveChat runs a turn of the chat (docs/adr/0076). The pipeline has
 // authenticated the person by their session, held the request to the CSRF
 // check, refused it to an agent, admitted the person to the tenant, and read
 // and validated the body within the request timeout. The turn is bounded by
-// its own, and answers its events as they come, each flushed.
+// its own, can be stopped by DELETE …/chat/turns, and answers its events as
+// they come, each flushed.
 func (h *handler) serveChat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
+	p := principal(ctx)
+	if perr := auth.Authorize(p, t.Role, read); perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}
-	a, err := h.chatAvailability(ctx, t)
-	if err != nil {
-		h.writeError(w, r, err)
-		return
-	}
-	if !a.Available {
-		problem.Write(w, r, problem.New(problem.ChatUnavailable, unavailable(a)))
+	if !h.chatAvailability().Available {
+		problem.Write(w, r, problem.New(problem.ChatUnavailable, "this installation configures no chat provider"))
 		return
 	}
 	var body apigen.ChatTurn
@@ -134,12 +116,21 @@ func (h *handler) serveChat(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.ValidationFailed, "the request body is not valid JSON for this route"))
 		return
 	}
-	decisions := deref(body.Confirmations)
-	if perr := chat.Check(body.Messages, decisions); perr != nil {
+	provider, perr := h.chatProvider(body.Provider)
+	if perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}
-	turn, perr := h.chatTurn(r, t, body, decisions)
+	if perr := chat.Check(body.Messages); perr != nil {
+		problem.Write(w, r, perr)
+		return
+	}
+	capabilities, err := h.chatCapabilities(ctx, p.PersonID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	turn, perr := h.chatTurn(r, t, body, provider, capabilities)
 	if perr != nil {
 		problem.Write(w, r, perr)
 		return
@@ -149,21 +140,38 @@ func (h *handler) serveChat(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.Internal, "this server cannot stream a turn"))
 		return
 	}
-	done, perr := h.startTurn(principal(ctx).PersonID)
+	turnCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	done, perr := h.startTurn(p.PersonID, t.ID, cancel)
 	if perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}
 	defer done()
-	h.streamTurn(w, r, flusher, t, turn)
+	h.streamTurn(turnCtx, w, r, flusher, provider, turn)
+}
+
+// chatProvider is the provider a turn names, or the first configured.
+func (h *handler) chatProvider(id *string) (ChatProvider, *problem.Error) {
+	providers := h.opts.Chat.Providers
+	if id == nil {
+		return providers[0], nil
+	}
+	for _, p := range providers {
+		if p.ID == *id {
+			return p, nil
+		}
+	}
+	return ChatProvider{}, problem.Field("/provider", "this installation configures no such provider; GET …/chat lists them")
 }
 
 // streamTurn runs a turn and answers its events: the stream is open before
 // the model is asked, and ends with done whatever ends the turn — its time,
-// the provider, the consent, the server's shutdown.
-func (h *handler) streamTurn(w http.ResponseWriter, r *http.Request, flusher http.Flusher, t tenantScope, turn chat.Turn) {
+// the provider, the person's stop, the server's shutdown.
+func (h *handler) streamTurn(ctx context.Context, w http.ResponseWriter, r *http.Request, flusher http.Flusher, provider ChatProvider,
+	turn chat.Turn) {
 	c := h.opts.Chat
-	ctx, cancel := context.WithCancelCause(r.Context())
+	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	if c.Shutdown != nil {
 		defer context.AfterFunc(c.Shutdown, func() { cancel(errShutdown) })()
@@ -180,53 +188,109 @@ func (h *handler) streamTurn(w http.ResponseWriter, r *http.Request, flusher htt
 	out := &eventWriter{w: w, flusher: flusher, last: time.Now()}
 	// The comments end before the handler does, whatever ends it.
 	defer out.keepAlive(orDefault(c.KeepAlive, defaultKeepAlive))()
-	allowed := func(ctx context.Context) error {
-		a, err := h.chatAvailability(ctx, t)
-		switch {
-		case err != nil:
-			return err
-		case !a.Available:
-			return problem.New(problem.ChatUnavailable, unavailable(a)+"; the turn ends here")
-		}
-		return nil
-	}
-	end := chat.Run(ctx, chat.Options{Provider: c.Provider, MaxSteps: c.MaxSteps, Now: h.opts.Now, Allowed: allowed}, turn, out)
-	if end.Err != nil {
-		if context.Cause(ctx) == errShutdown {
+	end := chat.Run(ctx, chat.Options{Provider: provider.Provider, MaxSteps: c.MaxSteps, Now: h.opts.Now}, turn, out)
+	reason := end.End
+	switch cause := context.Cause(ctx); {
+	case end.Err == nil:
+	case errors.Is(cause, errStopped):
+		// The person stopped it: no failure to report.
+		reason = apigen.ChatTurnEndStopped
+	default:
+		if errors.Is(cause, errShutdown) {
 			end.Err = errShutdown
 		}
 		out.event("error", problem.BodyOf(r, h.turnProblem(r, end.Err)))
 	}
-	out.event("done", apigen.ChatDoneEvent{Messages: end.Messages, Reason: end.End})
+	out.event("done", apigen.ChatDoneEvent{Messages: end.Messages, Reason: reason})
 }
 
-// errShutdown ends the turns the server's shutdown finds running.
-var errShutdown = errors.New("the server is shutting down")
+// errShutdown ends the turns the server's shutdown finds running, errStopped
+// the turns their person stopped.
+var (
+	errShutdown = errors.New("the server is shutting down")
+	errStopped  = errors.New("the person stopped the turn")
+)
 
-// startTurn counts a person's turn while it runs: one more than
-// TurnsPerPerson is refused before its stream opens. The count is this
-// replica's (docs/adr/0039).
-func (h *handler) startTurn(person uuid.UUID) (done func(), perr *problem.Error) {
+// runningTurn is a turn this replica runs: the tenant it runs in, the cancel
+// that ends it, and done, closed once it ended.
+type runningTurn struct {
+	tenant uuid.UUID
+	cancel context.CancelCauseFunc
+	done   chan struct{}
+}
+
+// startTurn registers a person's turn while it runs: one more than
+// TurnsPerPerson is refused before its stream opens. The count and the
+// registry are this replica's (docs/adr/0039, docs/adr/0076).
+func (h *handler) startTurn(person, tenant uuid.UUID, cancel context.CancelCauseFunc) (done func(), perr *problem.Error) {
 	limit := h.opts.Chat.TurnsPerPerson
 	h.turnsMu.Lock()
 	defer h.turnsMu.Unlock()
-	if limit > 0 && h.turns[person] >= limit {
+	if limit > 0 && len(h.turns[person]) >= limit {
 		return nil, problem.New(problem.ChatBusy, fmt.Sprintf("%d turns of yours are running already; one ends, or is stopped, first", limit))
 	}
-	h.turns[person]++
+	rt := &runningTurn{tenant: tenant, cancel: cancel, done: make(chan struct{})}
+	if h.turns[person] == nil {
+		h.turns[person] = map[*runningTurn]struct{}{}
+	}
+	h.turns[person][rt] = struct{}{}
 	return func() {
 		h.turnsMu.Lock()
-		defer h.turnsMu.Unlock()
-		if h.turns[person]--; h.turns[person] <= 0 {
+		delete(h.turns[person], rt)
+		if len(h.turns[person]) == 0 {
 			delete(h.turns, person)
 		}
+		h.turnsMu.Unlock()
+		close(rt.done)
 	}, nil
+}
+
+// stopTurns ends every turn a person runs in a tenant on this replica, at
+// once, and returns what closes as each has ended.
+func (h *handler) stopTurns(person, tenant uuid.UUID) []<-chan struct{} {
+	h.turnsMu.Lock()
+	defer h.turnsMu.Unlock()
+	var ended []<-chan struct{}
+	for rt := range h.turns[person] {
+		if rt.tenant == tenant {
+			rt.cancel(errStopped)
+			ended = append(ended, rt.done)
+		}
+	}
+	return ended
+}
+
+// StopChatTurns stops every running turn of the session's person in the
+// tenant on this replica (docs/adr/0076): their contexts end at once, which
+// cancels the call of the model and a tool call in flight; the answer waits
+// until they have ended, at most stopWait. A turn of another replica is not
+// reached. The document takes a session only, and the pipeline refuses a
+// session the agent header marks.
+func (s *Server) StopChatTurns(ctx context.Context, _ apigen.StopChatTurnsRequestObject) (apigen.StopChatTurnsResponseObject, error) {
+	t := tenantFrom(ctx)
+	p := principal(ctx)
+	if perr := auth.Authorize(p, t.Role, read); perr != nil {
+		return nil, perr
+	}
+	deadline := time.NewTimer(stopWait)
+	defer deadline.Stop()
+	for _, ended := range s.h.stopTurns(p.PersonID, t.ID) {
+		select {
+		case <-ended:
+		case <-deadline.C:
+			return apigen.StopChatTurns204Response{}, nil
+		case <-ctx.Done():
+			return apigen.StopChatTurns204Response{}, nil
+		}
+	}
+	return apigen.StopChatTurns204Response{}, nil
 }
 
 // chatTurn is the turn of a request: the conversation, the page, and the API
 // client of the person's agent — the session cookie of the request, the
-// installation's origin, the chat's mark with the conversation's id.
-func (h *handler) chatTurn(r *http.Request, t tenantScope, body apigen.ChatTurn, decisions []apigen.ChatConfirmation) (chat.Turn, *problem.Error) {
+// installation's origin, the chat's mark with the provider's model and the
+// conversation's id, the capabilities the person gave the chat.
+func (h *handler) chatTurn(r *http.Request, t tenantScope, body apigen.ChatTurn, provider ChatProvider, capabilities []string) (chat.Turn, *problem.Error) {
 	cookie, err := r.Cookie(auth.SessionCookie)
 	if err != nil {
 		return chat.Turn{}, problem.New(problem.Unauthenticated, "a turn of the chat needs the session cookie")
@@ -235,38 +299,20 @@ func (h *handler) chatTurn(r *http.Request, t tenantScope, body apigen.ChatTurn,
 	if body.Context != nil {
 		page = chat.Page{Path: deref(body.Context.Path), Project: deref(body.Context.Project), Ticket: deref(body.Context.Ticket)}
 	}
-	seen := new(atomic.Bool)
-	loop := chat.Loopback{Handler: h, Tenant: t.Slug, RemoteAddr: r.RemoteAddr, ForwardedFor: r.Header.Values("X-Forwarded-For"),
-		Confidential: seen}
+	loop := chat.Loopback{Handler: h, Tenant: t.Slug, RemoteAddr: r.RemoteAddr, ForwardedFor: r.Header.Values("X-Forwarded-For")}
 	if l := h.opts.Chat.Loopback; l != nil && l() != nil {
 		loop.Handler = l()
 	}
 	p := principal(r.Context())
-	mark := chat.Mark(h.opts.Chat.Model, body.Conversation)
+	mark := chat.Mark(provider.Model, body.Conversation)
 	session, err := chat.NewSession(loop, h.opts.BaseOrigin, chat.Editor(cookie.Value, h.opts.BaseOrigin, mark), mark, page.Project,
-		tools.Person{ID: p.PersonID, Name: p.DisplayName})
+		tools.Person{ID: p.PersonID, Name: p.DisplayName}, capabilities)
 	if err != nil {
 		h.logger.Error("the chat's session failed", "request_id", requestid.From(r.Context()), "error", err)
 		return chat.Turn{}, problem.New(problem.Internal, "internal error")
 	}
 	return chat.Turn{Tenant: t.Slug, TenantName: t.Name, Conversation: body.Conversation, Page: page, Messages: body.Messages,
-		Confirmations: decisions, Session: session, Confidential: seen}, nil
-}
-
-// chatProvider is the fingerprint of the chat's provider, or "" without one.
-func (h *handler) chatProvider() string {
-	if h.opts.Chat == nil {
-		return ""
-	}
-	return h.opts.Chat.Fingerprint
-}
-
-// unavailable says why a tenant has no chat.
-func unavailable(a apigen.ChatAvailability) string {
-	if reason, err := a.Reason.Get(); err == nil && reason == apigen.ChatUnavailableReasonNotAllowedInTenant {
-		return "the chat's provider is outside the installation, and the tenant's administrators have not allowed it"
-	}
-	return "this installation configures no chat provider"
+		Session: session}, nil
 }
 
 // turnProblem is the problem a turn that failed reports in its stream: the
@@ -363,8 +409,4 @@ func (e *eventWriter) UI(path string) {
 
 func (e *eventWriter) ToolResult(id string, ok bool, summary string) {
 	e.event("tool_result", apigen.ChatToolResultEvent{Id: id, Ok: ok, Summary: summary})
-}
-
-func (e *eventWriter) Confirm(call apigen.ChatToolCall, description string) {
-	e.event("confirm", apigen.ChatConfirmEvent{Id: call.Id, Name: call.Name, Arguments: call.Arguments, Description: description})
 }

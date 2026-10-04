@@ -19,19 +19,21 @@ var (
 // namedTables are the tables docs/adr/0021 D6 names one by one: each has a
 // policy of its own instead of tenant_isolation, because its rows are read
 // across tenants by the person they belong to (memberships, tokens, the
-// person's sessions and local account, the person's installation-level audit
-// rows) or have no tenant at all (the login's attempts and locks).
+// person's sessions, local account and chat capabilities, the person's
+// installation-level audit rows) or have no tenant at all (the login's
+// attempts and locks).
 var namedTables = map[string]bool{
-	"tenants":          true,
-	"users":            true,
-	"memberships":      true,
-	"tokens":           true,
-	"idempotency_keys": true,
-	"audit_events":     true,
-	"sessions":         true,
-	"local_accounts":   true,
-	"login_attempts":   true,
-	"login_locks":      true,
+	"tenants":           true,
+	"users":             true,
+	"memberships":       true,
+	"tokens":            true,
+	"idempotency_keys":  true,
+	"audit_events":      true,
+	"sessions":          true,
+	"local_accounts":    true,
+	"login_attempts":    true,
+	"login_locks":       true,
+	"chat_capabilities": true,
 }
 
 // Every table the migrations create is protected in the migration set itself,

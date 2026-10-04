@@ -66,15 +66,21 @@ seed -username sam -agent=false >/dev/null
 # hashes outlive a restart (sessions are database rows and outlive it anyway).
 [ -s "$STATE/session-key" ] || (umask 077 && openssl rand -base64 32 >"$STATE/session-key")
 # The chat of the UI talks to a local LM Studio when it answers on :1234 and lists the model
-# (COWORK_DEV_CHAT_MODEL, an instruct model that calls tools); it runs on this machine, so it is
-# inside the installation and every tenant may use it (docs/adr/0076). Without it make dev runs
-# without the chat.
+# (COWORK_DEV_CHAT_MODEL, an MLX instruct model that calls tools), as its one provider, lmstudio
+# (docs/adr/0076). The script never loads a model: when the lms CLI shows the model is not loaded,
+# it prints the command that loads it with one prediction and a 32k context, because LM Studio
+# would load it on the first turn with its own defaults, whose parallel predictions split the
+# context (docs/operations/chat.md). Without LM Studio make dev runs without the chat.
 CHAT_MODEL=${COWORK_DEV_CHAT_MODEL:-qwen/qwen3-30b-a3b-2507}
 chat_env=()
-if curl -sf -m 2 http://localhost:1234/v1/models 2>/dev/null | grep -q "\"$CHAT_MODEL\""; then
-	chat_env=(COWORK_CHAT_PROVIDER=openai COWORK_CHAT_URL=http://localhost:1234/v1
-		COWORK_CHAT_MODEL="$CHAT_MODEL" COWORK_CHAT_INSIDE=true)
+chat_load=""
+if curl -sf -m 2 http://localhost:1234/v1/models 2>/dev/null | grep -qF "\"$CHAT_MODEL\""; then
+	chat_env=(COWORK_CHAT_PROVIDERS=lmstudio "COWORK_CHAT_LMSTUDIO_NAME=LM Studio" COWORK_CHAT_LMSTUDIO_KIND=openai
+		COWORK_CHAT_LMSTUDIO_URL=http://localhost:1234/v1 COWORK_CHAT_LMSTUDIO_MODEL="$CHAT_MODEL")
 	chat_note="the chat at the right edge talks to LM Studio's $CHAT_MODEL"
+	if command -v lms >/dev/null 2>&1 && ! grep -qF "$CHAT_MODEL" <<<"$(lms ps 2>/dev/null || true)"; then
+		chat_load="LM Studio has not loaded $CHAT_MODEL; load it before the first turn (docs/operations/chat.md): lms load $CHAT_MODEL --context-length 32768 --parallel 1"
+	fi
 else
 	chat_note="no chat: LM Studio does not answer on :1234 with $CHAT_MODEL (COWORK_DEV_CHAT_MODEL names another)"
 fi
@@ -114,4 +120,5 @@ echo "    the form: $ADMIN_USER with the password $ADMIN_PASSWORD"
 echo "    Sign in with Dex: ada@example.com (administrator group), bob@example.com (team-red, a member of dev),"
 echo "    cyd@example.com (in no mapped group) or dan@example.com (outside the gate), each with the password $DEX_PASSWORD"
 echo "    $chat_note"
+[ -z "$chat_load" ] || echo "    $chat_load"
 COWORK_DEV_BACKEND=http://127.0.0.1:8080 make -s frontend-serve NG_SERVE_FLAGS=--ssl

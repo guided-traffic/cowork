@@ -6,9 +6,10 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 )
 
-// capsLine says which of the capabilities a tool can run into the token in
-// use holds (docs/adr/0043 D6): "" while the token is unknown or is a
-// person's, whose acts the capabilities do not bound.
+// capsLine says which of the capabilities a tool can run into the agent
+// holds — its token's, or the ones the person gave the chat (docs/adr/0043
+// D5, D6): "" while the token is unknown or is a person's, whose acts the
+// capabilities do not bound.
 func capsLine(tok Token, caps ...string) string {
 	if !tok.Known || !tok.Agent || len(caps) == 0 {
 		return ""
@@ -28,7 +29,7 @@ func capsLine(tok Token, caps ...string) string {
 	if len(lacks) > 0 {
 		parts = append(parts, "lacks "+strings.Join(lacks, ", ")+" — those acts are refused and remain a person's")
 	}
-	return "This session's token " + strings.Join(parts, "; ") + "."
+	return "This agent " + strings.Join(parts, "; ") + "."
 }
 
 // refusalNote is said once per tool that writes: a refusal is the API's

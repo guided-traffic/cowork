@@ -255,14 +255,14 @@ RequestMark:
       type: array
       description: |
         What an agent's request may do beyond the baseline: the token's set for a flagged token,
-        every capability for a plain token the header marks (docs/adr/0043 D4); empty for a
-        person's request, which the capabilities do not bound
+        every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
+        capabilities for a session the header marks (D5); empty for a person's request, which the
+        capabilities do not bound
       items:
         $ref: '#/Capability'
 Tenant:
   type: object
-  required: [slug, name, version, time_visible_to_members, members_create_projects, chat_external_allowed, created_at,
-    updated_at]
+  required: [slug, name, version, time_visible_to_members, members_create_projects, created_at, updated_at]
   properties:
     slug: {type: string}
     name: {type: string}
@@ -277,13 +277,6 @@ Tenant:
     members_create_projects:
       type: boolean
       description: Members create projects; off, only administrators do (docs/adr/0034 D9)
-    chat_external_allowed:
-      type: boolean
-      description: |
-        The chat may send the tenant's data to the provider configured now, which the operator does
-        not declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names
-        the provider it was given to — its wire format, host and model — and one given to another
-        provider reads false; a provider inside needs no consent (docs/adr/0076)
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
 TenantCreate:
@@ -307,13 +300,6 @@ TenantPatch:
       type: [string, 'null']
       format: date
     members_create_projects: {type: boolean}
-    chat_external_allowed:
-      type: boolean
-      description: |
-        Switching it on gives the consent to the provider configured now, recorded with it, and takes
-        a session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with
-        no provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`
-        token too
 Member:
   type: object
   required: [person, email, role, origins, local]
@@ -1502,40 +1488,51 @@ AccountPasswordReset:
       type: string
       minLength: 1
       maxLength: 1024
-ChatProvider:
+ChatProviderKind:
   type: string
   enum: [openai, anthropic]
   description: |
-    The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which
-    OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+    The wire format a configured provider speaks (COWORK_CHAT_<ID>_KIND): OpenAI Chat Completions,
+    which OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+ChatProviderId:
+  type: string
+  minLength: 1
+  maxLength: 32
+  pattern: '^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$'
+  description: A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+ChatProvider:
+  type: object
+  required: [id, name, kind, model]
+  description: |
+    A provider the operator configured (COWORK_CHAT_PROVIDERS): what the person picks in the panel.
+    Its address and key are never shown
+  properties:
+    id:
+      $ref: '#/ChatProviderId'
+    name:
+      type: string
+      description: The provider's name for the person (COWORK_CHAT_<ID>_NAME)
+    kind:
+      $ref: '#/ChatProviderKind'
+    model:
+      type: string
+      description: The model by the name its provider knows it (COWORK_CHAT_<ID>_MODEL)
 ChatUnavailableReason:
   type: string
-  enum: [not_configured, not_allowed_in_tenant]
-  description: |
-    Why the chat is not available: the installation configures no provider, or its provider is not
-    declared inside the installation's trust boundary and the tenant's administrators have not
-    allowed it (the tenant's chat_external_allowed)
+  enum: [not_configured]
+  description: Why the chat is not available — the installation configures no provider
 ChatAvailability:
   type: object
-  required: [available, provider, model, inside, reason]
+  required: [available, providers, reason]
   properties:
     available:
       type: boolean
       description: The members of the tenant may hold a conversation (POST …/chat)
-    provider:
-      description: The configured provider's wire format; null when none is configured
-      oneOf:
-        - $ref: '#/ChatProvider'
-        - type: 'null'
-    model:
-      type: [string, 'null']
-      description: The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured
-    inside:
-      type: boolean
-      description: |
-        The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)
-        — a model on the operator's machine or network, such as LM Studio —, and the chat is available
-        in every tenant; outside, only where the tenant's chat_external_allowed is on
+    providers:
+      type: array
+      description: The configured providers in the configured order, the first the default of a turn; empty without one
+      items:
+        $ref: '#/ChatProvider'
     reason:
       description: Why the chat is not available; null when it is
       oneOf:
@@ -1610,16 +1607,6 @@ ChatPageContext:
       type: string
       pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'
       description: The short key of the ticket the page shows, <PROJECT>-<number>
-ChatConfirmation:
-  type: object
-  additionalProperties: false
-  required: [tool_call_id, run]
-  description: The person's decision on a call that waits for it
-  properties:
-    tool_call_id: {type: string, minLength: 1, maxLength: 128}
-    run:
-      type: boolean
-      description: True runs the call as the model proposed it; false answers the model that the person skipped it
 ChatTurn:
   type: object
   additionalProperties: false
@@ -1632,24 +1619,20 @@ ChatTurn:
         The conversation's id, made by the client when the conversation begins and sent with each of
         its turns; the agent mark of the tool calls carries it, so the activity tells one
         conversation's acts from another's (docs/adr/0036 D3)
+    provider:
+      $ref: '#/ChatProviderId'
+      description: The provider the turn talks to, one GET …/chat lists; the first configured when left out
     messages:
       type: array
       minItems: 1
       maxItems: 400
       description: |
-        The conversation so far, oldest first: the person's messages and what the `done` events added.
-        It ends with the person's new message, or — to decide a call that waits — as the last `done`
-        left it
+        The conversation so far, oldest first: the person's messages and what the `done` events
+        added. It ends with the person's new message
       items:
         $ref: '#/ChatMessage'
     context:
       $ref: '#/ChatPageContext'
-    confirmations:
-      type: array
-      maxItems: 32
-      description: The person's decision on the call that waits — the first of them, which the last turn proposed
-      items:
-        $ref: '#/ChatConfirmation'
 ChatTextEvent:
   type: object
   required: [delta]
@@ -1667,8 +1650,7 @@ ChatToolResultEvent:
     ok:
       type: boolean
       description: |
-        The call succeeded; false for a refusal of the API, which the model reads like any answer, and
-        for a call the person skipped
+        The call succeeded; false for a refusal of the API, which the model reads like any answer
     summary:
       type: string
       description: |
@@ -1690,26 +1672,12 @@ ChatUiEvent:
       description: |
         The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
         /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
-ChatConfirmEvent:
-  type: object
-  required: [id, name, arguments, description]
-  description: The data of a chat turn's event `confirm`, a call that waits for the person's decision
-  properties:
-    id:
-      type: string
-      description: The call's id, which the decision names
-    name: {type: string, description: The tool's name}
-    arguments:
-      $ref: '#/ChatToolArguments'
-    description:
-      type: string
-      description: The act in words, for the person who decides it
 ChatTurnEnd:
   type: string
-  enum: [answered, confirm, step_limit, error]
+  enum: [answered, step_limit, stopped, error]
   description: |
-    Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
-    COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+    Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+    and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
     before
 ChatDoneEvent:
   type: object
@@ -1723,3 +1691,31 @@ ChatDoneEvent:
         $ref: '#/ChatMessage'
     reason:
       $ref: '#/ChatTurnEnd'
+ChatCapabilities:
+  type: object
+  required: [capabilities, chosen]
+  description: |
+    The capabilities the chat's requests hold (docs/adr/0043 D5): what the chat may do beyond the
+    baseline, as the person chose it
+  properties:
+    capabilities:
+      type: array
+      items:
+        $ref: '#/Capability'
+    chosen:
+      type: boolean
+      description: |
+        The person chose the set; false is the default, every capability but decide, close, drop and
+        record-answer
+ChatCapabilitiesUpdate:
+  type: object
+  additionalProperties: false
+  required: [capabilities]
+  properties:
+    capabilities:
+      type: array
+      uniqueItems: true
+      maxItems: 9
+      description: The whole set; an empty one leaves the chat the baseline
+      items:
+        $ref: '#/Capability'

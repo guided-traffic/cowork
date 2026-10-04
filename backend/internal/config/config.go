@@ -220,8 +220,9 @@ type Config struct {
 	// (docs/adr/0029); nil when COWORK_OIDC_ISSUER is unset, and the login
 	// page then offers none.
 	OIDC *OIDC
-	// Chat is the model the chat in the UI talks to (docs/adr/0076); nil when
-	// COWORK_CHAT_PROVIDER is unset, and no tenant has a chat.
+	// Chat is the chat in the UI and the providers it talks to
+	// (docs/adr/0076); nil when COWORK_CHAT_PROVIDERS is unset, and no tenant
+	// has a chat.
 	Chat *Chat
 }
 

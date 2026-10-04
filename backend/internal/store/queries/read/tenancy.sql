@@ -32,7 +32,7 @@ LIMIT sqlc.arg(page_size);
 
 -- name: GetTenant :one
 SELECT id, slug, name, version, time_visible_to_members, time_locked_until,
-       members_create_projects, chat_external_allowed, chat_external_provider, created_at, updated_at
+       members_create_projects, created_at, updated_at
 FROM tenants
 WHERE id = sqlc.arg(tenant_id);
 

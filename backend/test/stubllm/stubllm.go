@@ -103,11 +103,12 @@ type Server struct {
 	// RequireKey refuses a request without Key with 401.
 	RequireKey bool
 
-	t      testing.TB
-	srv    *httptest.Server
-	mu     sync.Mutex
-	script []func(Request) Reply
-	got    []Request
+	t         testing.TB
+	srv       *httptest.Server
+	mu        sync.Mutex
+	script    []func(Request) Reply
+	got       []Request
+	cancelled int
 }
 
 // New starts a stub that the test closes when it ends.
@@ -152,6 +153,21 @@ func (s *Server) Requests() []Request {
 	return append([]Request(nil), s.got...)
 }
 
+// Cancelled is how many requests the client cancelled while the stub held
+// its answer back — a Delay or a Stall cut short by the request's end.
+func (s *Server) Cancelled() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cancelled
+}
+
+// cancel counts a request the client ended before its answer did.
+func (s *Server) cancel() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cancelled++
+}
+
 // Left is how many queued answers wait.
 func (s *Server) Left() int {
 	s.mu.Lock()
@@ -193,6 +209,7 @@ func (s *Server) serve(format string) http.HandlerFunc {
 			select {
 			case <-time.After(reply.Delay):
 			case <-r.Context().Done():
+				s.cancel()
 				return
 			}
 		}
@@ -228,6 +245,7 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, format string, r
 				select {
 				case <-time.After(reply.Stall):
 				case <-r.Context().Done():
+					s.cancel()
 					return
 				}
 			}

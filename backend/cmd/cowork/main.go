@@ -219,26 +219,25 @@ func objectStorage(cfg config.Config, logger *slog.Logger) (*storage.Client, err
 }
 
 // chatOf is the chat of the configuration (docs/adr/0076), or nil without a
-// provider. The start says which provider and model the chat talks to and
-// whether it is declared inside the installation — never the key. The
-// signal that ends the server ends the turns that run (docs/adr/0054 D9).
+// provider. The start says which providers and models the chat talks to —
+// never a URL or a key. The signal that ends the server ends the turns that
+// run (docs/adr/0054 D9).
 func chatOf(ctx context.Context, cfg config.Config, root func() http.Handler, logger *slog.Logger) (*api.ChatOptions, error) {
 	c := cfg.Chat
 	if c == nil {
 		return nil, nil
 	}
-	provider, err := llm.New(llm.Config{Format: c.Provider, URL: c.URL, APIKey: c.APIKey, Model: c.Model})
-	if err != nil {
-		return nil, err
+	opts := &api.ChatOptions{TurnTimeout: c.TurnTimeout, MaxSteps: c.MaxSteps, TurnsPerPerson: c.Turns, Shutdown: ctx, Loopback: root}
+	for _, p := range c.Providers {
+		provider, err := llm.New(llm.Config{Format: p.Kind, URL: p.URL, APIKey: p.APIKey, Model: p.Model})
+		if err != nil {
+			return nil, err
+		}
+		opts.Providers = append(opts.Providers, api.ChatProvider{ID: p.ID, Name: p.Name, Kind: p.Kind, Model: p.Model, Provider: provider})
+		logger.Info("the chat talks to a model", "variable", config.EnvChatProviders, "provider", p.ID, "kind", p.Kind, "model", p.Model)
 	}
-	logger.Info("the chat talks to a model", "variable", config.EnvChatProvider, "provider", c.Provider, "model", c.Model,
-		"inside", c.Inside, "turn_timeout", c.TurnTimeout, "max_steps", c.MaxSteps, "turns_per_person", c.Turns)
-	if !c.Inside {
-		logger.Info("the chat's provider is outside the installation: a tenant has the chat once its administrators allow it",
-			"variable", config.EnvChatInside)
-	}
-	return &api.ChatOptions{Provider: provider, Kind: c.Provider, Model: c.Model, Inside: c.Inside, Fingerprint: c.Fingerprint(),
-		TurnTimeout: c.TurnTimeout, MaxSteps: c.MaxSteps, TurnsPerPerson: c.Turns, Shutdown: ctx, Loopback: root}, nil
+	logger.Info("the chat's limits", "turn_timeout", c.TurnTimeout, "max_steps", c.MaxSteps, "turns_per_person", c.Turns)
+	return opts, nil
 }
 
 // discoverIssuer discovers the configured identity provider (docs/adr/0029 D1,

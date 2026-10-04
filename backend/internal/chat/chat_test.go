@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,6 +84,9 @@ type api struct {
 	bodies          []string
 	state, doneFrom string
 	version, review int
+	// denyClose refuses a move to done as the API refuses it to an agent
+	// without the close capability.
+	denyClose bool
 }
 
 func newAPI() *api {
@@ -115,6 +117,12 @@ func newAPI() *api {
 	a.mux.HandleFunc("POST "+ticketPath+"/transitions", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ From, To string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.To == "done" && a.denyClose {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"type":"t","title":"Agent forbidden","status":403,"code":"agent_forbidden","detail":"missing capability: close"}`)
+			return
+		}
 		if body.From != a.state {
 			refuse(w, http.StatusConflict, "state_conflict")
 			return
@@ -210,9 +218,6 @@ type events struct{ got []event }
 func (e *events) Text(delta string)              { e.got = append(e.got, event{"text", delta}) }
 func (e *events) ToolCall(c apigen.ChatToolCall) { e.got = append(e.got, event{"tool_call", c}) }
 func (e *events) UI(path string)                 { e.got = append(e.got, event{"ui", path}) }
-func (e *events) Confirm(c apigen.ChatToolCall, d string) {
-	e.got = append(e.got, event{"confirm", d})
-}
 func (e *events) ToolResult(id string, ok bool, summary string) {
 	e.got = append(e.got, event{"tool_result", apigen.ChatToolResultEvent{Id: id, Ok: ok, Summary: summary}})
 }
@@ -228,16 +233,22 @@ func (e *events) names() []string {
 	return out
 }
 
-// turn is a turn of the person in acme, on the board of COW, with the API.
-func turn(t *testing.T, a *api, msgs []apigen.ChatMessage, decisions ...apigen.ChatConfirmation) Turn {
+// turn is a turn of the person in acme, on the board of COW, with the API and
+// the default chat capabilities.
+func turn(t *testing.T, a *api, msgs []apigen.ChatMessage) Turn {
 	t.Helper()
-	seen := new(atomic.Bool)
-	loop := Loopback{Handler: a, Tenant: "acme", RemoteAddr: "192.0.2.7:4711", Confidential: seen}
+	return turnHolding(t, a, auth.DefaultChatCapabilities, msgs)
+}
+
+// turnHolding is a turn whose agent holds the capabilities given.
+func turnHolding(t *testing.T, a *api, capabilities []string, msgs []apigen.ChatMessage) Turn {
+	t.Helper()
+	loop := Loopback{Handler: a, Tenant: "acme", RemoteAddr: "192.0.2.7:4711"}
 	mark := Mark("stub/model", conversationID)
-	s, err := NewSession(loop, origin, Editor(cookie, origin, mark), mark, "COW", tools.Person{ID: personID, Name: "Sam Doe"})
+	s, err := NewSession(loop, origin, Editor(cookie, origin, mark), mark, "COW", tools.Person{ID: personID, Name: "Sam Doe"}, capabilities)
 	require.NoError(t, err)
 	return Turn{Tenant: "acme", TenantName: "Acme", Conversation: conversationID, Page: Page{Path: "/t/acme/p/COW/board", Project: "COW"},
-		Messages: msgs, Confirmations: decisions, Session: s, Confidential: seen}
+		Messages: msgs, Session: s}
 }
 
 func user(text string) apigen.ChatMessage {
@@ -290,7 +301,7 @@ func TestATurnRunsTheToolsTheModelCalls(t *testing.T) {
 	assert.Contains(t, m.got[0].System, "Say only what the tool results confirm", "L2: claim no act a result does not confirm")
 	assert.Contains(t, m.got[0].System, "means the act did not happen: say so plainly")
 	assert.Contains(t, m.got[0].System, "Describe a ticket — its title, state, urgency, people — only from what a tool returned")
-	assert.Contains(t, m.got[0].System, "Until the person ran it, it has not happened")
+	assert.Contains(t, m.got[0].System, "Every tool call runs at once")
 	names := make([]string, 0, len(m.got[0].Tools))
 	for _, tool := range m.got[0].Tools {
 		names = append(names, tool.Name)
@@ -317,104 +328,6 @@ func TestTheStepLimit(t *testing.T) {
 	assert.Len(t, m.got, 2)
 	assert.Len(t, out.Messages, 4, "two answers of the model and their two tool answers")
 	assert.Len(t, a.requests(http.MethodPut, ticketPath+"/interest"), 2)
-}
-
-// docs/adr/0076, confirmations: a move to done waits for the person's
-// decision; the next turn runs it, skips it, or — without a decision —
-// skips it, and the turn goes on.
-func TestAConfirmation(t *testing.T) {
-	propose := func(t *testing.T) (*api, []apigen.ChatMessage) {
-		a, m, ev := newAPI(), &model{}, &events{}
-		m.say(llm.Response{ToolCalls: []llm.ToolCall{call("call_done", "transition",
-			`{"key": "COW-12", "to": "done", "reason_or_note": "make test passed"}`)}})
-		msgs := make([]apigen.ChatMessage, 1, 4)
-		msgs[0] = user("Close COW-12")
-		out := Run(context.Background(), Options{Provider: m, MaxSteps: 8}, turn(t, a, msgs), ev)
-		require.NoError(t, out.Err)
-		assert.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-		assert.Equal(t, []string{"tool_call", "confirm"}, ev.names())
-		assert.Equal(t, "Close acme/COW-12 — “Guard the gate”: move it from in-progress to done, with the verification note “make test passed”.",
-			ev.got[len(ev.got)-1].data)
-		require.Len(t, out.Messages, 1, "the call waits without an answer")
-		assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/transitions"), "nothing ran")
-		return a, append(msgs, out.Messages...)
-	}
-	decide := func(t *testing.T, a *api, msgs []apigen.ChatMessage, decisions ...apigen.ChatConfirmation) (Outcome, *events) {
-		m, ev := &model{}, &events{}
-		m.say(llm.Response{Text: "Done."})
-		require.Nil(t, Check(msgs, decisions))
-		return Run(context.Background(), Options{Provider: m, MaxSteps: 8}, turn(t, a, msgs, decisions...), ev), ev
-	}
-
-	a, msgs := propose(t)
-	out, ev := decide(t, a, msgs, apigen.ChatConfirmation{ToolCallId: "call_done", Run: true})
-	require.NoError(t, out.Err)
-	assert.Equal(t, apigen.ChatTurnEndAnswered, out.End)
-	assert.Equal(t, []string{"tool_result"}, ev.names(), "the decided call's card is the person's already")
-	assert.True(t, *out.Messages[0].Ok)
-	assert.Len(t, a.requests(http.MethodPost, ticketPath+"/transitions"), 1)
-	assert.Equal(t, "done", a.state)
-
-	a, msgs = propose(t)
-	out, _ = decide(t, a, msgs, apigen.ChatConfirmation{ToolCallId: "call_done", Run: false})
-	require.NoError(t, out.Err)
-	assert.False(t, *out.Messages[0].Ok)
-	assert.Equal(t, skippedByPerson, text(out.Messages[0]))
-	assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/transitions"))
-
-	a, msgs = propose(t)
-	out, _ = decide(t, a, msgs)
-	assert.Equal(t, skippedByPerson, text(out.Messages[0]), "a call without a decision is skipped")
-	assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/transitions"))
-
-	a, msgs = propose(t)
-	m := &model{}
-	m.say(llm.Response{Text: "Fine."})
-	msgs = append(msgs, user("Never mind"))
-	require.Nil(t, Check(msgs, nil))
-	out = Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), &events{})
-	require.NoError(t, out.Err)
-	read := m.got[0].Messages
-	assert.Equal(t, skippedByWriting, read[len(read)-2].Text, "a call passed by is answered as skipped where it stands")
-	assert.Len(t, out.Messages, 1, "and not added to the conversation")
-}
-
-// The calls after a proposal wait with it. Only the proposed call takes the
-// decision; the later ones run after it, and one that needs a decision of its
-// own is answered that it did not run — the model makes it again, and it is
-// proposed with what is read then.
-func TestTheCallsAfterAProposal(t *testing.T) {
-	a, m, ev := newAPI(), &model{}, &events{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{
-		call("c1", "transition", `{"key": "COW-12", "to": "review"}`),
-		call("c2", "transition", `{"key": "COW-12", "to": "done", "reason_or_note": "ok"}`),
-		call("c3", "comment", `{"key": "COW-12", "text": "Closed."}`),
-		call("c4", "transition", `{"key": "COW-12", "to": "review", "reason_or_note": "the check was wrong"}`),
-	}})
-	msgs := make([]apigen.ChatMessage, 1, 4)
-	msgs[0] = user("Ship it")
-	out := Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), ev)
-	assert.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "confirm"}, ev.names(), "review runs, done waits")
-	assert.Equal(t, "review", a.state)
-	msgs = append(msgs, out.Messages...)
-
-	m, ev = &model{}, &events{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("c5", "transition", `{"key": "COW-12", "to": "review", "reason_or_note": "the check was wrong"}`)}})
-	decisions := []apigen.ChatConfirmation{{ToolCallId: "c2", Run: true}}
-	require.Nil(t, Check(msgs, decisions))
-	out = Run(context.Background(), Options{Provider: m}, turn(t, a, msgs, decisions...), ev)
-	assert.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	assert.Equal(t, []string{"tool_result", "tool_call", "tool_result", "tool_call", "tool_result", "tool_call", "confirm"}, ev.names(),
-		"done runs, the comment runs, taking the done back is answered, made again and proposed")
-	assert.Equal(t, "done", a.state)
-	assert.Len(t, a.requests(http.MethodPost, ticketPath+"/comments"), 1)
-	assert.Equal(t, oneDecision, text(out.Messages[2]))
-	assert.Equal(t, "Take back the done of acme/COW-12 — “Guard the gate”: move it to review, with the reason “the check was wrong”.",
-		ev.got[len(ev.got)-1].data)
-	require.Nil(t, Check(append(msgs, out.Messages...), []apigen.ChatConfirmation{{ToolCallId: "c5", Run: true}}),
-		"the made-again call is the one that waits")
-	assert.NotNil(t, Check(append(msgs, out.Messages...), []apigen.ChatConfirmation{{ToolCallId: "c4", Run: true}}))
 }
 
 // The chat's own tools show the person a page once the API has said the
@@ -467,7 +380,7 @@ func TestWhatTheModelGetsWrong(t *testing.T) {
 	assert.True(t, *out.Messages[3].Ok)
 	assert.Len(t, a.requests(http.MethodPut, ticketPath+"/interest"), 1)
 	next := append(append([]apigen.ChatMessage{user("Go")}, out.Messages...), user("Again"))
-	assert.Nil(t, Check(next, nil), "what a turn adds is a conversation the next turn sends")
+	assert.Nil(t, Check(next), "what a turn adds is a conversation the next turn sends")
 }
 
 // A provider that fails ends the turn with its error and the messages that
@@ -504,6 +417,7 @@ func TestTheLoopback(t *testing.T) {
 	assert.Equal(t, []string{"198.51.100.1"}, got.Header.Values("X-Forwarded-For"))
 	for path, want := range map[string]string{
 		"/api/v1/tenants/acme/chat":                   "does not call itself",
+		"/api/v1/tenants/acme/chat/turns":             "does not call itself",
 		"/api/v1/tenants/acme/events":                 "no event stream",
 		"/api/v1/tenants/beta/projects":               "nothing outside it",
 		"/api/v1/tenants/acmex/projects":              "nothing outside it",
@@ -537,7 +451,7 @@ func TestTheLoopback(t *testing.T) {
 }
 
 func TestMark(t *testing.T) {
-	assert.Equal(t, "chat/qwen:qwen3.6-35b-a3b/"+conversationID.String(), Mark("qwen/qwen3.6-35b-a3b", conversationID))
+	assert.Equal(t, "chat/qwen:qwen3-30b-a3b-2507/"+conversationID.String(), Mark("qwen/qwen3-30b-a3b-2507", conversationID))
 	parts := strings.Split(Mark(strings.Repeat("m", 80), conversationID), "/")
 	require.Len(t, parts, 3)
 	assert.Len(t, parts[1], 64, "a part is cut to what the header takes")
@@ -546,7 +460,8 @@ func TestMark(t *testing.T) {
 }
 
 // docs/adr/0076: what the model could not read in its place is refused with
-// the pointer to it.
+// the pointer to it; a call its turn left without an answer is the model's to
+// read as not run.
 func TestCheck(t *testing.T) {
 	str := func(s string) *string { return &s }
 	yes := true
@@ -564,47 +479,35 @@ func TestCheck(t *testing.T) {
 		return apigen.ChatMessage{Role: apigen.ChatRoleTool, ToolCallId: str(id), Ok: &yes, Text: str("ok")}
 	}
 	said := apigen.ChatMessage{Role: apigen.ChatRoleAssistant, Text: str("Hello.")}
-	decide := func(id string) []apigen.ChatConfirmation {
-		return []apigen.ChatConfirmation{{ToolCallId: id, Run: true}}
-	}
 
-	for name, c := range map[string]struct {
-		msgs      []apigen.ChatMessage
-		decisions []apigen.ChatConfirmation
-	}{
-		"a question":                {[]apigen.ChatMessage{user("Hi")}, nil},
-		"an answer and a question":  {[]apigen.ChatMessage{user("Hi"), said, user("Again")}, nil},
-		"answers to read":           {[]apigen.ChatMessage{user("Hi"), assistant("a", "b"), answer("b"), answer("a")}, nil},
-		"a decision":                {[]apigen.ChatMessage{user("Hi"), assistant("a", "b"), answer("a")}, decide("b")},
-		"a call passed by":          {[]apigen.ChatMessage{user("Hi"), assistant("a"), user("No")}, nil},
-		"waiting without decisions": {[]apigen.ChatMessage{user("Hi"), assistant("a")}, nil},
+	for name, msgs := range map[string][]apigen.ChatMessage{
+		"a question":               {user("Hi")},
+		"an answer and a question": {user("Hi"), said, user("Again")},
+		"answers read":             {user("Hi"), assistant("a", "b"), answer("b"), answer("a"), user("Thanks")},
+		"a call its turn left":     {user("Hi"), assistant("a", "b"), answer("a"), user("Go on")},
 	} {
-		assert.Nil(t, Check(c.msgs, c.decisions), name)
+		assert.Nil(t, Check(msgs), name)
 	}
 
 	for name, c := range map[string]struct {
-		msgs      []apigen.ChatMessage
-		decisions []apigen.ChatConfirmation
-		pointer   string
+		msgs    []apigen.ChatMessage
+		pointer string
 	}{
-		"the model first":        {[]apigen.ChatMessage{said, user("Hi")}, nil, "/messages/0/role"},
-		"an empty message":       {[]apigen.ChatMessage{user("  ")}, nil, "/messages/0/text"},
-		"a person calling tools": {[]apigen.ChatMessage{{Role: apigen.ChatRoleUser, Text: str("x"), ToolCalls: calls("a")}}, nil, "/messages/0"},
-		"the model's last word":  {[]apigen.ChatMessage{user("Hi"), said}, nil, "/messages"},
-		"an empty model message": {[]apigen.ChatMessage{user("Hi"), {Role: apigen.ChatRoleAssistant}}, nil, "/messages/1"},
-		"two calls with one id":  {[]apigen.ChatMessage{user("Hi"), assistant("a", "a")}, nil, "/messages/1/tool_calls/1/id"},
-		"an answer to nothing":   {[]apigen.ChatMessage{user("Hi"), answer("a")}, nil, "/messages/1/tool_call_id"},
-		"an answer too late":     {[]apigen.ChatMessage{user("Hi"), assistant("a"), user("x"), answer("a")}, nil, "/messages/3/tool_call_id"},
-		"an answer twice":        {[]apigen.ChatMessage{user("Hi"), assistant("a"), answer("a"), answer("a")}, nil, "/messages/3/tool_call_id"},
-		"an answer without ok": {[]apigen.ChatMessage{user("Hi"), assistant("a"), {Role: apigen.ChatRoleTool, ToolCallId: str("a")}}, nil,
+		"the model first":        {[]apigen.ChatMessage{said, user("Hi")}, "/messages/0/role"},
+		"an empty message":       {[]apigen.ChatMessage{user("  ")}, "/messages/0/text"},
+		"a person calling tools": {[]apigen.ChatMessage{{Role: apigen.ChatRoleUser, Text: str("x"), ToolCalls: calls("a")}}, "/messages/0"},
+		"the model's last word":  {[]apigen.ChatMessage{user("Hi"), said}, "/messages"},
+		"calls at the end":       {[]apigen.ChatMessage{user("Hi"), assistant("a")}, "/messages"},
+		"an answer at the end":   {[]apigen.ChatMessage{user("Hi"), assistant("a"), answer("a")}, "/messages"},
+		"an empty model message": {[]apigen.ChatMessage{user("Hi"), {Role: apigen.ChatRoleAssistant}, user("x")}, "/messages/1"},
+		"two calls with one id":  {[]apigen.ChatMessage{user("Hi"), assistant("a", "a"), user("x")}, "/messages/1/tool_calls/1/id"},
+		"an answer to nothing":   {[]apigen.ChatMessage{user("Hi"), answer("a"), user("x")}, "/messages/1/tool_call_id"},
+		"an answer too late":     {[]apigen.ChatMessage{user("Hi"), assistant("a"), user("x"), answer("a")}, "/messages/3/tool_call_id"},
+		"an answer twice":        {[]apigen.ChatMessage{user("Hi"), assistant("a"), answer("a"), answer("a")}, "/messages/3/tool_call_id"},
+		"an answer without ok": {[]apigen.ChatMessage{user("Hi"), assistant("a"), {Role: apigen.ChatRoleTool, ToolCallId: str("a")}},
 			"/messages/2/ok"},
-		"a decision on nothing":       {[]apigen.ChatMessage{user("Hi")}, decide("a"), "/confirmations/0/tool_call_id"},
-		"a decision on an answer":     {[]apigen.ChatMessage{user("Hi"), assistant("a"), answer("a")}, decide("a"), "/confirmations/0/tool_call_id"},
-		"a decision after a new word": {[]apigen.ChatMessage{user("Hi"), assistant("a"), user("No")}, decide("a"), "/confirmations/0/tool_call_id"},
-		"a decision twice": {[]apigen.ChatMessage{user("Hi"), assistant("a")}, append(decide("a"), decide("a")...),
-			"/confirmations/1/tool_call_id"},
 	} {
-		perr := Check(c.msgs, c.decisions)
+		perr := Check(c.msgs)
 		require.NotNil(t, perr, name)
 		assert.Equal(t, problem.ValidationFailed, perr.Code, name)
 		require.Len(t, perr.Errors, 1, name)
@@ -620,113 +523,6 @@ func TestClipText(t *testing.T) {
 	assert.Contains(t, long, "characters more")
 }
 
-// reviewer is a runner of a turn in acme over the API, ready to review calls.
-func reviewer(t *testing.T, a *api) *runner {
-	t.Helper()
-	r := &runner{o: Options{Now: time.Now}, t: turn(t, a, []apigen.ChatMessage{user("Go")}), ev: &events{}, tools: map[string]tools.Tool{},
-		bad: map[string]string{}}
-	r.catalogue()
-	return r
-}
-
-// Which acts wait for the person, in words: the decide gate and what owes a
-// reason or a note waits, a forward step and an unblock do not, a progress
-// write waits where it closes or reopens, and recording an answer, creating
-// a project and finish_work always (docs/adr/0009, docs/adr/0076).
-func TestProposals(t *testing.T) {
-	for name, c := range map[string]struct {
-		state, tool, args, want string
-	}{
-		"done":       {"in-progress", "transition", `{"key": "COW-12", "to": "done", "reason_or_note": "ok"}`, "Close acme/COW-12 — “Guard the gate”: move it from in-progress to done"},
-		"dropped":    {"decided", "transition", `{"key": "COW-12", "to": "dropped", "reason_or_note": "not needed"}`, "Drop acme/COW-12"},
-		"blocked":    {"in-progress", "transition", `{"key": "COW-12", "to": "blocked", "reason_or_note": "Sam", "block_kind": "human"}`, "it waits on human"},
-		"decided":    {"analysed", "transition", `{"key": "COW-12", "to": "decided"}`, "Decide acme/COW-12 — “Guard the gate”: move it from analysed to decided."},
-		"backward":   {"review", "transition", `{"key": "COW-12", "to": "in-progress", "reason_or_note": "again"}`, "back from review to in-progress"},
-		"reopen":     {"dropped", "transition", `{"key": "COW-12", "to": "filed", "reason_or_note": "again"}`, "Reopen acme/COW-12"},
-		"finish":     {"in-progress", "finish_work", `{"key": "COW-12", "verification_note": "make test passed"}`, "Finish the work on acme/COW-12"},
-		"an answer":  {"in-progress", "record_answer", `{"key": "COW-12", "question": 2, "answer": "retry"}`, "Record “retry” as your answer to Q2"},
-		"a project":  {"in-progress", "create_project", `{"tenant": "acme", "key": "WEB", "name": "Web", "remote": "git@x:y/web.git"}`, "Create the project acme/WEB"},
-		"forward":    {"decided", "transition", `{"key": "COW-12", "to": "in-progress"}`, ""},
-		"a comment":  {"decided", "comment", `{"key": "COW-12", "text": "Seen."}`, ""},
-		"a progress": {"in-progress", "set_progress", `{"key": "COW-12", "percent": 60}`, ""},
-		"closing":    {"review", "set_progress", `{"key": "COW-12", "percent": 100, "note": "checked"}`, "which closes the ticket"},
-		"a read":     {"in-progress", "get_ticket", `{"key": "COW-12"}`, ""},
-	} {
-		a := newAPI()
-		a.state = c.state
-		if c.state == "review" {
-			a.review = 100
-		}
-		v := reviewer(t, a).review(context.Background(), apigen.ChatToolCall{Id: "c1", Name: c.tool, Arguments: apigen.ChatToolArguments(c.args)})
-		assert.Equal(t, c.want != "", v.propose, name)
-		assert.Contains(t, v.what, c.want, name)
-	}
-}
-
-// The review fails closed: a move to done, dropped, blocked or decided
-// waits without the ticket; a move or a progress write whose ticket it cannot
-// read waits; a call the schema refuses runs and is refused before it acts.
-// The review reads keys exactly because every tool's schema refuses a key it
-// does not declare — jsonschema-go's default for a Go struct, which this test
-// holds the chat to.
-func TestTheReviewFailsClosed(t *testing.T) {
-	a := newAPI()
-	r := reviewer(t, a)
-	for name, c := range map[string]struct{ tool, args string }{
-		"done of a ticket it cannot read":     {"transition", `{"key": "COW-404", "to": "done", "reason_or_note": "ok"}`},
-		"a move of a ticket it cannot read":   {"transition", `{"key": "COW-404", "to": "review"}`},
-		"progress of a ticket it cannot read": {"set_progress", `{"key": "COW-404", "percent": 60}`},
-		"a key of another tenant":             {"transition", `{"key": "beta/COW-12", "to": "in-progress"}`},
-	} {
-		v := r.review(context.Background(), apigen.ChatToolCall{Id: "c1", Name: c.tool, Arguments: apigen.ChatToolArguments(c.args)})
-		assert.True(t, v.propose, name)
-	}
-	for name, args := range map[string]string{
-		"a key the schema does not declare": `{"key": "COW-12", "to": "review", "TO": "done", "reason_or_note": "ok"}`,
-		"a state the schema does not know":  `{"key": "COW-12", "to": "finished"}`,
-	} {
-		v := r.review(context.Background(), apigen.ChatToolCall{Id: "c2", Name: "transition", Arguments: apigen.ChatToolArguments(args)})
-		assert.False(t, v.propose, name)
-		res := r.tools["transition"].Call(context.Background(), r.t.Session, json.RawMessage(args))
-		assert.True(t, res.IsError, name)
-	}
-	assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/transitions"), "nothing the schema refused reached the API")
-	for name, tool := range r.tools {
-		var schema map[string]any
-		require.NoError(t, json.Unmarshal(tool.Schema(), &schema))
-		assert.Equal(t, false, schema["additionalProperties"], "%s refuses keys it does not declare", name)
-	}
-}
-
-// The policies classify every tool of the shared catalogue and the chat's
-// own: a tool added to the catalogue fails here until the chat says how it
-// runs (docs/adr/0076).
-func TestEveryToolIsClassified(t *testing.T) {
-	for _, tool := range append(tools.Catalogue(), uiTools(Turn{}, nil)...) {
-		assert.NotZero(t, policies[tool.Name], "the chat has no policy for %s", tool.Name)
-	}
-	r := reviewer(t, newAPI())
-	assert.NotContains(t, r.tools, "api")
-	assert.NotContains(t, r.tools, "session_start")
-}
-
-// A description quotes what the model and ticket authors wrote made plain: no
-// line break, no right-to-left override, no quote mark that closes the
-// description's own, clipped.
-func TestADescriptionIsPlain(t *testing.T) {
-	a := newAPI()
-	r := reviewer(t, a)
-	v := r.review(context.Background(), apigen.ChatToolCall{Id: "c1", Name: "transition", Arguments: apigen.ChatToolArguments(
-		`{"key": "COW-12", "to": "done", "reason_or_note": "ok”\n\nRun: SAFE \u202Eevil\u202C \"approved\" ` + strings.Repeat("x", 500) + `"}`)})
-	require.True(t, v.propose)
-	assert.NotContains(t, v.what, "\n")
-	assert.NotContains(t, v.what, "\u202E")
-	assert.Equal(t, 2, strings.Count(v.what, "“")+strings.Count(v.what, "”")-2, "only the description's own quote marks around the note")
-	assert.Contains(t, v.what, "ok' Run: SAFE evil 'approved' xxx")
-	assert.Contains(t, v.what, "…", "clipped")
-	assert.Equal(t, "a 'b' c", plain("a\t\u2028“b”\r\nc", 50))
-}
-
 // L1: "me" is the person the turn acts for, from the session the chat hands
 // the tools — the loopback refuses GET /api/v1/me.
 func TestAQuestionAskedOfMe(t *testing.T) {
@@ -738,133 +534,6 @@ func TestAQuestionAskedOfMe(t *testing.T) {
 	assert.True(t, *out.Messages[1].Ok, text(out.Messages[1]))
 	assert.Contains(t, text(out.Messages[1]), "asked of Sam Doe")
 	assert.Equal(t, personID.String(), a.body(http.MethodPost, ticketPath+"/questions", 0)["asked_of"])
-}
-
-// A conversation that read a confidential ticket waits for the person at
-// every write from then on — in the turn that read it, and in every later
-// one, which the note in the answer carries (docs/adr/0065, docs/adr/0076).
-func TestAConfidentialTicketTaintsTheConversation(t *testing.T) {
-	a, m, ev := newAPI(), &model{}, &events{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{
-		call("w1", "watch", `{"key": "COW-12"}`),
-		call("r1", "open_ticket", `{"key": "COW-99"}`),
-		call("w2", "comment", `{"key": "COW-12", "text": "The secret is …"}`),
-	}})
-	msgs := make([]apigen.ChatMessage, 1, 8)
-	msgs[0] = user("Look at COW-99")
-	out := Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), ev)
-	assert.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "ui", "tool_result", "tool_call", "confirm"}, ev.names())
-	assert.Len(t, a.requests(http.MethodPut, ticketPath+"/interest"), 1, "the write before the read ran")
-	assert.True(t, strings.HasPrefix(text(out.Messages[2]), confidentialNote), "the answer that read it says so")
-	assert.Contains(t, ev.got[len(ev.got)-1].data, "read a confidential ticket")
-	assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/comments"), "the write after it waits")
-
-	msgs = append(msgs, out.Messages...)
-	msgs = append(msgs, user("Never mind, just watch it"))
-	m, ev = &model{}, &events{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("w3", "watch", `{"key": "COW-12"}`)}})
-	out = Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), ev)
-	assert.Equal(t, apigen.ChatTurnEndConfirm, out.End, "a later turn of the conversation waits as well")
-	assert.Len(t, a.requests(http.MethodPut, ticketPath+"/interest"), 1)
-}
-
-// What the proposal read is pinned into the call: a ticket that moved before
-// the person ran the call refuses it, and the model hears why.
-func TestAProposalIsPinnedToWhatItRead(t *testing.T) {
-	a, m, ev := newAPI(), &model{}, &events{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("c1", "transition", `{"key": "COW-12", "to": "done", "reason_or_note": "ok"}`)}})
-	msgs := make([]apigen.ChatMessage, 1, 4)
-	msgs[0] = user("Close it")
-	out := Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), ev)
-	require.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	pinned := (*out.Messages[0].ToolCalls)[0].Arguments
-	assert.JSONEq(t, `{"key": "COW-12", "to": "done", "reason_or_note": "ok", "from": "in-progress"}`, string(pinned))
-	assert.JSONEq(t, string(pinned), string(ev.got[0].data.(apigen.ChatToolCall).Arguments), "the person sees what is pinned")
-
-	a.state = "review"
-	m = &model{}
-	m.say(llm.Response{Text: "It moved meanwhile."})
-	msgs = append(msgs, out.Messages...)
-	out = Run(context.Background(), Options{Provider: m}, turn(t, a, msgs, apigen.ChatConfirmation{ToolCallId: "c1", Run: true}), &events{})
-	require.NoError(t, out.Err)
-	assert.False(t, *out.Messages[0].Ok)
-	assert.Contains(t, text(out.Messages[0]), "409 `state_conflict`")
-	assert.Equal(t, "review", a.state, "the act did not land on the moved ticket")
-
-	m = &model{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("p1", "set_progress", `{"key": "COW-12", "percent": 100, "note": "checked"}`)}})
-	a.state, a.review = "review", 100
-	out = Run(context.Background(), Options{Provider: m}, turn(t, a, []apigen.ChatMessage{user("Fill it")}), &events{})
-	require.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	assert.JSONEq(t, `{"key": "COW-12", "percent": 100, "note": "checked", "version": 3}`, string((*out.Messages[0].ToolCalls)[0].Arguments))
-}
-
-// A call the person ran carries the mark of the decision, and its keys derive
-// from the conversation and the call: the same decision sent twice — a Run
-// clicked twice — replays the same keys, which the API answers from what it
-// stored (docs/adr/0045); a pinned call sent twice stops at its pin.
-func TestADecidedCallIsMarkedAndReplays(t *testing.T) {
-	decideTwice := func(a *api, msgs []apigen.ChatMessage, id string) {
-		for range 2 {
-			m := &model{}
-			m.say(llm.Response{Text: "Done."})
-			Run(context.Background(), Options{Provider: m}, turn(t, a, msgs, apigen.ChatConfirmation{ToolCallId: id, Run: true}), &events{})
-		}
-	}
-	a, m := newAPI(), &model{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("f1", "finish_work", `{"key": "COW-12", "verification_note": "make test passed"}`)}})
-	msgs := make([]apigen.ChatMessage, 1, 4)
-	msgs[0] = user("Finish it")
-	out := Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), &events{})
-	require.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	decideTwice(a, append(msgs, out.Messages...), "f1")
-	comments := a.requests(http.MethodPost, ticketPath+"/comments")
-	require.Len(t, comments, 1, "the second Run met the pin: the ticket was done by then")
-	assert.Equal(t, "chat/stub:model/"+conversationID.String()+"+confirmed", comments[0].Header.Get(auth.AgentHeader))
-	assert.Equal(t, keys(conversationID, "f1")(), uuid.MustParse(comments[0].Header.Get("Idempotency-Key")))
-	moves := a.requests(http.MethodPost, ticketPath+"/transitions")
-	require.NotEmpty(t, moves)
-	assert.NotEqual(t, comments[0].Header.Get("Idempotency-Key"), moves[0].Header.Get("Idempotency-Key"), "one key per POST")
-
-	b, m := newAPI(), &model{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("o1", "open_ticket", `{"key": "COW-99"}`), call("c1", "comment", `{"key": "COW-12", "text": "Seen."}`)}})
-	msgs = make([]apigen.ChatMessage, 1, 6)
-	msgs[0] = user("Look, then comment")
-	out = Run(context.Background(), Options{Provider: m}, turn(t, b, msgs), &events{})
-	require.Equal(t, apigen.ChatTurnEndConfirm, out.End)
-	decideTwice(b, append(msgs, out.Messages...), "c1")
-	comments = b.requests(http.MethodPost, ticketPath+"/comments")
-	require.Len(t, comments, 2)
-	assert.Equal(t, comments[0].Header.Get("Idempotency-Key"), comments[1].Header.Get("Idempotency-Key"), "the API replays the second")
-
-	m = &model{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("w1", "watch", `{"key": "COW-12"}`)}}, llm.Response{Text: "Watching."})
-	Run(context.Background(), Options{Provider: m}, turn(t, a, []apigen.ChatMessage{user("Watch it")}), &events{})
-	watch := a.requests(http.MethodPut, ticketPath+"/interest")
-	require.Len(t, watch, 1)
-	assert.Equal(t, "chat/stub:model/"+conversationID.String(), watch[0].Header.Get(auth.AgentHeader), "the model's own act has no such mark")
-}
-
-// The tenant's chat is asked before every call of the model: a consent
-// withdrawn while a turn runs ends it there.
-func TestTheConsentIsAskedBeforeEveryCall(t *testing.T) {
-	a, m := newAPI(), &model{}
-	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("w1", "watch", `{"key": "COW-12"}`)}}, llm.Response{Text: "Watching."})
-	asked := 0
-	allowed := func(context.Context) error {
-		if asked++; asked > 1 {
-			return problem.New(problem.ChatUnavailable, "withdrawn")
-		}
-		return nil
-	}
-	out := Run(context.Background(), Options{Provider: m, Allowed: allowed}, turn(t, a, []apigen.ChatMessage{user("Watch it")}), &events{})
-	assert.Equal(t, apigen.ChatTurnEndError, out.End)
-	var perr *problem.Error
-	require.ErrorAs(t, out.Err, &perr)
-	assert.Equal(t, problem.ChatUnavailable, perr.Code)
-	assert.Len(t, m.got, 1, "the model was not asked again")
-	assert.Len(t, out.Messages, 2, "what ran before stays in the conversation")
 }
 
 // An answer of white space only adds no message, and one with calls a message
@@ -885,7 +554,7 @@ func TestAnAnswerOfWhiteSpaceAddsNoMessage(t *testing.T) {
 	require.Len(t, out.Messages, 2)
 	assert.Nil(t, out.Messages[0].Text)
 	next := append(append(msgs, out.Messages...), user("Again"))
-	assert.Nil(t, Check(next, nil))
+	assert.Nil(t, Check(next))
 }
 
 // A call whose arguments the gateway cut is answered, not run.
@@ -897,4 +566,143 @@ func TestArgumentsTooLong(t *testing.T) {
 	require.NoError(t, out.Err)
 	assert.Contains(t, text(out.Messages[1]), "longer than the chat takes")
 	assert.Empty(t, a.requests(http.MethodPost, ticketPath+"/comments"))
+}
+
+// The chat names every tool of the shared catalogue and its own, offered or
+// left out: a tool added to the catalogue fails here until the chat decides
+// whether the model gets it (docs/adr/0076 D1).
+func TestEveryToolIsNamed(t *testing.T) {
+	for _, tool := range append(tools.Catalogue(), uiTools(Turn{}, nil)...) {
+		_, named := offered[tool.Name]
+		assert.True(t, named, "the chat does not name %s", tool.Name)
+	}
+	r := &runner{t: turn(t, newAPI(), []apigen.ChatMessage{user("Go")}), ev: &events{}, tools: map[string]tools.Tool{}}
+	r.catalogue()
+	assert.NotContains(t, r.tools, "api")
+	assert.NotContains(t, r.tools, "session_start")
+	assert.Contains(t, r.tools, "finish_work")
+}
+
+// docs/adr/0076, the owner's answer of 2026-10-04: nothing waits for the
+// person — a close, a finish and a recorded answer run at once, each the
+// person's agent's act; what the agent may not do the API refuses, and the
+// model reads the refusal with the capability it names.
+func TestEveryCallRunsAtOnce(t *testing.T) {
+	a, m, ev := newAPI(), &model{}, &events{}
+	m.say(llm.Response{ToolCalls: []llm.ToolCall{
+		call("c1", "transition", `{"key": "COW-12", "to": "review"}`),
+		call("c2", "transition", `{"key": "COW-12", "to": "done", "reason_or_note": "make test passed"}`),
+	}}, llm.Response{Text: "Closed."})
+	out := Run(context.Background(), Options{Provider: m}, turnHolding(t, a, auth.AllCapabilities, []apigen.ChatMessage{user("Close COW-12")}), ev)
+	require.NoError(t, out.Err)
+	assert.Equal(t, apigen.ChatTurnEndAnswered, out.End)
+	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "tool_result"}, ev.names())
+	assert.Equal(t, "done", a.state, "the close ran without a Run")
+	assert.Len(t, a.requests(http.MethodPost, ticketPath+"/transitions"), 2)
+	for _, r := range a.requests(http.MethodPost, ticketPath+"/transitions") {
+		assert.Equal(t, "chat/stub:model/"+conversationID.String(), r.Header.Get(auth.AgentHeader), "one mark, no +confirmed")
+	}
+
+	a, m, ev = newAPI(), &model{}, &events{}
+	a.denyClose = true
+	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("c1", "transition",
+		`{"key": "COW-12", "to": "done", "reason_or_note": "make test passed"}`)}}, llm.Response{Text: "I may not close it."})
+	out = Run(context.Background(), Options{Provider: m}, turn(t, a, []apigen.ChatMessage{user("Close COW-12")}), ev)
+	require.NoError(t, out.Err)
+	assert.Equal(t, apigen.ChatTurnEndAnswered, out.End, "a refusal is an answer, not a failed turn")
+	require.Len(t, out.Messages, 3)
+	assert.False(t, *out.Messages[1].Ok)
+	assert.Contains(t, text(out.Messages[1]), "403 `agent_forbidden`: missing capability: close")
+	assert.Equal(t, "in-progress", a.state)
+	last := m.got[1].Messages
+	assert.True(t, last[len(last)-1].IsError, "the model reads the refusal")
+}
+
+// docs/adr/0043 D5, D6: the instructions and the tools' descriptions say what
+// the person gave the chat, so the model knows before calling which acts stay
+// the person's.
+func TestTheModelIsToldWhatTheChatHolds(t *testing.T) {
+	descriptions := func(t *testing.T, caps []string) (string, map[string]string) {
+		m := &model{}
+		m.say(llm.Response{Text: "Hello."})
+		out := Run(context.Background(), Options{Provider: m}, turnHolding(t, newAPI(), caps, []apigen.ChatMessage{user("Hi")}), &events{})
+		require.NoError(t, out.Err)
+		byName := map[string]string{}
+		for _, tool := range m.got[0].Tools {
+			byName[tool.Name] = tool.Description
+		}
+		return m.got[0].System, byName
+	}
+	system, tools := descriptions(t, auth.DefaultChatCapabilities)
+	assert.Contains(t, system, "Beyond the baseline the person gave you these capabilities: rank, override-urgency, interest, upload, create-project.")
+	assert.Contains(t, system, "the list above is the current one, and it replaces whatever earlier messages of this conversation say")
+	assert.Contains(t, tools["transition"], "lacks decide, close, drop")
+	assert.Contains(t, tools["record_answer"], "lacks record-answer")
+	assert.Contains(t, tools["set_urgency"], "holds override-urgency")
+
+	system, tools = descriptions(t, []string{})
+	assert.Contains(t, system, "The person gave you no capability beyond the baseline")
+	assert.Contains(t, tools["set_urgency"], "lacks override-urgency")
+}
+
+// A call its turn ended before running — the person stopped it — stays in the
+// conversation, and every later turn answers it to the model as not run, so
+// no provider meets a call without its answer.
+func TestACallItsTurnLeftIsNotRun(t *testing.T) {
+	a, m := newAPI(), &model{}
+	m.say(llm.Response{Text: "Fine."})
+	left := []apigen.ChatToolCall{{Id: "w1", Name: "watch", Arguments: apigen.ChatToolArguments(`{"key": "COW-12"}`)}}
+	msgs := []apigen.ChatMessage{user("Watch it"), {Role: apigen.ChatRoleAssistant, ToolCalls: &left}, user("Never mind")}
+	require.Nil(t, Check(msgs))
+	out := Run(context.Background(), Options{Provider: m}, turn(t, a, msgs), &events{})
+	require.NoError(t, out.Err)
+	history := m.got[0].Messages
+	require.Len(t, history, 4)
+	assert.Equal(t, llm.RoleTool, history[2].Role)
+	assert.Equal(t, "w1", history[2].ToolCallID)
+	assert.Equal(t, notRun, history[2].Text)
+	assert.True(t, history[2].IsError)
+	assert.Equal(t, llm.RoleUser, history[3].Role)
+	assert.Empty(t, a.requests(http.MethodPut, ticketPath+"/interest"), "nothing of it runs")
+}
+
+// A turn whose context ends while a tool call runs — the person's stop —
+// ends there: the call in flight is cancelled with it, the calls after it do
+// not run, and what the turn added keeps the call and its answer.
+func TestAStoppedTurnEndsAtOnce(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	inFlight, cancelled := make(chan struct{}), make(chan error, 1)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(inFlight)
+		<-r.Context().Done()
+		cancelled <- r.Context().Err()
+	})
+	m := &model{}
+	m.say(llm.Response{ToolCalls: []llm.ToolCall{call("w1", "watch", `{"key": "COW-12"}`), call("w2", "watch", `{"key": "COW-13"}`)}})
+	loop := Loopback{Handler: slow, Tenant: "acme"}
+	mark := Mark("stub/model", conversationID)
+	s, err := NewSession(loop, origin, Editor(cookie, origin, mark), mark, "COW", tools.Person{ID: personID}, nil)
+	require.NoError(t, err)
+	go func() {
+		<-inFlight
+		stop()
+	}()
+	ev := &events{}
+	done := make(chan Outcome, 1)
+	go func() {
+		done <- Run(ctx, Options{Provider: m}, Turn{Tenant: "acme", Conversation: conversationID, Session: s,
+			Messages: []apigen.ChatMessage{user("Watch both")}}, ev)
+	}()
+	select {
+	case out := <-done:
+		assert.Equal(t, apigen.ChatTurnEndError, out.End)
+		assert.ErrorIs(t, out.Err, context.Canceled)
+		require.Len(t, out.Messages, 2, "the model's calls and the answer of the one in flight")
+		assert.Equal(t, "w1", *out.Messages[1].ToolCallId)
+		assert.Equal(t, []string{"tool_call", "tool_result"}, ev.names(), "the second call never ran")
+		assert.ErrorIs(t, <-cancelled, context.Canceled, "the call in flight was cancelled with the turn")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the turn outlived its context")
+	}
 }

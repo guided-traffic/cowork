@@ -7,6 +7,5 @@ import { ChatUnavailableReason } from './chat-unavailable-reason';
  * Each possible value of `ChatUnavailableReason`
  */
 export const CHAT_UNAVAILABLE_REASON: ChatUnavailableReason[] = [
-  'not_configured',
-  'not_allowed_in_tenant'
+  'not_configured'
 ];

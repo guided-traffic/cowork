@@ -18,11 +18,9 @@ SET name = $1,
     time_visible_to_members = $2,
     time_locked_until = $3,
     members_create_projects = $4,
-    chat_external_allowed = $5,
-    chat_external_provider = $6,
     version = version + 1,
     updated_at = now()
-WHERE id = $7 AND version = $8
+WHERE id = $5 AND version = $6
 RETURNING version, updated_at
 `
 
@@ -31,8 +29,6 @@ type UpdateTenantSettingsParams struct {
 	TimeVisibleToMembers  bool
 	TimeLockedUntil       *time.Time
 	MembersCreateProjects bool
-	ChatExternalAllowed   bool
-	ChatExternalProvider  *string
 	TenantID              uuid.UUID
 	Version               int32
 }
@@ -50,8 +46,6 @@ func (q *Queries) UpdateTenantSettings(ctx context.Context, arg UpdateTenantSett
 		arg.TimeVisibleToMembers,
 		arg.TimeLockedUntil,
 		arg.MembersCreateProjects,
-		arg.ChatExternalAllowed,
-		arg.ChatExternalProvider,
 		arg.TenantID,
 		arg.Version,
 	)

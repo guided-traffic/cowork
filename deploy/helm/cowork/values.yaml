@@ -186,45 +186,57 @@ storage:
       ca: ca.crt
 
 # The chat in the UI (docs/adr/0076). The backend calls the model for the
-# person — the browser never does —, so the provider must be reachable from
+# person — the browser never does —, so every provider must be reachable from
 # the backend pods: the chart's NetworkPolicy restricts nothing outgoing, and a
-# policy of your own that does must admit it. The provider turns the chat on,
-# and emptying it alone turns it off: every other value here is rendered only
-# with it, as the backend refuses to start on a chat variable without the
-# provider.
+# policy of your own that does must admit it. The providers turn the chat on,
+# and an empty list alone turns it off: the limits below are rendered only with
+# a provider, as the backend refuses to start on a chat variable without one.
+#
+# WARNING: a provider receives everything the chat reads for its person, in
+# every tenant, confidential tickets included — the providers configured here
+# are the only gate (the owner's decision of 2026-10-04, docs/security/chat.md).
+# Add a hosted provider only where every tenant's data may go to it.
 chat:
-  # COWORK_CHAT_PROVIDER, the wire format: openai (the OpenAI Chat Completions
-  # API, which LM Studio serves as well) or anthropic (the Anthropic Messages
-  # API).
-  provider: ""
-  # COWORK_CHAT_URL, required with the provider: the base URL the backend
-  # appends its path to — /chat/completions for openai, so it ends in /v1, e.g.
-  # http://ollama.ai.svc:11434/v1; /v1/messages for anthropic, e.g.
-  # https://api.anthropic.com. https:// anywhere, http:// only on the
-  # operator's network — localhost, a loopback or private address, a name
-  # without a dot or under .svc, .cluster.local, .internal, .local, .lan,
-  # .home.arpa or .localhost —, because the key and the tenants' data travel
-  # in every request. No user, query or fragment.
-  url: ""
-  # COWORK_CHAT_MODEL, required with the provider: the model by the name its
-  # provider knows it, e.g. claude-sonnet-4-5 or qwen/qwen3.6-35b-a3b.
-  model: ""
-  # COWORK_CHAT_API_KEY from an existing Secret: required for anthropic,
-  # optional for openai (LM Studio takes none). The key has no inline value, so
-  # it never enters the Helm values or the release history (docs/adr/0058 D3);
-  # the key name is yours to choose.
-  existingSecret: ""
-  keys:
-    apiKey: apiKey
-  # COWORK_CHAT_INSIDE. false: the provider is outside the installation's
-  # trust boundary, and a tenant has the chat only once one of its
-  # administrators allows the provider in the tenant's settings; from then on
-  # the provider receives what the chat reads in that tenant. true claims the
-  # provider runs inside the boundary, and every tenant has the chat without
-  # being asked. Nothing checks the claim: set true only for a provider on
-  # machines the installation's operators run, never for a hosted one, which
-  # would then receive what the chat reads in every tenant.
-  inside: false
+  # COWORK_CHAT_PROVIDERS and, per provider, COWORK_CHAT_<ID>_NAME, _KIND,
+  # _URL, _MODEL and _API_KEY (the id upper-cased, its dashes as
+  # underscores). The person picks one in the chat's panel; the first is the
+  # default. Each entry:
+  #   id:    1 to 32 lowercase letters, digits and dashes, a dash neither
+  #          first nor last; unique.
+  #   name:  what the panel shows; the id when empty.
+  #   kind:  openai (the OpenAI Chat Completions API, which LM Studio, Ollama
+  #          and vLLM serve as well) or anthropic (the Anthropic Messages API).
+  #   url:   the base URL the backend appends its path to — /chat/completions
+  #          for openai, so it ends in /v1, e.g. http://ollama.ai.svc:11434/v1;
+  #          /v1/messages for anthropic, e.g. https://api.anthropic.com.
+  #          https:// anywhere, http:// only on the operator's network —
+  #          localhost, a loopback or private address, a name without a dot or
+  #          under .svc, .cluster.local, .internal, .local, .lan, .home.arpa or
+  #          .localhost —, because the key and the tenants' data travel in
+  #          every request. No user, query or fragment.
+  #   model: the model by the name its provider knows it, e.g.
+  #          qwen/qwen3-30b-a3b-2507 or claude-sonnet-4-5.
+  #   existingSecret: the Secret that holds this provider's API key, one per
+  #          provider; required for anthropic, optional for openai (LM Studio
+  #          takes none). The key has no inline value, so it never enters the
+  #          Helm values or the release history (docs/adr/0058 D3).
+  #   keys.apiKey: the key name in that Secret; apiKey when left out.
+  # Example:
+  #   providers:
+  #     - id: lmstudio
+  #       name: LM Studio
+  #       kind: openai
+  #       url: http://lmstudio.ai.svc:1234/v1
+  #       model: qwen/qwen3-30b-a3b-2507
+  #     - id: claude
+  #       name: Claude
+  #       kind: anthropic
+  #       url: https://api.anthropic.com
+  #       model: claude-sonnet-4-5
+  #       existingSecret: cowork-chat-claude
+  #       keys:
+  #         apiKey: apiKey
+  providers: []
   # COWORK_CHAT_TURN_TIMEOUT: how long one turn — the model's calls and the
   # tools' — may take, a Go duration; 0 disables the limit (docs/adr/0039 D2).
   turnTimeout: 5m

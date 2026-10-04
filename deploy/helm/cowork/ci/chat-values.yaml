@@ -1,7 +1,8 @@
-# The chat shape (docs/adr/0076): a provider outside the installation, its key
-# from a Secret with a key name of its own (docs/adr/0058 D3), and the limits
-# changed from their defaults. A turn runs in a browser session, so the shape
-# has a login and the public origin.
+# The chat shape (docs/adr/0076): two providers the person picks from — LM
+# Studio on the operator's network without a key, and a hosted one whose key
+# comes from a Secret of its own with a key name of its own (docs/adr/0058
+# D3) — and the limits changed from their defaults. A turn runs in a browser
+# session, so the shape has a login and the public origin.
 database:
   existingSecret: cowork-database
   owner:
@@ -11,13 +12,20 @@ session:
 localAdmin:
   existingSecret: cowork-local-admin
 chat:
-  provider: anthropic
-  url: https://api.anthropic.com
-  model: claude-sonnet-4-5
-  existingSecret: cowork-chat
-  keys:
-    apiKey: anthropic-api-key
-  inside: false
+  providers:
+    - id: lmstudio
+      name: LM Studio
+      kind: openai
+      url: http://lmstudio.ai.svc:1234/v1
+      model: qwen/qwen3-30b-a3b-2507
+    - id: claude-work
+      name: Claude
+      kind: anthropic
+      url: https://api.anthropic.com
+      model: claude-sonnet-4-5
+      existingSecret: cowork-chat-claude
+      keys:
+        apiKey: anthropic-api-key
   turnTimeout: 10m
   maxSteps: 12
 backend:

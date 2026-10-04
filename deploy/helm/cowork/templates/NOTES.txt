@@ -55,20 +55,15 @@ Network:  NetworkPolicy {{ include "cowork.backend.fullname" . }} admits only th
 Migrations: {{ if .Values.backend.config.migrateOnStart }}an init container of every backend pod, as the owner role{{ else }}none; run `cowork migrate` with the owner credential before the pods start{{ end }}
 Attachments: {{ if .Values.storage.endpoint }}{{ .Values.storage.endpoint }}, bucket {{ .Values.storage.bucket }}{{ else }}no object storage; uploads are refused{{ end }}
 {{- if include "cowork.chatEnabled" . }}
-Chat:     on, provider {{ .Values.chat.provider }}, model {{ .Values.chat.model }}; {{ if .Values.chat.existingSecret }}the API key from Secret {{ .Values.chat.existingSecret }}{{ else }}no API key{{ end }}
-{{- if .Values.chat.inside }}
-          declared inside the installation's trust boundary (chat.inside): every tenant has the chat, none is asked
-{{- else }}
-  WARNING: chat.inside is false, so the provider counts as outside the installation's trust
-  boundary: a tenant has the chat only once one of its administrators allows the provider in
-  the tenant's settings, and from then on the provider receives what the chat reads there.
+Chat:     on, {{ len .Values.chat.providers }} provider(s), the first the default:
+{{- range .Values.chat.providers }}
+          {{ .id }} — {{ .name | default .id }}, {{ lower .kind }}, model {{ .model }}; {{ if .existingSecret }}the API key from Secret {{ .existingSecret }}{{ else }}no API key{{ end }}
 {{- end }}
+  WARNING: every provider receives what the chat reads for its person in every tenant,
+  confidential tickets included; the list in chat.providers is the only gate. Add a hosted
+  provider only where every tenant's data may go to it (docs/security/chat.md).
 {{- else }}
-Chat:     off (chat.provider is empty)
-{{- if or .Values.chat.url .Values.chat.model .Values.chat.existingSecret .Values.chat.inside }}
-  NOTE: without chat.provider the chat is off, and chat.url, chat.model, chat.existingSecret and
-  chat.inside are not used.
-{{- end }}
+Chat:     off (chat.providers is empty)
 {{- end }}
 
 Reach the UI:

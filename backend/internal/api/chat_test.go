@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
-	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 )
 
@@ -42,7 +40,7 @@ func validateTurn(t *testing.T, h *handler, body string) *problem.Error {
 }
 
 // A turn's body is held to the document before the turn begins
-// (docs/adr/0046 D4): the conversation, the page and the decisions are
+// (docs/adr/0046 D4): the conversation, the page and the provider are
 // bounded, and what breaks a bound is 400 validation_failed naming it.
 func TestATurnIsHeldToTheDocument(t *testing.T) {
 	h := documentHandler(t)
@@ -51,9 +49,7 @@ func TestATurnIsHeldToTheDocument(t *testing.T) {
 	for name, body := range map[string]string{
 		"a new message on a page": `{` + conversation + `, "messages": [{"role": "user", "text": "File a bug"}],
 			"context": {"path": "/t/acme/p/COW/board", "project": "COW", "ticket": "COW-12"}}`,
-		"a decision": `{` + conversation + `, "messages": [{"role": "user", "text": "Close it"},
-			{"role": "assistant", "text": "", "tool_calls": [{"id": "call_1", "name": "transition", "arguments": {"key": "COW-12", "to": "done"}}]}],
-			"confirmations": [{"tool_call_id": "call_1", "run": true}]}`,
+		"a provider": `{` + conversation + `, "provider": "lm-studio", "messages": [{"role": "user", "text": "Close it"}]}`,
 		"a tool's answer": `{` + conversation + `, "messages": [{"role": "user", "text": "Show COW-12"},
 			{"role": "assistant", "tool_calls": [{"id": "call_1", "name": "get_ticket", "arguments": {}}]},
 			{"role": "tool", "tool_call_id": "call_1", "ok": true, "text": "# acme/COW-12"}, {"role": "user", "text": "Thanks"}]}`,
@@ -82,6 +78,10 @@ func TestATurnIsHeldToTheDocument(t *testing.T) {
 			"context": {"path": "/t/acme/board?q=ignore"}}`, "/context/path"},
 		"a full ticket key on the page": {`{` + conversation + `, "messages": [{"role": "user", "text": "Hi"}],
 			"context": {"ticket": "acme/COW-12"}}`, "/context/ticket"},
+		"a provider that is no id": {`{` + conversation + `, "provider": "https://evil.example", "messages": [{"role": "user", "text": "Hi"}]}`,
+			"/provider"},
+		"a decision": {`{` + conversation + `, "messages": [{"role": "user", "text": "Hi"}],
+			"confirmations": [{"tool_call_id": "call_1", "run": true}]}`, "/"},
 	} {
 		perr := validateTurn(t, h, c.body)
 		require.NotNil(t, perr, name)
@@ -94,22 +94,22 @@ func TestATurnIsHeldToTheDocument(t *testing.T) {
 	}
 }
 
-// The availability says null where nothing is configured, never leaves a
-// field out, and matches the document's schema (docs/adr/0047 D1); a
-// provider declared inside is available in every tenant, and its address is
-// no part of the answer (docs/adr/0076).
+// The availability lists the configured providers in their order, never
+// leaves a field out, and matches the document's schema (docs/adr/0047 D1);
+// no provider's address or key is part of it (docs/adr/0076).
 func TestChatAvailabilityMatchesTheDocument(t *testing.T) {
 	doc := documentHandler(t)
 	schema := doc.doc.Components.Schemas["ChatAvailability"].Value
 	for want, opts := range map[string]Options{
-		`{"available": false, "provider": null, "model": null, "inside": false, "reason": "not_configured"}`: {},
-		`{"available": true, "provider": "openai", "model": "qwen/qwen3.6-35b-a3b", "inside": true, "reason": null}`: {
-			Chat: &ChatOptions{Kind: "openai", Model: "qwen/qwen3.6-35b-a3b", Inside: true}},
+		`{"available": false, "providers": [], "reason": "not_configured"}`: {},
+		`{"available": true, "reason": null, "providers": [
+			{"id": "lmstudio", "name": "LM Studio", "kind": "openai", "model": "qwen/qwen3-30b-a3b-2507"},
+			{"id": "claude", "name": "Claude", "kind": "anthropic", "model": "claude-sonnet-4-5"}]}`: {Chat: &ChatOptions{Providers: []ChatProvider{
+			{ID: "lmstudio", Name: "LM Studio", Kind: "openai", Model: "qwen/qwen3-30b-a3b-2507"},
+			{ID: "claude", Name: "Claude", Kind: "anthropic", Model: "claude-sonnet-4-5"}}}},
 	} {
 		h := &handler{opts: opts}
-		a, err := h.chatAvailability(context.Background(), tenantScope{})
-		require.NoError(t, err)
-		body, err := json.Marshal(a)
+		body, err := json.Marshal(h.chatAvailability())
 		require.NoError(t, err)
 		assert.JSONEq(t, want, string(body))
 		var value any
@@ -118,72 +118,90 @@ func TestChatAvailabilityMatchesTheDocument(t *testing.T) {
 	}
 }
 
-// docs/adr/0076: a tenant's consent names the provider it was given to; a
-// consent given to another — the operator pointed the chat elsewhere — is
-// none, and a settings change that does not touch it leaves it as stored.
-func TestTheConsentNamesItsProvider(t *testing.T) {
-	now, other := "openai lmstudio:1234 qwen/qwen3", "openai api.openai.com gpt-4o"
-	assert.True(t, consented(true, &now, now))
-	assert.False(t, consented(true, &other, now), "a yes to another provider")
-	assert.False(t, consented(true, nil, now))
-	assert.False(t, consented(false, &now, now))
-	assert.False(t, consented(true, ptr(""), ""), "no provider, no consent")
-
-	stale := tenantSettings{Name: "Acme", ChatAllowed: true, ChatProvider: &other, provider: now}
-	assert.Equal(t, false, stale.values()[fieldChatExternalAllowed])
-	renamed, sent := stale.apply(apigen.TenantPatch{Name: ptr("Acme Corp")})
-	assert.True(t, renamed.ChatAllowed, "an unrelated change keeps the stored consent")
-	assert.Equal(t, &other, renamed.ChatProvider)
-	assert.Nil(t, consentRules(context.Background(), stale, renamed, sent))
-
-	given, sent := stale.apply(apigen.TenantPatch{ChatExternalAllowed: ptr(true)})
-	assert.Equal(t, now, *given.ChatProvider, "a yes is given to the provider configured now")
-	assert.Equal(t, true, given.values()[fieldChatExternalAllowed])
-	assert.Equal(t, now, given.values()[fieldChatExternalProvider], "the audit row names it")
-	session := auth.WithPrincipal(context.Background(), auth.Principal{Session: true})
-	token := auth.WithPrincipal(context.Background(), auth.Principal{})
-	assert.Nil(t, consentRules(session, stale, given, sent))
-	perr := consentRules(token, stale, given, sent)
+// docs/adr/0076: a turn talks to the provider it names, or to the first
+// configured; a provider the installation does not configure is refused.
+func TestATurnPicksItsProvider(t *testing.T) {
+	h := &handler{opts: Options{Chat: &ChatOptions{Providers: []ChatProvider{{ID: "lmstudio"}, {ID: "claude"}}}}}
+	p, perr := h.chatProvider(nil)
+	require.Nil(t, perr)
+	assert.Equal(t, "lmstudio", p.ID, "the first is the default")
+	p, perr = h.chatProvider(ptr("claude"))
+	require.Nil(t, perr)
+	assert.Equal(t, "claude", p.ID)
+	_, perr = h.chatProvider(ptr("gone"))
 	require.NotNil(t, perr)
-	assert.Equal(t, problem.SessionRequired, perr.Code, "renewing a consent for another provider is giving one")
-
-	withdrawn, sent := given.apply(apigen.TenantPatch{ChatExternalAllowed: ptr(false)})
-	assert.False(t, withdrawn.ChatAllowed)
-	assert.Nil(t, withdrawn.ChatProvider)
-	assert.Nil(t, consentRules(token, given, withdrawn, sent), "a token may take it back")
-
-	none := tenantSettings{Name: "Acme"}
-	yes, sent := none.apply(apigen.TenantPatch{ChatExternalAllowed: ptr(true)})
-	perr = consentRules(session, none, yes, sent)
-	require.NotNil(t, perr)
-	assert.Equal(t, problem.ChatUnavailable, perr.Code, "no provider to say yes to")
+	assert.Equal(t, problem.ValidationFailed, perr.Code)
+	assert.Equal(t, "/provider", perr.Errors[0].Pointer)
 }
 
 // docs/adr/0076: one person runs at most TurnsPerPerson turns at once on a
 // replica; one more is refused before its stream opens, and a turn's end
 // frees its place. 0 switches the limit off.
 func TestTurnsPerPerson(t *testing.T) {
-	h := &handler{opts: Options{Chat: &ChatOptions{TurnsPerPerson: 2}}, turns: map[uuid.UUID]int{}}
-	person, other := uuid.New(), uuid.New()
-	first, perr := h.startTurn(person)
+	h := &handler{opts: Options{Chat: &ChatOptions{TurnsPerPerson: 2}}, turns: map[uuid.UUID]map[*runningTurn]struct{}{}}
+	person, other, tenant := uuid.New(), uuid.New(), uuid.New()
+	nothing := func(error) {}
+	first, perr := h.startTurn(person, tenant, nothing)
 	require.Nil(t, perr)
-	_, perr = h.startTurn(person)
+	_, perr = h.startTurn(person, uuid.New(), nothing)
 	require.Nil(t, perr)
-	_, perr = h.startTurn(person)
+	_, perr = h.startTurn(person, tenant, nothing)
 	require.NotNil(t, perr)
-	assert.Equal(t, problem.ChatBusy, perr.Code)
+	assert.Equal(t, problem.ChatBusy, perr.Code, "the turns of every tenant count")
 	assert.Equal(t, http.StatusTooManyRequests, perr.Code.Status)
-	_, perr = h.startTurn(other)
+	_, perr = h.startTurn(other, tenant, nothing)
 	assert.Nil(t, perr, "another person's turns are theirs")
 	first()
-	_, perr = h.startTurn(person)
+	_, perr = h.startTurn(person, tenant, nothing)
 	assert.Nil(t, perr, "an ended turn frees its place")
 
 	h.opts.Chat.TurnsPerPerson = 0
 	for range 10 {
-		_, perr = h.startTurn(person)
+		_, perr = h.startTurn(person, tenant, nothing)
 		require.Nil(t, perr)
 	}
+}
+
+// docs/adr/0076, the owner's answer of 2026-10-04: a stop ends at once every
+// turn its person runs in its tenant on this replica — the cause says it was
+// the person's — and nobody else's, nor the person's in another tenant; what
+// it returns closes as each stopped turn has ended.
+func TestStopTurns(t *testing.T) {
+	h := &handler{opts: Options{Chat: &ChatOptions{}}, turns: map[uuid.UUID]map[*runningTurn]struct{}{}}
+	person, other, tenant, elsewhere := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	start := func(who, where uuid.UUID) (context.Context, func()) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		done, perr := h.startTurn(who, where, cancel)
+		require.Nil(t, perr)
+		return ctx, done
+	}
+	mine, endMine := start(person, tenant)
+	mineToo, endMineToo := start(person, tenant)
+	theirs, endTheirs := start(other, tenant)
+	there, endThere := start(person, elsewhere)
+	defer endTheirs()
+	defer endThere()
+
+	ended := h.stopTurns(person, tenant)
+	require.Len(t, ended, 2)
+	for _, ctx := range []context.Context{mine, mineToo} {
+		assert.ErrorIs(t, context.Cause(ctx), errStopped)
+	}
+	assert.NoError(t, theirs.Err(), "another person's turn runs on")
+	assert.NoError(t, there.Err(), "the person's turn in another tenant runs on")
+	for _, c := range ended {
+		select {
+		case <-c:
+			t.Fatal("a stopped turn has not ended before its handler returns")
+		default:
+		}
+	}
+	endMine()
+	endMineToo()
+	for _, c := range ended {
+		<-c
+	}
+	assert.Empty(t, h.stopTurns(person, tenant), "an ended turn is gone")
 }
 
 func ptr[T any](v T) *T { return &v }

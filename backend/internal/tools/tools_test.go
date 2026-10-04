@@ -81,7 +81,7 @@ func TestDescriptionsNameTheLimits(t *testing.T) {
 	}
 	unknown := transition.Describe(nil)
 	assert.Contains(t, unknown, "close for done")
-	assert.NotContains(t, unknown, "This session's token")
+	assert.NotContains(t, unknown, "This agent ")
 
 	assisted := transition.Describe(&Token{Known: true, Agent: true, Capabilities: []string{"drop"}})
 	assert.Contains(t, assisted, "holds drop")
@@ -90,7 +90,7 @@ func TestDescriptionsNameTheLimits(t *testing.T) {
 	assert.Contains(t, full, "holds decide, close, drop")
 	assert.NotContains(t, full, "lacks")
 	person := transition.Describe(&Token{Known: true})
-	assert.NotContains(t, person, "This session's token", "a person's request is not bounded by capabilities")
+	assert.NotContains(t, person, "This agent ", "a person's request is not bounded by capabilities")
 
 	for _, tool := range Catalogue() {
 		d := tool.Describe(&Token{Known: true, Agent: true, Capabilities: []string{"close"}})

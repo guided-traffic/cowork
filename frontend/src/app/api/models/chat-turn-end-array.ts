@@ -8,7 +8,7 @@ import { ChatTurnEnd } from './chat-turn-end';
  */
 export const CHAT_TURN_END: ChatTurnEnd[] = [
   'answered',
-  'confirm',
   'step_limit',
+  'stopped',
   'error'
 ];

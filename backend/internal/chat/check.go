@@ -9,15 +9,14 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 )
 
-// Check holds a turn's conversation and decisions to what the model can read
-// in their place (the API document, runChatTurn): the conversation begins
-// with the person's message; a person's message is text, the model's text or
-// tool calls with ids of their own, a tool's message the answer to a call of
-// the model's message before it; the conversation ends with the person's
-// message, with an answer of a tool, or with calls that wait — and a decision
-// names the first of them, the one the turn before proposed. The schema has
-// bounded every size already.
-func Check(msgs []apigen.ChatMessage, decisions []apigen.ChatConfirmation) *problem.Error {
+// Check holds a turn's conversation to what the model can read in its place
+// (the API document, runChatTurn): the conversation begins with the person's
+// message and ends with the person's new one; a person's message is text, the
+// model's text or tool calls with ids of their own, a tool's message the
+// answer to a call of the model's message before it. A call without an answer
+// — its turn ended before it ran — is the model's to read as not run. The
+// schema has bounded every size already.
+func Check(msgs []apigen.ChatMessage) *problem.Error {
 	if len(msgs) == 0 || msgs[0].Role != apigen.ChatRoleUser {
 		return problem.Field("/messages/0/role", "a conversation begins with the person's message")
 	}
@@ -27,18 +26,8 @@ func Check(msgs []apigen.ChatMessage, decisions []apigen.ChatConfirmation) *prob
 			return perr
 		}
 	}
-	waiting := c.waiting()
-	if msgs[len(msgs)-1].Role == apigen.ChatRoleAssistant && len(waiting) == 0 {
-		return problem.Field("/messages", "the conversation ends with the model's answer: a turn needs the person's new message, or a decision on a call that waits")
-	}
-	for j, d := range decisions {
-		at := fmt.Sprintf("/confirmations/%d/tool_call_id", j)
-		switch {
-		case len(waiting) == 0 || d.ToolCallId != waiting[0]:
-			return problem.Field(at, "only the first call that waits takes a decision: the one the turn before proposed")
-		case j > 0:
-			return problem.Field(at, "this call is decided twice")
-		}
+	if msgs[len(msgs)-1].Role != apigen.ChatRoleUser {
+		return problem.Field("/messages", "the conversation ends without the person's new message: a turn answers one")
 	}
 	return nil
 }
@@ -70,17 +59,6 @@ func (c *conversation) message(at string, m apigen.ChatMessage) *problem.Error {
 		return checkTool(at, m, c.group, c.answered)
 	}
 	return nil
-}
-
-// waiting are the calls of the model's last message without an answer.
-func (c *conversation) waiting() []string {
-	var out []string
-	for _, id := range c.group {
-		if !c.answered[id] {
-			out = append(out, id)
-		}
-	}
-	return out
 }
 
 func checkUser(at string, m apigen.ChatMessage) *problem.Error {

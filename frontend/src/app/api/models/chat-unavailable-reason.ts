@@ -3,9 +3,7 @@
 
 
 /**
- * Why the chat is not available: the installation configures no provider, or its provider is not
- * declared inside the installation's trust boundary and the tenant's administrators have not
- * allowed it (the tenant's chat_external_allowed)
+ * Why the chat is not available — the installation configures no provider
  */
-export type ChatUnavailableReason = 'not_configured' | 'not_allowed_in_tenant';
+export type ChatUnavailableReason = 'not_configured';
 

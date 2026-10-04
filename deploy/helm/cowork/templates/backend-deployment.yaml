@@ -208,21 +208,26 @@ spec:
             {{- end }}
             {{- end }}
             {{- if include "cowork.chatEnabled" . }}
-            - name: COWORK_CHAT_PROVIDER
-              value: {{ .Values.chat.provider | quote }}
-            - name: COWORK_CHAT_URL
-              value: {{ .Values.chat.url | quote }}
-            {{- if .Values.chat.existingSecret }}
-            - name: COWORK_CHAT_API_KEY
+            - name: COWORK_CHAT_PROVIDERS
+              value: {{ include "cowork.chatProviderIds" . | quote }}
+            {{- range .Values.chat.providers }}
+            {{- $env := include "cowork.chatEnv" .id }}
+            - name: {{ $env }}_NAME
+              value: {{ .name | default .id | quote }}
+            - name: {{ $env }}_KIND
+              value: {{ lower .kind | quote }}
+            - name: {{ $env }}_URL
+              value: {{ .url | quote }}
+            - name: {{ $env }}_MODEL
+              value: {{ .model | quote }}
+            {{- if .existingSecret }}
+            - name: {{ $env }}_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.chat.existingSecret }}
-                  key: {{ .Values.chat.keys.apiKey }}
+                  name: {{ .existingSecret }}
+                  key: {{ (default (dict) .keys).apiKey | default "apiKey" }}
             {{- end }}
-            - name: COWORK_CHAT_MODEL
-              value: {{ .Values.chat.model | quote }}
-            - name: COWORK_CHAT_INSIDE
-              value: {{ .Values.chat.inside | quote }}
+            {{- end }}
             - name: COWORK_CHAT_TURN_TIMEOUT
               value: {{ .Values.chat.turnTimeout | quote }}
             - name: COWORK_CHAT_MAX_STEPS

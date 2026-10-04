@@ -1233,27 +1233,12 @@
             "description": "The members of the tenant may hold a conversation (POST …/chat)",
             "type": "boolean"
           },
-          "inside": {
-            "description": "The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)\n— a model on the operator's machine or network, such as LM Studio —, and the chat is available\nin every tenant; outside, only where the tenant's chat_external_allowed is on\n",
-            "type": "boolean"
-          },
-          "model": {
-            "description": "The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "provider": {
-            "description": "The configured provider's wire format; null when none is configured",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ChatProvider"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "providers": {
+            "description": "The configured providers in the configured order, the first the default of a turn; empty without one",
+            "items": {
+              "$ref": "#/components/schemas/ChatProvider"
+            },
+            "type": "array"
           },
           "reason": {
             "description": "Why the chat is not available; null when it is",
@@ -1269,57 +1254,46 @@
         },
         "required": [
           "available",
-          "provider",
-          "model",
-          "inside",
+          "providers",
           "reason"
         ],
         "type": "object"
       },
-      "ChatConfirmEvent": {
-        "description": "The data of a chat turn's event `confirm`, a call that waits for the person's decision",
+      "ChatCapabilities": {
+        "description": "The capabilities the chat's requests hold (docs/adr/0043 D5): what the chat may do beyond the\nbaseline, as the person chose it\n",
         "properties": {
-          "arguments": {
-            "$ref": "#/components/schemas/ChatToolArguments"
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
           },
-          "description": {
-            "description": "The act in words, for the person who decides it",
-            "type": "string"
-          },
-          "id": {
-            "description": "The call's id, which the decision names",
-            "type": "string"
-          },
-          "name": {
-            "description": "The tool's name",
-            "type": "string"
+          "chosen": {
+            "description": "The person chose the set; false is the default, every capability but decide, close, drop and\nrecord-answer\n",
+            "type": "boolean"
           }
         },
         "required": [
-          "id",
-          "name",
-          "arguments",
-          "description"
+          "capabilities",
+          "chosen"
         ],
         "type": "object"
       },
-      "ChatConfirmation": {
+      "ChatCapabilitiesUpdate": {
         "additionalProperties": false,
-        "description": "The person's decision on a call that waits for it",
         "properties": {
-          "run": {
-            "description": "True runs the call as the model proposed it; false answers the model that the person skipped it",
-            "type": "boolean"
-          },
-          "tool_call_id": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
+          "capabilities": {
+            "description": "The whole set; an empty one leaves the chat the baseline",
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
-          "tool_call_id",
-          "run"
+          "capabilities"
         ],
         "type": "object"
       },
@@ -1401,7 +1375,40 @@
         "type": "object"
       },
       "ChatProvider": {
-        "description": "The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which\nOpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)\n",
+        "description": "A provider the operator configured (COWORK_CHAT_PROVIDERS): what the person picks in the panel.\nIts address and key are never shown\n",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ChatProviderId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChatProviderKind"
+          },
+          "model": {
+            "description": "The model by the name its provider knows it (COWORK_CHAT_\u003cID\u003e_MODEL)",
+            "type": "string"
+          },
+          "name": {
+            "description": "The provider's name for the person (COWORK_CHAT_\u003cID\u003e_NAME)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "model"
+        ],
+        "type": "object"
+      },
+      "ChatProviderId": {
+        "description": "A configured provider's id, as COWORK_CHAT_PROVIDERS names it",
+        "maxLength": 32,
+        "minLength": 1,
+        "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$",
+        "type": "string"
+      },
+      "ChatProviderKind": {
+        "description": "The wire format a configured provider speaks (COWORK_CHAT_\u003cID\u003e_KIND): OpenAI Chat Completions,\nwhich OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)\n",
         "enum": [
           "openai",
           "anthropic"
@@ -1471,7 +1478,7 @@
             "type": "string"
           },
           "ok": {
-            "description": "The call succeeded; false for a refusal of the API, which the model reads like any answer, and\nfor a call the person skipped\n",
+            "description": "The call succeeded; false for a refusal of the API, which the model reads like any answer\n",
             "type": "boolean"
           },
           "summary": {
@@ -1489,14 +1496,6 @@
       "ChatTurn": {
         "additionalProperties": false,
         "properties": {
-          "confirmations": {
-            "description": "The person's decision on the call that waits — the first of them, which the last turn proposed",
-            "items": {
-              "$ref": "#/components/schemas/ChatConfirmation"
-            },
-            "maxItems": 32,
-            "type": "array"
-          },
           "context": {
             "$ref": "#/components/schemas/ChatPageContext"
           },
@@ -1506,13 +1505,16 @@
             "type": "string"
           },
           "messages": {
-            "description": "The conversation so far, oldest first: the person's messages and what the `done` events added.\nIt ends with the person's new message, or — to decide a call that waits — as the last `done`\nleft it\n",
+            "description": "The conversation so far, oldest first: the person's messages and what the `done` events\nadded. It ends with the person's new message\n",
             "items": {
               "$ref": "#/components/schemas/ChatMessage"
             },
             "maxItems": 400,
             "minItems": 1,
             "type": "array"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ChatProviderId"
           }
         },
         "required": [
@@ -1522,11 +1524,11 @@
         "type": "object"
       },
       "ChatTurnEnd": {
-        "description": "Why a turn ended: the model answered; a call waits for the person's decision; the turn reached\nCOWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came\nbefore\n",
+        "description": "Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,\nand a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came\nbefore\n",
         "enum": [
           "answered",
-          "confirm",
           "step_limit",
+          "stopped",
           "error"
         ],
         "type": "string"
@@ -1556,10 +1558,9 @@
         "type": "object"
       },
       "ChatUnavailableReason": {
-        "description": "Why the chat is not available: the installation configures no provider, or its provider is not\ndeclared inside the installation's trust boundary and the tenant's administrators have not\nallowed it (the tenant's chat_external_allowed)\n",
+        "description": "Why the chat is not available — the installation configures no provider",
         "enum": [
-          "not_configured",
-          "not_allowed_in_tenant"
+          "not_configured"
         ],
         "type": "string"
       },
@@ -3091,7 +3092,7 @@
             ]
           },
           "capabilities": {
-            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4); empty for a\nperson's request, which the capabilities do not bound\n",
+            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4), the person's chat\ncapabilities for a session the header marks (D5); empty for a person's request, which the\ncapabilities do not bound\n",
             "items": {
               "$ref": "#/components/schemas/Capability"
             },
@@ -3144,10 +3145,6 @@
       },
       "Tenant": {
         "properties": {
-          "chat_external_allowed": {
-            "description": "The chat may send the tenant's data to the provider configured now, which the operator does\nnot declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names\nthe provider it was given to — its wire format, host and model — and one given to another\nprovider reads false; a provider inside needs no consent (docs/adr/0076)\n",
-            "type": "boolean"
-          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -3188,7 +3185,6 @@
           "version",
           "time_visible_to_members",
           "members_create_projects",
-          "chat_external_allowed",
           "created_at",
           "updated_at"
         ],
@@ -3218,10 +3214,6 @@
         "additionalProperties": false,
         "minProperties": 1,
         "properties": {
-          "chat_external_allowed": {
-            "description": "Switching it on gives the consent to the provider configured now, recorded with it, and takes\na session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with\nno provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`\ntoken too\n",
-            "type": "boolean"
-          },
           "members_create_projects": {
             "type": "boolean"
           },
@@ -4334,7 +4326,7 @@
         "type": "http"
       },
       "sessionCookie": {
-        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;\nSameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its\nperson with no agent flag and with the whole of the person's role: it\nhas no scope of its own. An `X-Cowork-Agent` header makes its request\nan agent's — every capability, the agent rules, the mark on its acts —\nand refuses it what only a session does with `403 agent_forbidden`\n(docs/adr/0036 D3); the chat marks its tool calls so (docs/adr/0076).\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
+        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;\nSameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its\nperson with no agent flag and with the whole of the person's role: it\nhas no scope of its own. An `X-Cowork-Agent` header makes its request\nan agent's — the capabilities the person chose for the chat\n(`GET /api/v1/me/chat`), the agent rules, the mark on its acts — and\nrefuses it what only a session does with `403 agent_forbidden`\n(docs/adr/0036 D3, docs/adr/0043 D5); the chat marks its tool calls so\n(docs/adr/0076).\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
         "in": "cookie",
         "name": "__Host-cowork-session",
         "type": "apiKey"
@@ -4342,7 +4334,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat, a global administrator's list\nof every tenant, and the administration acts that give access: adding a member, setting a grant, making or changing a group\nmapping, restricting or opening a project, putting a person on its access\nlist. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -4390,6 +4382,85 @@
           }
         },
         "summary": "The calling person and their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/chat": {
+      "get": {
+        "description": "The chat acts as the person's agent, and its requests hold exactly this set\n(docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused\nto the chat with `403 agent_forbidden` and stays the person's. A person who never chose\nholds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,\nand `chosen` is false.\n",
+        "operationId": "getMyChat",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "capabilities": [
+                    "rank",
+                    "override-urgency",
+                    "interest",
+                    "upload",
+                    "create-project"
+                  ],
+                  "chosen": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCapabilities"
+                }
+              }
+            },
+            "description": "The chat's capabilities"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The capabilities the person gives the chat in the UI",
+        "tags": [
+          "me"
+        ]
+      },
+      "put": {
+        "description": "Only the person, in a browser session: what the chat may do is access to the person's\ntenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session\nthe agent header marks — the chat itself among them — is `403 agent_forbidden`. The set\nreplaces the one before, from the chat's next request on, a running turn's included; an empty\nset leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only\nwriter, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded\nas the person's act.\n",
+        "operationId": "setMyChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "capabilities": [
+                  "rank",
+                  "override-urgency"
+                ]
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ChatCapabilitiesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCapabilities"
+                }
+              }
+            },
+            "description": "The chat's capabilities as chosen"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Choose the capabilities the person gives the chat in the UI",
         "tags": [
           "me"
         ]
@@ -4825,7 +4896,7 @@
         }
       ],
       "patch": {
-        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the\nconsent to the chat's provider configured now and takes a session — a token is `403\nsession_required` (docs/adr/0035 D5), an installation without a provider `409\nchat_unavailable` —; switching it off does not.\n",
+        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n",
         "operationId": "updateTenant",
         "parameters": [
           {
@@ -5181,7 +5252,7 @@
     },
     "/api/v1/tenants/{tenant}/chat": {
       "get": {
-        "description": "For every member of the tenant. The chat is available when the installation configures a\nprovider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside\nthe installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators\nallowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given\nto, its wire format, host and model, and one given to another provider is none. Otherwise\n`reason` says why.\nThe provider's address is never shown, and nothing here asks the provider whether it\nanswers: a turn that cannot reach it ends with an `error` event.\n",
+        "description": "For every member of the tenant. The chat is available when the installation configures at\nleast one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,\nthe first being the one a turn uses when it names none. Otherwise `reason` says why. A\nprovider's address and key are never shown, and nothing here asks a provider whether it\nanswers: a turn that cannot reach it ends with an `error` event.\n",
         "operationId": "getChatAvailability",
         "responses": {
           "200": {
@@ -5189,9 +5260,20 @@
               "application/json": {
                 "example": {
                   "available": true,
-                  "inside": true,
-                  "model": "qwen/qwen3.6-35b-a3b",
-                  "provider": "openai",
+                  "providers": [
+                    {
+                      "id": "lmstudio",
+                      "kind": "openai",
+                      "model": "qwen/qwen3-30b-a3b-2507",
+                      "name": "LM Studio"
+                    },
+                    {
+                      "id": "claude",
+                      "kind": "anthropic",
+                      "model": "claude-sonnet-4-5",
+                      "name": "Claude"
+                    }
+                  ],
                   "reason": null
                 },
                 "schema": {
@@ -5205,7 +5287,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Whether the chat is available in the tenant, and with which model",
+        "summary": "Whether the chat is available in the tenant, and with which providers",
         "tags": [
           "chat"
         ]
@@ -5216,7 +5298,7 @@
         }
       ],
       "post": {
-        "description": "A person in a browser session, any member of the tenant: a token is `403 session_required` —\nan agent with a token has the MCP server (docs/adr/0040) — and the CSRF check holds as for\nevery write of a session (docs/adr/0037). A tenant without the chat is `409\nchat_unavailable`, and `GET …/chat` says why. A person with as many turns running as\n`COWORK_CHAT_TURNS_PER_PERSON` allows on the replica — in another tab, say — is `429\nchat_busy`. The backend keeps nothing between turns: the request carries the conversation,\nand the answer the messages to append to it.\n\nA turn runs the model and the tools it calls: at most `COWORK_CHAT_MAX_STEPS` calls of the\nmodel, for at most `COWORK_CHAT_TURN_TIMEOUT`, the tenant's chat asked again before every\ncall of the model. Every tool call is a request of this API with the person's session,\nmarked as the agent `chat/\u003cmodel\u003e/\u003cconversation\u003e` (docs/adr/0036) — with `+confirmed` after\nthe conversation for a call the person ran —: it passes validation, authorization, the agent\nrules (docs/adr/0043) and the audit like any agent's request, and what it changes reaches\nthe event stream. It works in the turn's tenant only. A tool the API refuses is an answer\nthe model reads, not a failed turn. A call's creating requests carry keys derived from the\nconversation and the call, so a decision sent twice is answered from what the first stored;\na turn the model answers anew repeats its acts: a client never retries one by itself.\n\nThe answer is `200` with `text/event-stream`, each event an `event:` line with its name and\na `data:` line with its JSON, flushed one by one:\n\n- `text` — `ChatTextEvent`: the next piece of the assistant's text.\n- `tool_call` — `ChatToolCall`: a call the model made, with its arguments, before it runs.\n- `ui` — `ChatUiEvent`: between a call of `open_ticket`, `open_backlog` or `open_board` and its\n  result, the page of this UI the client shows next.\n- `tool_result` — `ChatToolResultEvent`: whether the call succeeded, and the start of what it\n  answered the model.\n- `confirm` — `ChatConfirmEvent`: in place of `tool_result`, a call the person decides before\n  it runs, with the act in words — a move to `decided`, `done`, `dropped` or `blocked`, a\n  backward move, a reopen, taking back a done (docs/adr/0009), `finish_work`, a progress write\n  that closes or reopens the ticket, recording an answer, creating a project, a call the chat\n  cannot tell the act of, and every write once the conversation read a confidential ticket\n  (docs/adr/0065). What it read to tell the act is pinned into the call's `arguments` —\n  `from`, the ticket's state, `version`, its version —, and a ticket that moved before the\n  person ran the call refuses it. It ends the turn.\n- `error` — `Problem`: why the turn failed once it had begun — `chat_provider_failed`,\n  `timeout` (`COWORK_CHAT_TURN_TIMEOUT`), `chat_unavailable` (the consent was withdrawn, or\n  the provider changed, while the turn ran), `not_ready` (the server is shutting down: send\n  the turn again), `internal`.\n- `done` — `ChatDoneEvent`, always the last: the messages the turn added, to be appended to\n  the conversation as they are, and why the turn ended.\n\nA `: keep-alive` comment follows ten seconds without an event, so no proxy closes a turn\nwhile the model thinks. A stream that ends without `done` was cut — the network, a\nshutdown —, and the acts its `tool_result` events reported have happened.\n\n**A decision.** After `confirm`, the next turn sends the conversation as `done` left it — its\nlast assistant message holds the call that waits, and the calls before it have their tool\nmessages — and `confirmations` with the person's decision on it, the first call that waits\nand no other: `run: true` runs the call as proposed, `run: false` answers the model that the\nperson skipped it, and so does a turn without a decision. The decided call's `tool_result`\ncomes without a new `tool_call`: its card is the person's already. The calls after it then\nrun in order, each with its `tool_call`; one that needs a decision of its own is answered\nthat it did not run, and the model makes it again, which proposes it. A call still waiting\nwhen the person writes a new message instead is answered as skipped; the conversation keeps\nit without an answer, and every later turn answers it the same way. An answer of the model\nthat is white space only adds no message: `done` carries none for it.\n\n**Limits.** A body above `COWORK_MAX_JSON_BODY` is `413 payload_too_large`; more messages or\nlonger texts than `ChatTurn` allows are `400 validation_failed` — the conversation is too\nlong, and a new one begins. A message the model could not read in its place — a tool\nmessage that answers no call, a decision on another call than the first that waits — is\n`400 validation_failed` naming it.\n",
+        "description": "A person in a browser session, any member of the tenant: a token is `403 session_required` —\nan agent with a token has the MCP server (docs/adr/0040) — and the CSRF check holds as for\nevery write of a session (docs/adr/0037). A tenant without the chat is `409\nchat_unavailable`, and `GET …/chat` says why; a `provider` the installation does not configure\nis `400 validation_failed`. A person with as many turns running as\n`COWORK_CHAT_TURNS_PER_PERSON` allows on the replica — in another tab, say — is `429\nchat_busy`. The backend keeps nothing between turns: the request carries the conversation,\nand the answer the messages to append to it.\n\nA turn runs the provider's model and the tools it calls: at most `COWORK_CHAT_MAX_STEPS` calls\nof the model, for at most `COWORK_CHAT_TURN_TIMEOUT`. Every tool call is a request of this API\nwith the person's session, marked as the agent `chat/\u003cmodel\u003e/\u003cconversation\u003e`\n(docs/adr/0036): it holds the capabilities the person chose for the chat (`GET\n/api/v1/me/chat`, docs/adr/0043 D5), passes validation, authorization, the agent rules and the\naudit like any agent's request, and what it changes reaches the event stream. It runs at once:\nnothing waits for the person. It works in the turn's tenant only. A tool the API refuses — an\nact that needs a capability the person did not give the chat is `403 agent_forbidden`\nnaming it — is an answer the model reads, not a failed turn. A call's creating requests carry\nkeys derived from the conversation and the call; a turn the model answers anew repeats its\nacts: a client never retries one by itself.\n\nThe answer is `200` with `text/event-stream`, each event an `event:` line with its name and\na `data:` line with its JSON, flushed one by one:\n\n- `text` — `ChatTextEvent`: the next piece of the assistant's text.\n- `tool_call` — `ChatToolCall`: a call the model made, with its arguments, before it runs.\n- `ui` — `ChatUiEvent`: between a call of `open_ticket`, `open_backlog` or `open_board` and its\n  result, the page of this UI the client shows next.\n- `tool_result` — `ChatToolResultEvent`: whether the call succeeded, and the start of what it\n  answered the model.\n- `error` — `Problem`: why the turn failed once it had begun — `chat_provider_failed`,\n  `timeout` (`COWORK_CHAT_TURN_TIMEOUT`), `not_ready` (the server is shutting down: send\n  the turn again), `internal`.\n- `done` — `ChatDoneEvent`, always the last: the messages the turn added, to be appended to\n  the conversation as they are, and why the turn ended — `stopped` when\n  `DELETE …/chat/turns` ended it.\n\nA `: keep-alive` comment follows ten seconds without an event, so no proxy closes a turn\nwhile the model thinks. A stream that ends without `done` was cut — the network, the client's\nabort, a shutdown —, and the acts its `tool_result` events reported have happened. A call\nthe turn's end left without an answer is answered to the model on the next turn as one\nthat did not run. An answer of the model that is white space only adds no message: `done`\ncarries none for it.\n\n**Limits.** A body above `COWORK_MAX_JSON_BODY` is `413 payload_too_large`; more messages or\nlonger texts than `ChatTurn` allows are `400 validation_failed` — the conversation is too\nlong, and a new one begins. A message the model could not read in its place — a tool\nmessage that answers no call, a conversation that does not end with the person's message —\nis `400 validation_failed` naming it.\n",
         "operationId": "runChatTurn",
         "requestBody": {
           "content": {
@@ -5232,7 +5314,8 @@
                     "role": "user",
                     "text": "File a bug for the login that fails in Safari, and rank it to now."
                   }
-                ]
+                ],
+                "provider": "lmstudio"
               },
               "schema": {
                 "$ref": "#/components/schemas/ChatTurn"
@@ -5266,6 +5349,34 @@
           "chat"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/chat/turns": {
+      "delete": {
+        "description": "A person in a browser session, any member: a token is `403 session_required`, a session the\nagent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the\nsession's person in the tenant that runs on the replica answering this request ends at once:\nits call of the model is cancelled, so is a tool call in flight, and its stream ends with\n`done` and the reason `stopped`. The answer comes once those turns have ended, or after five\nseconds; a turn of another person, or of the person in another tenant, runs on. What the\nstopped turns' tool calls did before has happened.\n\nThe turns are those of this replica (docs/adr/0076): behind several backend replicas a turn\nanother replica runs is not reached — the client's abort of the turn's own request still is.\nWith no turn running, nothing happens, and the answer is the same.\n",
+        "operationId": "stopChatTurns",
+        "responses": {
+          "204": {
+            "description": "The person's turns in the tenant on this replica are stopped"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Stop every running turn of the person in the tenant",
+        "tags": [
+          "chat"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {

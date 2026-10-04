@@ -9,13 +9,8 @@ import { Capability, Membership, Problem, Project, TokenCreated } from '../../ap
 import { CAPABILITY } from '../../api/models/capability-array';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
-import {
-  assisted,
-  capabilityMeanings,
-  maxLifetimeDays,
-  NewTokenDialog,
-  scopeMeanings,
-} from './new-token-dialog';
+import { assisted, capabilityMeanings } from '../../shared/capabilities';
+import { maxLifetimeDays, NewTokenDialog, scopeMeanings } from './new-token-dialog';
 
 const acme: Membership = {
   role: 'admin',

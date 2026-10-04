@@ -1,5 +1,4 @@
 import {
-  ChatConfirmEvent,
   ChatDoneEvent,
   ChatMessage,
   ChatTextEvent,
@@ -81,7 +80,6 @@ export type ChatStreamEvent =
   | { name: 'tool_call'; data: ChatToolCall }
   | { name: 'ui'; data: ChatUiEvent }
   | { name: 'tool_result'; data: ChatToolResultEvent }
-  | { name: 'confirm'; data: ChatConfirmEvent }
   /** The turn failed once it had begun; the problem, or undefined where the data is none. */
   | { name: 'error'; data: Problem | undefined }
   | { name: 'done'; data: ChatDoneEvent };
@@ -165,15 +163,6 @@ export function chatEvent(event: StreamedEvent): ChatStreamEvent | undefined {
             },
           }
         : undefined;
-    case 'confirm': {
-      const proposed = call(fields);
-      return proposed && strings(fields as Fields, 'description')
-        ? {
-            name: 'confirm',
-            data: { ...proposed, description: (fields as Fields)['description'] as string },
-          }
-        : undefined;
-    }
     case 'error':
       return { name: 'error', data: problem(fields) };
     case 'done': {

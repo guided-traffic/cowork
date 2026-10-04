@@ -11,21 +11,9 @@ export interface ChatAvailability {
   available: boolean;
 
   /**
-   * The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)
-   * — a model on the operator's machine or network, such as LM Studio —, and the chat is available
-   * in every tenant; outside, only where the tenant's chat_external_allowed is on
+   * The configured providers in the configured order, the first the default of a turn; empty without one
    */
-  inside: boolean;
-
-  /**
-   * The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured
-   */
-  model: (string | null);
-
-  /**
-   * The configured provider's wire format; null when none is configured
-   */
-  provider: (ChatProvider | null);
+  providers: Array<ChatProvider>;
 
   /**
    * Why the chat is not available; null when it is

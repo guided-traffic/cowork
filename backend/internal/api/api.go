@@ -168,9 +168,11 @@ type handler struct {
 	// refresh carries no groups claim makes the refresh read nothing
 	// (docs/adr/0030 D5).
 	noRefreshToken, noGroups sync.Once
-	// turns counts the turns of the chat each person runs on this replica.
+	// turns are the turns of the chat each person runs on this replica: the
+	// count COWORK_CHAT_TURNS_PER_PERSON bounds, and what DELETE …/chat/turns
+	// stops.
 	turnsMu sync.Mutex
-	turns   map[uuid.UUID]int
+	turns   map[uuid.UUID]map[*runningTurn]struct{}
 }
 
 // New builds the API handler. It fails only when the embedded document does
@@ -203,7 +205,7 @@ func New(opts Options) (http.Handler, error) {
 		mux:     http.NewServeMux(),
 		logger:  opts.Logger,
 		touched: map[uuid.UUID]string{},
-		turns:   map[uuid.UUID]int{},
+		turns:   map[uuid.UUID]map[*runningTurn]struct{}{},
 
 		addressKey:     newAddressKey(opts.SessionKey),
 		dummyHash:      dummy,

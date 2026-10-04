@@ -30,9 +30,10 @@ const ada: Me = {
 
 const open: ChatAvailability = {
   available: true,
-  provider: 'openai',
-  model: 'qwen/qwen3.6-35b-a3b',
-  inside: true,
+  providers: [
+    { id: 'lmstudio', name: 'LM Studio', kind: 'openai', model: 'qwen/qwen3-30b-a3b-2507' },
+    { id: 'claude', name: 'Claude', kind: 'anthropic', model: 'claude-sonnet-4-5' },
+  ],
   reason: null,
 };
 
@@ -98,6 +99,19 @@ describe('ChatService', () => {
 
   const availability = (slug: string) =>
     http.expectOne((request) => request.url === `/api/v1/tenants/${slug}/chat`);
+
+  /** The request that stops the person's turns in a tenant, answered 204. */
+  const stopped = (slug = 'acme') =>
+    http
+      .expectOne(
+        (request) =>
+          request.method === 'DELETE' && request.url === `/api/v1/tenants/${slug}/chat/turns`,
+      )
+      .flush(null, { status: 204, statusText: 'No Content' });
+
+  /** The person's chat capabilities, read once the panel is open. */
+  const capabilitiesRead = () =>
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/me/chat');
 
   /** The last turn's request, answered with its stream. */
   const streaming = () => {
@@ -200,17 +214,13 @@ describe('ChatService', () => {
       await settle();
       expect(service.available()).toBe(false);
 
-      availability('globex').flush({
-        available: false,
-        provider: 'anthropic',
-        model: 'claude',
-        inside: false,
-        reason: 'not_allowed_in_tenant',
-      });
+      availability('globex').flush({ available: false, providers: [], reason: 'not_configured' });
       await settle();
 
       expect(service.available()).toBe(false);
-      expect(service.availability.value()?.reason).toBe('not_allowed_in_tenant');
+      expect(service.availability.value()?.reason).toBe('not_configured');
+      expect(service.providers()).toEqual([]);
+      expect(service.provider()).toBeNull();
     });
 
     it('is no chat when it cannot be read', async () => {
@@ -234,14 +244,14 @@ describe('ChatService', () => {
       http.expectNone(() => true);
     });
 
-    it('is asked again after the consent changed', async () => {
+    it('is asked again when asked', async () => {
       service.reloadAvailability();
       await settle();
 
-      availability('acme').flush({ ...open, inside: false });
+      availability('acme').flush({ ...open, providers: open.providers.slice(1) });
       await settle();
 
-      expect(service.availability.value()?.inside).toBe(false);
+      expect(service.providers().map((each) => each.id)).toEqual(['claude']);
     });
   });
 
@@ -270,6 +280,7 @@ describe('ChatService', () => {
       expect(sent[0].turn).toEqual({
         conversation: expect.stringMatching(uuid),
         messages: [{ role: 'user', text: 'File a bug for the login' }],
+        provider: 'lmstudio',
         context: { path: '/t/acme/p/COW/board', project: 'COW' },
       });
       expect(Object.keys(sent[0].turn)).not.toContain('confirmations');
@@ -381,7 +392,11 @@ describe('ChatService', () => {
       });
       await settle();
 
-      expect(lastEntry()).toEqual({ id: expect.any(Number), kind: 'assistant', text: 'WEB-1 only.' });
+      expect(lastEntry()).toEqual({
+        id: expect.any(Number),
+        kind: 'assistant',
+        text: 'WEB-1 only.',
+      });
     });
 
     it('does not mark text a turn did not finish as its answer', async () => {
@@ -515,6 +530,33 @@ describe('ChatService', () => {
       );
     });
 
+    it("shows a running call's answer from done where its result came as no event it could read", async () => {
+      const { turn } = await begin();
+      turn.body.event('tool_call', { id: 'c1', name: 'watch', arguments: {} });
+      turn.body.event('tool_result', { id: 'c1', ok: 'yes', summary: 'unreadable' });
+      turn.body.event('tool_call', { id: 'c2', name: 'watch', arguments: {} });
+      turn.body.event('done', {
+        messages: [
+          {
+            role: 'assistant',
+            tool_calls: [
+              { id: 'c1', name: 'watch', arguments: {} },
+              { id: 'c2', name: 'watch', arguments: {} },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c1', ok: false, text: 'x'.repeat(2500) },
+          { role: 'tool', tool_call_id: 'c2' },
+        ],
+        reason: 'answered',
+      });
+      await settle();
+
+      expect(calls().map((card) => [card.state, card.summary?.length])).toEqual([
+        ['failed', 2000],
+        ['ok', 0],
+      ]);
+    });
+
     it('marks a call whose result never came as unanswered when the turn ends', async () => {
       const { turn } = await begin();
 
@@ -576,7 +618,10 @@ describe('ChatService', () => {
       const { turn } = await begin();
 
       turn.body.event('text', { delta: 'Done.' });
-      turn.body.event('done', { messages: [{ role: 'assistant', text: 'Done.' }], reason: 'answered' });
+      turn.body.event('done', {
+        messages: [{ role: 'assistant', text: 'Done.' }],
+        reason: 'answered',
+      });
       turn.body.event('text', { delta: 'late' });
       await settle();
 
@@ -712,13 +757,13 @@ describe('ChatService', () => {
     it('says why the chat went away and asks for the availability again', async () => {
       const toasts = vi.spyOn(TestBed.inject(MessageService), 'add');
       void service.send('Hi');
-      sent[0].refuse(409, problem(409, 'chat_unavailable', 'not allowed in this tenant'));
+      sent[0].refuse(409, problem(409, 'chat_unavailable', 'no chat provider'));
       await settle();
 
       expect(toasts).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ detail: 'not allowed in this tenant' }),
+        expect.objectContaining({ detail: 'no chat provider' }),
       );
-      availability('acme').flush({ ...open, available: false, reason: 'not_allowed_in_tenant' });
+      availability('acme').flush({ available: false, providers: [], reason: 'not_configured' });
       await settle();
       expect(service.available()).toBe(false);
     });
@@ -798,7 +843,11 @@ describe('ChatService', () => {
       const before = service.send('File a bug');
       sent[0].refuse(
         429,
-        problem(429, 'chat_busy', '2 turns of yours are running already; one ends, or is stopped, first'),
+        problem(
+          429,
+          'chat_busy',
+          '2 turns of yours are running already; one ends, or is stopped, first',
+        ),
       );
       await settle();
 
@@ -807,7 +856,8 @@ describe('ChatService', () => {
         {
           id: expect.any(Number),
           kind: 'notice',
-          text: 'A turn of yours is running elsewhere: wait for it, or stop it there.',
+          text: 'A turn of yours is running elsewhere: wait for it, or stop it.',
+          stop: true,
         },
       ]);
       expect(service.busy()).toBe(false);
@@ -843,6 +893,7 @@ describe('ChatService', () => {
       const before = service.send('File a bug');
 
       service.stop();
+      stopped();
       await settle();
 
       expect(await before).toBe(false);
@@ -859,6 +910,8 @@ describe('ChatService', () => {
       await settle();
 
       service.stop();
+      expect(turn.init.signal?.aborted).toBe(true);
+      stopped();
       await settle();
 
       expect(await begun).toBe(true);
@@ -891,6 +944,7 @@ describe('ChatService', () => {
       await settle();
 
       service.stop();
+      stopped();
       await settle();
       void service.send('Go on');
 
@@ -908,8 +962,35 @@ describe('ChatService', () => {
       await settle();
 
       service.stop();
+      stopped();
       await settle();
 
+      expect(lastEntry()).toEqual({ id: expect.any(Number), kind: 'notice', text: 'Stopped.' });
+    });
+
+    it('asks the backend to stop the turns of the tenant the turn runs in, so no proxy keeps it alive', async () => {
+      await begin();
+
+      service.stop();
+
+      const request = http.expectOne('/api/v1/tenants/acme/chat/turns');
+      expect(request.request.method).toBe('DELETE');
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+    });
+
+    it('reports a stop the backend refused; the turn is stopped here all the same', async () => {
+      const toasts = vi.spyOn(TestBed.inject(MessageService), 'add');
+      await begin();
+
+      service.stop();
+      http
+        .expectOne('/api/v1/tenants/acme/chat/turns')
+        .flush(problem(503, 'not_ready', 'down'), { status: 503, statusText: 'Unavailable' });
+      await settle();
+
+      expect(toasts).toHaveBeenCalledOnce();
+      expect(service.busy()).toBe(false);
       expect(lastEntry()).toEqual({ id: expect.any(Number), kind: 'notice', text: 'Stopped.' });
     });
 
@@ -918,6 +999,81 @@ describe('ChatService', () => {
 
       expect(service.busy()).toBe(false);
       expect(service.entries()).toEqual([]);
+      http.expectNone('/api/v1/tenants/acme/chat/turns');
+    });
+
+    it('from elsewhere ends the turn with done: its messages stay, and it says it stopped', async () => {
+      const { turn } = await begin('File a bug');
+      turn.body.event('tool_call', { id: 'c1', name: 'watch', arguments: {} });
+      turn.body.event('tool_result', { id: 'c1', ok: true, summary: 'Watching COW-12' });
+      turn.body.event('done', {
+        messages: [
+          { role: 'assistant', tool_calls: [{ id: 'c1', name: 'watch', arguments: {} }] },
+          { role: 'tool', tool_call_id: 'c1', ok: true, text: 'Watching COW-12' },
+        ],
+        reason: 'stopped',
+      });
+      await settle();
+
+      expect(service.busy()).toBe(false);
+      expect(lastEntry()).toEqual({
+        id: expect.any(Number),
+        kind: 'notice',
+        text: 'Stopped. What the calls above report has happened.',
+      });
+      void service.send('Go on');
+      expect(sent[1].turn.messages).toEqual([
+        { role: 'user', text: 'File a bug' },
+        { role: 'assistant', tool_calls: [{ id: 'c1', name: 'watch', arguments: {} }] },
+        { role: 'tool', tool_call_id: 'c1', ok: true, text: 'Watching COW-12' },
+        { role: 'user', text: 'Go on' },
+      ]);
+      streaming().body.end();
+      await settle();
+    });
+
+    it("stops the person's turns elsewhere from the busy notice, which then says so", async () => {
+      const { turn } = await begin('Hello');
+      turn.body.event('done', {
+        messages: [{ role: 'assistant', text: 'Hi.' }],
+        reason: 'answered',
+      });
+      await settle();
+      void service.send('File a bug');
+      sent[1].refuse(429, problem(429, 'chat_busy', 'one runs'));
+      await settle();
+
+      const done = service.stopElsewhere();
+      stopped();
+      await done;
+
+      expect(kinds()).toEqual(['user', 'notice', 'notice']);
+      expect(service.entries().slice(1)).toEqual([
+        {
+          id: expect.any(Number),
+          kind: 'notice',
+          text: 'A turn of yours is running elsewhere: wait for it, or stop it.',
+        },
+        {
+          id: expect.any(Number),
+          kind: 'notice',
+          text: 'Your turns in this tenant are stopped. Send your message again.',
+        },
+      ]);
+    });
+
+    it('keeps the busy notice and its Stop when the stop elsewhere is refused', async () => {
+      void service.send('File a bug');
+      sent[0].refuse(429, problem(429, 'chat_busy', 'one runs'));
+      await settle();
+
+      const done = service.stopElsewhere();
+      http
+        .expectOne('/api/v1/tenants/acme/chat/turns')
+        .flush(problem(500, 'internal', 'down'), { status: 500, statusText: 'Internal' });
+      await done;
+
+      expect(service.entries()).toEqual([expect.objectContaining({ kind: 'notice', stop: true })]);
     });
   });
 
@@ -960,254 +1116,6 @@ describe('ChatService', () => {
     });
   });
 
-  describe('a proposal', () => {
-    const proposed: ChatMessage[] = [
-      {
-        role: 'assistant',
-        tool_calls: [{ id: 'c9', name: 'transition', arguments: { key: 'COW-1', to: 'done' } }],
-      },
-    ];
-
-    /** A turn that ends with a proposal of c9. */
-    async function propose(): Promise<void> {
-      const { turn } = await begin('Close COW-1');
-      turn.body.event('tool_call', proposed[0].tool_calls?.[0]);
-      turn.body.event('confirm', {
-        ...proposed[0].tool_calls?.[0],
-        description: 'Move COW-1 to done',
-      });
-      turn.body.event('done', { messages: proposed, reason: 'confirm' });
-      await settle();
-    }
-
-    it('is a card that waits for the person, and the turn ends', async () => {
-      await propose();
-
-      expect(calls()).toEqual([
-        {
-          id: expect.any(Number),
-          kind: 'call',
-          call: { id: 'c9', name: 'transition', arguments: { key: 'COW-1', to: 'done' } },
-          state: 'waiting',
-          description: 'Move COW-1 to done',
-        },
-      ]);
-      expect(service.busy()).toBe(false);
-    });
-
-    it('is a card even without a call announced before it', async () => {
-      const { turn } = await begin('Close COW-1');
-
-      turn.body.event('confirm', {
-        id: 'c9',
-        name: 'transition',
-        arguments: {},
-        description: 'Close',
-      });
-      turn.body.event('done', { messages: proposed, reason: 'confirm' });
-      await settle();
-
-      expect(calls()).toEqual([
-        expect.objectContaining({ state: 'waiting', description: 'Close' }),
-      ]);
-    });
-
-    it('runs with Run: the next turn sends the conversation as done left it and the decision', async () => {
-      await propose();
-
-      const decided = service.decide('c9', true);
-
-      expect(sent[1].turn).toEqual({
-        conversation: sent[0].turn.conversation,
-        messages: [{ role: 'user', text: 'Close COW-1' }, ...proposed],
-        context: { path: '/t/acme/p/COW/board', project: 'COW' },
-        confirmations: [{ tool_call_id: 'c9', run: true }],
-      });
-      expect(calls()[0].state).toBe('running');
-
-      const turn = streaming();
-      turn.body.event('tool_call', proposed[0].tool_calls?.[0]);
-      turn.body.event('tool_result', { id: 'c9', ok: true, summary: 'COW-1 is done' });
-      turn.body.event('done', {
-        messages: [{ role: 'tool', tool_call_id: 'c9', ok: true, text: 'COW-1 is done' }],
-        reason: 'answered',
-      });
-      await settle();
-
-      expect(await decided).toBe(true);
-      expect(calls()).toEqual([
-        expect.objectContaining({
-          state: 'ok',
-          summary: 'COW-1 is done',
-          description: 'Move COW-1 to done',
-        }),
-      ]);
-    });
-
-    it("shows the decided call's answer from done where no result came as an event", async () => {
-      await propose();
-      void service.decide('c9', true);
-      const turn = streaming();
-
-      turn.body.event('done', {
-        messages: [
-          { role: 'tool', tool_call_id: 'c9', ok: false, text: `refused ${'x'.repeat(3000)}` },
-          { role: 'tool', tool_call_id: 'gone', ok: true, text: 'no card' },
-          { role: 'tool', ok: true, text: 'no call named' },
-          { role: 'assistant', text: 'It was refused.' },
-        ],
-        reason: 'answered',
-      });
-      await settle();
-
-      expect(calls()[0].state).toBe('failed');
-      expect(calls()[0].summary).toHaveLength(2000);
-      expect(calls()[0].summary?.startsWith('refused x')).toBe(true);
-    });
-
-    it('takes an answer in done without ok and without text for a success', async () => {
-      await propose();
-      void service.decide('c9', true);
-      const turn = streaming();
-
-      turn.body.event('done', {
-        messages: [{ role: 'tool', tool_call_id: 'c9' }],
-        reason: 'answered',
-      });
-      await settle();
-
-      expect(calls()[0]).toEqual(expect.objectContaining({ state: 'ok', summary: '' }));
-    });
-
-    it('keeps a result that came as an event over the answer in done', async () => {
-      await propose();
-      void service.decide('c9', true);
-      const turn = streaming();
-
-      turn.body.event('tool_result', { id: 'c9', ok: true, summary: 'COW-1 is done' });
-      turn.body.event('done', {
-        messages: [{ role: 'tool', tool_call_id: 'c9', ok: true, text: 'COW-1 is done, in full' }],
-        reason: 'answered',
-      });
-      await settle();
-
-      expect(calls()[0]).toEqual(
-        expect.objectContaining({ state: 'ok', summary: 'COW-1 is done' }),
-      );
-    });
-
-    it('is skipped with Skip, which the card keeps whatever the model is told', async () => {
-      await propose();
-
-      void service.decide('c9', false);
-
-      expect(sent[1].turn.confirmations).toEqual([{ tool_call_id: 'c9', run: false }]);
-      expect(calls()[0].state).toBe('skipped');
-      const turn = streaming();
-      turn.body.event('tool_result', { id: 'c9', ok: false, summary: 'skipped by the person' });
-      turn.body.event('done', { messages: [], reason: 'answered' });
-      await settle();
-
-      expect(calls()[0]).toEqual(
-        expect.objectContaining({ state: 'skipped', summary: 'skipped by the person' }),
-      );
-    });
-
-    it('waits again when the decision is refused', async () => {
-      await propose();
-
-      const decided = service.decide('c9', true);
-      sent[1].refuse(409, problem(409, 'state_conflict', 'COW-1 moved'));
-      await settle();
-
-      expect(await decided).toBe(false);
-      expect(calls()[0].state).toBe('waiting');
-      expect(lastEntry()).toEqual(expect.objectContaining({ kind: 'problem' }));
-    });
-
-    it('waits again when the conversation is too long for the decision, which offers a new one', async () => {
-      await propose();
-
-      void service.decide('c9', true);
-      sent[1].refuse(413, problem(413, 'payload_too_large', 'the body is larger than 1048576 bytes'));
-      await settle();
-
-      expect(calls()[0].state).toBe('waiting');
-      expect(lastEntry()).toEqual(expect.objectContaining({ kind: 'notice', restart: true }));
-    });
-
-    it('is skipped when the person writes instead, and no decision is sent', async () => {
-      await propose();
-
-      void service.send('Leave it open');
-
-      expect(calls()[0].state).toBe('skipped');
-      expect(sent[1].turn.confirmations).toBeUndefined();
-      expect(sent[1].turn.messages).toEqual([
-        { role: 'user', text: 'Close COW-1' },
-        ...proposed,
-        { role: 'user', text: 'Leave it open' },
-      ]);
-      streaming().body.end();
-      await settle();
-    });
-
-    it('waits again when the message written instead is refused', async () => {
-      await propose();
-
-      void service.send('Leave it open');
-      sent[1].refuse(400, problem(400, 'validation_failed', 'no'));
-      await settle();
-
-      expect(calls()[0].state).toBe('waiting');
-      expect(kinds()).toEqual(['user', 'call', 'problem']);
-    });
-
-    it('is decided once, and nothing else is decided', async () => {
-      await propose();
-
-      expect(await service.decide('c1', true)).toBe(false);
-      void service.decide('c9', true);
-      expect(await service.decide('c9', true)).toBe(false);
-      expect(sent).toHaveLength(2);
-      streaming().body.end();
-      await settle();
-      expect(await service.decide('c9', true)).toBe(false);
-    });
-
-    it('is not decided outside a tenant', async () => {
-      await propose();
-      tenant.set(null);
-      await settle();
-
-      expect(await service.decide('c9', true)).toBe(false);
-    });
-
-    it("keeps the decided call's result behind the conversation when the decision's turn is stopped", async () => {
-      await propose();
-      void service.decide('c9', true);
-      const turn = streaming();
-      turn.body.event('tool_call', proposed[0].tool_calls?.[0]);
-      turn.body.event('tool_result', { id: 'c9', ok: true, summary: 'COW-1 is done' });
-      turn.body.event('text', { delta: 'Closed.' });
-      await settle();
-
-      service.stop();
-      await settle();
-      void service.send('Thanks');
-
-      expect(sent[2].turn.messages).toEqual([
-        { role: 'user', text: 'Close COW-1' },
-        ...proposed,
-        { role: 'tool', tool_call_id: 'c9', ok: true, text: 'COW-1 is done' },
-        { role: 'assistant', text: 'Closed.' },
-        { role: 'user', text: 'Thanks' },
-      ]);
-      streaming().body.end();
-      await settle();
-    });
-  });
-
   describe('the tenant', () => {
     it("empties the conversation when another tenant's pages open, which begins a new one", async () => {
       const { turn } = await begin('File a bug');
@@ -1240,6 +1148,7 @@ describe('ChatService', () => {
       tenant.set('globex');
       TestBed.tick();
       await settle();
+      stopped('acme');
       availability('globex').flush(open);
       await settle();
 
@@ -1253,6 +1162,7 @@ describe('ChatService', () => {
 
       tenant.set('globex');
       await settle();
+      stopped('acme');
       availability('globex').flush(open);
       sent[0].refuse(409, problem(409, 'chat_unavailable', 'gone'));
       await settle();
@@ -1269,6 +1179,7 @@ describe('ChatService', () => {
 
       tenant.set('globex');
       await settle();
+      stopped('acme');
       availability('globex').flush(open);
       await settle();
 
@@ -1285,6 +1196,7 @@ describe('ChatService', () => {
 
       tenant.set(null);
       await settle();
+      stopped('acme');
       expect(service.busy()).toBe(false);
 
       tenant.set('acme');
@@ -1297,7 +1209,7 @@ describe('ChatService', () => {
   });
 
   describe('the chat going away while a turn runs', () => {
-    it('stops the turn once the tenant no longer allows the chat, whose panel and Stop go with it', async () => {
+    it('stops the turn once the installation configures no provider, whose panel and Stop go with it', async () => {
       const { turn, begun } = await begin('File a bug');
       turn.body.event('text', { delta: 'Filing' });
       await settle();
@@ -1305,13 +1217,9 @@ describe('ChatService', () => {
       service.reloadAvailability();
       await settle();
       expect(turn.init.signal?.aborted).toBe(false);
-      availability('acme').flush({
-        ...open,
-        available: false,
-        inside: false,
-        reason: 'not_allowed_in_tenant',
-      });
+      availability('acme').flush({ available: false, providers: [], reason: 'not_configured' });
       await settle();
+      stopped();
 
       expect(turn.init.signal?.aborted).toBe(true);
       expect(await begun).toBe(true);
@@ -1329,6 +1237,7 @@ describe('ChatService', () => {
         statusText: 'Internal',
       });
       await settle();
+      stopped();
 
       expect(turn.init.signal?.aborted).toBe(true);
       expect(await begun).toBe(true);
@@ -1340,7 +1249,7 @@ describe('ChatService', () => {
 
       service.reloadAvailability();
       await settle();
-      availability('acme').flush({ ...open, inside: false });
+      availability('acme').flush({ ...open, providers: open.providers.slice(1) });
       await settle();
 
       expect(turn.init.signal?.aborted).toBe(false);
@@ -1385,8 +1294,10 @@ describe('ChatService', () => {
       expect(service.open()).toBe(false);
     });
 
-    it("is the person's choice, kept in browser storage under the person", () => {
+    it("is the person's choice, kept in browser storage under the person", async () => {
       service.setOpen(true);
+      await settle();
+      capabilitiesRead().flush({ capabilities: [], chosen: true });
 
       expect(service.open()).toBe(true);
       expect(localStorage.getItem(key)).toBe('open');
@@ -1402,6 +1313,7 @@ describe('ChatService', () => {
 
       person.set({ ...ada, id: 'p2' });
       await settle();
+      capabilitiesRead().flush({ capabilities: [], chosen: true });
 
       expect(service.open()).toBe(true);
     });
@@ -1428,8 +1340,149 @@ describe('ChatService', () => {
       expect(service.open()).toBe(false);
 
       service.setOpen(true);
+      await settle();
+      capabilitiesRead().flush({ capabilities: [], chosen: true });
 
       expect(service.open()).toBe(true);
+    });
+  });
+
+  describe('the provider', () => {
+    const key = 'cowork.chat.provider.p1';
+
+    it('is the first configured while the person picked none, and a turn names it', async () => {
+      expect(service.providers().map((each) => each.id)).toEqual(['lmstudio', 'claude']);
+      expect(service.provider()?.id).toBe('lmstudio');
+
+      void service.send('Hi');
+
+      expect(sent[0].turn.provider).toBe('lmstudio');
+      streaming().body.end();
+      await settle();
+    });
+
+    it("is the person's pick, kept in browser storage under the person, for the next turn", async () => {
+      service.setProvider('claude');
+
+      expect(service.provider()?.id).toBe('claude');
+      expect(localStorage.getItem(key)).toBe('claude');
+      void service.send('Hi');
+      expect(sent[0].turn.provider).toBe('claude');
+      streaming().body.end();
+      await settle();
+    });
+
+    it('is read from browser storage for the person who signs in', async () => {
+      localStorage.setItem('cowork.chat.provider.p2', 'claude');
+
+      person.set({ ...ada, id: 'p2' });
+      await settle();
+
+      expect(service.provider()?.id).toBe('claude');
+    });
+
+    it('holds the pick without storing it while the person is not known', async () => {
+      person.set(undefined);
+      await settle();
+
+      service.setProvider('claude');
+
+      expect(service.provider()?.id).toBe('claude');
+      expect(localStorage.length).toBe(0);
+    });
+
+    it('is the first again when the installation no longer configures the pick', async () => {
+      service.setProvider('gone');
+
+      expect(service.provider()?.id).toBe('lmstudio');
+    });
+
+    it('holds the pick for the page when storage refuses it', async () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('quota');
+      });
+
+      service.setProvider('claude');
+
+      expect(service.provider()?.id).toBe('claude');
+    });
+  });
+
+  describe("the chat's capabilities", () => {
+    it('are not read while the panel is closed', () => {
+      expect(service.capabilities.value()).toBeUndefined();
+      http.expectNone('/api/v1/me/chat');
+    });
+
+    it('are read once the panel is open', async () => {
+      service.setOpen(true);
+      await settle();
+
+      capabilitiesRead().flush({ capabilities: ['rank'], chosen: false });
+      await settle();
+
+      expect(service.capabilities.value()).toEqual({ capabilities: ['rank'], chosen: false });
+    });
+
+    it("are the person's choice, which the backend answers with the set it took", async () => {
+      const done = service.setCapabilities(['close', 'rank']);
+
+      const request = http.expectOne('/api/v1/me/chat');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({ capabilities: ['close', 'rank'] });
+      request.flush({ capabilities: ['close', 'rank'], chosen: true });
+
+      expect(await done).toBe(true);
+      expect(service.capabilities.value()).toEqual({
+        capabilities: ['close', 'rank'],
+        chosen: true,
+      });
+    });
+
+    it('stay as read when the choice is refused, which is reported', async () => {
+      const toasts = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const done = service.setCapabilities(['close']);
+
+      http.expectOne('/api/v1/me/chat').flush(problem(403, 'session_required', 'a session'), {
+        status: 403,
+        statusText: 'Forbidden',
+      });
+
+      expect(await done).toBe(false);
+      expect(toasts).toHaveBeenCalledOnce();
+      expect(service.capabilities.value()).toBeUndefined();
+    });
+
+    it('changed in a conversation under way say so once and offer a new conversation', async () => {
+      const { turn } = await begin('Move WEB-1 to decided');
+      turn.body.event('text', { delta: 'That needs decide, which I lack.' });
+      turn.body.event('done', {
+        messages: [{ role: 'assistant', text: 'That needs decide, which I lack.' }],
+        reason: 'answered',
+      });
+      await settle();
+
+      for (const set of [['decide'], ['decide', 'rank']] as const) {
+        const done = service.setCapabilities([...set]);
+        http.expectOne('/api/v1/me/chat').flush({ capabilities: [...set], chosen: true });
+        expect(await done).toBe(true);
+      }
+
+      expect(kinds()).toEqual(['user', 'assistant', 'notice']);
+      expect(lastEntry()).toEqual({
+        id: expect.any(Number),
+        kind: 'notice',
+        text: expect.stringContaining('A new one starts clean.'),
+        restart: true,
+      });
+    });
+
+    it('changed before any conversation say nothing', async () => {
+      const done = service.setCapabilities(['decide']);
+      http.expectOne('/api/v1/me/chat').flush({ capabilities: ['decide'], chosen: true });
+
+      expect(await done).toBe(true);
+      expect(service.entries()).toEqual([]);
     });
   });
 });
@@ -1499,11 +1552,11 @@ describe('TurnRecord', () => {
   const call = (id: string, name = 'search') => ({ id, name, arguments: { q: id } });
 
   it('holds no message when nothing was reported', () => {
-    expect(new TurnRecord([]).messages()).toEqual([]);
+    expect(new TurnRecord().messages()).toEqual([]);
   });
 
   it("keeps the assistant's text", () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.text('Hel');
     record.text('lo');
@@ -1515,7 +1568,7 @@ describe('TurnRecord', () => {
   // The backend reports each call of a step with its result before the next call: tool_call,
   // tool_result, tool_call, tool_result.
   it('keeps each call with its result: the call in an assistant message, the result as a tool message behind it', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.text('Looking.');
     record.call(call('c1'));
@@ -1533,7 +1586,7 @@ describe('TurnRecord', () => {
   });
 
   it('leaves out a step of blank text, which the backend refuses as a message of the model', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.text(' \n\t ');
 
@@ -1541,7 +1594,7 @@ describe('TurnRecord', () => {
   });
 
   it('leaves out a step of blank text whose call came to no result', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.call(call('c1'));
     record.result('c1', true, 'one');
@@ -1555,7 +1608,7 @@ describe('TurnRecord', () => {
   });
 
   it("cuts a step's text to the bound of the API document, which streamed text is not held to", () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.text('a'.repeat(60000));
     record.text('b'.repeat(60000));
@@ -1566,7 +1619,7 @@ describe('TurnRecord', () => {
   });
 
   it('does not halve a character of two UTF-16 units at the cut', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.text(`${'a'.repeat(99999)}😀b`);
 
@@ -1574,7 +1627,7 @@ describe('TurnRecord', () => {
   });
 
   it('begins the next step after a result', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.call(call('c1'));
     record.result('c1', true, 'one');
@@ -1592,7 +1645,7 @@ describe('TurnRecord', () => {
   });
 
   it('leaves out a call without its result, and a step that has nothing else', () => {
-    const record = new TurnRecord([]);
+    const record = new TurnRecord();
 
     record.call(call('c1'));
     record.result('c1', true, 'one');
@@ -1604,97 +1657,26 @@ describe('TurnRecord', () => {
     ]);
   });
 
-  it("keeps a proposal's call without an answer, as done leaves it", () => {
-    const record = new TurnRecord([]);
+  it('holds a call announced twice once', () => {
+    const record = new TurnRecord();
 
-    record.call(call('c1', 'transition'));
-    record.propose(call('c1', 'transition'));
+    record.call(call('c1'));
+    record.call(call('c1'));
+    record.result('c1', true, 'one');
 
     expect(record.messages()).toEqual([
-      { role: 'assistant', tool_calls: [call('c1', 'transition')] },
+      { role: 'assistant', tool_calls: [call('c1')] },
+      { role: 'tool', tool_call_id: 'c1', ok: true, text: 'one' },
     ]);
   });
 
-  it('keeps a proposal announced by nothing before it', () => {
-    const record = new TurnRecord([]);
+  it('answers nothing for a result whose call the turn never announced', () => {
+    const record = new TurnRecord();
 
-    record.text('I would close it.');
-    record.propose(call('c1', 'transition'));
-
-    expect(record.messages()).toEqual([
-      { role: 'assistant', text: 'I would close it.', tool_calls: [call('c1', 'transition')] },
-    ]);
-  });
-
-  /** A conversation whose last message holds c8, answered, and c9 and c10, open. */
-  const waiting: ChatMessage[] = [
-    { role: 'user', text: 'Close them' },
-    { role: 'assistant', tool_calls: [call('c8'), call('c9'), call('c10')] },
-    { role: 'tool', tool_call_id: 'c8', ok: true, text: 'eight' },
-  ];
-
-  it('answers the calls the conversation leaves open first, without holding them again', () => {
-    const record = new TurnRecord(waiting);
-
-    record.call(call('c9'));
     record.result('c9', true, 'nine');
-    record.result('c10', false, 'ten');
-    record.call(call('c10'));
     record.text('Done.');
 
-    expect(record.messages()).toEqual([
-      { role: 'tool', tool_call_id: 'c9', ok: true, text: 'nine' },
-      { role: 'tool', tool_call_id: 'c10', ok: false, text: 'ten' },
-      { role: 'assistant', text: 'Done.' },
-    ]);
-  });
-
-  it('leaves out an open call of the conversation that came to no result', () => {
-    const record = new TurnRecord(waiting);
-
-    record.call(call('c9'));
-
-    expect(record.messages()).toEqual([]);
-  });
-
-  it('answers no call of the conversation that is not open, and holds none of them again', () => {
-    const record = new TurnRecord(waiting);
-
-    record.call(call('c8'));
-    record.result('c8', true, 'again');
-
-    expect(record.messages()).toEqual([]);
-  });
-
-  it('answers no proposal the person wrote past, which the backend answers as skipped', () => {
-    const record = new TurnRecord([...waiting, { role: 'user', text: 'Leave them' }]);
-
-    record.result('c9', false, 'skipped');
-    record.text('Left open.');
-
-    expect(record.messages()).toEqual([{ role: 'assistant', text: 'Left open.' }]);
-  });
-
-  it('takes a tool message that names no call for an answer to none', () => {
-    const record = new TurnRecord([...waiting, { role: 'tool', ok: true, text: 'stray' }]);
-
-    record.result('c9', true, 'nine');
-
-    expect(record.messages()).toEqual([
-      { role: 'tool', tool_call_id: 'c9', ok: true, text: 'nine' },
-    ]);
-  });
-
-  it('answers no call of an older message', () => {
-    const record = new TurnRecord([
-      ...waiting,
-      { role: 'tool', tool_call_id: 'c9', ok: true, text: 'nine' },
-      { role: 'tool', tool_call_id: 'c10', ok: true, text: 'ten' },
-      { role: 'assistant', text: 'Both closed.' },
-    ]);
-
-    record.result('c9', true, 'nine again');
-
-    expect(record.messages()).toEqual([]);
+    expect(record.messages()).toEqual([{ role: 'assistant', text: 'Done.' }]);
+    expect(record.called).toBe(true);
   });
 });

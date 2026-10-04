@@ -706,6 +706,12 @@ type AuditEvent struct {
 	SourceHash           []byte
 }
 
+type ChatCapability struct {
+	UserID       uuid.UUID
+	Capabilities []string
+	UpdatedAt    time.Time
+}
+
 type Comment struct {
 	ID          uuid.UUID
 	TenantID    uuid.UUID
@@ -875,8 +881,6 @@ type Tenant struct {
 	TimeVisibleToMembers  bool
 	TimeLockedUntil       *time.Time
 	MembersCreateProjects bool
-	ChatExternalAllowed   bool
-	ChatExternalProvider  *string
 }
 
 type Ticket struct {

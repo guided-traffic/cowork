@@ -13,8 +13,7 @@ export interface ChatToolResultEvent {
   id: string;
 
   /**
-   * The call succeeded; false for a refusal of the API, which the model reads like any answer, and
-   * for a call the person skipped
+   * The call succeeded; false for a refusal of the API, which the model reads like any answer
    */
   ok: boolean;
 

@@ -17,10 +17,11 @@ info:
     provider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each
     operation says which it takes: most take either, a few a session only —
     creating a token, a tenant or a local account, resetting or changing a
-    password, logging out, a turn of the chat, a global administrator's list
-    of every tenant, and the administration acts that give access: adding a member, setting a grant, making or changing a group
-    mapping, restricting or opening a project, putting a person on its access
-    list. A request of a session that writes must come from the installation's
+    password, logging out, a turn of the chat and stopping one, choosing the
+    chat's capabilities, a global administrator's list of every tenant, and the
+    administration acts that give access: adding a member, setting a grant,
+    making or changing a group mapping, restricting or opening a project,
+    putting a person on its access list. A request of a session that writes must come from the installation's
     origin and carry `X-Requested-With: cowork` (docs/adr/0037). A request
     marked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:
     name/model/session` header — is bound by the agent rules
@@ -73,6 +74,8 @@ paths:
     $ref: './me.yaml#/token'
   /api/v1/me/token:
     $ref: './me.yaml#/currentToken'
+  /api/v1/me/chat:
+    $ref: './me.yaml#/chat'
   /api/v1/me/repositories/lookup:
     $ref: './repositories.yaml#/lookup'
   /api/v1/tenants:
@@ -119,6 +122,8 @@ paths:
     $ref: './events.yaml#/events'
   /api/v1/tenants/{tenant}/chat:
     $ref: './chat.yaml#/chat'
+  /api/v1/tenants/{tenant}/chat/turns:
+    $ref: './chat.yaml#/turns'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
   /api/v1/tenants/{tenant}/projects/{project}/tickets:
@@ -194,8 +199,6 @@ components:
       $ref: './components/schemas.yaml#/ChatToolResultEvent'
     ChatUiEvent:
       $ref: './components/schemas.yaml#/ChatUiEvent'
-    ChatConfirmEvent:
-      $ref: './components/schemas.yaml#/ChatConfirmEvent'
     ChatDoneEvent:
       $ref: './components/schemas.yaml#/ChatDoneEvent'
   securitySchemes:
@@ -224,9 +227,11 @@ components:
         SameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its
         person with no agent flag and with the whole of the person's role: it
         has no scope of its own. An `X-Cowork-Agent` header makes its request
-        an agent's — every capability, the agent rules, the mark on its acts —
-        and refuses it what only a session does with `403 agent_forbidden`
-        (docs/adr/0036 D3); the chat marks its tool calls so (docs/adr/0076).
+        an agent's — the capabilities the person chose for the chat
+        (`GET /api/v1/me/chat`), the agent rules, the mark on its acts — and
+        refuses it what only a session does with `403 agent_forbidden`
+        (docs/adr/0036 D3, docs/adr/0043 D5); the chat marks its tool calls so
+        (docs/adr/0076).
         Its writes are held to the CSRF check of docs/adr/0037 D1: `Origin`
         (or `Referer`) equal to the installation's `COWORK_BASE_URL` and
         `X-Requested-With: cowork`.

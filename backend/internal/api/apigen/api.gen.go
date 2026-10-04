@@ -248,18 +248,18 @@ func (e Capability) Valid() bool {
 	}
 }
 
-// Defines values for ChatProvider.
+// Defines values for ChatProviderKind.
 const (
-	ChatProviderAnthropic ChatProvider = "anthropic"
-	ChatProviderOpenai    ChatProvider = "openai"
+	ChatProviderKindAnthropic ChatProviderKind = "anthropic"
+	ChatProviderKindOpenai    ChatProviderKind = "openai"
 )
 
-// Valid indicates whether the value is a known member of the ChatProvider enum.
-func (e ChatProvider) Valid() bool {
+// Valid indicates whether the value is a known member of the ChatProviderKind enum.
+func (e ChatProviderKind) Valid() bool {
 	switch e {
-	case ChatProviderAnthropic:
+	case ChatProviderKindAnthropic:
 		return true
-	case ChatProviderOpenai:
+	case ChatProviderKindOpenai:
 		return true
 	default:
 		return false
@@ -290,9 +290,9 @@ func (e ChatRole) Valid() bool {
 // Defines values for ChatTurnEnd.
 const (
 	ChatTurnEndAnswered  ChatTurnEnd = "answered"
-	ChatTurnEndConfirm   ChatTurnEnd = "confirm"
 	ChatTurnEndError     ChatTurnEnd = "error"
 	ChatTurnEndStepLimit ChatTurnEnd = "step_limit"
+	ChatTurnEndStopped   ChatTurnEnd = "stopped"
 )
 
 // Valid indicates whether the value is a known member of the ChatTurnEnd enum.
@@ -300,11 +300,11 @@ func (e ChatTurnEnd) Valid() bool {
 	switch e {
 	case ChatTurnEndAnswered:
 		return true
-	case ChatTurnEndConfirm:
-		return true
 	case ChatTurnEndError:
 		return true
 	case ChatTurnEndStepLimit:
+		return true
+	case ChatTurnEndStopped:
 		return true
 	default:
 		return false
@@ -328,15 +328,12 @@ func (e ChatUiAction) Valid() bool {
 
 // Defines values for ChatUnavailableReason.
 const (
-	ChatUnavailableReasonNotAllowedInTenant ChatUnavailableReason = "not_allowed_in_tenant"
-	ChatUnavailableReasonNotConfigured      ChatUnavailableReason = "not_configured"
+	ChatUnavailableReasonNotConfigured ChatUnavailableReason = "not_configured"
 )
 
 // Valid indicates whether the value is a known member of the ChatUnavailableReason enum.
 func (e ChatUnavailableReason) Valid() bool {
 	switch e {
-	case ChatUnavailableReasonNotAllowedInTenant:
-		return true
 	case ChatUnavailableReasonNotConfigured:
 		return true
 	default:
@@ -1305,41 +1302,27 @@ type ChatAvailability struct {
 	// Available The members of the tenant may hold a conversation (POST …/chat)
 	Available bool `json:"available"`
 
-	// Inside The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)
-	// — a model on the operator's machine or network, such as LM Studio —, and the chat is available
-	// in every tenant; outside, only where the tenant's chat_external_allowed is on
-	Inside bool `json:"inside"`
-
-	// Model The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured
-	Model nullable.Nullable[string] `json:"model"`
-
-	// Provider The configured provider's wire format; null when none is configured
-	Provider nullable.Nullable[ChatProvider] `json:"provider"`
+	// Providers The configured providers in the configured order, the first the default of a turn; empty without one
+	Providers []ChatProvider `json:"providers"`
 
 	// Reason Why the chat is not available; null when it is
 	Reason nullable.Nullable[ChatUnavailableReason] `json:"reason"`
 }
 
-// ChatConfirmEvent The data of a chat turn's event `confirm`, a call that waits for the person's decision
-type ChatConfirmEvent struct {
-	// Arguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
-	Arguments ChatToolArguments `json:"arguments"`
+// ChatCapabilities The capabilities the chat's requests hold (docs/adr/0043 D5): what the chat may do beyond the
+// baseline, as the person chose it
+type ChatCapabilities struct {
+	Capabilities []Capability `json:"capabilities"`
 
-	// Description The act in words, for the person who decides it
-	Description string `json:"description"`
-
-	// Id The call's id, which the decision names
-	Id string `json:"id"`
-
-	// Name The tool's name
-	Name string `json:"name"`
+	// Chosen The person chose the set; false is the default, every capability but decide, close, drop and
+	// record-answer
+	Chosen bool `json:"chosen"`
 }
 
-// ChatConfirmation The person's decision on a call that waits for it
-type ChatConfirmation struct {
-	// Run True runs the call as the model proposed it; false answers the model that the person skipped it
-	Run        bool   `json:"run"`
-	ToolCallId string `json:"tool_call_id"`
+// ChatCapabilitiesUpdate defines model for ChatCapabilitiesUpdate.
+type ChatCapabilitiesUpdate struct {
+	// Capabilities The whole set; an empty one leaves the chat the baseline
+	Capabilities []Capability `json:"capabilities"`
 }
 
 // ChatDoneEvent The data of a chat turn's event `done`, the last of every turn
@@ -1347,8 +1330,8 @@ type ChatDoneEvent struct {
 	// Messages The messages the turn added, to be appended to the conversation as they are
 	Messages []ChatMessage `json:"messages"`
 
-	// Reason Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
-	// COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+	// Reason Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+	// and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
 	// before
 	Reason ChatTurnEnd `json:"reason"`
 }
@@ -1382,9 +1365,29 @@ type ChatPageContext struct {
 	Ticket *string `json:"ticket,omitempty"`
 }
 
-// ChatProvider The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which
-// OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
-type ChatProvider string
+// ChatProvider A provider the operator configured (COWORK_CHAT_PROVIDERS): what the person picks in the panel.
+// Its address and key are never shown
+type ChatProvider struct {
+	// Id A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+	Id ChatProviderId `json:"id"`
+
+	// Kind The wire format a configured provider speaks (COWORK_CHAT_<ID>_KIND): OpenAI Chat Completions,
+	// which OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+	Kind ChatProviderKind `json:"kind"`
+
+	// Model The model by the name its provider knows it (COWORK_CHAT_<ID>_MODEL)
+	Model string `json:"model"`
+
+	// Name The provider's name for the person (COWORK_CHAT_<ID>_NAME)
+	Name string `json:"name"`
+}
+
+// ChatProviderId A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+type ChatProviderId = string
+
+// ChatProviderKind The wire format a configured provider speaks (COWORK_CHAT_<ID>_KIND): OpenAI Chat Completions,
+// which OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+type ChatProviderKind string
 
 // ChatRole Whom a message of the chat is from — the person, the model, or a tool answering the model
 type ChatRole string
@@ -1415,8 +1418,7 @@ type ChatToolResultEvent struct {
 	// Id The id of the call it answers
 	Id string `json:"id"`
 
-	// Ok The call succeeded; false for a refusal of the API, which the model reads like any answer, and
-	// for a call the person skipped
+	// Ok The call succeeded; false for a refusal of the API, which the model reads like any answer
 	Ok bool `json:"ok"`
 
 	// Summary The start of what the tool answered, Markdown as the tool wrote it, at most 2000 characters;
@@ -1426,9 +1428,6 @@ type ChatToolResultEvent struct {
 
 // ChatTurn defines model for ChatTurn.
 type ChatTurn struct {
-	// Confirmations The person's decision on the call that waits — the first of them, which the last turn proposed
-	Confirmations *[]ChatConfirmation `json:"confirmations,omitempty"`
-
 	// Context The page the person is on as they send the turn: the model's instructions name it, and a short
 	// key the model uses resolves against its project
 	Context *ChatPageContext `json:"context,omitempty"`
@@ -1438,14 +1437,16 @@ type ChatTurn struct {
 	// conversation's acts from another's (docs/adr/0036 D3)
 	Conversation openapi_types.UUID `json:"conversation"`
 
-	// Messages The conversation so far, oldest first: the person's messages and what the `done` events added.
-	// It ends with the person's new message, or — to decide a call that waits — as the last `done`
-	// left it
+	// Messages The conversation so far, oldest first: the person's messages and what the `done` events
+	// added. It ends with the person's new message
 	Messages []ChatMessage `json:"messages"`
+
+	// Provider A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+	Provider *ChatProviderId `json:"provider,omitempty"`
 }
 
-// ChatTurnEnd Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
-// COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+// ChatTurnEnd Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+// and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
 // before
 type ChatTurnEnd string
 
@@ -1462,9 +1463,7 @@ type ChatUiEvent struct {
 	Path string `json:"path"`
 }
 
-// ChatUnavailableReason Why the chat is not available: the installation configures no provider, or its provider is not
-// declared inside the installation's trust boundary and the tenant's administrators have not
-// allowed it (the tenant's chat_external_allowed)
+// ChatUnavailableReason Why the chat is not available — the installation configures no provider
 type ChatUnavailableReason string
 
 // Comment defines model for Comment.
@@ -2069,8 +2068,9 @@ type RequestMark struct {
 	AgentMark nullable.Nullable[string] `json:"agent_mark"`
 
 	// Capabilities What an agent's request may do beyond the baseline: the token's set for a flagged token,
-	// every capability for a plain token the header marks (docs/adr/0043 D4); empty for a
-	// person's request, which the capabilities do not bound
+	// every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
+	// capabilities for a session the header marks (D5); empty for a person's request, which the
+	// capabilities do not bound
 	Capabilities []Capability `json:"capabilities"`
 }
 
@@ -2088,12 +2088,7 @@ type Severity string
 
 // Tenant defines model for Tenant.
 type Tenant struct {
-	// ChatExternalAllowed The chat may send the tenant's data to the provider configured now, which the operator does
-	// not declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names
-	// the provider it was given to — its wire format, host and model — and one given to another
-	// provider reads false; a provider inside needs no consent (docs/adr/0076)
-	ChatExternalAllowed bool      `json:"chat_external_allowed"`
-	CreatedAt           time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// MembersCreateProjects Members create projects; off, only administrators do (docs/adr/0034 D9)
 	MembersCreateProjects bool   `json:"members_create_projects"`
@@ -2119,11 +2114,6 @@ type TenantCreate struct {
 
 // TenantPatch defines model for TenantPatch.
 type TenantPatch struct {
-	// ChatExternalAllowed Switching it on gives the consent to the provider configured now, recorded with it, and takes
-	// a session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with
-	// no provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`
-	// token too
-	ChatExternalAllowed   *bool                                 `json:"chat_external_allowed,omitempty"`
 	MembersCreateProjects *bool                                 `json:"members_create_projects,omitempty"`
 	Name                  *string                               `json:"name,omitempty"`
 	TimeLockedUntil       nullable.Nullable[openapi_types.Date] `json:"time_locked_until,omitempty"`
@@ -3293,6 +3283,9 @@ type LoginOidcParams struct {
 	ReturnTo *string `form:"return_to,omitempty" json:"return_to,omitempty"`
 }
 
+// SetMyChatJSONRequestBody defines body for SetMyChat for application/json ContentType.
+type SetMyChatJSONRequestBody = ChatCapabilitiesUpdate
+
 // ChangeMyPasswordJSONRequestBody defines body for ChangeMyPassword for application/json ContentType.
 type ChangeMyPasswordJSONRequestBody = PasswordChange
 
@@ -3467,6 +3460,47 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMyChat The capabilities the person gives the chat in the UI
+	//
+	// The chat acts as the person's agent, and its requests hold exactly this set
+	// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+	// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+	// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+	// and `chosen` is false.
+	//
+	// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+	GetMyChat(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyChatWithBody Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChat(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ChangeMyPasswordWithBody Change the password of the person's local account
 	//
@@ -3678,10 +3712,7 @@ type ClientInterface interface {
 	// UpdateTenantWithBody Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-	// consent to the chat's provider configured now and takes a session — a token is `403
-	// session_required` (docs/adr/0035 D5), an installation without a provider `409
-	// chat_unavailable` —; switching it off does not.
+	// `If-Match` is required (docs/adr/0050 D3).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3691,10 +3722,7 @@ type ClientInterface interface {
 	// UpdateTenant Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-	// consent to the chat's provider configured now and takes a session — a token is `403
-	// session_required` (docs/adr/0035 D5), an installation without a provider `409
-	// chat_unavailable` —; switching it off does not.
+	// `If-Match` is required (docs/adr/0050 D3).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3819,19 +3847,33 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
 	//
-	// For every member of the tenant. The chat is available when the installation configures a
-	// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
-	// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
-	// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
-	// to, its wire format, host and model, and one given to another provider is none. Otherwise
-	// `reason` says why.
-	// The provider's address is never shown, and nothing here asks the provider whether it
+	// For every member of the tenant. The chat is available when the installation configures at
+	// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+	// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+	// provider's address and key are never shown, and nothing here asks a provider whether it
 	// answers: a turn that cannot reach it ends with an `error` event.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
 	GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StopChatTurns Stop every running turn of the person in the tenant
+	//
+	// A person in a browser session, any member: a token is `403 session_required`, a session the
+	// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+	// session's person in the tenant that runs on the replica answering this request ends at once:
+	// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+	// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+	// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+	// stopped turns' tool calls did before has happened.
+	//
+	// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+	// another replica runs is not reached — the client's abort of the turn's own request still is.
+	// With no turn running, nothing happens, and the answer is the same.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+	StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGroupMappings The tenant's group mappings, by group
 	//
@@ -5019,6 +5061,77 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 	return c.Client.Do(req)
 }
 
+// GetMyChat The capabilities the person gives the chat in the UI
+//
+// The chat acts as the person's agent, and its requests hold exactly this set
+// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+// and `chosen` is false.
+//
+// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+func (c *Client) GetMyChat(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyChatRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyChatWithBody Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *Client) SetMyChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyChatRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyChat Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *Client) SetMyChat(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyChatRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ChangeMyPasswordWithBody Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
@@ -5369,10 +5482,7 @@ func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ..
 // UpdateTenantWithBody Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-// consent to the chat's provider configured now and takes a session — a token is `403
-// session_required` (docs/adr/0035 D5), an installation without a provider `409
-// chat_unavailable` —; switching it off does not.
+// `If-Match` is required (docs/adr/0050 D3).
 //
 // Takes any type of body and a specified content type.
 //
@@ -5392,10 +5502,7 @@ func (c *Client) UpdateTenantWithBody(ctx context.Context, tenant TenantSlug, pa
 // UpdateTenant Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-// consent to the chat's provider configured now and takes a session — a token is `403
-// session_required` (docs/adr/0035 D5), an installation without a provider `409
-// chat_unavailable` —; switching it off does not.
+// `If-Match` is required (docs/adr/0050 D3).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5620,20 +5727,44 @@ func (c *Client) ListAudit(ctx context.Context, tenant TenantSlug, params *ListA
 	return c.Client.Do(req)
 }
 
-// GetChatAvailability Whether the chat is available in the tenant, and with which model
+// GetChatAvailability Whether the chat is available in the tenant, and with which providers
 //
-// For every member of the tenant. The chat is available when the installation configures a
-// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
-// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
-// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
-// to, its wire format, host and model, and one given to another provider is none. Otherwise
-// `reason` says why.
-// The provider's address is never shown, and nothing here asks the provider whether it
+// For every member of the tenant. The chat is available when the installation configures at
+// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+// provider's address and key are never shown, and nothing here asks a provider whether it
 // answers: a turn that cannot reach it ends with an `error` event.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
 func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetChatAvailabilityRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StopChatTurns Stop every running turn of the person in the tenant
+//
+// A person in a browser session, any member: a token is `403 session_required`, a session the
+// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+// session's person in the tenant that runs on the replica answering this request ends at once:
+// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+// stopped turns' tool calls did before has happened.
+//
+// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+// another replica runs is not reached — the client's abort of the turn's own request still is.
+// With no turn running, nothing happens, and the answer is the same.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+func (c *Client) StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStopChatTurnsRequest(c.Server, tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -7801,6 +7932,73 @@ func NewGetMeRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetMyChatRequest constructs an http.Request for the GetMyChat method
+func NewGetMyChatRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetMyChatRequest calls the generic SetMyChat builder with application/json body
+func NewSetMyChatRequest(server string, body SetMyChatJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetMyChatRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetMyChatRequestWithBody constructs an http.Request for the SetMyChat method, with any body, and a specified content type
+func NewSetMyChatRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewChangeMyPasswordRequest calls the generic ChangeMyPassword builder with application/json body
 func NewChangeMyPasswordRequest(server string, body ChangeMyPasswordJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -8844,6 +9042,40 @@ func NewGetChatAvailabilityRequest(server string, tenant TenantSlug) (*http.Requ
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStopChatTurnsRequest constructs an http.Request for the StopChatTurns method
+func NewStopChatTurnsRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/chat/turns", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -14351,6 +14583,49 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error)
 
+	// GetMyChatWithResponse The capabilities the person gives the chat in the UI
+	//
+	// The chat acts as the person's agent, and its requests hold exactly this set
+	// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+	// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+	// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+	// and `chosen` is false.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+	GetMyChatWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyChatResponse, error)
+
+	// SetMyChatWithBodyWithResponse Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error)
+
+	// SetMyChatWithResponse Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithResponse(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error)
+
 	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
@@ -14577,10 +14852,7 @@ type ClientWithResponsesInterface interface {
 	// UpdateTenantWithBodyWithResponse Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-	// consent to the chat's provider configured now and takes a session — a token is `403
-	// session_required` (docs/adr/0035 D5), an installation without a provider `409
-	// chat_unavailable` —; switching it off does not.
+	// `If-Match` is required (docs/adr/0050 D3).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14590,10 +14862,7 @@ type ClientWithResponsesInterface interface {
 	// UpdateTenantWithResponse Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-	// consent to the chat's provider configured now and takes a session — a token is `403
-	// session_required` (docs/adr/0035 D5), an installation without a provider `409
-	// chat_unavailable` —; switching it off does not.
+	// `If-Match` is required (docs/adr/0050 D3).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14728,21 +14997,37 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAuditWithResponse(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*ListAuditResponse, error)
 
-	// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which model
+	// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which providers
 	//
-	// For every member of the tenant. The chat is available when the installation configures a
-	// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
-	// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
-	// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
-	// to, its wire format, host and model, and one given to another provider is none. Otherwise
-	// `reason` says why.
-	// The provider's address is never shown, and nothing here asks the provider whether it
+	// For every member of the tenant. The chat is available when the installation configures at
+	// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+	// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+	// provider's address and key are never shown, and nothing here asks a provider whether it
 	// answers: a turn that cannot reach it ends with an `error` event.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
 	GetChatAvailabilityWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetChatAvailabilityResponse, error)
+
+	// StopChatTurnsWithResponse Stop every running turn of the person in the tenant
+	//
+	// A person in a browser session, any member: a token is `403 session_required`, a session the
+	// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+	// session's person in the tenant that runs on the replica answering this request ends at once:
+	// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+	// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+	// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+	// stopped turns' tool calls did before has happened.
+	//
+	// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+	// another replica runs is not reached — the client's abort of the turn's own request still is.
+	// With no turn running, nothing happens, and the answer is the same.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+	StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error)
 
 	// ListGroupMappingsWithResponse The tenant's group mappings, by group
 	//
@@ -16060,6 +16345,116 @@ func (r GetMeResponse) ContentType() string {
 	return ""
 }
 
+// GetMyChatResponseDefaultHeaders the declared response headers of an HTTP default response for GetMyChat
+type GetMyChatResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetMyChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatCapabilities
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetMyChatResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyChatResponse) GetJSON200() *ChatCapabilities {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetMyChatResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyChatResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyChatResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetMyChatResponseDefaultHeaders the declared response headers of an HTTP default response for SetMyChat
+type SetMyChatResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SetMyChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatCapabilities
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SetMyChatResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetMyChatResponse) GetJSON200() *ChatCapabilities {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetMyChatResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetMyChatResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetMyChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetMyChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetMyChatResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ChangeMyPasswordResponseDefaultHeaders the declared response headers of an HTTP default response for ChangeMyPassword
 type ChangeMyPasswordResponseDefaultHeaders struct {
 	XRequestId *string
@@ -17134,6 +17529,54 @@ func (r GetChatAvailabilityResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetChatAvailabilityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// StopChatTurnsResponseDefaultHeaders the declared response headers of an HTTP default response for StopChatTurns
+type StopChatTurnsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type StopChatTurnsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *StopChatTurnsResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StopChatTurnsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StopChatTurnsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StopChatTurnsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StopChatTurnsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StopChatTurnsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -21343,6 +21786,67 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 	return ParseGetMeResponse(rsp)
 }
 
+// GetMyChatWithResponse The capabilities the person gives the chat in the UI
+//
+// The chat acts as the person's agent, and its requests hold exactly this set
+// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+// and `chosen` is false.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+func (c *ClientWithResponses) GetMyChatWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyChatResponse, error) {
+	rsp, err := c.GetMyChat(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyChatResponse(rsp)
+}
+
+// SetMyChatWithBodyWithResponse Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *ClientWithResponses) SetMyChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error) {
+	rsp, err := c.SetMyChatWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyChatResponse(rsp)
+}
+
+// SetMyChatWithResponse Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *ClientWithResponses) SetMyChatWithResponse(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error) {
+	rsp, err := c.SetMyChat(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyChatResponse(rsp)
+}
+
 // ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
@@ -21653,10 +22157,7 @@ func (c *ClientWithResponses) GetTenantWithResponse(ctx context.Context, tenant 
 // UpdateTenantWithBodyWithResponse Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-// consent to the chat's provider configured now and takes a session — a token is `403
-// session_required` (docs/adr/0035 D5), an installation without a provider `409
-// chat_unavailable` —; switching it off does not.
+// `If-Match` is required (docs/adr/0050 D3).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21672,10 +22173,7 @@ func (c *ClientWithResponses) UpdateTenantWithBodyWithResponse(ctx context.Conte
 // UpdateTenantWithResponse Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
-// consent to the chat's provider configured now and takes a session — a token is `403
-// session_required` (docs/adr/0035 D5), an installation without a provider `409
-// chat_unavailable` —; switching it off does not.
+// `If-Match` is required (docs/adr/0050 D3).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21870,15 +22368,12 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, tenant 
 	return ParseListAuditResponse(rsp)
 }
 
-// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which model
+// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which providers
 //
-// For every member of the tenant. The chat is available when the installation configures a
-// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
-// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
-// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
-// to, its wire format, host and model, and one given to another provider is none. Otherwise
-// `reason` says why.
-// The provider's address is never shown, and nothing here asks the provider whether it
+// For every member of the tenant. The chat is available when the installation configures at
+// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+// provider's address and key are never shown, and nothing here asks a provider whether it
 // answers: a turn that cannot reach it ends with an `error` event.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -21890,6 +22385,31 @@ func (c *ClientWithResponses) GetChatAvailabilityWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseGetChatAvailabilityResponse(rsp)
+}
+
+// StopChatTurnsWithResponse Stop every running turn of the person in the tenant
+//
+// A person in a browser session, any member: a token is `403 session_required`, a session the
+// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+// session's person in the tenant that runs on the replica answering this request ends at once:
+// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+// stopped turns' tool calls did before has happened.
+//
+// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+// another replica runs is not reached — the client's abort of the turn's own request still is.
+// With no turn running, nothing happens, and the answer is the same.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+func (c *ClientWithResponses) StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error) {
+	rsp, err := c.StopChatTurns(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStopChatTurnsResponse(rsp)
 }
 
 // ListGroupMappingsWithResponse The tenant's group mappings, by group
@@ -23774,6 +24294,98 @@ func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 	return response, nil
 }
 
+// ParseGetMyChatResponse parses an HTTP response from a GetMyChatWithResponse call
+func ParseGetMyChatResponse(rsp *http.Response) (*GetMyChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatCapabilities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetMyChatResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetMyChatResponse parses an HTTP response from a SetMyChatWithResponse call
+func ParseSetMyChatResponse(rsp *http.Response) (*SetMyChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetMyChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatCapabilities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SetMyChatResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseChangeMyPasswordResponse parses an HTTP response from a ChangeMyPasswordWithResponse call
 func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24697,6 +25309,48 @@ func ParseGetChatAvailabilityResponse(rsp *http.Response) (*GetChatAvailabilityR
 	switch {
 	case true:
 		var headers GetChatAvailabilityResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseStopChatTurnsResponse parses an HTTP response from a StopChatTurnsWithResponse call
+func ParseStopChatTurnsResponse(rsp *http.Response) (*StopChatTurnsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StopChatTurnsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers StopChatTurnsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -28521,6 +29175,12 @@ type ServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// GetMyChat The capabilities the person gives the chat in the UI
+	// (GET /api/v1/me/chat)
+	GetMyChat(w http.ResponseWriter, r *http.Request)
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	// (PUT /api/v1/me/chat)
+	SetMyChat(w http.ResponseWriter, r *http.Request)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
@@ -28578,9 +29238,12 @@ type ServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
-	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
 	// (GET /api/v1/tenants/{tenant}/chat)
 	GetChatAvailability(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// StopChatTurns Stop every running turn of the person in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
+	StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
@@ -28810,6 +29473,34 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyChat operation middleware
+func (siw *ServerInterfaceWrapper) GetMyChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMyChat operation middleware
+func (siw *ServerInterfaceWrapper) SetMyChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMyChat(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -29592,6 +30283,32 @@ func (siw *ServerInterfaceWrapper) GetChatAvailability(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetChatAvailability(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopChatTurns operation middleware
+func (siw *ServerInterfaceWrapper) StopChatTurns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopChatTurns(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -34555,6 +35272,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/chat", wrapper.GetMyChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/chat", wrapper.SetMyChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
@@ -34575,6 +35294,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
@@ -34687,6 +35407,91 @@ type GetMedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetMedefaultApplicationProblemPlusJSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyChatRequestObject struct {
+}
+
+type GetMyChatResponseObject interface {
+	VisitGetMyChatResponse(w http.ResponseWriter) error
+}
+
+type GetMyChat200JSONResponse ChatCapabilities
+
+func (response GetMyChat200JSONResponse) VisitGetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyChatdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetMyChatdefaultApplicationProblemPlusJSONResponse) VisitGetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyChatRequestObject struct {
+	Body *SetMyChatJSONRequestBody
+}
+
+type SetMyChatResponseObject interface {
+	VisitSetMyChatResponse(w http.ResponseWriter) error
+}
+
+type SetMyChat200JSONResponse ChatCapabilities
+
+func (response SetMyChat200JSONResponse) VisitSetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyChatdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SetMyChatdefaultApplicationProblemPlusJSONResponse) VisitSetMyChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -35575,6 +36380,43 @@ type GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse) VisitGetChatAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopChatTurnsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type StopChatTurnsResponseObject interface {
+	VisitStopChatTurnsResponse(w http.ResponseWriter) error
+}
+
+type StopChatTurns204Response struct {
+}
+
+func (response StopChatTurns204Response) VisitStopChatTurnsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type StopChatTurnsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response StopChatTurnsdefaultApplicationProblemPlusJSONResponse) VisitStopChatTurnsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -39418,6 +40260,12 @@ type StrictServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// GetMyChat The capabilities the person gives the chat in the UI
+	// (GET /api/v1/me/chat)
+	GetMyChat(ctx context.Context, request GetMyChatRequestObject) (GetMyChatResponseObject, error)
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	// (PUT /api/v1/me/chat)
+	SetMyChat(ctx context.Context, request SetMyChatRequestObject) (SetMyChatResponseObject, error)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
@@ -39475,9 +40323,12 @@ type StrictServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
-	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
 	// (GET /api/v1/tenants/{tenant}/chat)
 	GetChatAvailability(ctx context.Context, request GetChatAvailabilityRequestObject) (GetChatAvailabilityResponseObject, error)
+	// StopChatTurns Stop every running turn of the person in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
+	StopChatTurns(ctx context.Context, request StopChatTurnsRequestObject) (StopChatTurnsResponseObject, error)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
@@ -39749,6 +40600,61 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMeResponseObject); ok {
 		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyChat operation middleware
+func (sh *strictHandler) GetMyChat(w http.ResponseWriter, r *http.Request) {
+	var request GetMyChatRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyChat(ctx, request.(GetMyChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyChatResponseObject); ok {
+		if err := validResponse.VisitGetMyChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMyChat operation middleware
+func (sh *strictHandler) SetMyChat(w http.ResponseWriter, r *http.Request) {
+	var request SetMyChatRequestObject
+
+	var body SetMyChatJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMyChat(ctx, request.(SetMyChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMyChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMyChatResponseObject); ok {
+		if err := validResponse.VisitSetMyChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -40311,6 +41217,32 @@ func (sh *strictHandler) GetChatAvailability(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetChatAvailabilityResponseObject); ok {
 		if err := validResponse.VisitGetChatAvailabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopChatTurns operation middleware
+func (sh *strictHandler) StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request StopChatTurnsRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopChatTurns(ctx, request.(StopChatTurnsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopChatTurns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopChatTurnsResponseObject); ok {
+		if err := validResponse.VisitStopChatTurnsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

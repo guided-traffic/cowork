@@ -1,11 +1,13 @@
 // Package chat is the loop of the chat in the UI (docs/adr/0076): one turn of
-// a person's conversation with the configured model — the answer streamed,
-// every tool the model calls run through the API as the person's agent, and
-// the acts a person owes a reason or a note for held for the person's
-// decision. The tools are the shared catalogue of internal/tools that take
-// everything as arguments, without the api escape hatch, and the chat's own
-// three that open a page. Nothing is kept between turns: the conversation
-// comes with each, and the messages a turn adds go back with its end.
+// a person's conversation with a model the operator configured — the answer
+// streamed, and every tool the model calls run at once through the API as the
+// person's agent, which holds the capabilities the person chose
+// (docs/adr/0043 D5). Nothing waits for the person: the capabilities and the
+// API's rules are the limit. The tools are the shared catalogue of
+// internal/tools that take everything as arguments, without the api escape
+// hatch, and the chat's own three that open a page. Nothing is kept between
+// turns: the conversation comes with each, and the messages a turn adds go
+// back with its end.
 package chat
 
 import (
@@ -15,7 +17,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -39,30 +40,19 @@ const (
 	maxID = 128
 )
 
-// What a call that does not run answers the model.
-const (
-	skippedByPerson  = "The person skipped this call: it did not run."
-	skippedByWriting = "The person wrote a new message instead of deciding this call: it did not run."
-	oneDecision      = "This call did not run: it needs the person's decision, and the person decides one call at a time. " +
-		"Make the call again if it is still wanted."
-	// confidentialNote begins the answer of a call that read a confidential
-	// ticket (docs/adr/0065). It stays in the conversation, and every write of
-	// the conversation waits for the person from then on: what the model read
-	// it could write where people who may not read it would.
-	confidentialNote = "[This answer holds a confidential ticket: from here on, every write of this conversation waits for the person's decision.]\n\n"
-)
+// notRun answers the model for a call its turn ended before running — the
+// person stopped the turn, or its time ran out: the conversation keeps the
+// call, and every later turn answers it so.
+const notRun = "This call did not run: its turn ended before it. Make it again if it is still wanted."
 
 // Options are what every turn shares.
 type Options struct {
+	// Provider is the model the turn talks to, the one the person picked.
 	Provider llm.Provider
 	// MaxSteps bounds the calls of the model in one turn; 0 for no limit.
 	MaxSteps int
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
-	// Allowed says before every call of the model whether the tenant still
-	// has the chat: its consent can be withdrawn, and the provider changed,
-	// while a turn runs. nil allows every call.
-	Allowed func(ctx context.Context) error
 }
 
 // Page is the page the person is on: its path in the UI, the key of the
@@ -77,15 +67,12 @@ type Turn struct {
 	Tenant, TenantName string
 	// Conversation is the conversation's id, which the calls' keys derive
 	// from.
-	Conversation  uuid.UUID
-	Page          Page
-	Messages      []apigen.ChatMessage
-	Confirmations []apigen.ChatConfirmation
-	// Session is the API client of the person's agent (NewSession), and
-	// Confidential what its loopback sets when an answer of the API holds a
-	// confidential ticket.
-	Session      *tools.Session
-	Confidential *atomic.Bool
+	Conversation uuid.UUID
+	Page         Page
+	Messages     []apigen.ChatMessage
+	// Session is the API client of the person's agent (NewSession), which
+	// knows the capabilities the agent holds.
+	Session *tools.Session
 }
 
 // Events receives what the person sees of a turn, in order.
@@ -94,12 +81,11 @@ type Events interface {
 	ToolCall(call apigen.ChatToolCall)
 	UI(path string)
 	ToolResult(id string, ok bool, summary string)
-	Confirm(call apigen.ChatToolCall, description string)
 }
 
 // Outcome is how a turn ended: the messages it added, why it ended, and the
 // failure of a turn that ended with ChatTurnEndError — the provider's, the
-// turn's time, the consent, or the person leaving.
+// turn's time, its stop, or the person leaving.
 type Outcome struct {
 	Messages []apigen.ChatMessage
 	End      apigen.ChatTurnEnd
@@ -126,26 +112,35 @@ type runner struct {
 	tools  map[string]tools.Tool
 	offer  []llm.Tool
 	// history is what the model reads, added what the turn adds to the
-	// conversation, last the index in history of the model's message whose
-	// calls run; bad are the calls the tool cannot take, with why.
+	// conversation; bad are the calls the tool cannot take, with why.
 	history []llm.Message
 	added   []apigen.ChatMessage
-	last    int
 	bad     map[string]string
-	// tainted says the conversation read a confidential ticket.
-	tainted bool
 }
 
-// catalogue is the turn's tools: those the policies classify and do not leave
-// out — the shared catalogue's that take everything as arguments, but the api
-// escape hatch: raw access to the API is the MCP server's, and a model
-// reading injected text gets none — and the chat's own that open a page
-// (docs/adr/0042, docs/adr/0076).
+// offered names every tool the chat can meet — the shared catalogue's and its
+// own — and whether the model is given it. A tool that is not here is not
+// offered, and a test fails while the shared catalogue holds one
+// (TestEveryToolIsNamed): a tool joins the chat by a decision, not by being
+// added to the catalogue. Left out are session_start, which reads a working
+// directory, and the api escape hatch: raw access to the API is the MCP
+// server's, and a model reading injected text gets none (docs/adr/0076 D1).
+var offered = map[string]bool{
+	"session_start": false, "api": false,
+	"get_ticket": true, "search": true, "open_ticket": true, "open_backlog": true, "open_board": true,
+	"file_ticket": true, "record_state": true, "open_question": true, "comment": true, "link": true, "watch": true,
+	"set_urgency": true, "transition": true, "set_progress": true, "finish_work": true, "record_answer": true,
+	"create_project": true,
+}
+
+// catalogue is the turn's tools, each described with the capabilities the
+// agent holds, so the model knows before calling what stays the person's
+// (docs/adr/0042 D3, docs/adr/0043 D6).
 func (r *runner) catalogue() {
 	tok := r.t.Session.Token()
 	all := append(tools.Catalogue(tools.Anywhere), uiTools(r.t, r.ev)...)
 	for _, tool := range all {
-		if p := policies[tool.Name]; p == 0 || p == left {
+		if !offered[tool.Name] {
 			continue
 		}
 		r.tools[tool.Name] = tool
@@ -154,23 +149,13 @@ func (r *runner) catalogue() {
 }
 
 func (r *runner) run(ctx context.Context) Outcome {
-	var pending []apigen.ChatToolCall
-	r.history, pending = split(r.t.Messages)
-	r.tainted = tainted(r.t.Messages)
-	if len(pending) > 0 {
-		r.decide(ctx, pending)
-	}
+	r.history = split(r.t.Messages)
 	for steps := 0; ; steps++ {
 		if ctx.Err() != nil {
 			return r.end(apigen.ChatTurnEndError, ctx.Err())
 		}
 		if r.o.MaxSteps > 0 && steps == r.o.MaxSteps {
 			return r.end(apigen.ChatTurnEndStepLimit, nil)
-		}
-		if r.o.Allowed != nil {
-			if err := r.o.Allowed(ctx); err != nil {
-				return r.end(apigen.ChatTurnEndError, err)
-			}
 		}
 		res, err := r.o.Provider.Complete(ctx, llm.Request{System: r.system, Messages: r.history, Tools: r.offer}, r.ev.Text)
 		if err != nil {
@@ -183,16 +168,9 @@ func (r *runner) run(ctx context.Context) Outcome {
 		if len(calls) == 0 {
 			return r.end(apigen.ChatTurnEndAnswered, nil)
 		}
-		for i := range calls {
-			if v := r.review(ctx, calls[i]); v.propose {
-				calls[i].Arguments = v.args
-				r.history[r.last].ToolCalls[i].Arguments = v.args
-				r.ev.ToolCall(calls[i])
-				r.ev.Confirm(calls[i], v.what)
-				return r.end(apigen.ChatTurnEndConfirm, nil)
-			}
-			r.ev.ToolCall(calls[i])
-			r.runCall(ctx, calls[i], false)
+		for _, call := range calls {
+			r.ev.ToolCall(call)
+			r.runCall(ctx, call)
 			if ctx.Err() != nil {
 				return r.end(apigen.ChatTurnEndError, ctx.Err())
 			}
@@ -200,50 +178,14 @@ func (r *runner) run(ctx context.Context) Outcome {
 	}
 }
 
-// decide answers the calls that wait, in order. Only the first takes a
-// decision — it is the one the turn before proposed, with what it read
-// pinned into it —: it runs when the person decided so, and is skipped
-// otherwise. A later one runs, unless it needs a decision too: the person has
-// not seen it, so it is answered that it did not run, and the model makes it
-// again, which proposes it with what is read then.
-func (r *runner) decide(ctx context.Context, pending []apigen.ChatToolCall) {
-	run := false
-	for _, c := range r.t.Confirmations {
-		run = run || (c.ToolCallId == pending[0].Id && c.Run)
-	}
-	if run {
-		r.runCall(ctx, pending[0], true)
-	} else {
-		r.answer(pending[0].Id, false, skippedByPerson)
-	}
-	for _, call := range pending[1:] {
-		if ctx.Err() != nil {
-			return
-		}
-		r.ev.ToolCall(call)
-		if r.review(ctx, call).propose {
-			r.answer(call.Id, false, oneDecision)
-			continue
-		}
-		r.runCall(ctx, call, false)
-	}
-}
-
-// runCall runs a call and answers it: a tool's refusal is an answer the
-// model reads, not a failed turn. Its creating POSTs carry keys derived from
-// the conversation and the call, so a decision sent twice replays instead of
-// acting twice (docs/adr/0045); a call the person decided carries the mark of
-// it. An answer that held a confidential ticket says so, and taints the
-// conversation.
-func (r *runner) runCall(ctx context.Context, call apigen.ChatToolCall, decided bool) {
+// runCall runs a call at once and answers it: a tool's refusal — an act that
+// needs a capability the person did not give the chat among them — is an
+// answer the model reads, not a failed turn. Its creating POSTs carry keys
+// derived from the conversation and the call, so the same call sent again
+// replays instead of acting twice (docs/adr/0045).
+func (r *runner) runCall(ctx context.Context, call apigen.ChatToolCall) {
 	tool, ok := r.tools[call.Name]
 	r.t.Session.NewKey = keys(r.t.Conversation, call.Id)
-	if decided {
-		ctx = context.WithValue(ctx, decidedKey{}, true)
-	}
-	if r.t.Confidential != nil {
-		r.t.Confidential.Store(false)
-	}
 	var res tools.Result
 	switch {
 	case !ok:
@@ -253,11 +195,7 @@ func (r *runner) runCall(ctx context.Context, call apigen.ChatToolCall, decided 
 	default:
 		res = tool.Call(ctx, r.t.Session, call.Arguments)
 	}
-	text := res.Text
-	if r.t.Confidential != nil && r.t.Confidential.Load() {
-		r.tainted, text = true, confidentialNote+text
-	}
-	r.answer(call.Id, !res.IsError, text)
+	r.answer(call.Id, !res.IsError, res.Text)
 }
 
 // answer adds a call's answer: the model reads it clipped, the person sees its
@@ -286,7 +224,6 @@ func (r *runner) addAssistant(text string, calls []apigen.ChatToolCall) {
 			lm.ToolCalls = append(lm.ToolCalls, llm.ToolCall{ID: c.Id, Name: c.Name, Arguments: c.Arguments})
 		}
 	}
-	r.last = len(r.history)
 	r.history = append(r.history, lm)
 	r.added = append(r.added, m)
 }
@@ -338,28 +275,14 @@ func (r *runner) end(end apigen.ChatTurnEnd, err error) Outcome {
 	return Outcome{Messages: r.added, End: end, Err: err}
 }
 
-// tainted reports whether the conversation read a confidential ticket: an
-// answer of a tool in it begins with the note.
-func tainted(msgs []apigen.ChatMessage) bool {
-	for _, m := range msgs {
-		if m.Role == apigen.ChatRoleTool && strings.HasPrefix(deref(m.Text), confidentialNote) {
-			return true
-		}
-	}
-	return false
-}
-
-// decidedKey marks the context of a call the person decided.
-type decidedKey struct{}
-
 // keySpace names the Idempotency-Keys of the chat's calls.
 var keySpace = uuid.NewSHA1(uuid.NameSpaceURL, []byte("https://cowork.dev/chat/idempotency-key"))
 
 // keys makes the Idempotency-Keys of a call's creating POSTs, the nth from
-// the conversation, the call and n: the same call sent again — a decision
-// sent twice, a turn sent again — carries the same keys, and the API replays
-// its answers instead of acting twice (docs/adr/0045 D3, D4). A key is the
-// person's, so no other person's request meets it.
+// the conversation, the call and n: the same call sent again — a turn sent
+// again — carries the same keys, and the API replays its answers instead of
+// acting twice (docs/adr/0045 D3, D4). A key is the person's, so no other
+// person's request meets it.
 func keys(conversation uuid.UUID, call string) func() uuid.UUID {
 	n := 0
 	return func() uuid.UUID {
@@ -368,11 +291,11 @@ func keys(conversation uuid.UUID, call string) func() uuid.UUID {
 	}
 }
 
-// split turns the conversation into what the model reads, and returns the
-// calls of its last message of the model that still wait for an answer. A
-// call that waited when the person wrote a new message instead is answered as
-// skipped where it stands, on every turn, and not added to the conversation.
-func split(msgs []apigen.ChatMessage) ([]llm.Message, []apigen.ChatToolCall) {
+// split turns the conversation into what the model reads. A call of the
+// model that has no answer — its turn ended before it ran — is answered as not
+// run where it stands, on every turn, and not added to the conversation: a
+// provider takes no call without its answer.
+func split(msgs []apigen.ChatMessage) []llm.Message {
 	var (
 		history  []llm.Message
 		group    []apigen.ChatToolCall
@@ -381,7 +304,7 @@ func split(msgs []apigen.ChatMessage) ([]llm.Message, []apigen.ChatToolCall) {
 	closeGroup := func() {
 		for _, c := range group {
 			if !answered[c.Id] {
-				history = append(history, llm.Message{Role: llm.RoleTool, ToolCallID: c.Id, Text: skippedByWriting, IsError: true})
+				history = append(history, llm.Message{Role: llm.RoleTool, ToolCallID: c.Id, Text: notRun, IsError: true})
 			}
 		}
 		group, answered = nil, map[string]bool{}
@@ -407,13 +330,8 @@ func split(msgs []apigen.ChatMessage) ([]llm.Message, []apigen.ChatToolCall) {
 			history = append(history, llm.Message{Role: llm.RoleTool, ToolCallID: id, Text: deref(m.Text), IsError: m.Ok != nil && !*m.Ok})
 		}
 	}
-	var pending []apigen.ChatToolCall
-	for _, c := range group {
-		if !answered[c.Id] {
-			pending = append(pending, c)
-		}
-	}
-	return history, pending
+	closeGroup()
+	return history
 }
 
 func deref[T any](p *T) T {

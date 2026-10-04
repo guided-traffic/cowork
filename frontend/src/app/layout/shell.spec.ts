@@ -20,7 +20,7 @@ import { TenantService } from '../core/tenant.service';
 import { VersionInfo, VersionService } from '../core/version.service';
 import { NewProjectDialog } from '../features/project/new-project-dialog';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
-import { chatNotAllowedText, initials, Shell } from './shell';
+import { initials, Shell } from './shell';
 
 const acme: Membership = {
   role: 'admin',
@@ -72,21 +72,30 @@ class FakeChat {
     value: () => this.availabilityValue(),
   };
   readonly available = computed(() => this.availabilityValue()?.available ?? false);
+  readonly providers = computed(() => this.availabilityValue()?.providers ?? []);
+  readonly provider = computed(() => this.providers()[0] ?? null);
+  readonly setProvider = vi.fn();
+  readonly capabilities = {
+    hasValue: () => false,
+    value: () => undefined,
+    error: () => undefined,
+  };
+  readonly setCapabilities = vi.fn();
   readonly open = signal(false);
   readonly setOpen = vi.fn((open: boolean) => this.open.set(open));
   readonly entries = signal<ChatEntry[]>([]);
   readonly busy = signal(false);
   readonly send = vi.fn();
-  readonly decide = vi.fn();
   readonly stop = vi.fn();
+  readonly stopElsewhere = vi.fn();
   readonly restart = vi.fn();
 }
 
 const chatAvailable: ChatAvailability = {
   available: true,
-  provider: 'openai',
-  model: 'qwen/qwen3.6-35b-a3b',
-  inside: true,
+  providers: [
+    { id: 'lmstudio', name: 'LM Studio', kind: 'openai', model: 'qwen/qwen3-30b-a3b-2507' },
+  ],
   reason: null,
 };
 
@@ -501,13 +510,13 @@ describe('Shell', () => {
       page.querySelector<HTMLElement>('[data-testid="chat-panel"]');
 
     it('is neither offered nor shown while the tenant has no chat', async () => {
-      chat.availabilityValue.set({ ...chatAvailable, available: false, reason: 'not_configured' });
+      chat.availabilityValue.set({ available: false, providers: [], reason: 'not_configured' });
+      isAdmin.set(true);
 
       const { page } = await render();
 
       expect(toggle(page)).toBeNull();
       expect(panel(page)).toBeNull();
-      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
     });
 
     it('is neither offered nor shown before its availability is known', async () => {
@@ -577,56 +586,6 @@ describe('Shell', () => {
 
       expect(panel(page)?.hidden).toBe(false);
       expect(document.activeElement).not.toBe(page.querySelector('[data-testid="chat-input"]'));
-    });
-
-    it('tells an administrator where the tenant allows it, while it does not', async () => {
-      chat.availabilityValue.set({
-        ...chatAvailable,
-        available: false,
-        inside: false,
-        reason: 'not_allowed_in_tenant',
-      });
-      isAdmin.set(true);
-
-      const { page } = await render();
-
-      const hint = page.querySelector('[data-testid="chat-not-allowed"]');
-      expect(hint?.tagName).toBe('A');
-      expect(hint?.getAttribute('href')).toBe('/t/acme/settings');
-      expect(hint?.getAttribute('aria-label')).toBe(chatNotAllowedText);
-      expect(chatNotAllowedText).toBe(
-        'The assistant is not allowed in this tenant: an administrator can allow the configured model in the tenant settings.',
-      );
-      expect(toggle(page)).toBeNull();
-      expect(panel(page)).toBeNull();
-    });
-
-    it('says nothing of it to anybody else', async () => {
-      chat.availabilityValue.set({
-        ...chatAvailable,
-        available: false,
-        inside: false,
-        reason: 'not_allowed_in_tenant',
-      });
-
-      const { page } = await render();
-
-      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
-    });
-
-    it('says nothing to an administrator where no model is configured', async () => {
-      chat.availabilityValue.set({
-        available: false,
-        provider: null,
-        model: null,
-        inside: false,
-        reason: 'not_configured',
-      });
-      isAdmin.set(true);
-
-      const { page } = await render();
-
-      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
     });
 
     describe('lying over the content on a narrow window', () => {
@@ -745,7 +704,11 @@ describe('Shell', () => {
       it("leaves the person's choice alone while the panel is closed, or the tenant has no chat", async () => {
         windowIs(true);
         chat.open.set(true);
-        chat.availabilityValue.set({ ...chatAvailable, available: false, reason: 'not_configured' });
+        chat.availabilityValue.set({
+          ...chatAvailable,
+          available: false,
+          reason: 'not_configured',
+        });
         const { fixture, page } = await render();
 
         page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();

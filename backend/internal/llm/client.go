@@ -99,11 +99,11 @@ func refused(res *http.Response, key string) *Error {
 	detail := fmt.Sprintf("the provider answered %d", status)
 	switch {
 	case status >= 300 && status < 400:
-		detail += ": a redirect, which the chat does not follow — COWORK_CHAT_URL names another address than the provider's"
+		detail += ": a redirect, which the chat does not follow — the provider's COWORK_CHAT_<ID>_URL names another address than the provider's"
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		detail += ": it refused the key"
 	case status == http.StatusNotFound:
-		detail += ": it knows no such model or path — check COWORK_CHAT_URL and COWORK_CHAT_MODEL"
+		detail += ": it knows no such model or path — check the provider's COWORK_CHAT_<ID>_URL and COWORK_CHAT_<ID>_MODEL"
 	case status == http.StatusTooManyRequests:
 		detail += ": it limits the requests; try again later"
 	case contextExceeded(msg):

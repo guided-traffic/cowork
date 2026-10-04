@@ -236,7 +236,7 @@ func TestTheMCPServerKnowsAnAssistedToken(t *testing.T) {
 	assert.Contains(t, refused, "403 `agent_forbidden`: missing capability: close")
 	finished := mustCall(t, cs, "finish_work", map[string]any{"key": key, "verification_note": "checked by hand"})
 	assert.Contains(t, finished, "(now review)")
-	assert.Contains(t, finished, "this token lacks close, so done is the person's")
+	assert.Contains(t, finished, "this agent lacks close, so done is the person's")
 }
 
 // docs/adr/0067, docs/adr/0070 D6: the hook modes and the subcommands run

@@ -6,8 +6,6 @@ SET name = sqlc.arg(name),
     time_visible_to_members = sqlc.arg(time_visible_to_members),
     time_locked_until = sqlc.narg(time_locked_until),
     members_create_projects = sqlc.arg(members_create_projects),
-    chat_external_allowed = sqlc.arg(chat_external_allowed),
-    chat_external_provider = sqlc.narg(chat_external_provider),
     version = version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(tenant_id) AND version = sqlc.arg(version)
