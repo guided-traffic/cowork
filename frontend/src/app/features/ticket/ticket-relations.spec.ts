@@ -1,6 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef } from '@angular/core';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
+import { ApplicationRef, ResourceRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { provideApiConfiguration } from '../../api/api-configuration';
@@ -194,6 +198,14 @@ describe('TicketRelations', () => {
       expect(reloaded(spies)).toEqual([]);
     });
 
+    it('change nothing for a membership event, which names no ticket', () => {
+      const spies = spyOnReloads();
+
+      events.next({ name: 'membership.changed', id: 'e1', personId: 'p1', projectId: 'j1' });
+
+      expect(reloaded(spies)).toEqual([]);
+    });
+
     it.each(['resync', 'poll'] as const)('a %s reloads everything', (name) => {
       const spies = spyOnReloads();
 
@@ -351,6 +363,87 @@ describe('TicketRelations', () => {
         expect(http.match(urls.time)).toHaveLength(1);
       });
     });
+  });
+
+  describe('a part that loads again and fails (docs/adr/0054 D7)', () => {
+    const parts = [
+      'comments',
+      'activity',
+      'questions',
+      'links',
+      'interest',
+      'attachments',
+      'time',
+    ] as const;
+
+    /** Lets the answers reach the resources and the effects they feed run. */
+    async function settle() {
+      await new Promise((resolve) => setTimeout(resolve));
+      TestBed.tick();
+    }
+
+    /** Fails a request: without an answer at all (status 0), or with a problem of the status. */
+    function fail(request: TestRequest, status: number) {
+      if (status === 0) {
+        request.error(new ProgressEvent('error'));
+      } else {
+        request.flush(
+          { type: 'about:blank', title: 'Refused', status, code: 'internal' },
+          { status, statusText: `Status ${status}` },
+        );
+      }
+    }
+
+    /** Every part of the ticket loaded once, each with its own answer, and loading again on a poll. */
+    async function reloading() {
+      relations.at.set(cow12);
+      TestBed.tick();
+      for (const request of http.match(() => true)) {
+        request.flush({ items: [], next_cursor: null, total_minutes: 0 });
+      }
+      await settle();
+      const shown = Object.fromEntries(parts.map((part) => [part, relations[part].value()]));
+      events.next({ name: 'poll' });
+      TestBed.tick();
+      return shown;
+    }
+
+    it.each([0, 500, 503])(
+      'keeps every part shown when the poll finds the backend failing with a status of %i',
+      async (status) => {
+        const shown = await reloading();
+
+        const requests = http.match(() => true);
+        expect(requests).toHaveLength(parts.length);
+        for (const request of requests) {
+          fail(request, status);
+        }
+        await settle();
+
+        for (const part of parts) {
+          expect(relations[part].status(), part).toBe('resolved');
+          expect(relations[part].value(), part).toBe(shown[part]);
+        }
+      },
+    );
+
+    it.each([401, 403, 404])(
+      'shows no part when the poll answers %i: the ticket is gone for the person',
+      async (status) => {
+        await reloading();
+
+        for (const request of http.match(() => true)) {
+          fail(request, status);
+        }
+        await settle();
+
+        for (const part of parts) {
+          const ref: ResourceRef<unknown> = relations[part];
+          expect(ref.status(), part).toBe('error');
+          expect(ref.hasValue(), part).toBe(false);
+        }
+      },
+    );
   });
 
   describe('while no ticket is shown', () => {

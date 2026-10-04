@@ -17,8 +17,16 @@ import {
   scopeMeanings,
 } from './new-token-dialog';
 
-const acme: Membership = { role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } };
-const globex: Membership = { role: 'member', tenant: { slug: 'globex', name: 'Globex' } };
+const acme: Membership = {
+  role: 'admin',
+  tenant: { slug: 'acme', name: 'Acme Corp' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const globex: Membership = {
+  role: 'member',
+  tenant: { slug: 'globex', name: 'Globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
 
 const project = (key: string, name: string): Project => ({
   id: `id-${key}`,

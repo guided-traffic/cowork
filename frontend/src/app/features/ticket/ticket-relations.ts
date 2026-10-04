@@ -1,4 +1,12 @@
-import { DestroyRef, inject, Injectable, Injector, resource, signal } from '@angular/core';
+import {
+  DestroyRef,
+  inject,
+  Injectable,
+  Injector,
+  resource,
+  ResourceRef,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../../api/api';
 import {
@@ -10,8 +18,17 @@ import {
   listTicketLinks,
   listTicketTime,
 } from '../../api/functions';
+import {
+  ActivityList,
+  AttachmentList,
+  CommentList,
+  InterestList,
+  LinkList,
+  QuestionList,
+  TimeEntryList,
+} from '../../api/models';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
-import { refresh } from '../../core/refresh';
+import { keepShown, refresh } from '../../core/refresh';
 
 /** Where a ticket lives: the tenant, the project's key and the number. */
 export interface TicketAddress {
@@ -32,8 +49,8 @@ export function address(tenant: string | null, key: string): TicketAddress | und
  * (docs/adr/0054 D2): an event says which part changed, and only that part and the activity are
  * fetched again; an upload is a `ticket.changed`. Time entries are not published (D4): the page
  * that books reloads them, and `resync` and `poll` do. A part that is loading when its event
- * arrives loads once more afterwards (`refresh`). Provided by the page, so it lives exactly as
- * long as the page.
+ * arrives loads once more afterwards (`refresh`), and a part that loads again and fails keeps
+ * what it shows ({@link keepShown}). Provided by the page, so it lives exactly as long as the page.
  */
 @Injectable()
 export class TicketRelations {
@@ -41,33 +58,44 @@ export class TicketRelations {
   private readonly injector = inject(Injector);
   readonly at = signal<TicketAddress | undefined>(undefined);
 
-  readonly comments = resource({
+  readonly comments: ResourceRef<CommentList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listComments, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.comments, () => this.api.invoke(listComments, { ...params, limit: 200 })),
   });
-  readonly activity = resource({
+  readonly activity: ResourceRef<ActivityList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listActivity, { ...params, order: 'desc', limit: 100 }),
+    loader: ({ params }) =>
+      keepShown(this.activity, () =>
+        this.api.invoke(listActivity, { ...params, order: 'desc', limit: 100 }),
+      ),
   });
-  readonly questions = resource({
+  readonly questions: ResourceRef<QuestionList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listQuestions, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.questions, () => this.api.invoke(listQuestions, { ...params, limit: 200 })),
   });
-  readonly links = resource({
+  readonly links: ResourceRef<LinkList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listTicketLinks, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.links, () => this.api.invoke(listTicketLinks, { ...params, limit: 200 })),
   });
-  readonly interest = resource({
+  readonly interest: ResourceRef<InterestList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listInterest, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.interest, () => this.api.invoke(listInterest, { ...params, limit: 200 })),
   });
-  readonly attachments = resource({
+  readonly attachments: ResourceRef<AttachmentList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listAttachments, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.attachments, () =>
+        this.api.invoke(listAttachments, { ...params, limit: 200 }),
+      ),
   });
-  readonly time = resource({
+  readonly time: ResourceRef<TimeEntryList | undefined> = resource({
     params: () => this.at(),
-    loader: ({ params }) => this.api.invoke(listTicketTime, { ...params, limit: 200 }),
+    loader: ({ params }) =>
+      keepShown(this.time, () => this.api.invoke(listTicketTime, { ...params, limit: 200 })),
   });
 
   constructor() {
@@ -95,7 +123,10 @@ export class TicketRelations {
       }
       return;
     }
-    if (event.key !== `${at.tenant}/${at.project}-${at.number}`) {
+    if (
+      event.name === 'membership.changed' ||
+      event.key !== `${at.tenant}/${at.project}-${at.number}`
+    ) {
       return;
     }
     if (event.name === 'comment.changed') {

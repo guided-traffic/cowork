@@ -21,8 +21,16 @@ import { NewProjectDialog } from '../features/project/new-project-dialog';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
 import { initials, Shell } from './shell';
 
-const acme: Membership = { role: 'admin', tenant: { name: 'Acme Corp', slug: 'acme' } };
-const globex: Membership = { role: 'member', tenant: { name: 'Globex', slug: 'globex' } };
+const acme: Membership = {
+  role: 'admin',
+  tenant: { name: 'Acme Corp', slug: 'acme' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const globex: Membership = {
+  role: 'member',
+  tenant: { name: 'Globex', slug: 'globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
 const ada: Me = {
   id: 'p1',
   display_name: 'Ada Lovelace',
@@ -81,7 +89,7 @@ describe('Shell', () => {
     status = signal<StreamStatus>('idle');
     canCreateProjects = signal(false);
     isAdmin = signal(false);
-    logout = vi.fn<AuthService['logout']>().mockResolvedValue(undefined);
+    logout = vi.fn<AuthService['logout']>().mockResolvedValue(null);
     preference = signal<ThemePreference>('system');
     cycle = vi.fn<() => void>();
     version = vi.fn<() => Observable<VersionInfo>>(() => of(backend));
@@ -171,7 +179,9 @@ describe('Shell', () => {
 
     it('loads the login page only after the backend has ended the session', async () => {
       let finish: () => void = () => undefined;
-      logout.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+      logout.mockReturnValueOnce(
+        new Promise<string | null>((resolve) => (finish = () => resolve(null))),
+      );
       const { fixture } = await render();
 
       item(fixture, 'Sign out').command?.({});
@@ -182,6 +192,19 @@ describe('Shell', () => {
       await new Promise((resolve) => setTimeout(resolve));
 
       expect(hardNavigate).toHaveBeenCalledExactlyOnceWith('/login');
+    });
+
+    it("goes on to the identity provider's logout when the backend names one, which comes back to the login page (docs/adr/0031 D4)", async () => {
+      logout.mockResolvedValueOnce('https://login.example.com/logout?client_id=cowork');
+      const { fixture } = await render();
+
+      item(fixture, 'Sign out').command?.({});
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(hardNavigate).toHaveBeenCalledExactlyOnceWith(
+        'https://login.example.com/logout?client_id=cowork',
+      );
     });
 
     it('stays and says so when the sign-out fails', async () => {
@@ -480,6 +503,19 @@ describe('Shell', () => {
       );
     });
 
+    it('offers the group mappings to an administrator of the tenant only, beside the accounts', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-group-mappings"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/group-mappings');
+      expect(link?.textContent).toBe('Group mappings');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-accounts');
+    });
+
     it('has no tenant navigation on a page that belongs to no tenant', async () => {
       tenant.set(null);
       canCreateProjects.set(true);
@@ -491,6 +527,7 @@ describe('Shell', () => {
       expect(page.querySelector('[data-testid="nav-overview"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-members"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();

@@ -203,6 +203,9 @@ describe('TicketsService', () => {
 
   afterEach(() => {
     try {
+      // The session asks who is working again on a resync, a poll and a membership event, which
+      // its own spec covers; this one is about the tickets.
+      http.match('/api/v1/me');
       http.verify();
     } finally {
       vi.useRealTimers();
@@ -588,6 +591,65 @@ describe('TicketsService', () => {
       await settle();
 
       expect(list.status()).toBe('error');
+    });
+  });
+
+  describe('a list that loads again and fails (docs/adr/0054 D7)', () => {
+    const lists = [
+      ['projectTickets', projectUrl, () => projectList()],
+      [
+        'projectTicketPages',
+        projectUrl,
+        () =>
+          TestBed.runInInjectionContext(() =>
+            service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 1 })),
+          ),
+      ],
+      ['tenantTickets', tenantUrl, () => tenantList()],
+    ] as const;
+
+    describe.each(lists)('made by %s', (_, url, open) => {
+      /** The list, loaded once, and asked to load again by the fallback's poll. */
+      async function reloading() {
+        const list = open();
+        await settle();
+        await answer(url, listOf([ticket('acme/VKO-1')]));
+        stream.next({ name: 'poll' });
+        await wait(listReloadDelay);
+        return list;
+      }
+
+      it.each([0, 500, 503])(
+        'keeps the keys it shows when the load fails with a status of %i',
+        async (status) => {
+          const list = await reloading();
+
+          fail(
+            http.expectOne((request) => request.url === url),
+            status,
+          );
+          await settle();
+
+          expect(list.status()).toBe('resolved');
+          expect(list.value()?.keys).toEqual(['acme/VKO-1']);
+        },
+      );
+
+      it.each([401, 403, 404])(
+        'shows nothing when the load answers %i: the list is gone for the person',
+        async (status) => {
+          const list = await reloading();
+
+          fail(
+            http.expectOne((request) => request.url === url),
+            status,
+          );
+          await settle();
+
+          expect(list.status()).toBe('error');
+          expect(list.hasValue()).toBe(false);
+        },
+      );
     });
   });
 
@@ -1267,6 +1329,50 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('a membership event (docs/adr/0034 D3)', () => {
+    it.each<[string, StreamEvent]>([
+      ['a restriction set or lifted', { name: 'membership.changed', id: 'e1', projectId: 'j1' }],
+      [
+        'an access entry',
+        { name: 'membership.changed', id: 'e1', personId: 'p2', projectId: 'j1' },
+      ],
+      ["the person's own role", { name: 'membership.changed', id: 'e1', personId: 'p1' }],
+    ])(
+      'refetches what a view shows and reloads the open lists on %s, which may hide a project',
+      async (_what, event) => {
+        await show('acme/VKO-1', 2);
+        projectList();
+        await settle();
+        await answer(projectUrl);
+
+        stream.next(event);
+        http
+          .expectOne(ticketUrl('acme/VKO-1'))
+          .flush(problem(404), { status: 404, statusText: 'Not Found' });
+        await wait(listReloadDelay);
+
+        expect(service.cache.value('acme/VKO-1')).toBeUndefined();
+        expect(take(projectUrl)).toHaveLength(1);
+      },
+    );
+
+    it.each<[string, StreamEvent]>([
+      ["somebody else's membership", { name: 'membership.changed', id: 'e1', personId: 'p2' }],
+      ['a group mapping', { name: 'membership.changed', id: 'e1', mappingId: 'm1' }],
+    ])('leaves the tickets and the lists alone on %s', async (_what, event) => {
+      await show('acme/VKO-1', 2);
+      projectList();
+      await settle();
+      await answer(projectUrl);
+
+      stream.next(event);
+      await wait(10 * listReloadDelay);
+
+      http.expectNone(ticketUrl('acme/VKO-1'));
+      http.expectNone(projectUrl);
+    });
+  });
+
   describe('a view that shows a ticket', () => {
     it('is refetched while the view shows it', async () => {
       await show('acme/VKO-1', 2);
@@ -1503,6 +1609,8 @@ describe('TicketsService on the event stream of the backend', () => {
 
   afterEach(() => {
     try {
+      // The session asks who is working again on a resync, which its own spec covers.
+      http.match('/api/v1/me');
       http.verify();
     } finally {
       vi.useRealTimers();

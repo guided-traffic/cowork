@@ -1,0 +1,61 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 56rem;
+  padding: 2rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+
+  h1 {
+    font-size: 1.5rem;
+  }
+}
+
+.spacer {
+  flex: 1;
+}
+
+.lead {
+  margin: 0;
+  max-width: 48rem;
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  overflow: hidden;
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  code {
+    font-size: 0.8125rem;
+  }
+}
+
+.col-role {
+  width: 9rem;
+
+  :host ::ng-deep & .p-select {
+    width: 100%;
+  }
+}
+
+.col-actions {
+  width: 3rem;
+  text-align: right;
+}
+
+.empty {
+  padding: 1.5rem;
+  text-align: center;
+}

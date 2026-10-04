@@ -6,7 +6,8 @@ export interface Person {
   id: string;
 
   /**
-   * The local identity's username, `local:<username>` (docs/adr/0033 D2)
+   * A local account's username as it is stored, without the `local:` that names the identity
+   * (docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider
    */
   username?: (string | null);
 }

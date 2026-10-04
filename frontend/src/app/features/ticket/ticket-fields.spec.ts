@@ -111,8 +111,20 @@ describe('TicketFields', () => {
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
     confirm = vi.fn<ConfirmationService['confirm']>();
     people = signal<Member[]>([
-      { role: 'admin', person: ada },
-      { role: 'member', person: sam },
+      {
+        role: 'admin',
+        person: ada,
+        origins: [{ source: 'grant', role: 'admin' }],
+        local: true,
+        email: null,
+      },
+      {
+        role: 'member',
+        person: sam,
+        origins: [{ source: 'grant', role: 'member' }],
+        local: true,
+        email: null,
+      },
     ]);
     TestBed.configureTestingModule({
       providers: [

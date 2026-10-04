@@ -11,8 +11,16 @@ import { SessionService } from '../../core/session.service';
 import { TenantsService } from '../../core/tenants.service';
 import { Home } from './home';
 
-const acme: Membership = { role: 'admin', tenant: { name: 'Acme Corp', slug: 'acme' } };
-const globex: Membership = { role: 'member', tenant: { name: 'Globex', slug: 'globex' } };
+const acme: Membership = {
+  role: 'admin',
+  tenant: { name: 'Acme Corp', slug: 'acme' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const globex: Membership = {
+  role: 'member',
+  tenant: { name: 'Globex', slug: 'globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
 
 function person(globalAdmin: boolean, memberships: Membership[] = []): Me {
   return {

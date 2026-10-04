@@ -135,9 +135,15 @@ describe('TenantsService', () => {
 
     await settle();
     expect(session.me.status()).toBe('reloading');
-    http
-      .expectOne('/api/v1/me')
-      .flush(administrator([{ role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } }]));
+    http.expectOne('/api/v1/me').flush(
+      administrator([
+        {
+          role: 'admin',
+          tenant: { slug: 'acme', name: 'Acme Corp' },
+          origins: [{ source: 'grant', role: 'admin' }],
+        },
+      ]),
+    );
     await settle();
 
     expect(session.memberships().map((membership) => membership.tenant.slug)).toEqual(['acme']);
@@ -156,9 +162,15 @@ describe('TenantsService', () => {
     inFlight.flush(administrator());
     await settle();
 
-    http
-      .expectOne('/api/v1/me')
-      .flush(administrator([{ role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } }]));
+    http.expectOne('/api/v1/me').flush(
+      administrator([
+        {
+          role: 'admin',
+          tenant: { slug: 'acme', name: 'Acme Corp' },
+          origins: [{ source: 'grant', role: 'admin' }],
+        },
+      ]),
+    );
   });
 
   it.each([

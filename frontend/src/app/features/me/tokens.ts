@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
-import { ConfirmDialog } from 'primeng/confirmdialog';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { Scope, Token, TokenCreated, TokenState } from '../../api/models';
 import { CAPABILITY } from '../../api/models/capability-array';
 import { ProblemService } from '../../core/problem.service';
 import { TokensService } from '../../core/tokens.service';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { SecretDialog } from '../../shared/secret-dialog';
 import { dateTime } from '../../shared/time';
 import { NewTokenDialog, scopeMeanings } from './new-token-dialog';

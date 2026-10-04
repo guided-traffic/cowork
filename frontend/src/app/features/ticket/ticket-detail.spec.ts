@@ -1117,6 +1117,104 @@ describe('TicketDetail', () => {
       expect(update).toHaveBeenCalledTimes(2);
       expect(update).toHaveBeenLastCalledWith('acme/COW-12', { severity: 'low' });
     });
+
+    it('quotes what changed as text, never as markup', async () => {
+      update.mockRejectedValueOnce(
+        new StaleWrite(
+          {
+            status: 412,
+            code: 'precondition_failed',
+            title: 'The ticket changed',
+            detail: 'The ticket changed since you read it.',
+            fields: {},
+            current: {},
+          },
+          ticket({ assignee: { id: 'p9', display_name: '<a href="x">y</a>' } }),
+        ),
+      );
+      show();
+      const { fixture } = await render();
+
+      fixture.debugElement
+        .query(By.css('[data-testid="field-assignee"]'))
+        .triggerEventHandler('ngModelChange', 'p1');
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      const dialog = document.body.querySelector('.p-confirmdialog');
+      expect(dialog?.querySelector('.p-confirmdialog-message')?.textContent).toContain(
+        'assignee: now {"id":"p9","display_name":"<a href=\\"x\\">y</a>"}, yours p1.',
+      );
+      expect(dialog?.querySelector('a')).toBeNull();
+    });
+
+    // The page is reused when the path names another ticket or another tenant. Answered then,
+    // the question would write the change onto the ticket shown now, where the fields stay, or
+    // onto the ticket the page no longer shows.
+    describe('when the page turns elsewhere before it is answered', () => {
+      async function asked() {
+        update.mockRejectedValueOnce(
+          new StaleWrite(
+            {
+              status: 412,
+              code: 'precondition_failed',
+              title: 'The ticket changed',
+              detail: 'The ticket changed since you read it.',
+              fields: {},
+              current: {},
+            },
+            ticket({ severity: 'critical' }),
+          ),
+        );
+        show();
+        const { fixture } = await render();
+        fixture.debugElement
+          .query(By.css('[data-testid="field-severity"]'))
+          .triggerEventHandler('ngModelChange', 'low');
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+        expect(document.body.querySelector('.p-confirmdialog')?.textContent).toContain(
+          'Changed meanwhile',
+        );
+        return fixture;
+      }
+
+      /** Answers the question, if it is still there, by writing over the newer version. */
+      async function writeMine(fixture: ComponentFixture<TicketDetail>) {
+        [...(document.body.querySelector('.p-confirmdialog')?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent?.trim() === 'Write mine')
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+      }
+
+      it('drops the question for another ticket, which would take the change', async () => {
+        cache.put('acme/COW-13', ticket({ id: 't-13', key: 'acme/COW-13', number: 13 }));
+        const fixture = await asked();
+
+        fixture.componentRef.setInput('key', 'COW-13');
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+        await writeMine(fixture);
+        expect(update).toHaveBeenCalledOnce();
+      });
+
+      it('drops the question for another tenant', async () => {
+        const fixture = await asked();
+
+        tenant.set('globex');
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+        await writeMine(fixture);
+        expect(update).toHaveBeenCalledOnce();
+      });
+    });
   });
 
   describe('a ticket that cannot be shown', () => {

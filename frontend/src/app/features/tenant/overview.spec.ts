@@ -172,6 +172,7 @@ describe('TenantOverview', () => {
     membership = signal<Membership | undefined>({
       role: 'admin',
       tenant: { name: 'Acme Corp', slug: 'acme' },
+      origins: [{ source: 'grant', role: 'admin' }],
     });
     projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
     cache = new EntityCache<Ticket>();

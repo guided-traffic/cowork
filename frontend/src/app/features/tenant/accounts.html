@@ -1,4 +1,4 @@
-<p-confirmdialog />
+<app-confirm-dialog />
 <app-new-account-dialog [(visible)]="creating" (created)="issued($event)" />
 <app-reset-password-dialog [(account)]="resetting" (passwordSet)="issued($event)" />
 <app-secret-dialog
@@ -7,8 +7,8 @@
   label="Temporary password"
 >
   <strong>Shown once.</strong> Give it to {{ issuedTo()?.display_name }} yourself, over a channel
-  you trust. They must change it at their first login; until then anyone who knows it can sign in as
-  them.
+  you trust. They must change it at their first sign-in; until then anyone who knows it can sign in
+  as them.
 </app-secret-dialog>
 
 <section class="page">

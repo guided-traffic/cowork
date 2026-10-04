@@ -1,9 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  changesMemberships,
+  changesVisibility,
   EVENT_SOURCE,
   EventSourceLike,
   EventStreamService,
   fallback,
+  MembershipEvent,
   StreamEvent,
   StreamStatus,
   ticketEventNames,
@@ -172,11 +175,11 @@ describe('EventStreamService', () => {
       expect(events).toEqual([]);
     });
 
-    it('listens to the events that name a ticket, to resync and to unavailable (docs/adr/0054 D2)', () => {
+    it('listens to the events that name a ticket, to membership.changed, to resync and to unavailable (docs/adr/0054 D2)', () => {
       service.connect('acme');
 
       expect([...sources[0].eventNames].sort()).toEqual(
-        [...ticketEventNames, 'resync', 'unavailable'].sort(),
+        [...ticketEventNames, 'membership.changed', 'resync', 'unavailable'].sort(),
       );
       expect([...ticketEventNames].sort()).toEqual([
         'comment.changed',
@@ -368,6 +371,101 @@ describe('EventStreamService', () => {
       sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2);
 
       expect(events).toHaveLength(1);
+    });
+  });
+
+  describe('membership events', () => {
+    beforeEach(() => {
+      service.connect('acme');
+      sources[0].open();
+    });
+
+    it.each<[Record<string, string>, Partial<MembershipEvent>, string]>([
+      [{ person_id: 'p1' }, { personId: 'p1' }, 'a membership created, changed or removed'],
+      [
+        { person_id: 'p1', project_id: 'j1' },
+        { personId: 'p1', projectId: 'j1' },
+        'an access entry',
+      ],
+      [{ project_id: 'j1' }, { projectId: 'j1' }, 'a restriction set or lifted'],
+      [{ mapping_id: 'm1' }, { mappingId: 'm1' }, 'a group mapping'],
+    ])('turns the keys of %j into the event, with its id: %s', (data, keys) => {
+      sources[0].send('membership.changed', JSON.stringify(data), 'e1');
+
+      expect(events).toEqual([{ name: 'membership.changed', id: 'e1', ...keys }]);
+    });
+
+    it('carries the keys and nothing else, however much the payload says (docs/adr/0054 D2)', () => {
+      sources[0].send(
+        'membership.changed',
+        JSON.stringify({ person_id: 'p1', role: 'admin', display_name: 'Ada' }),
+        'e1',
+      );
+
+      expect(events).toEqual([{ name: 'membership.changed', id: 'e1', personId: 'p1' }]);
+    });
+
+    it.each([
+      ['text that is not JSON', 'not json'],
+      ['an empty payload', ''],
+      ['a JSON null', 'null'],
+      ['a JSON string', '"p1"'],
+      ['a JSON array that holds the payload', '[{"person_id":"p1"}]'],
+      ['a JSON object without any of the keys', '{}'],
+      ['a JSON object with other keys only', '{"role":"admin"}'],
+      ['a person id that is a number', '{"person_id":12}'],
+      ['a project id that is null', '{"person_id":"p1","project_id":null}'],
+      ['a mapping id that is an object', '{"mapping_id":{}}'],
+    ])('ignores %s', (_description, data) => {
+      sources[0].send('membership.changed', data);
+
+      expect(events).toEqual([]);
+    });
+
+    it('passes membership and ticket events on in the order they arrive', () => {
+      sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2, 'edited', 'e1');
+      sources[0].send('membership.changed', '{"person_id":"p1"}', 'e2');
+      sources[0].sendTicket('ticket.changed', 'acme/VKO-2', 3, 'edited', 'e3');
+
+      expect(names()).toEqual(['ticket.changed', 'membership.changed', 'ticket.changed']);
+    });
+  });
+
+  describe('changesMemberships', () => {
+    it.each<[StreamEvent, boolean]>([
+      [{ name: 'membership.changed', id: 'e1', personId: 'p1' }, true],
+      [{ name: 'resync' }, true],
+      [{ name: 'poll' }, true],
+      [{ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'edited' }, false],
+      [{ name: 'comment.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' }, false],
+    ])('says whether %j may have changed who belongs to the tenant: %s', (event, expected) => {
+      expect(changesMemberships(event)).toBe(expected);
+    });
+  });
+
+  describe('changesVisibility', () => {
+    const event = (keys: Partial<MembershipEvent>): MembershipEvent => ({
+      name: 'membership.changed',
+      id: 'e1',
+      ...keys,
+    });
+
+    it('says a restriction or an access entry may change what the person sees', () => {
+      expect(changesVisibility(event({ projectId: 'j1' }), 'p1')).toBe(true);
+      expect(changesVisibility(event({ personId: 'p2', projectId: 'j1' }), 'p1')).toBe(true);
+    });
+
+    it("says the person's own role may change what they see, an administrator seeing every project", () => {
+      expect(changesVisibility(event({ personId: 'p1' }), 'p1')).toBe(true);
+    });
+
+    it("leaves somebody else's membership and a mapping alone", () => {
+      expect(changesVisibility(event({ personId: 'p2' }), 'p1')).toBe(false);
+      expect(changesVisibility(event({ mappingId: 'm1' }), 'p1')).toBe(false);
+    });
+
+    it('leaves a membership alone while the person is not known', () => {
+      expect(changesVisibility(event({ personId: 'p1' }), undefined)).toBe(false);
     });
   });
 
@@ -695,12 +793,29 @@ describe('EventStreamService', () => {
     it('sends one resync instead of everything when a resync waited', () => {
       setVisibility('hidden');
       sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2);
+      sources[0].send('membership.changed', '{"person_id":"p1"}');
       sources[0].send('resync', '{}');
       sources[0].sendTicket('ticket.changed', 'acme/VKO-2', 3);
 
       setVisibility('visible');
 
       expect(events).toEqual([{ name: 'resync' }]);
+    });
+
+    it('sends every membership event that waited, as they came, after the latest event of each ticket', () => {
+      setVisibility('hidden');
+      sources[0].send('membership.changed', '{"project_id":"j1"}', 'm1');
+      sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2, 'edited', 'a');
+      sources[0].send('membership.changed', '{"person_id":"p1"}', 'm2');
+      sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 3, 'edited', 'b');
+
+      setVisibility('visible');
+
+      expect(events).toEqual([
+        { name: 'ticket.changed', id: 'b', key: 'acme/VKO-1', version: 3, kind: 'edited' },
+        { name: 'membership.changed', id: 'm1', projectId: 'j1' },
+        { name: 'membership.changed', id: 'm2', personId: 'p1' },
+      ]);
     });
 
     it('sends one resync when a poll waited, because a poll names no ticket', () => {

@@ -122,11 +122,15 @@ export class Shell {
     });
   }
 
-  /** Signing out ends with a new document, so that the next person in this tab starts from nothing. */
+  /**
+   * Signing out ends with a new document, so that the next person in this tab starts from nothing:
+   * the login page, or the identity provider's logout where the backend names one, which ends the
+   * person's session there too and comes back to the login page (docs/adr/0031 D4).
+   */
   protected async signOut(): Promise<void> {
     try {
-      await this.auth.logout();
-      this.navigate('/login');
+      const next = await this.auth.logout();
+      this.navigate(next ?? '/login');
     } catch (error) {
       this.problems.report(error);
     }

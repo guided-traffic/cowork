@@ -1,0 +1,148 @@
+<app-confirm-dialog />
+
+<section class="card access" aria-labelledby="access-title" data-testid="project-access">
+  <h2 id="access-title">Access</h2>
+
+  <label class="toggle">
+    <p-toggleswitch
+      name="restricted"
+      [ngModel]="restricted()"
+      (ngModelChange)="restrict($event)"
+      [disabled]="restricting() !== null"
+      data-testid="project-restricted"
+    />
+    <span
+      >Restricted
+      <span class="muted"
+        >— only the tenant's administrators and the people on the list see it</span
+      ></span
+    >
+  </label>
+  <p class="muted small" data-testid="access-hint">
+    @if (restricted()) {
+      Each person on the list sees the project with the role of their entry at most, and never with
+      more than their role in the tenant. Nobody else but the administrators sees it at all.
+    } @else {
+      Every member of the tenant sees this project. The list counts only while the project is
+      restricted: fill it before restricting, so that nobody on it loses the project in between.
+    }
+  </p>
+
+  @if (notice(); as message) {
+    <p-message
+      severity="warn"
+      [closable]="true"
+      (onClose)="notice.set(null)"
+      data-testid="access-notice"
+      >{{ message }}</p-message
+    >
+  }
+
+  <div class="panel">
+    <p-table
+      [value]="access.list()"
+      [loading]="access.entries.isLoading()"
+      [showLoader]="false"
+      size="small"
+      data-testid="access-list"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Name</th>
+          <th class="col-role">Access</th>
+          <th class="col-actions" aria-label="Actions"></th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-entry>
+        <tr [attr.data-testid]="'access-' + entry.person.id">
+          <td>
+            {{ entry.person.display_name }}
+            @if (entry.email) {
+              <span class="email muted">{{ entry.email }}</span>
+            }
+          </td>
+          <td class="col-role">
+            <p-select
+              [options]="accessRoles"
+              [ngModel]="shownRole(entry)"
+              (ngModelChange)="changeRole(entry, $event)"
+              size="small"
+              appendTo="body"
+              [disabled]="busy(entry)"
+              [ariaLabel]="'Access of ' + entry.person.display_name"
+              [attr.data-testid]="'access-role-' + entry.person.id"
+            />
+          </td>
+          <td class="col-actions">
+            <button
+              pButton
+              type="button"
+              [text]="true"
+              [rounded]="true"
+              severity="danger"
+              size="small"
+              [iconOnly]="true"
+              [disabled]="busy(entry)"
+              [attr.aria-label]="'Take ' + entry.person.display_name + ' off the list'"
+              [attr.data-testid]="'access-remove-' + entry.person.id"
+              (click)="remove(entry)"
+            >
+              <i class="pi pi-times"></i>
+            </button>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="3" class="muted empty" data-testid="access-empty">
+            {{ failure() ?? 'Nobody is on the list.' }}
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+
+  <form class="add" (ngSubmit)="add()">
+    <p-select
+      [options]="candidates()"
+      optionLabel="label"
+      optionValue="id"
+      [ngModel]="candidate()"
+      (ngModelChange)="candidate.set($event)"
+      name="person"
+      [filter]="true"
+      placeholder="Choose a member"
+      size="small"
+      appendTo="body"
+      class="person"
+      ariaLabel="Member to put on the list"
+      data-testid="access-person"
+    />
+    <p-select
+      [options]="accessRoles"
+      [ngModel]="candidateRole()"
+      (ngModelChange)="candidateRole.set($event)"
+      name="role"
+      size="small"
+      appendTo="body"
+      ariaLabel="Their access"
+      data-testid="access-new-role"
+    />
+    <button
+      pButton
+      type="submit"
+      size="small"
+      [disabled]="!candidate() || adding()"
+      data-testid="access-add"
+    >
+      @if (adding()) {
+        <i class="pi pi-spinner pi-spin"></i>
+      }
+      Add
+    </button>
+  </form>
+  <small class="muted small" data-testid="access-meaning"
+    >{{ candidateRole() }}: {{ accessMeanings[candidateRole()] }} The tenant's administrators see
+    every project without an entry.</small
+  >
+</section>

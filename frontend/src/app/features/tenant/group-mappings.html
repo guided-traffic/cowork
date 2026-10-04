@@ -1,0 +1,131 @@
+<app-confirm-dialog />
+<app-new-mapping-dialog
+  [visible]="creating()"
+  (visibleChange)="creatingChange($event)"
+  (created)="created($event)"
+/>
+
+<section class="page">
+  <header class="head">
+    <h1 tabindex="-1">Group mappings</h1>
+    <span class="spacer"></span>
+    @if (tenant.isAdmin()) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        data-testid="new-mapping"
+        (click)="creating.set(true)"
+      >
+        <i class="pi pi-plus"></i>New mapping
+      </button>
+    }
+  </header>
+
+  @if (tenant.isAdmin()) {
+    <p class="muted lead">
+      A mapping gives everyone whose groups at the identity provider include its group a role in
+      this tenant; several mapped groups give the highest of their roles. A change applies at once
+      to everyone whose groups cowork knows from their last sign-in, and to everyone else when they
+      next sign in. Grants made under Members stay as they are.
+    </p>
+
+    @if (notice(); as message) {
+      <p-message
+        severity="warn"
+        [closable]="true"
+        (onClose)="notice.set(null)"
+        data-testid="mappings-notice"
+        >{{ message }}</p-message
+      >
+    }
+
+    <div class="panel">
+      <p-table
+        [value]="mappings.list()"
+        [rowTrackBy]="byId"
+        [loading]="mappings.mappings.isLoading()"
+        [showLoader]="false"
+        size="small"
+        data-testid="mappings"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Group</th>
+            <th class="col-role">Role</th>
+            <th>Changed</th>
+            <th class="col-actions" aria-label="Actions"></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-mapping>
+          <tr [attr.data-testid]="'mapping-' + mapping.group" [attr.data-row]="mapping.id">
+            <td>
+              <span class="group">
+                <code>{{ mapping.group }}</code>
+                @if (mapping.includes_caller) {
+                  <span
+                    class="pill outline"
+                    tabindex="0"
+                    data-testid="includes-you"
+                    [pTooltip]="includesYouMeaning"
+                    tooltipEvent="both"
+                    [showDelay]="400"
+                    aria-describedby="mappings-includes-you"
+                    >you</span
+                  >
+                }
+              </span>
+            </td>
+            <td class="col-role">
+              <p-select
+                [options]="roles"
+                [ngModel]="shownRole(mapping)"
+                (ngModelChange)="changeRole(mapping, $event)"
+                size="small"
+                appendTo="body"
+                [disabled]="pending().has(mapping.id)"
+                [ariaLabel]="'Role of the group ' + mapping.group"
+                [attr.data-testid]="'mapping-role-' + mapping.group"
+              />
+            </td>
+            <td class="muted">{{ dateTime(mapping.updated_at) }}</td>
+            <td class="col-actions">
+              <button
+                pButton
+                type="button"
+                class="remove"
+                [text]="true"
+                [rounded]="true"
+                severity="danger"
+                size="small"
+                [iconOnly]="true"
+                pTooltip="Remove mapping"
+                [attr.aria-label]="'Remove the mapping of ' + mapping.group"
+                [attr.data-testid]="'mapping-remove-' + mapping.group"
+                (click)="remove(mapping)"
+              >
+                <i class="pi pi-trash"></i>
+              </button>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr>
+            <td colspan="4" class="muted empty" data-testid="mappings-empty">
+              {{ failure() ?? 'No group mappings yet.' }}
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+
+    <!-- What the mark of the editor's own groups means, the description a screen reader reads out with it. -->
+    <span hidden id="mappings-includes-you">{{ includesYouMeaning }}</span>
+  } @else if (session.me.isLoading()) {
+    <p-skeleton width="24rem" height="2rem" />
+  } @else {
+    <p class="muted" data-testid="mappings-not-admin">
+      Only the administrators of this tenant manage its group mappings.
+    </p>
+  }
+</section>

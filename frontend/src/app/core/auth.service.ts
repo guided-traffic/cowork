@@ -1,7 +1,7 @@
 import { inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
 import { changeMyPassword, getAuthOptions, loginLocal, logout } from '../api/functions';
-import { LocalLoginResult } from '../api/models';
+import { LocalLoginResult, LogoutResult } from '../api/models';
 import { SessionService } from './session.service';
 
 /**
@@ -35,9 +35,23 @@ export class AuthService {
 
   /**
    * Ends the session. Who is working is not asked again — the answer would be a `401` racing the
-   * sign-out's own way to the login: the shell replaces the document afterwards.
+   * sign-out's own way to the login: the shell replaces the document afterwards. A session the
+   * identity provider made may answer with the provider's own logout (docs/adr/0031 D4), which
+   * this returns for the browser to go on to; `null` means the login page. Only a web address is
+   * followed: a `javascript:` URL from a provider's discovery would otherwise run in this page.
    */
-  logout(): Promise<void> {
-    return this.api.invoke(logout);
+  async logout(): Promise<string | null> {
+    // A 204 has no body, which the generated client hands on as null.
+    const answer = (await this.api.invoke(logout)) as LogoutResult | null;
+    return webAddress(answer?.end_session_url);
   }
+}
+
+/** An absolute `https:` or `http:` URL as it is, and null for anything else. */
+export function webAddress(value: string | undefined): string | null {
+  if (!value || !URL.canParse(value)) {
+    return null;
+  }
+  const { protocol } = new URL(value);
+  return protocol === 'https:' || protocol === 'http:' ? value : null;
 }

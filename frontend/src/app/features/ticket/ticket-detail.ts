@@ -1,8 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  untracked,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
-import { ConfirmDialog } from 'primeng/confirmdialog';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
 import { Activity, Interest, Link } from '../../api/models';
@@ -11,6 +18,7 @@ import { ProblemService, ProblemView } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TicketsService } from '../../core/tickets.service';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { AnswerQuestion, AskQuestion, CommentComposer, LinkAdder } from './conversation-forms';
 import { InterestControl } from './interest-control';
@@ -38,6 +46,7 @@ const notFound: ProblemView = {
 /**
  * One ticket (docs/adr/0018 D2): its fields to edit, its moves, its body, its questions with the
  * answer form, links, interest, comments and activity. Everything on it follows the event stream.
+ * A question the page asks goes when the path names another ticket or another tenant.
  */
 @Component({
   selector: 'app-ticket-detail',
@@ -75,6 +84,7 @@ export class TicketDetail {
   private readonly tickets = inject(TicketsService);
   private readonly problems = inject(ProblemService);
   private readonly conversation = inject(Conversation);
+  private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
 
   protected readonly at = computed(() => address(this.session.tenant(), this.key()));
@@ -110,6 +120,14 @@ export class TicketDetail {
 
   constructor() {
     effect(() => this.relations.at.set(this.at()));
+    // A question of the page — whether to write over a newer version — belongs to the ticket it
+    // was asked about. The page is reused when the path names another ticket or another tenant:
+    // answered then, it would write the change onto the ticket shown now, where its fields stay,
+    // or onto one the page no longer shows.
+    effect(() => {
+      this.fullKey();
+      untracked(() => this.confirm.close());
+    });
   }
 
   protected ago(iso: string): string {

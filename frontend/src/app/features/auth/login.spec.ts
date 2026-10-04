@@ -6,7 +6,7 @@ import type { MockInstance } from 'vitest';
 import { AuthOptions, LocalLoginResult, Problem } from '../../api/models';
 import { AuthService } from '../../core/auth.service';
 import { HARD_NAVIGATION, HardNavigation } from '../../core/hard-navigation';
-import { Login, safeReturn } from './login';
+import { Login, providerRefusals, safeReturn, unknownRefusal } from './login';
 
 describe('safeReturn', () => {
   it.each([
@@ -32,15 +32,40 @@ describe('safeReturn', () => {
     ['', 'nothing'],
     [null, 'null'],
     [undefined, 'undefined'],
+    ['/t/ac\tme', 'a tab'],
+    ['/t/acme\n', 'a line feed'],
+    ['/t/ac\rme', 'a carriage return'],
+    ['/t/\t\\acme', 'a tab and a backslash'],
+    ['/t/acme\\backlog', 'a backslash'],
+    ['/t/acme\u0000', 'a null character'],
+    ['/t/acme\u007f', 'a delete character'],
   ])('sends %j to the start page instead: %s', (value) => {
     expect(safeReturn(value)).toBe('/');
+  });
+
+  it('lets a path of 2048 bytes stand and sends a longer one to the start page', () => {
+    const longest = `/${'a'.repeat(2047)}`;
+
+    expect(safeReturn(longest)).toBe(longest);
+    expect(safeReturn(`${longest}a`)).toBe('/');
+  });
+
+  it('counts the length in UTF-8 bytes, as the backend does', () => {
+    // 1 + 1024 × 2 bytes, though only 1025 characters.
+    expect(safeReturn(`/${'é'.repeat(1024)}`)).toBe('/');
+    expect(safeReturn(`/${'é'.repeat(1023)}`)).toBe(`/${'é'.repeat(1023)}`);
   });
 });
 
 /** What the installation offers on the login page, with the minimum password length of the default. */
-const offered = (local: boolean, oidc: boolean): AuthOptions => ({
+const offered = (
+  local: boolean,
+  oidc: boolean,
+  name: string | null = oidc ? 'Dex' : null,
+): AuthOptions => ({
   local,
   oidc,
+  oidc_name: name,
   password_min_length: 12,
 });
 
@@ -75,10 +100,13 @@ describe('Login', () => {
     });
   });
 
-  async function render(back?: string) {
+  async function render(back?: string, error?: string) {
     const fixture = TestBed.createComponent(Login);
     if (back !== undefined) {
       fixture.componentRef.setInput('return', back);
+    }
+    if (error !== undefined) {
+      fixture.componentRef.setInput('error', error);
     }
     await settle(fixture);
     return fixture;
@@ -162,7 +190,7 @@ describe('Login', () => {
       const fixture = await render();
 
       expect(el(fixture, 'login-unavailable')?.textContent).toContain(
-        'This installation offers no login yet.',
+        'This installation offers no sign-in yet.',
       );
       expect(host(fixture).querySelector('form')).toBeNull();
     });
@@ -177,22 +205,45 @@ describe('Login', () => {
       expect(host(fixture).querySelector('form')).toBeNull();
     });
 
-    it('offers no local form and no notice when only an identity provider is configured', async () => {
+    it("offers the identity provider's button and no local form when only an identity provider is configured", async () => {
       options.value.set(offered(false, true));
 
       const fixture = await render();
 
+      expect(el(fixture, 'login-oidc')?.textContent?.trim()).toBe('Sign in with Dex');
       expect(host(fixture).querySelector('form')).toBeNull();
+      expect(el(fixture, 'login-divider')).toBeNull();
       expect(el(fixture, 'login-unavailable')).toBeNull();
     });
 
-    it('offers the form together with an identity provider when the installation has both', async () => {
+    it("offers the provider's button above the form, with a line between them, when the installation has both", async () => {
       options.value.set(offered(true, true));
 
       const fixture = await render();
 
       expect(host(fixture).querySelector('form')).not.toBeNull();
+      expect(el(fixture, 'login-oidc')).not.toBeNull();
+      expect(el(fixture, 'login-divider')?.textContent?.trim()).toBe('or with a local account');
+      expect(
+        el(fixture, 'login-oidc')!.compareDocumentPosition(host(fixture).querySelector('form')!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       expect(el(fixture, 'login-unavailable')).toBeNull();
+    });
+
+    it('offers no button of an identity provider when none admits anybody', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'login-oidc')).toBeNull();
+      expect(el(fixture, 'login-divider')).toBeNull();
+    });
+
+    it("names the provider as the installation's default does when the backend names none", async () => {
+      options.value.set(offered(true, true, null));
+
+      const fixture = await render();
+
+      expect(el(fixture, 'login-oidc')?.textContent?.trim()).toBe('Sign in with single sign-on');
     });
 
     it('follows what the backend says when the answer arrives', async () => {
@@ -451,6 +502,113 @@ describe('Login', () => {
 
       expect(el(fixture, 'login-error')).toBeNull();
       expect(navigate).toHaveBeenCalledExactlyOnceWith('/');
+    });
+  });
+
+  describe('signing in through the identity provider (docs/adr/0029)', () => {
+    beforeEach(() => options.value.set(offered(true, true)));
+
+    it('leaves for the start of the login at the backend, with the start page as the way back', async () => {
+      const fixture = await render();
+
+      el(fixture, 'login-oidc')?.click();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/auth/oidc/login?return_to=%2F');
+      expect(login).not.toHaveBeenCalled();
+    });
+
+    it('hands on the page the person came from as the way back', async () => {
+      const fixture = await render('/t/acme/tickets/COW-12?tab=activity');
+
+      el(fixture, 'login-oidc')?.click();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(
+        `/auth/oidc/login?return_to=${encodeURIComponent('/t/acme/tickets/COW-12?tab=activity')}`,
+      );
+    });
+
+    it.each(['//evil.example', '/\\evil.example', 'https://evil.example', 'javascript:alert(1)'])(
+      'never hands on %s, which is no page of this application',
+      async (back) => {
+        const fixture = await render(back);
+
+        el(fixture, 'login-oidc')?.click();
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith('/auth/oidc/login?return_to=%2F');
+      },
+    );
+
+    it('is a button that submits nothing', async () => {
+      const fixture = await render();
+
+      expect((el(fixture, 'login-oidc') as HTMLButtonElement).type).toBe('button');
+    });
+  });
+
+  describe('a way back from the identity provider that failed, from ?error=', () => {
+    it.each(Object.entries(providerRefusals))('says what %s means', async (code, message) => {
+      const fixture = await render(undefined, code);
+
+      expect(el(fixture, 'login-provider-error')?.textContent?.trim()).toBe(message);
+      expect(el(fixture, 'login-provider-error')?.getAttribute('role')).toBe('alert');
+    });
+
+    it.each([
+      ['not_allowed', 'does not admit your account'],
+      ['not_initialised', 'until its first tenant exists'],
+      ['oidc_failed', 'did not complete'],
+      ['oidc_unavailable', 'offers no sign-in through an identity provider'],
+    ])('explains %s in words', async (code, words) => {
+      const fixture = await render(undefined, code);
+
+      expect(el(fixture, 'login-provider-error')?.textContent).toContain(words);
+    });
+
+    it('says only that the sign-in did not complete for a code it does not know, and never shows the code', async () => {
+      const fixture = await render(undefined, '<b>forged</b>');
+
+      expect(el(fixture, 'login-provider-error')?.textContent?.trim()).toBe(unknownRefusal);
+      expect(host(fixture).innerHTML).not.toContain('forged');
+    });
+
+    it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+      'takes %s, which every object has, for a code it does not know',
+      async (code) => {
+        const fixture = await render(undefined, code);
+
+        expect(el(fixture, 'login-provider-error')?.textContent?.trim()).toBe(unknownRefusal);
+      },
+    );
+
+    it('says nothing without one', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'login-provider-error')).toBeNull();
+    });
+
+    it('says it while the page still asks what to offer, and when nothing is offered', async () => {
+      options.isLoading.set(true);
+      const fixture = await render(undefined, 'not_allowed');
+      expect(el(fixture, 'login-provider-error')).not.toBeNull();
+
+      options.isLoading.set(false);
+      options.value.set(offered(false, false));
+      await settle(fixture);
+
+      expect(el(fixture, 'login-provider-error')).not.toBeNull();
+      expect(el(fixture, 'login-unavailable')).not.toBeNull();
+    });
+
+    it('stops saying it once the person tries the local form instead', async () => {
+      login.mockRejectedValue(refusal(401, 'Unauthenticated'));
+      const fixture = await render(undefined, 'not_allowed');
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(el(fixture, 'login-provider-error')).toBeNull();
+      expect(el(fixture, 'login-error')?.textContent).toBe('The name or the password is wrong.');
     });
   });
 });

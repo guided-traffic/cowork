@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { isSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { MessageService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { Tooltip } from 'primeng/tooltip';
 import type { MockInstance } from 'vitest';
 import { Membership, Problem, Token, TokenCreated } from '../../api/models';
@@ -409,6 +409,20 @@ describe('Tokens', () => {
       el(fixture, `token-revoke-${id}`)?.click();
       await settle(fixture);
     }
+
+    it("shows a confirmation's message as text, never as markup", async () => {
+      const fixture = await render();
+
+      fixture.debugElement.injector
+        .get(ConfirmationService)
+        .confirm({ header: 'Revoke it?', message: '<a href="x">y</a>' });
+      await settle(fixture);
+
+      expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
+        '<a href="x">y</a>',
+      );
+      expect(dialog()?.querySelector('a')).toBeNull();
+    });
 
     it('is offered for a token that works, and for none that does not', async () => {
       const fixture = await render();

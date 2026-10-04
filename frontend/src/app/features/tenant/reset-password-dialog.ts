@@ -21,7 +21,7 @@ import { IssuedPassword, TemporaryPassword } from './temporary-password';
 /**
  * Sets a new temporary password on a local account (docs/adr/0033 D5). The dialog is open exactly
  * while it holds the account; every session of the account ends, and the person changes the
- * password at the next login. The page shows the password once, from the event, and the dialog
+ * password at the next sign-in. The page shows the password once, from the event, and the dialog
  * forgets it as soon as it closes, however it closes. While the request is out nothing closes it,
  * so that a refusal always lands in the form that was sent.
  */
@@ -43,8 +43,8 @@ import { IssuedPassword, TemporaryPassword } from './temporary-password';
     >
       <form class="form" (ngSubmit)="save()">
         <p class="muted lead">
-          Every session of the account ends and its person chooses a new password at the next login.
-          The account stays locked if it is, and its tokens stay as they are.
+          Every session of the account ends and its person chooses a new password at the next
+          sign-in. The account stays locked if it is, and its tokens stay as they are.
         </p>
         <app-temporary-password
           [(value)]="password"

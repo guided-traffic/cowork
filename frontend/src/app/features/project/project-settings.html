@@ -1,4 +1,4 @@
-<p-confirmdialog />
+<app-confirm-dialog />
 
 <section class="page">
   @if (current(); as p) {
@@ -67,6 +67,10 @@
         </button>
       </div>
     </form>
+
+    @if (tenant.isAdmin()) {
+      <app-project-access [project]="p" />
+    }
 
     @if (tenant.isAdmin() && !p.archived_at) {
       <section class="card danger">

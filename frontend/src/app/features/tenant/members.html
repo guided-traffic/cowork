@@ -1,0 +1,180 @@
+<app-confirm-dialog />
+<app-add-member-dialog
+  [visible]="adding()"
+  (visibleChange)="addingChange($event)"
+  (added)="added($event)"
+/>
+
+<section class="page">
+  <header class="head">
+    <h1 tabindex="-1">Members</h1>
+    <span class="spacer"></span>
+    @if (tenant.isAdmin()) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        data-testid="add-member"
+        (click)="adding.set(true)"
+      >
+        <i class="pi pi-user-plus"></i>Add member
+      </button>
+    }
+  </header>
+
+  @if (tenant.isAdmin()) {
+    <p class="muted lead" data-testid="members-lead">
+      A member's role is the higher of the role a group mapping gives them and the role granted
+      here. A grant adds to a mapped role and never lowers it; removing the grant leaves the mapped
+      role.
+    </p>
+  }
+
+  @if (notice(); as message) {
+    <p-message
+      severity="warn"
+      [closable]="true"
+      (onClose)="notice.set(null)"
+      data-testid="members-notice"
+      >{{ message }}</p-message
+    >
+  }
+
+  <div class="panel">
+    <p-table
+      [value]="members.list()"
+      [rowTrackBy]="byPerson"
+      [loading]="members.members.isLoading()"
+      [showLoader]="false"
+      size="small"
+      data-testid="members"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Name</th>
+          <th>Username</th>
+          <th class="col-role">Role</th>
+          <th>Origin</th>
+          @if (tenant.isAdmin()) {
+            <th class="col-grant">Grant</th>
+            <th class="col-actions" aria-label="Actions"></th>
+          }
+        </tr>
+      </ng-template>
+      <ng-template #body let-member>
+        <tr
+          [attr.data-testid]="'member-' + (member.person.username ?? member.person.id)"
+          [attr.data-row]="member.person.id"
+        >
+          <td>
+            {{ member.person.display_name }}
+            @if (isOwn(member)) {
+              <span class="muted"> (you)</span>
+            }
+            <!-- The list carries an address for the tenant's administrators only. -->
+            @if (member.email) {
+              <span class="email muted">{{ member.email }}</span>
+            }
+          </td>
+          <td class="muted">{{ member.person.username ?? '—' }}</td>
+          <td class="col-role">
+            <span
+              tabindex="0"
+              [pTooltip]="roleMeaning(member.role)"
+              tooltipEvent="both"
+              [showDelay]="400"
+              [attr.aria-describedby]="'members-role-' + member.role"
+              >{{ member.role }}</span
+            >
+          </td>
+          <td>
+            <span class="origins">
+              @for (origin of member.origins; track origin.source) {
+                <span
+                  class="pill"
+                  tabindex="0"
+                  [style.--accent]="originAccent(origin.source)"
+                  [attr.data-testid]="'origin-' + origin.source"
+                  [pTooltip]="originMeaning(origin.source)"
+                  tooltipEvent="both"
+                  [showDelay]="400"
+                  [attr.aria-describedby]="'members-origin-' + origin.source"
+                  >{{ origin.source }} · {{ origin.role }}</span
+                >
+              }
+              @if (member.local) {
+                <span
+                  class="pill outline"
+                  tabindex="0"
+                  [style.--accent]="originAccent('local')"
+                  data-testid="origin-local"
+                  [pTooltip]="originMeaning('local')"
+                  tooltipEvent="both"
+                  [showDelay]="400"
+                  aria-describedby="members-origin-local"
+                  >local account</span
+                >
+              }
+            </span>
+          </td>
+          @if (tenant.isAdmin()) {
+            <td class="col-grant">
+              <p-select
+                [options]="roles"
+                [ngModel]="shownGrant(member)"
+                (ngModelChange)="changeGrant(member, $event)"
+                placeholder="none"
+                size="small"
+                appendTo="body"
+                [disabled]="pending().has(member.person.id)"
+                [ariaLabel]="'Granted role of ' + member.person.display_name"
+                [attr.data-testid]="'grant-' + member.person.id"
+              />
+            </td>
+            <td class="col-actions">
+              @if (grantOf(member)) {
+                <button
+                  pButton
+                  type="button"
+                  class="remove"
+                  [text]="true"
+                  [rounded]="true"
+                  severity="danger"
+                  size="small"
+                  [iconOnly]="true"
+                  pTooltip="Remove grant"
+                  [attr.aria-label]="'Remove the grant of ' + member.person.display_name"
+                  [attr.data-testid]="'remove-grant-' + member.person.id"
+                  (click)="removeGrant(member)"
+                >
+                  <i class="pi pi-times"></i>
+                </button>
+              }
+            </td>
+          }
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td
+            [attr.colspan]="tenant.isAdmin() ? 6 : 4"
+            class="muted empty"
+            data-testid="members-empty"
+          >
+            {{ failure() ?? 'No members.' }}
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+
+  <!-- What a role and each badge mean, the description a screen reader reads out with them. -->
+  <div hidden>
+    @for (role of roles; track role) {
+      <span [id]="'members-role-' + role">{{ roleMeaning(role) }}</span>
+    }
+    @for (source of sources; track source) {
+      <span [id]="'members-origin-' + source">{{ originMeaning(source) }}</span>
+    }
+  </div>
+</section>

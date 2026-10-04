@@ -24,10 +24,41 @@ export interface TicketEvent {
 }
 
 /**
- * What the services react to: a change of a ticket; `resync`, after which everything shown is
- * fetched again; or `poll`, the fallback's tick (D7).
+ * `membership.changed` (docs/adr/0054 D2): who belongs to the tenant, or who sees a project,
+ * changed — by an administrator's act or by the identity provider's groups (docs/adr/0030). The
+ * payload carries keys only, each where it applies.
  */
-export type StreamEvent = TicketEvent | { name: 'resync' } | { name: 'poll' };
+export interface MembershipEvent {
+  name: 'membership.changed';
+  /** The audit row's id, which is also the stream's event id (D5). */
+  id: string;
+  /** The person whose membership or project access changed. */
+  personId?: string;
+  /** The project whose restriction or access list changed. */
+  projectId?: string;
+  /** The group mapping that was made, changed or removed. */
+  mappingId?: string;
+}
+
+/**
+ * What the services react to: a change of a ticket or of the memberships; `resync`, after which
+ * everything shown is fetched again; or `poll`, the fallback's tick (D7).
+ */
+export type StreamEvent = TicketEvent | MembershipEvent | { name: 'resync' } | { name: 'poll' };
+
+/** Whether an event may have changed who belongs to the tenant: its own event, or a gap in the stream. */
+export function changesMemberships(event: StreamEvent): boolean {
+  return event.name === 'membership.changed' || event.name === 'resync' || event.name === 'poll';
+}
+
+/**
+ * Whether a membership event may have changed which projects the person sees: a project's
+ * restriction or access list, or the person's own role — an administrator sees every project,
+ * anybody else the open ones and those whose list names them (docs/adr/0034 D3).
+ */
+export function changesVisibility(event: MembershipEvent, person: string | undefined): boolean {
+  return event.projectId !== undefined || (person !== undefined && event.personId === person);
+}
 
 /**
  * `connecting` until the stream is open, `live` while it is, `polling` while the fallback runs,
@@ -49,6 +80,15 @@ export const EVENT_SOURCE = new InjectionToken<(url: string) => EventSourceLike>
   factory: () => (url: string) => new EventSource(url),
 });
 
+/** An event's data as JSON, or undefined where it is none. */
+function parsed(message: MessageEvent<string>): unknown {
+  try {
+    return JSON.parse(message.data);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The payload of D2: a key, a version and the act's kind, nothing else. */
 function isTicketPayload(data: unknown): data is { key: string; version: number; kind: string } {
   const payload = data as Record<string, unknown> | null;
@@ -61,6 +101,36 @@ function isTicketPayload(data: unknown): data is { key: string; version: number;
   );
 }
 
+/** The keys a `membership.changed` payload may carry, and the event's names for them. */
+const membershipKeys = {
+  person_id: 'personId',
+  project_id: 'projectId',
+  mapping_id: 'mappingId',
+} as const;
+
+/**
+ * The payload of a `membership.changed`: an object with at least one of its keys, each a string;
+ * anything else it carries is left out. Undefined for any other payload.
+ */
+function membershipPayload(
+  data: unknown,
+): Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> | undefined {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return undefined;
+  }
+  const payload = data as Record<string, unknown>;
+  const keys: Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> = {};
+  for (const [key, field] of Object.entries(membershipKeys)) {
+    const value = payload[key];
+    if (typeof value === 'string') {
+      keys[field] = value;
+    } else if (value !== undefined) {
+      return undefined;
+    }
+  }
+  return Object.keys(keys).length > 0 ? keys : undefined;
+}
+
 /** The fallback's numbers (docs/adr/0054 D7). */
 export const fallback = { failures: 3, pollEvery: 15_000, retryEvery: 60_000 };
 
@@ -68,7 +138,7 @@ const closed = 2;
 
 /**
  * The tenant's event stream (docs/adr/0054): one `EventSource` per tenant page, events that
- * carry a key and a version and nothing else, and the polling fallback — after three failures in
+ * carry keys and versions and nothing else, and the polling fallback — after three failures in
  * a row or `event: unavailable`, a `poll` tick every fifteen seconds and a new attempt at the
  * stream every minute. While the tab is hidden the events wait and arrive, merged, when it is
  * visible again (D8). The browser sends `Last-Event-ID` on its own reconnects (D5).
@@ -143,18 +213,14 @@ export class EventStreamService {
     for (const name of ticketEventNames) {
       source.addEventListener(name, (message) => this.ticketEvent(name, message));
     }
+    source.addEventListener('membership.changed', (message) => this.membershipEvent(message));
     source.addEventListener('resync', () => this.emit({ name: 'resync' }));
     source.addEventListener('unavailable', () => this.fallBack());
   }
 
   /** A payload that is not the documented one changes nothing a client shows; the next resync or poll catches up. */
   private ticketEvent(name: TicketEventName, message: MessageEvent<string>): void {
-    let data: unknown;
-    try {
-      data = JSON.parse(message.data);
-    } catch {
-      return;
-    }
+    const data = parsed(message);
     if (isTicketPayload(data)) {
       this.emit({
         name,
@@ -163,6 +229,13 @@ export class EventStreamService {
         version: data.version,
         kind: data.kind,
       });
+    }
+  }
+
+  private membershipEvent(message: MessageEvent<string>): void {
+    const keys = membershipPayload(parsed(message));
+    if (keys) {
+      this.emit({ name: 'membership.changed', id: message.lastEventId, ...keys });
     }
   }
 
@@ -189,7 +262,11 @@ export class EventStreamService {
     }
   }
 
-  /** What waited while the tab was hidden: one resync if any was due, else each ticket's latest event. */
+  /**
+   * What waited while the tab was hidden: one resync if any was due, else each ticket's latest
+   * event, then the membership events as they came — each says what it touched, and the views
+   * they reload load at most once more however many arrive (`refresh`).
+   */
   private flush(): void {
     const waiting = this.deferred;
     this.deferred = [];
@@ -198,14 +275,19 @@ export class EventStreamService {
       return;
     }
     const latest = new Map<string, TicketEvent>();
-    for (const event of waiting as TicketEvent[]) {
+    const memberships: MembershipEvent[] = [];
+    for (const event of waiting as (TicketEvent | MembershipEvent)[]) {
+      if (event.name === 'membership.changed') {
+        memberships.push(event);
+        continue;
+      }
       const id = `${event.name} ${event.key}`;
       const held = latest.get(id);
       if (!held || held.version <= event.version) {
         latest.set(id, event);
       }
     }
-    for (const event of latest.values()) {
+    for (const event of [...latest.values(), ...memberships]) {
       this.subject.next(event);
     }
   }

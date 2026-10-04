@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
 import { Me } from '../api/models';
-import { AuthService } from './auth.service';
+import { AuthService, webAddress } from './auth.service';
 import { SessionService } from './session.service';
 
 const hans: Me = {
@@ -13,7 +13,13 @@ const hans: Me = {
   global_admin: false,
   local: true,
   password_change_required: false,
-  memberships: [{ role: 'admin', tenant: { slug: 'acme', name: 'Acme' } }],
+  memberships: [
+    {
+      role: 'admin',
+      tenant: { slug: 'acme', name: 'Acme' },
+      origins: [{ source: 'grant', role: 'admin' }],
+    },
+  ],
 };
 
 const unauthenticated = {
@@ -231,6 +237,45 @@ describe('AuthService', () => {
       await done;
     });
 
+    it('hands back nothing to go on to after a 204, which leaves the way to the login page', async () => {
+      const done = service.logout();
+
+      http.expectOne('/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(await done).toBeNull();
+    });
+
+    it("hands back the identity provider's logout when the backend names one (docs/adr/0031 D4)", async () => {
+      const done = service.logout();
+      const url =
+        'https://login.example.com/oidc/logout?client_id=cowork&post_logout_redirect_uri=https%3A%2F%2Fcowork.example.com%2Flogin';
+
+      http.expectOne('/auth/logout').flush({ end_session_url: url });
+
+      expect(await done).toBe(url);
+    });
+
+    it.each([
+      ['a script URL', 'javascript:alert(document.cookie)'],
+      ['a data URL', 'data:text/html,<script>alert(1)</script>'],
+      ['a path, which is no address of a provider', '/login'],
+      ['nothing', ''],
+    ])('hands back nothing for %s, which the browser would run or misread', async (_what, url) => {
+      const done = service.logout();
+
+      http.expectOne('/auth/logout').flush({ end_session_url: url });
+
+      expect(await done).toBeNull();
+    });
+
+    it('hands back nothing for an answer without the address', async () => {
+      const done = service.logout();
+
+      http.expectOne('/auth/logout').flush({});
+
+      expect(await done).toBeNull();
+    });
+
     it('does not ask who is working: that answer would be a 401 racing the way to the login', async () => {
       const done = service.logout();
       http.expectOne('/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
@@ -257,5 +302,29 @@ describe('AuthService', () => {
       expect(session.person()?.display_name).toBe('Hans');
       http.expectNone('/api/v1/me');
     });
+  });
+});
+
+describe('webAddress', () => {
+  it.each([
+    'https://login.example.com/logout?client_id=cowork',
+    'http://localhost:5556/dex/logout',
+  ])('lets the web address %s stand as it is', (value) => {
+    expect(webAddress(value)).toBe(value);
+  });
+
+  it.each<[string | undefined, string]>([
+    ['javascript:alert(1)', 'a script URL'],
+    ['JavaScript:alert(1)', 'a script URL in mixed case'],
+    ['data:text/html,x', 'a data URL'],
+    ['vbscript:x', 'another script URL'],
+    ['ftp://files.example.com/', 'an address that is no web page'],
+    ['/login', 'a path'],
+    ['//evil.example/logout', 'a protocol-relative URL'],
+    ['not a url', 'text'],
+    ['', 'nothing'],
+    [undefined, 'undefined'],
+  ])('refuses %j, %s', (value) => {
+    expect(webAddress(value)).toBeNull();
   });
 });

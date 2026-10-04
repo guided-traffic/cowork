@@ -13,9 +13,21 @@ const person: Me = {
   local: true,
   password_change_required: false,
   memberships: [
-    { role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } },
-    { role: 'member', tenant: { slug: 'globex', name: 'Globex' } },
-    { role: 'viewer', tenant: { slug: 'initech', name: 'Initech' } },
+    {
+      role: 'admin',
+      tenant: { slug: 'acme', name: 'Acme Corp' },
+      origins: [{ source: 'grant', role: 'admin' }],
+    },
+    {
+      role: 'member',
+      tenant: { slug: 'globex', name: 'Globex' },
+      origins: [{ source: 'grant', role: 'member' }],
+    },
+    {
+      role: 'viewer',
+      tenant: { slug: 'initech', name: 'Initech' },
+      origins: [{ source: 'grant', role: 'viewer' }],
+    },
   ],
 };
 

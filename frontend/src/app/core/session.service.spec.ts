@@ -1,13 +1,36 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
 import { effect } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
+import { Subject } from 'rxjs';
 import { Me, Membership } from '../api/models';
+import { EventStreamService, StreamEvent } from './event-stream.service';
 import { SessionService } from './session.service';
 
-const asAdmin: Membership = { role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } };
-const asMember: Membership = { role: 'member', tenant: { slug: 'globex', name: 'Globex' } };
+const asAdmin: Membership = {
+  role: 'admin',
+  tenant: { slug: 'acme', name: 'Acme Corp' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const asMember: Membership = {
+  role: 'member',
+  tenant: { slug: 'globex', name: 'Globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
+
+/** Fails a request: without an answer at all (status 0), or with a problem of the status. */
+const fail = (request: TestRequest, status: number) =>
+  status === 0
+    ? request.error(new ProgressEvent('error'))
+    : request.flush(
+        { type: 'about:blank', title: 'Refused', status, code: 'internal' },
+        { status, statusText: `Status ${status}` },
+      );
 
 const person = (memberships: Membership[]): Me => ({
   id: '0199aaaa-0000-7000-8000-000000000001',
@@ -22,6 +45,7 @@ const person = (memberships: Membership[]): Me => ({
 describe('SessionService', () => {
   let service: SessionService;
   let http: HttpTestingController;
+  let stream: Subject<StreamEvent>;
 
   /** Runs the effects, which starts the load, and hands out the request of GET /api/v1/me. */
   const meRequest = () => {
@@ -46,8 +70,14 @@ describe('SessionService', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    stream = new Subject<StreamEvent>();
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideApiConfiguration('')],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideApiConfiguration(''),
+        { provide: EventStreamService, useValue: { events: stream.asObservable() } },
+      ],
     });
     service = TestBed.inject(SessionService);
     http = TestBed.inject(HttpTestingController);
@@ -156,6 +186,97 @@ describe('SessionService', () => {
       await settle();
 
       expect(service.person()?.display_name).toBe('Hans F.');
+      expect(service.memberships()).toEqual([asMember]);
+    });
+  });
+
+  describe('when the memberships change (docs/adr/0054 D2)', () => {
+    beforeEach(() => load(person([asAdmin, asMember])));
+
+    it.each<StreamEvent>([
+      { name: 'membership.changed', id: 'e1', personId: 'p1' },
+      { name: 'membership.changed', id: 'e1', mappingId: 'm1' },
+      { name: 'membership.changed', id: 'e1', projectId: 'j1' },
+      { name: 'resync' },
+      { name: 'poll' },
+    ])(
+      'asks who is working again on %j, so that a new role shows without a reload',
+      async (event) => {
+        stream.next(event);
+        await settle();
+
+        http.expectOne('/api/v1/me').flush(person([{ ...asAdmin, role: 'member' }]));
+        await settle();
+
+        expect(service.memberships()[0].role).toBe('member');
+      },
+    );
+
+    it('asks once more after a burst of events, not once for each', async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', personId: 'p1' });
+      await settle();
+      const first = http.expectOne('/api/v1/me');
+      stream.next({ name: 'membership.changed', id: 'e2', personId: 'p2' });
+      stream.next({ name: 'membership.changed', id: 'e3', personId: 'p3' });
+      await settle();
+
+      first.flush(person([asAdmin]));
+      await settle();
+      http.expectOne('/api/v1/me').flush(person([asAdmin]));
+      await settle();
+
+      http.expectNone('/api/v1/me');
+    });
+
+    it('leaves the person alone on an event that names a ticket', async () => {
+      stream.next({ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' });
+      await settle();
+
+      http.expectNone('/api/v1/me');
+    });
+  });
+
+  describe('when asking again fails', () => {
+    beforeEach(() => load(person([asAdmin, asMember])));
+
+    it.each([0, 500, 503])(
+      'keeps the person shown on a status of %i, which says nothing about them',
+      async (status) => {
+        stream.next({ name: 'poll' });
+        await settle();
+
+        fail(http.expectOne('/api/v1/me'), status);
+        await settle();
+
+        expect(service.me.status()).toBe('resolved');
+        expect(service.person()?.display_name).toBe('Hans');
+        expect(service.memberships()).toEqual([asAdmin, asMember]);
+      },
+    );
+
+    it.each([401, 403, 404])('lets the person go on a %i', async (status) => {
+      stream.next({ name: 'poll' });
+      await settle();
+
+      fail(http.expectOne('/api/v1/me'), status);
+      await settle();
+
+      expect(service.me.status()).toBe('error');
+      expect(service.person()).toBeUndefined();
+      expect(service.memberships()).toEqual([]);
+    });
+
+    it('takes the answer of the next attempt', async () => {
+      stream.next({ name: 'poll' });
+      await settle();
+      fail(http.expectOne('/api/v1/me'), 503);
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await settle();
+      http.expectOne('/api/v1/me').flush(person([asMember]));
+      await settle();
+
       expect(service.memberships()).toEqual([asMember]);
     });
   });

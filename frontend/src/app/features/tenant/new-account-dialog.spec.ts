@@ -8,7 +8,8 @@ import type { MockInstance } from 'vitest';
 import { Account, Problem } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
 import { AuthService } from '../../core/auth.service';
-import { accountUsername, NewAccountDialog, roleMeanings } from './new-account-dialog';
+import { accountUsername, NewAccountDialog } from './new-account-dialog';
+import { roleMeanings } from './roles';
 import { generatedLength, IssuedPassword, passwordAlphabet } from './temporary-password';
 
 const made: Account = {
@@ -186,7 +187,7 @@ describe('NewAccountDialog', () => {
       expect(el(fixture, 'account-password')).not.toBeNull();
       expect(el(fixture, 'account-password-generate')).not.toBeNull();
       expect(host(fixture).querySelector('.lead')?.textContent).toContain(
-        'choose their own password at the first login',
+        'choose their own password at the first sign-in',
       );
     });
 
