@@ -380,7 +380,7 @@ How it behaves, as somebody running it sees it:
   is gone.
 - **A change of who sees what reaches the open streams at once.** A project created, a membership,
   a mapping, a restriction or an access entry changed makes every open stream of the tenant read
-  the person's role and the projects they see again — two small queries per stream, once for a
+  the person's role and the projects they see again — two small queries per stream, once or twice for a
   burst of such changes — before it passes its next event; the heartbeat repeats it for a change
   made in the database past the API.
 - **Reconnects replay.** A client that reconnects with `Last-Event-ID` gets what it missed
