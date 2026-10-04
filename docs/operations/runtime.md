@@ -57,10 +57,10 @@ logs. The variables named here are explained one by one in
 8. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
    not contact the storage. Without them the log warns `no object storage configured;
    attachments cannot be uploaded` ([attachments](#attachments)).
-9. **The chat's provider**, when `COWORK_CHAT_PROVIDER` is set: the gateway is set up and the log
-   says `the chat talks to a model` with the wire format, the model, whether the provider is
-   declared inside and the limits; it does not contact the provider, so a wrong URL or key shows at
-   the first turn ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
+9. **The chat's providers**, when `COWORK_CHAT_PROVIDERS` is set: a gateway per provider is set up,
+   the log says `the chat talks to a model` once per provider with its id, kind and model, and
+   `the chat's limits`; it does not contact a provider, so a wrong URL or key shows at the first turn
+   that picks it ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
 10. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
     address, the version and the commit.
 
@@ -423,13 +423,16 @@ server-sent events ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-t
 setting the chat up is [chat.md](chat.md)). What an operator meets:
 
 - **Refusals before the stream** are problem answers like any: `409 chat_unavailable` where the
-  tenant has no chat, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON`, `403 session_required`
-  for a token, `403 csrf`, `400 validation_failed` for a conversation the model could not read in
-  its place or one past its bounds, `413` past `COWORK_MAX_JSON_BODY`.
+  installation configures no provider, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON`,
+  `403 session_required` for a token, `403 csrf`, `400 validation_failed` for a conversation the
+  model could not read in its place, one past its bounds or a provider the installation does not
+  list, `413` past `COWORK_MAX_JSON_BODY`.
 - **Once the stream has begun** the answer is `200` with `Content-Type: text/event-stream` and
   `X-Accel-Buffering: no`, every event flushed as it is written; a failure is the `error` event, a
-  problem body with the request id — `chat_provider_failed`, `timeout`, `internal` — and the turn
-  ends with `done` in every case it ends by itself.
+  problem body with the request id — `chat_provider_failed`, `timeout`, `not_ready`, `internal` —
+  and the turn ends with `done` in every case it ends by itself; a turn the person stopped
+  (`DELETE …/chat/turns`, [chat.md, Stop](chat.md#stop)) ends with `done` and the reason `stopped`,
+  and no `error` event.
 - **A comment, `: keep-alive`, after ten seconds without an event**, so no proxy closes a turn while
   the model thinks. The frontend's nginx has no location of its own for the path: `/api/` passes it,
   unbuffered by the backend's header, and its read timeout, `requestTimeout` plus ten seconds, stays

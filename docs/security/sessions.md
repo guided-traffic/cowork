@@ -117,23 +117,24 @@ D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/interna
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
 person's.
 
-- **Fourteen routes take a session only** and answer a token `403 session_required`
+- **Sixteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
   password (`PUT …/accounts/{username}/password`), changing one's own password
   (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
   that can give access — adding a member, setting a grant, making or changing a group mapping,
-  restricting or opening a project, putting a person on a project's access list — and a turn of the
-  chat (`POST …/chat`), and a global administrator's list of every tenant (`GET /api/v1/tenants`).
-  What the first twelve make would outlive the revocation of a leaked token, a turn acts with the
-  person's session, and the list shows a global administrator's view across the installation's
+  restricting or opening a project, putting a person on a project's access list —, a turn of the
+  chat (`POST …/chat`) and stopping the person's turns (`DELETE …/chat/turns`), choosing the chat's
+  capabilities (`PUT /api/v1/me/chat`), and a global administrator's list of every tenant
+  (`GET /api/v1/tenants`). What the first twelve and the chat's capabilities make would outlive the
+  revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
+  person's turns, and the list shows a global administrator's view across the installation's
   clients, which a token of theirs does not get; the table and the rule are
-  [tokens.md](tokens.md#what-only-a-session-does), where switching a tenant's consent to the chat's
-  provider outside on is the one field held the same way. The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these fourteen
+  [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these sixteen
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
-  agent header marks is refused all fourteen with `403 agent_forbidden`. Every other operation
+  agent header marks is refused all sixteen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential.
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is

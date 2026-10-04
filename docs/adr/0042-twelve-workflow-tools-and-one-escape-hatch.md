@@ -26,8 +26,9 @@ with the chat in the UI provisionally
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
 built the same day: sixteen tools. The host inside the backend is the chat: it presents the
 person's session marked as its agent, `chat/<model>/<conversation>`, offers the tools that take
-everything as arguments but `api`, with three of its own that open a page, and holds each to a
-policy of its own (ADR 0076 D2). A tool call of `cowork-mcp` in a working directory without a
+everything as arguments but `api`, with three of its own that open a page, ~~and holds each to a
+policy of its own (ADR 0076 D2)~~ *(amended again 2026-10-04 by the owner's answers recorded in ADR
+0076: and runs every call at once, its agent holding the capabilities the person chose)*. A tool call of `cowork-mcp` in a working directory without a
 binding resolves the binding once before it runs (`Session.bindOnce` in
 [`tools/session.go`](../../backend/internal/tools/session.go)), so a short key works without
 `session_start` when the hook said the session is bound.
@@ -93,8 +94,9 @@ ticket and the reason of the one that reopens it.)* *(Amended 2026-10-04: a sixt
 …/urgency-override` with the version read; it needs the `override-urgency` capability and gives
 "rank it to now" a tool. And three preconditions a caller may pin: `transition(…, from?)` and
 `finish_work(…, from?)` act only while the ticket is in the state named, `set_progress(…, version?)`
-only while the ticket has the version named — the chat pins what it read before the person decides
-(ADR 0076 D2); left out, the state or version read at the call.)*
+only while the ticket has the version named ~~— the chat pins what it read before the person decides
+(ADR 0076 D2)~~ *(the chat no longer pins: nothing of it waits for a decision, 2026-10-04; the
+preconditions stay any caller's)*; left out, the state or version read at the call.)*
 
 **D2 — ~~`answer_question` is not a tool and never will be;~~** *(amended 2026-10-01:
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and

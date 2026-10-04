@@ -25,9 +25,9 @@ Everything described here exists; what is not built is listed at the end.
                                             ├────────────────────► OpenID Connect issuer
                                             │                        (optional; discovery at start,
                                             │                         the code, the groups refresh)
-                                            └────────────────────► the chat's model provider
+                                            └────────────────────► the chat's model providers
                                                                      (optional; every step of a turn,
-                                                                      COWORK_CHAT_URL)
+                                                                      the picked COWORK_CHAT_<ID>_URL)
 ```
 
 The frontend is the entry point and the only Service an Ingress targets; the browser sees one
@@ -37,9 +37,9 @@ schema of `.cowork.yaml` needs a personal access token or a session cookie
 ([api.md](api.md#authentication)); the login flows live at `/auth/…` beside `/api/`. During a
 login through the identity provider the browser goes to the issuer and comes back to
 `/auth/callback`; the backend itself calls the issuer at start, at a login and at a session's
-groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). With a
-chat provider configured, the backend calls the model at every step of a turn of the chat in the
-UI — the browser never does — and the model's tool calls come back into the backend's own handler
+groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). With
+chat providers configured, the backend calls the picked provider's model at every step of a turn of
+the chat in the UI — the browser never does — and the model's tool calls come back into the backend's own handler
 ([a turn of the chat](#a-turn-of-the-chat)). The security architecture is
 [docs/security/](../security/README.md).
 
@@ -86,7 +86,8 @@ the person's token, like a script — no path to the database, nothing the API d
    listener of this replica ([events.md](events.md)).
 9. `storage.New` builds the object storage client when `COWORK_S3_*` is set; without it a warning
    says uploads are refused ([storage.md](storage.md)).
-   `chatOf` builds the chat's gateway when `COWORK_CHAT_PROVIDER` is set — it contacts no provider —
+   `chatOf` builds a gateway per provider when `COWORK_CHAT_PROVIDERS` is set — it contacts no
+   provider —
    and `api.ChatOptions` with the signal context, which ends the running turns at a shutdown, and a
    function that returns the root handler of step 10, which the turns' tool calls go through
    ([chat.md](chat.md)).
@@ -171,15 +172,19 @@ A turn is one request that makes more requests of the same server
 ([chat.md](chat.md), [ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)):
 
 ```
-POST …/chat (session) ─► the pipeline above ─► serveChat: availability · Check · chat_busy ─► 200 text/event-stream
-   ─► chat.Run, up to COWORK_CHAT_MAX_STEPS, within COWORK_CHAT_TURN_TIMEOUT, ended by a shutdown:
-        availability again ─► llm.Provider.Complete ──► the provider (text streamed out as `text`)
-        each tool call: review ─► waits? `confirm`, the turn ends
-                                └► runs: tools.Tool.Call ─► apigen client ─► chat.Loopback (the turn's tenant only)
+POST …/chat (session) ─► the pipeline above ─► serveChat: availability · provider · Check · capabilities
+                                                  · chat_busy + the registry ─► 200 text/event-stream
+   ─► chat.Run, up to COWORK_CHAT_MAX_STEPS, within COWORK_CHAT_TURN_TIMEOUT, ended by a shutdown or a stop:
+        llm.Provider.Complete ──► the picked provider (text streamed out as `text`)
+        each tool call, at once: tools.Tool.Call ─► apigen client ─► chat.Loopback (the turn's tenant only)
                                          ─► the root handler: request id ─► request log ─► recoverer ─► the pipeline
-                                            (cookie + X-Cowork-Agent: chat/<model>/<conversation> ─► an agent's request)
+                                            (cookie + X-Cowork-Agent: chat/<model>/<conversation> ─► an agent's request
+                                             holding the person's chat capabilities)
                                          ─► `tool_result`
-   ─► `error` (a failure) ─► `done`: the messages the turn added
+   ─► `error` (a failure) ─► `done`: the messages the turn added, and why — `stopped` after a stop
+
+DELETE …/chat/turns (session) ─► StopChatTurns ─► stopTurns: cancel the person's turns in the tenant
+                                                   on this replica ─► 204 once they have ended
 ```
 
 The outer request holds its connection, one database-free goroutine for its comments and, while the
@@ -306,8 +311,8 @@ the dev server over HTTPS, the browser signing in as on an installation — with
 *Sign in with Dex* as one of its four users
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
 D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_DEV_CHAT_MODEL`
-(`qwen/qwen3-30b-a3b-2507` `# default`), the chat in the UI talking to it as a provider declared
-inside. The commands are [build-test-lint.md](build-test-lint.md#run-locally).
+(`qwen/qwen3-30b-a3b-2507` `# default`), the chat in the UI talking to it as its one provider,
+`lmstudio`. The commands are [build-test-lint.md](build-test-lint.md#run-locally).
 
 ## What is not built
 

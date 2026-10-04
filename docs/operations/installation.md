@@ -33,7 +33,9 @@ Rendering fails, naming the missing value, without a database URL, without an ow
 a `storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`, with a local
 administrator or an `auth.oidc.issuer` but no `backend.config.baseURL`, with an issuer but no
 client id or no client secret, with a group in `auth.oidc.allowedGroups` that holds a comma, with
-a `chat.provider` but no `chat.url` or `chat.model` — or `anthropic` without `chat.existingSecret` —,
+a chat provider in `chat.providers` whose id is not one or repeats, whose kind is neither `openai` nor
+`anthropic`, without `url` or `model`, of kind `anthropic` without `existingSecret`, or with an
+inline `apiKey`,
 and with half of what belongs together —
 `localAdmin.username` without `.password`, `bootstrap.tenant.slug` without `.name`, a bootstrap
 tenant with neither a local administrator nor `auth.oidc.adminGroup`.
@@ -137,7 +139,7 @@ kubectl -n cowork create secret generic cowork-chat \
 | the local administrator | `localAdmin.existingSecret` | `localAdmin.keys.username`: `username`, `localAdmin.keys.password`: `password` | the backend container; the account follows it at every start |
 | the identity provider's client | `auth.oidc.existingSecret` | `auth.oidc.keys.clientSecret`: `clientSecret`; `auth.oidc.keys.clientId`: empty — set, it reads the client id from the Secret too, in place of `auth.oidc.clientId` | the backend container |
 | the storage access key | `storage.existingSecret` | `storage.keys.accessKeyId`: `accessKeyId`, `storage.keys.secretAccessKey`: `secretAccessKey` | the backend container |
-| the chat's API key | `chat.existingSecret` | `chat.keys.apiKey`: `apiKey` | the backend container, which sends it to the chat's provider |
+| a chat provider's API key, one Secret per provider | `chat.providers[].existingSecret` | that entry's `keys.apiKey`: `apiKey` | the backend container, which sends it to that provider |
 
 **The server key** is standard base64 of at least 32 random bytes; `openssl rand -base64 32`
 makes one. It signs the list cursors, keys the hashes of a client's address — the login
@@ -184,7 +186,8 @@ server process the power to switch row-level security off.
 **The inline values**, `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password`, render the Secrets `<fullname>-database`, `<fullname>-database-owner` and
 `<fullname>-local-admin` for you; the identity provider's client secret and the chat's API key have
-no inline value and come from `auth.oidc.existingSecret` and `chat.existingSecret` only
+no inline value and come from `auth.oidc.existingSecret` and each provider's
+`chat.providers[].existingSecret` only
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). Use them for
 a throw-away installation only: the values are
 stored in plain text in the Helm release Secret and shown by `helm get values`, and the chart
@@ -515,29 +518,31 @@ not check it: a wrong endpoint, key or bucket shows on the first upload, as
 ## The chat
 
 The assistant at the right edge of the UI talks to a model the backend calls for the person
-([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
-provisional). `chat.provider` turns it on — `openai` for OpenAI Chat Completions, which LM Studio,
-Ollama and vLLM serve as well, or `anthropic` — with the provider's base URL and the model; a key,
-where the provider takes one, comes from a Secret ([the Secrets](#the-secrets)):
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
+`chat.providers` turns it on: a list of providers the person picks from, the first the default, each
+with an id, a name, a kind — `openai` for OpenAI Chat Completions, which LM Studio, Ollama and vLLM
+serve as well, or `anthropic` —, the base URL and the model; a key, where a provider takes one, comes
+from a Secret of that provider's own ([the Secrets](#the-secrets)):
 
 ```yaml
 chat:
-  provider: openai                       # example; empty: no chat
-  url: http://ollama.ai.svc:11434/v1     # example: https://, or http:// on a host of your own network
-  model: llama3:8b                       # example: the model's name at the provider
-  existingSecret: ""                     # required for anthropic; the key under chat.keys.apiKey, default apiKey
-  inside: false                          # default: a tenant's administrators allow the provider first
+  providers:                             # default []: no chat
+    - id: ollama                         # example: COWORK_CHAT_OLLAMA_*
+      name: Ollama                       # example; the id when empty
+      kind: openai                       # example
+      url: http://ollama.ai.svc:11434/v1 # example: https://, or http:// on a host of your own network
+      model: openai/gpt-oss-20b          # example: the model's name at the provider
+      existingSecret: ""                 # required for anthropic; the key under keys.apiKey, default apiKey
 ```
 
-**Inside or outside.** `chat.inside: true` states that the model runs inside the installation's
-trust boundary — on machines its operators run — and every tenant has the chat; nothing checks it.
-`false`, the default, counts the provider as outside: a tenant has the chat once one of its
-administrators allows it in the tenant's settings, and from then on the provider receives what the
-chat reads in that tenant, confidential tickets included
-([chat.md H-37](../security/chat.md#h-37)).
+**Every provider receives what the chat reads, in every tenant.** No tenant is asked: every member
+has the chat once a provider is listed, and a provider receives what the chat reads for its person,
+confidential tickets included — the owner's decision, with the risk accepted
+([chat.md H-37](../security/chat.md#h-37)). List a hosted provider only where every tenant's data may
+go to it ([chat.md, adding a hosted provider](chat.md#adding-a-hosted-provider)).
 
-**The backend's pods reach the provider.** The browser never does. The chart's NetworkPolicy
-restricts nothing outgoing; a policy of your own that does must admit the provider and DNS. The
+**The backend's pods reach the providers.** The browser never does. The chart's NetworkPolicy
+restricts nothing outgoing; a policy of your own that does must admit the providers and DNS. The
 stream of a turn passes the Ingress like the event stream, unbuffered
 ([runtime.md, behind an Ingress](runtime.md#behind-an-ingress)).
 

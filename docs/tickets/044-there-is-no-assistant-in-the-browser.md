@@ -4,52 +4,46 @@ title: the assistant in the browser is built on provisional answers — the owne
 state: in-progress
 severity: medium
 security: hardening
-threat: answering would additionally cover a model steered by text in a ticket or comment into acts the person did not want, confidential tickets read by the chat reaching a provider outside the installation, and a chat that acts with every capability of its person
-urgency: release      # rule 2: gates the release — merging the branch releases the chat
+threat: the model check would additionally cover a model that answers without calling the tools and invents tickets, which the panel marks but cannot prevent
+urgency: later        # rule 4: what remains is a known piece of work, the model check
 effort: M
-blocked-by: decision
 filed-from:
 opened: 2026-10-03
-decided:
+decided: 2026-10-04
 done:
 ---
 
 ## Current state
 
 The chat at the right edge of every tenant page is built on the branch `feat/phase-4-and-5`
-([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
-accepted provisionally). The owner had not answered Q1–Q4 when phase 5 was built in one night; on
-the owner's instruction (build to best knowledge, leave a gate open when in doubt, file what needs
-the owner) each was built as recommended — Q1 against the earlier recommendation, see there.
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)),
+with the owner's answers of 2026-10-04 below.
 
-- The backend runs the loop: the browser posts the conversation, the backend calls the configured
-  model (`COWORK_CHAT_*`: OpenAI Chat Completions with tool calling — LM Studio, Ollama, OpenAI — or
-  the Anthropic Messages API), runs its tool calls in-process through the API's own pipeline, and
-  streams text, tool calls, results and navigation back. The tools are the MCP server's catalogue
-  without `api` and `session_start`, plus `open_ticket`, `open_backlog` and `open_board`.
+- The backend runs the loop: the browser posts the conversation, the backend calls the provider the
+  person picked from the chart's list (`chat.providers`, `COWORK_CHAT_PROVIDERS`: OpenAI Chat
+  Completions with tool calling — LM Studio, Ollama, OpenAI — or the Anthropic Messages API), runs its
+  tool calls in-process through the API's own pipeline, and streams text, tool calls, results and
+  navigation back.
 - Every tool call is an agent's act of the person, marked `chat/<model>/<conversation>`, confined to
-  the tenant of the turn; acts that need a person's reason, note or decision wait for Run or Skip.
-- An outside provider needs the tenant's consent, which an administrator gives in a browser session
-  and which is bound to the provider's kind, host and model; a provider inside the installation
-  (`COWORK_CHAT_INSIDE`) needs none.
-- The panel renders text only; the shell sends a `Content-Security-Policy`.
-- **Verified 2026-10-04** against LM Studio `qwen/qwen3-30b-a3b-2507` with a 32k context: the chat
-  filed a ticket, set its urgency to `now` and moved it to `analysed` in 16 s; the open board showed
-  the card at once; every act is recorded as `chat/qwen:qwen3-30b-a3b-2507/<conversation>`. The small
-  model sometimes claims an act a tool result refused; the tool cards show what happened.
-- The gaps are named in [chat.md](../security/chat.md).
+  the tenant of the turn, and runs at once; the chat holds the capabilities the person chose in the
+  panel — by default all but `decide`, `close`, `drop` and `record-answer` — and the API refuses the
+  rest. A configured provider receives everything the person can read, confidential tickets
+  included: the owner's accepted risk ([H-37](../security/chat.md#h-37)).
+- Stop aborts the turn's request and calls `DELETE …/chat/turns`, which ends the person's turns on
+  the replica it reaches ([H-48](../security/chat.md#h-48)); a busy notice offers the same.
+- **Verified 2026-10-04** against LM Studio `qwen/qwen3-30b-a3b-2507` (MLX, 32k, one prediction), in
+  Chromium: the pick of a provider reached the turn; filing, urgency `now` and `analysed` ran at once,
+  each act marked as the chat's without a confirmation; `decided` was refused with
+  `403 agent_forbidden: missing capability: decide` while `decide` was off, and ran once the panel
+  switched it on — in a new conversation, because the model went on refusing in the old one, which
+  the panel now says and offers a new one for; Stop in the tab ended the turn in 69 ms and Stop from
+  another tab in 22 ms, and LM Studio logged that it stopped generating in the same second.
 
 ## Required changes
 
-1. The owner answers Q1–Q5; an answer that differs from the build amends ADR 0076 and changes the
-   code, the panel and [chat.md](../security/chat.md) in the same change.
-2. Depending on Q2: the person's choice of the chat's capabilities, on the tokens page or in the
-   panel, with the ADR 0043 D4 capabilities.
-3. Depending on Q3: an outside provider never receives a confidential ticket
-   ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)) —
-   the loopback withholds it from the tool results.
-4. A model check: which models of LM Studio, Ollama and the hosted providers call the tools reliably
+1. A model check: which models of LM Studio, Ollama and the hosted providers call the tools reliably
    enough; a short list in the chat's operations page.
+2. Phase close: this ticket archived with T48.
 
 ## Open questions
 

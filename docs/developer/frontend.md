@@ -14,7 +14,7 @@ frontend/src/app/
 ├── core/         # services: session, projects, tickets, event stream, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar, navigation), the assistant's panel, the tenant scope, the live indicator
 ├── features/     # one folder per page family: home, tenant, project, ticket
-├── shared/       # badges, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, time formatting
+├── shared/       # badges, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -82,7 +82,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
-| `ChatService` | The chat of the tenant the pages show: its availability (`GET …/chat`, of `workTenant`), one conversation — in memory, gone when another tenant's pages open —, the turn that runs, and whether the panel is open, the person's preference in `localStorage` ([the assistant](#the-assistant)) |
+| `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
 
 **A resource loads again every time its `params` function runs** — Angular 22 wraps each result
 in a new request object, so an equal value does not stop it (`ResourceImpl`, `extRequest`). A
@@ -475,24 +475,17 @@ The chat in the UI ([ADR 0076]; the backend's half is [chat.md](chat.md)) is thr
 
 | Piece | What it does |
 |---|---|
-| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `waits for you`, `skipped`, `no result`); a proposal's words with Run and Skip; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; an empty state that names the model and, for a provider outside, says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
-| [`ChatService`](../../frontend/src/app/core/chat.service.ts) | The turn: `fetch` `POST …/chat` — the `HttpClient` waits for a whole body, and `EventSource` cannot `POST` — with the conversation so far, the page (`pageContext`), the conversation's id and a decision, `X-Requested-With: cowork` from [`http.ts`](../../frontend/src/app/core/http.ts) and the session's cookie; one turn at a time and never sent again by itself, because a repeated turn repeats its acts; `done`'s messages appended as they are; for a turn cut without `done`, `TurnRecord` writes down what its events reported, so the model hears next time what happened — held to what the next turn may carry: a step of blank text and no answered call left out, a step's text cut to the 100,000 characters of a message —; a `ui` event opened only when `navigable` accepts it — a ticket, a backlog or a board of the turn's tenant —, else the call's card says not opened; a `401` sends the browser to the login, a `chat_unavailable` loads the availability again and says why in a toast; a conversation too long for a turn (`payload_too_large` or any `413`, a `validation_failed` that points under `/messages`) is a notice that offers a new conversation — never trimmed by itself —, `chat_busy` a notice to wait for the person's turn running elsewhere, and an answer of white space only, whose `done` adds nothing, a notice that there was no answer; a running turn stops once the chat is no longer available, because the panel and its Stop go with it |
+| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `no result`) — every call runs at once, nothing waits for the person; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; in the header the provider's choice where more than one is configured, and the toggle of *What the assistant may do*: the nine capabilities as switches with their meaning (`shared/capabilities.ts`, the token page's too) and the *Full* and *Assisted* shortcuts; an empty state that names the picked provider and model and says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
+| [`ChatService`](../../frontend/src/app/core/chat.service.ts) | The turn: `fetch` `POST …/chat` — the `HttpClient` waits for a whole body, and `EventSource` cannot `POST` — with the conversation so far, the page (`pageContext`), the conversation's id and the picked provider's id, `X-Requested-With: cowork` from [`http.ts`](../../frontend/src/app/core/http.ts) and the session's cookie; one turn at a time and never sent again by itself, because a repeated turn repeats its acts; `done`'s messages appended as they are; for a turn cut without `done`, `TurnRecord` writes down what its events reported, so the model hears next time what happened — held to what the next turn may carry: a step of blank text and no answered call left out, a step's text cut to the 100,000 characters of a message —; a `ui` event opened only when `navigable` accepts it — a ticket, a backlog or a board of the turn's tenant —, else the call's card says not opened; a `401` sends the browser to the login, a `chat_unavailable` loads the availability again and says why in a toast; a conversation too long for a turn (`payload_too_large` or any `413`, a `validation_failed` that points under `/messages`) is a notice that offers a new conversation — never trimmed by itself —, `chat_busy` a notice whose *Stop them* calls `DELETE …/chat/turns`, and an answer of white space only, whose `done` adds nothing, a notice that there was no answer; Stop aborts the `fetch` and calls `DELETE …/chat/turns` for the turn's tenant, so a proxy that keeps the backend's request open keeps no turn alive, and a `done` with the reason `stopped` — stopped from elsewhere — shows as stopped; a running turn stops once the chat is no longer available, because the panel and its Stop go with it |
 | [`chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts) | `EventStreamParser` cuts the response's text into events by the HTML standard's event-stream format — CRLF, LF or CR, a CR at a piece's end waiting for the next, comments read past, `data` lines joined —; `chatEvents` decodes the bytes, a character split between two pieces waiting for its rest, and cancels the body when the reader stops; `chatEvent` holds each event's data to the shape the API document gives it and reads past one it does not know |
 
 **In the shell** ([`shell.html`](../../frontend/src/app/layout/shell.html)) the toggle sits in the top bar
-while the tenant's chat is available (`aria-controls` the panel, `aria-expanded` its state); an
-administrator of a tenant that has not allowed the provider outside sees a dimmed icon that says so
-and links to the tenant's settings instead, and every other member sees nothing. The panel's code
+while the tenant's chat is available (`aria-controls` the panel, `aria-expanded` its state), and
+nothing where it is not. The panel's code
 loads with `@defer` once the chat is available, so a tenant without it pays nothing. The panel is
 24rem in the grid's third column; below 64rem (`overlayQuery`) it lies over the content, and
 Escape, or the focus moving into the page beneath, closes it there. Opened, it takes the keyboard
 into its input; the input gets it back when a turn ends, unless the person went on elsewhere.
-
-**The consent** is a switch in the tenant's settings
-([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts)), shown to its
-administrators only where the configured provider is outside: it names the model and the wire
-format and says that the tenant's text then leaves the installation; saved with the other settings
-under `If-Match`, after which the availability loads again.
 
 **The content-security policy** of the shell refuses inline scripts, so the production build
 inlines no critical CSS (`"inlineCritical": false` in [`angular.json`](../../frontend/angular.json));
@@ -536,8 +529,8 @@ mapping `team-red` → `member` in the tenant `dev`, the person `dev` with the t
 and a second person (`sam`) from `make dev-seed`, demo data in the tenant `dev` when it has no
 project ([`dev_demo.py`](../../hack/dev_demo.py): three projects, twenty-one tickets in every
 state but `review`, of the three progress stages only implementation set, questions, comments,
-links, agent acts — written with a seeded token straight to the backend), the chat's provider when
-LM Studio answers on `:1234` with `COWORK_DEV_CHAT_MODEL`, and `ng serve --ssl` on <https://localhost:4200>. A saved file reloads the page —
+links, agent acts — written with a seeded token straight to the backend), the chat's one provider,
+`lmstudio`, when LM Studio answers on `:1234` with `COWORK_DEV_CHAT_MODEL`, and `ng serve --ssl` on <https://localhost:4200>. A saved file reloads the page —
 styles without a reload. Ctrl-C stops the backend and the dev server; `make dev-reset` empties
 the database for a fresh seed. The design preview is at `/dev/design`, in development builds only
 (`fileReplacements` swap [`dev.routes.ts`](../../frontend/src/app/dev/dev.routes.ts) for an empty

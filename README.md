@@ -23,9 +23,10 @@ is accountable.
 > own personal access tokens in the session. Claude Code works on the backlog through `cowork-mcp`,
 > an MCP server with hooks that runs on the person's machine
 > ([Claude Code](docs/operations/claude-code.md)); in the browser an assistant works on the same
-> tools as the person's agent, with a model the operator names — LM Studio on the operator's
-> machine, a server of the OpenAI format or Anthropic — and leaves the acts a person owes a reason
-> for to the person's decision ([the chat](docs/operations/chat.md)). What comes next is
+> tools as the person's agent, with a model of the providers the operator lists — LM Studio on the
+> operator's machine, a server of the OpenAI format or Anthropic — and the capabilities the person
+> chooses for it; its acts run at once, and Stop ends a turn at once
+> ([the chat](docs/operations/chat.md)). What comes next is
 > [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
@@ -40,7 +41,7 @@ flowchart LR
   S[cowork-backend<br/>Go API] -->|runtime role| P[(PostgreSQL 18)]
   S -->|attachments| O[(S3-compatible<br/>object storage)]
   S -->|discovery, code, refresh| I
-  S -->|the chat's model calls| L[LLM provider<br/>OpenAI format or Anthropic]
+  S -->|the chat's model calls| L[LLM providers<br/>OpenAI format or Anthropic]
 ```
 
 ## ✨ Key features
@@ -48,6 +49,7 @@ flowchart LR
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
 - 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
 - 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 💬 **An assistant in the browser** — a chat panel whose model works on the same tools as the person's agent, with the capabilities the person chooses (by default not deciding, closing, dropping or recording answers); the providers are a list in the chart, the person picks one, and Stop ends a turn at once.
 - 🤖 **Claude Code as a co-worker** — `cowork-mcp`, one static binary per platform, serves fifteen workflow tools over the API with the person's token and runs Claude Code's hooks: a session starts with its project's state and is reminded at its end; a repository finds its project by its normalised git remote, and an unbound one gets a proposal the person confirms.
 - 🪪 **Single sign-on through any OpenID Connect provider** — the code flow with PKCE against a provider discovered at start, a gate of allowed groups and an administrator group, per-tenant group mappings that derive memberships, marked grants beside them, the groups read again every fifteen minutes, and tokens held to the same gate; tested against a minimal Dex.
 - 🔐 **A login that needs no identity provider** — a local administrator kept in step with a Secret, local accounts created by tenant administrators, Argon2id, sessions in the database behind an `HttpOnly` `__Host-` cookie, an account lockout and an address throttle that answer every failure alike, and an origin-plus-header CSRF check on every write of a session.
@@ -79,7 +81,10 @@ The frontend container substitutes four variables into its nginx configuration, 
 `# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
 `COWORK_URL`, `COWORK_TOKEN` and `CLAUDE_PROJECT_DIR` ([CLI (cowork-mcp)](#cli-cowork-mcp)); the
 plugin's hooks hand it `CLAUDE_PLUGIN_OPTION_COWORK_URL` and `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`
-under those names.
+under those names. A chat provider's variables are `COWORK_CHAT_<ID>_NAME`, `_KIND`, `_URL`,
+`_MODEL` and `_API_KEY`, the id of `COWORK_CHAT_PROVIDERS` upper-cased with its dashes as
+underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-chat-in-the-ui));
+`make dev` takes `COWORK_DEV_CHAT_MODEL`.
 
 ### Kubernetes objects (Helm chart)
 
@@ -95,6 +100,7 @@ under those names.
 | Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while `backend.config.migrateOnStart` is true |
 | Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
 | Identity provider's client Secret | not rendered: `auth.oidc.existingSecret` names one of yours, key `auth.oidc.keys.clientSecret` (`clientSecret`) and, when set, `auth.oidc.keys.clientId` | only with `auth.oidc.issuer`; the client secret has no inline value |
+| A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
 | Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while `migrateOnStart` is true); a changed value rolls the pods |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with `storage.endpoint` and `storage.tls.caConfigMap` |
 | Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
@@ -119,6 +125,9 @@ under those names.
 | System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
+| Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
+| Chat provider id | 1–32 characters of `a-z`, `0-9` and `-`, a dash neither first nor last; named once in `COWORK_CHAT_PROVIDERS` | `lmstudio`, `claude-work` |
+| The chat's browser storage | `localStorage`: `cowork.chat.<person id>` (`open` or `closed`), `cowork.chat.provider.<person id>` (the picked provider's id) | — |
 | Agent header of `cowork-mcp` | `<client>/<model>/<session>`: the MCP client's name (`claude-code` in the hooks), the hook's model or `unknown`, the hook's session id or eight hex characters per process; `cowork-mcp/unknown/token-check` and `cowork-mcp/unknown/lookup` for the two subcommands | `claude-code/unknown/1f0c9a2b` |
 | Repository identity | `<host>[:<port>]/<path>` of a git remote: scheme, user, a default port, `.git` and trailing slashes removed, the host lower-cased, the path's case kept; unique per tenant with the sub-directory | `github.com/acme/app` for `git@github.com:acme/app.git` |
 | Repository sub-directory | relative to the repository root, `/`-separated, no `..`; empty for the whole repository | `services/billing` |
@@ -171,6 +180,7 @@ under those names.
 | `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged; the `413`, `502`, `503` and `504` nginx answers itself are problem bodies without a `request_id` |
 | `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | proxied like `/api/`, cookies in both directions |
 | `/api/v1/tenants/<slug>/events` | the event stream | proxied unbuffered and uncached, with a read timeout of one hour |
+| `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream | proxied as any `/api/` path, unbuffered because the backend answers `X-Accel-Buffering: no` |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
 
@@ -181,7 +191,7 @@ under those names.
 | `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id` |
 | `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
 | `text/markdown; charset=utf-8` | a ticket's canonical Markdown and its context |
-| `text/event-stream` | the event stream |
+| `text/event-stream` | the event stream, a turn of the chat |
 
 ## 📚 Documentation
 
@@ -499,6 +509,28 @@ the endpoint, the bucket and both keys together, or none of them. Without them u
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` `# default` | a duration, not negative | How long a replica keeps events for a reconnect's `Last-Event-ID`; beyond it the stream starts with `resync`. `0` keeps no replay |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10` `# default` | a count; `0` disables | The streams one person holds on one replica; one more closes the oldest with `event: unavailable` |
 
+#### The chat in the UI
+
+([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+[docs/operations/chat.md](docs/operations/chat.md)) — without `COWORK_CHAT_PROVIDERS` there is no
+chat, and a limit below set without it ends the start. Each id of the list has the variables of the
+second table. Source: [`backend/internal/config/chat.go`](backend/internal/config/chat.go).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_CHAT_PROVIDERS` | empty `# default` | `lmstudio,claude-work` `# example` | The providers the person picks from, by id, comma-separated; the first is a turn's default. **Security:** every provider listed receives what the chat reads for its person in every tenant, confidential tickets included — the owner's accepted risk ([H-37](docs/security/chat.md#h-37)); list a hosted provider only where every tenant's data may go to it |
+| `COWORK_CHAT_TURN_TIMEOUT` | `5m` `# default` | a duration, not negative; `0` disables | How long one turn — the model's calls and the tools' — may take; past it the turn ends with the `error` event `timeout` |
+| `COWORK_CHAT_MAX_STEPS` | `8` `# default` | a count; `0` disables | The calls of the model in one turn |
+| `COWORK_CHAT_TURNS_PER_PERSON` | `2` `# default` | a count; `0` disables | The turns one person runs at once on one replica; one more is `429 chat_busy` |
+
+| Variable of a provider | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_CHAT_<ID>_NAME` | the id `# default` | `LM Studio` `# example`; 1–64 characters without control characters | What the panel shows |
+| `COWORK_CHAT_<ID>_KIND` | — (required) | `openai`, `anthropic` | The wire format: OpenAI Chat Completions (LM Studio, Ollama, vLLM, OpenAI) or the Anthropic Messages API |
+| `COWORK_CHAT_<ID>_URL` | — (required) | `http://localhost:1234/v1` `# example`, `https://api.anthropic.com` `# example` | The base URL; `/chat/completions` is appended for `openai`, `/v1/messages` for `anthropic`; no user, query or fragment. **Security:** `https://`, or `http://` only on a host of the operator's network by its name or address — the key and every turn's text travel in it ([H-41](docs/security/chat.md#h-41)); never quoted in an error |
+| `COWORK_CHAT_<ID>_MODEL` | — (required) | `qwen/qwen3-30b-a3b-2507` `# example`; 1–200 characters without spaces or control characters | The model by the name its provider knows it; it is the mark's middle part |
+| `COWORK_CHAT_<ID>_API_KEY` | empty `# default`; required for `anthropic` | — | Sent as `Authorization: Bearer` (`openai`, where set) or `x-api-key` (`anthropic`), to that provider's host only. **Security:** a secret: from a Secret of its own in the chart, never echoed; the log's clip of a provider's error has it replaced ([H-42](docs/security/chat.md#h-42)) |
+
 #### Frontend container
 
 The image's entrypoint substitutes these four variables into the nginx configuration, and
@@ -602,10 +634,10 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Fourteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Sixteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
-  changing a password, logging out, a turn of the chat, a global administrator's list of every
-  tenant, and the administration acts that can give access — adding a
+  changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
+  capabilities, a global administrator's list of every tenant, and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
   [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
@@ -658,6 +690,8 @@ full.
 | `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
 | `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, `restricted_project`, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
+| `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
+| `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
 | `GET /api/v1/tenants` | a global administrator, session only: every tenant of the installation by slug, `{"slug","name","role"}` — `role` the caller's, the higher of mapping and grant, `null` where they hold none; `limit` and `cursor`. Anybody else `403 forbidden`; a token `403 session_required` |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
@@ -717,6 +751,20 @@ announced on the event stream as `membership.changed`.
 | `GET …/projects/{project}/access` | `read` scope: the project's access list by person id, each entry `member` or `viewer`, with the person's `email` |
 | `PUT …/projects/{project}/access/{person_id}` | a session only: `{"role"}`, `member` or `viewer`, puts a member of the tenant on the list or changes their entry — their role in the project is the lower of their tenant role and the entry; `404 person_not_found` for a person who is no member. The list may be written before the project is restricted |
 | `DELETE …/projects/{project}/access/{person_id}` | takes a person off the list; `204`, also when they were not on it |
+
+</details>
+
+<details>
+<summary>The chat in the UI — 3 routes</summary>
+
+Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+[docs/developer/chat.md](docs/developer/chat.md)).
+
+| Method and path | Does |
+|---|---|
+| `GET …/chat` | whether the tenant's members may chat: `{"available", "providers": [{"id","name","kind","model"}], "reason"}` — the providers in the configured order, never a URL or a key; `reason` is `not_configured` without a provider, `null` otherwise; a token as well |
+| `POST …/chat` | a session only, CSRF-checked: one turn, `{"conversation","messages"}` and optionally `provider` (an id of the list; the first when left out; another is `400 validation_failed`) and `context` (the page); `200 text/event-stream` with the events `text`, `tool_call`, `ui`, `tool_result`, `error` and `done` last, which carries the messages to append and the reason `answered`, `step_limit`, `stopped` or `error`. Every tool call runs at once as the person's agent, `chat/<model>/<conversation>`, with the person's chat capabilities; `409 chat_unavailable` without a provider, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON` |
+| `DELETE …/chat/turns` | a session only, never an agent-marked one, CSRF-checked: ends every running turn of the session's person in the tenant on the replica that answers, at once; `204` once they have ended, or after five seconds; nothing running is no error. Another replica's turns are not reached ([H-48](docs/security/chat.md#h-48)) |
 
 </details>
 
@@ -859,14 +907,14 @@ every error body carries one of these as `code`.
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
-| `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider, or its provider is not declared inside the installation's trust boundary and the tenant's administrators have not allowed it; `GET …/chat` says which (docs/adr/0076) |
+| `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
 | `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |
 | `unsupported_media_type` | 415 | The body's type is not one the route accepts |
 | `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
 | `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
 | `too_many_attempts` | 429 | More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
-| `chat_busy` | 429 | The person has as many turns of the chat running as COWORK_CHAT_TURNS_PER_PERSON allows on this replica — in another tab, say; one ends or is stopped first (docs/adr/0076) |
+| `chat_busy` | 429 | The person has as many turns of the chat running as COWORK_CHAT_TURNS_PER_PERSON allows on this replica — in another tab, say; one ends, or is stopped with `DELETE …/chat/turns`, first (docs/adr/0076) |
 | `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
 | `chat_provider_failed` | 502 | The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076) |
 | `not_ready` | 503 | The backend cannot do the work now: it cannot reach its database, it streams no events, or it is shutting down and ends a turn of the chat |
@@ -946,6 +994,13 @@ storage:                              # S3-compatible object storage; without an
     caConfigMap: ""                   # ConfigMap with a private authority's PEM, mounted at /etc/cowork/s3-ca
     keys:
       ca: ca.crt                      # the ConfigMap's key; COWORK_S3_CA=/etc/cowork/s3-ca/<key>
+chat:                                 # the chat in the UI; every value is rendered only with a provider
+  providers: []                       # COWORK_CHAT_PROVIDERS and COWORK_CHAT_<ID>_*: the person picks one, the first is the default.
+                                      # Each: {id, name, kind: openai|anthropic, url, model, existingSecret, keys: {apiKey: apiKey}};
+                                      # a key from that provider's own Secret only, an inline apiKey fails rendering.
+                                      # Every provider receives what the chat reads in every tenant, confidential tickets included
+  turnTimeout: 5m                     # COWORK_CHAT_TURN_TIMEOUT; 0 disables
+  maxSteps: 8                         # COWORK_CHAT_MAX_STEPS; 0 disables
 networkPolicy:                        # which pods may reach the backend
   enabled: true                       # ingress to the backend pods from the frontend pods only; enforced only by a network plugin that implements NetworkPolicy
 ingress:                              # targets the frontend Service

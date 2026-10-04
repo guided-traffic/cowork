@@ -13,7 +13,11 @@ routes and the consent field take a session only; the agent header marks a sessi
 on 2026-10-04 by the owner's answer to "does a change of the server key end the sessions of the
 identity provider?" (D1: there is one server key and no rotation that keeps the old one; a change
 fails closed, and its consequences are named), and for the global administrator's view of the
-installation's tenants (D6: fourteen routes, [ADR 0035](0035-personal-access-tokens.md) D5). Date: 2026-10-01. Decided by the owner as the answer to the
+installation's tenants (D6: fourteen routes, [ADR 0035](0035-personal-access-tokens.md) D5), and
+on 2026-10-04 by the owner's answers on the chat
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md); D6:
+sixteen routes, no consent field; a session's request the agent header marks holds the person's
+chat capabilities; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -60,7 +64,7 @@ person, the groups snapshot and the time of the last refresh (ADR 0030 D5), crea
 last-seen times, and a hash of the user agent. The cookie value is 256 random bits; only its
 hash is stored. The identity provider's ID and access tokens are verified and discarded; a
 refresh token is stored only if the groups refresh needs it, encrypted at rest with a server
-key (`COWORK_SESSION_KEY`, a Secret in the chart~~, rotated by issuing a new key and keeping
+key (`COWORK_SESSION_KEY`, a Secret in the chart, ~~rotated by issuing a new key and keeping
 the old for decryption until every session that used it is gone~~ *(not built, 2026-10-04: below)*
 *(amended 2026-10-04 by the owner, below: one key, no old one kept)*).
 *(Amended 2026-10-03: the row
@@ -192,15 +196,20 @@ resetting a password, changing one's own password and logging out
 access: adding a member, setting a grant, making or changing a group mapping, restricting or opening
 a project, putting a person on its access list (ADR 0035 D5).)* *(Amended 2026-10-04 for the chat in
 the UI, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
-thirteen routes, a turn of the chat the thirteenth, and one field — switching the tenant's
-`chat_external_allowed` on — that a token is refused (ADR 0035 D5). A session cookie still yields
+thirteen routes, a turn of the chat the thirteenth ~~and one field — switching the tenant's
+`chat_external_allowed` on — that a token is refused~~ (ADR 0035 D5). A session cookie still yields
 the person with no agent flag, but an `X-Cowork-Agent` header on the session's request marks that
-request as an agent's, every capability and the hard-off list
+request as an agent's, ~~every capability~~ the capabilities the person chose for the chat
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5, amended again 2026-10-04) and the hard-off list
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D3): the chat's tool calls are such requests, and such a request is refused the ~~thirteen~~ routes.)*
 *(Amended 2026-10-04: ~~thirteen~~ fourteen routes, the list of every tenant of the installation
 the fourteenth ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D2, ADR 0035 D5); an agent-marked request is refused all fourteen.)*
+D2, ADR 0035 D5); an agent-marked request is refused all ~~fourteen~~.)* *(Amended 2026-10-04 by the
+owner's answers on the chat, ADR 0076: ~~fourteen~~ sixteen routes — stopping the person's running
+turns of the chat and choosing the chat's capabilities the fifteenth and sixteenth (ADR 0035 D5);
+the consent field is gone with the consent; an agent-marked request is refused all sixteen.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))

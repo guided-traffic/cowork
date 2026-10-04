@@ -20,7 +20,11 @@ D2), provisionally with that record (D3: the header narrows a browser session's 
 a session the header marks is refused what only a session does), and built the same day —
 [`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`, `sessionRules` in
 [`api/api.go`](../../backend/internal/api/api.go); `TestTheAgentHeaderOnASession`,
-`TestAnAgentSessionIsRefusedWhatOnlyASessionDoes`.
+`TestAnAgentSessionIsRefusedWhatOnlyASessionDoes`. Amended again on 2026-10-04 by the owner's
+answers recorded in ADR 0076, and built the same day (D3: a session's request the header marks holds
+the capabilities its person chose for the chat,
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5, not every capability; the chat's `+confirmed` mark is gone with its proposals).
 
 ## Context
 
@@ -49,15 +53,19 @@ No header, and no header value, makes a flagged token's request a person's. The 
 validated — three slash-separated parts, each one to sixty-four printable characters — and a
 malformed header is refused with `400`, never silently ignored. *(Amended 2026-10-04: the header
 is read on a browser session's request too, and narrows it as it narrows an unflagged token's: the
-request becomes an agent's with every capability
+request becomes an agent's with ~~every capability
 ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-D4's full set), held to the hard-off list and every agent rule, and its acts record the person as
-the actor, the mark, the capability set and no token. A malformed header is refused there as well.
-The chat in the UI marks every tool call it makes with the person's session so —
-`chat/<model>/<conversation>`, and `chat/<model>/<conversation>+confirmed` for a call the person ran
-from the chat's proposal — and the session itself is the person's in every request without the
-header. Like every value of the header, `+confirmed` is the client's word: the record keeps it,
-nothing verifies it ([docs/security/chat.md](../security/chat.md#h-39) H-39).)*
+D4's full set)~~ *(amended again 2026-10-04)* the capabilities its person chose for the chat in the
+UI, the default where the person chose none
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5), held to the hard-off list and every agent rule, and its acts record the person as the actor,
+the mark, the capability set and no token. A malformed header is refused there as well. The chat
+in the UI marks every tool call it makes with the person's session so — `chat/<model>/<conversation>`~~,
+and `chat/<model>/<conversation>+confirmed` for a call the person ran from the chat's proposal~~ —
+and the session itself is the person's in every request without the header. Like every value of
+the header, the mark is the client's word: the record keeps it, nothing verifies it
+([docs/security/chat.md](../security/chat.md#h-39) H-39). A person who sends the header on a
+request of their own session is held to the same set: the header narrows, never widens.)*
 
 **D4 — A flagged token without a header is recorded as `unknown-agent`.** The record never
 has a hole where the agent should be.

@@ -72,9 +72,9 @@ project's bindings only ([`api/repositories.go`](../../backend/internal/api/repo
 requests and could reach every tenant the person belongs to; the loopback that sends them refuses
 every path outside the turn's tenant — the person's other tenants and the `/api/v1/me` routes
 included — and a search of every tenant looks through the turn's alone
-([`chat.Loopback`](../../backend/internal/chat/loopback.go); `TestTheChatStaysInItsTenant`). A
-tenant's consent to the chat's provider therefore covers what that tenant's turns send, and nothing
-of another tenant reaches the provider through them ([chat.md](chat.md#a-turn-works-in-its-tenant)).
+([`chat.Loopback`](../../backend/internal/chat/loopback.go); `TestTheChatStaysInItsTenant`). A turn
+therefore sends its provider one tenant's text, and nothing of another tenant reaches the provider
+through it ([chat.md](chat.md#a-turn-works-in-its-tenant)).
 
 ## A global administrator without a role
 
@@ -492,11 +492,11 @@ predicate (ADR 0065 D1).
 - **Assignment admits** (ADR 0065 D9): a person who can see the ticket's project sees a
   confidential ticket from the moment it is assigned to them. An agent can do that too
   ([tokens.md](tokens.md) H-6).
-- **The chat reads it for a person who sees it** and sends what it read to its provider, which for a
-  provider outside the installation is a copy outside the tenant ([chat.md H-37](chat.md#h-37)). Once a
-  tool's answer held a confidential ticket, every later write of that conversation waits for the
-  person, so the model does not carry the text where people who may not read it would
-  ([chat.md](chat.md#what-waits-for-the-person)).
+- **The chat reads it for a person who sees it** and sends what it read to the provider the person
+  picked, which for a hosted provider is a copy outside the installation — a risk the owner accepted
+  ([chat.md H-37](chat.md#h-37)). The model is told never to copy a confidential ticket's text into
+  another ticket, a comment or a question, and nothing enforces it: a steered model can carry the
+  text where people who may not read it would ([chat.md H-38](chat.md#h-38)).
 
 ## The activity withholds what its reader cannot see
 

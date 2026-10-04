@@ -6,8 +6,8 @@ backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx fron
 (`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart; and a third
 binary, `cowork-mcp`, on a person's machine for Claude Code.
 **Status: phase 3 (UI v1) is in progress, its first part released as `0.2.0`; phases 4 (the
-identity provider) and 5 (`cowork-mcp` and the chat in the UI) are built on this branch, on
-decisions the owner reviews before the release** — the work lists are in
+identity provider) and 5 (`cowork-mcp` and the chat in the UI) are built on this branch, with the
+owner's answers of 2026-10-04 to its open decisions** — the work lists are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and what comes after
 is [the project plan](docs/planning/project-plan.md).
 
@@ -86,8 +86,9 @@ unanswered question.
 - Both toolchains track the newest stable release (ADR 0001 D9); TypeScript stays in
   Angular's peer range. Do not pin back.
 - Backend configuration is `COWORK_*` environment variables only
-  ([`backend/internal/config`](backend/internal/config/config.go)); the chat's provider is
-  `COWORK_CHAT_*`, never a request's.
+  ([`backend/internal/config`](backend/internal/config/config.go)); the chat's providers are
+  `COWORK_CHAT_PROVIDERS` and `COWORK_CHAT_<ID>_*`, never a request's — a request picks one of
+  them by its id.
 - Migrations: `backend/internal/store/migrations/NNNNNN_<snake_name>.up.sql`, versions `1..n`
   without a gap, **no down files**; a unit test enforces it. A migration never drops, renames
   or narrows what the previous release reads (expand before contract, ADR 0028). They run as
@@ -112,11 +113,14 @@ unanswered question.
   generated client and nothing else — it imports no store and no API handler, and a unit test
   holds that (ADR 0040). `make build-mcp`; the Claude Code plugin is `claude/cowork/`. How it is
   built: [docs/developer/mcp.md](docs/developer/mcp.md).
-- The chat in the UI (ADR 0076, provisional): `POST /api/v1/tenants/{tenant}/chat`, a session only,
-  streams a turn; the loop (`internal/chat`) calls the configured model through `internal/llm`
-  (OpenAI Chat Completions or Anthropic Messages) and runs the same `internal/tools` catalogue
-  in-process through the server's own handler as the person's agent, `chat/<model>/<conversation>`.
-  The integration tier talks to `test/stubllm`, never to a real model. How it is built:
+- The chat in the UI (ADR 0076): `POST /api/v1/tenants/{tenant}/chat`, a session only, streams a
+  turn through the provider the person picks from the chart's list; the loop (`internal/chat`)
+  calls the model through `internal/llm` (OpenAI Chat Completions or Anthropic Messages) and runs
+  the same `internal/tools` catalogue in-process through the server's own handler as the person's
+  agent, `chat/<model>/<conversation>`, with the capabilities the person chose (`/me/chat`) and no
+  confirmations; `DELETE …/chat/turns` stops the person's running turns. A configured provider
+  sees everything the person can read — the owner's accepted risk. The integration tier talks to
+  `test/stubllm`, never to a real model. How it is built:
   [docs/developer/chat.md](docs/developer/chat.md).
 
 ## Testing

@@ -77,8 +77,9 @@ tool again after a failure makes a new call with new keys.)* *(Amended 2026-10-0
 the UI, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
 the chat, the catalogue's second host, derives a tool call's keys instead of drawing them — the
 n-th `POST` of a call gets a name-based UUID of the conversation's id, the call's id and n — so a
-call the conversation holds, run again — a decision the browser sends twice — carries the same
-keys and replays instead of acting twice. A new answer of the model has new call ids and new keys.
+call the conversation holds, run again — ~~a decision the browser sends twice~~ *(amended again
+2026-10-04: the decisions are gone with the proposals, ADR 0076; a turn the browser sends twice)* —
+carries the same keys and replays instead of acting twice. A new answer of the model has new call ids and new keys.
 The keys are scoped to the person, whose session the chat's requests carry (D3).)*
 
 **D6 — A stored response contains no attachment bytes** and is bounded by the JSON body

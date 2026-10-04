@@ -46,7 +46,7 @@ moved here from phase 4: the browser never holds a token
 **Goal:** people log in through the identity provider; only allowed groups get in; roles hold.
 The phase became a family ticket in [docs/tickets/](../tickets/README.md) when it started
 ([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
-D2) and was built in the same change, on decisions the owner reviews before the release; what it
+D2) and was built in the same change; the owner answered its open decisions on 2026-10-04. What it
 built is in the Status sections of ADR 0029–0035 and in
 [identity-provider.md](../security/identity-provider.md).
 
@@ -57,16 +57,16 @@ ends with the ticket updated by Claude; and in the UI, a chat panel at the right
 agent operate cowork for the person, through a model the installation names — a local LM
 Studio first. The phase became tickets in [docs/tickets/](../tickets/README.md) when it started
 ([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
-D2) and was built on the branch on decisions the owner reviews before the release — the chat's
-provisionally, as [ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
-says. What it built is in the Status sections of ADR 0040–0045, ADR 0066–0070 and ADR 0076, in
+D2) and was built on the branch; the owner answered its open decisions on 2026-10-04, the chat's
+among them ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)). What it built is in the Status sections of ADR 0040–0045, ADR 0066–0070 and ADR 0076, in
 [claude-code.md](../operations/claude-code.md) and [chat.md](../operations/chat.md) for running it,
 [mcp.md](../developer/mcp.md) and [chat.md](../developer/chat.md) for changing it, and
 [agent-client.md](../security/agent-client.md) and [chat.md](../security/chat.md) for what it leaves
 open; the workflow document it consumed is deleted (ADR 0074 D3). Verified on 2026-10-04: the MCP
 server over stdio against a fresh backend, and the chat against LM Studio — a ticket filed, its
-urgency set to `now`, moved to `analysed`, each act the chat's. Not verified: a live `claude`
-session with the plugin, its hooks and its skills.
+urgency set to `now`, moved to `analysed`, each act the chat's, an act beyond the person's chosen
+capabilities refused, and Stop ending the turn and the model's generation at once. Not verified: a
+live `claude` session with the plugin, its hooks and its skills.
 
 ## Phase 6 — Import and cut-over
 

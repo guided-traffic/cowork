@@ -17,8 +17,9 @@ nginx's static problem bodies for what it answers itself (`413`, `502`, `503`, `
 Amended 2026-10-04 for the chat in the UI
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
 built the same day (D1: an error after a stream's answer has begun; D4: three codes of the chat in
-the catalogue — `chat_unavailable` `409`, the tenant has no chat, or its consent ended while a turn
-ran; `chat_busy` `429`, the person runs as many turns as `COWORK_CHAT_TURNS_PER_PERSON` allows;
+the catalogue — `chat_unavailable` `409`, the tenant has no chat ~~or its consent ended while a turn
+ran~~ *(amended again 2026-10-04 with the owner's answers recorded in ADR 0076: there is no consent; the
+installation configures no provider)*; `chat_busy` `429`, the person runs as many turns as `COWORK_CHAT_TURNS_PER_PERSON` allows;
 `chat_provider_failed` `502`, the provider could not be reached, refused or answered what cowork
 cannot read — and `not_ready` widened from "the backend cannot reach its database" to work the
 backend cannot do now: no database, no event stream, or a turn of the chat its shutdown ends).
@@ -40,9 +41,11 @@ the first real route exists.
 link that must resolve), `title` (the code in words), `status` (equal to the HTTP status),
 `detail` (for a person), `instance` (the request path). *(Amended 2026-10-04: a turn of the chat
 answers `200` with a stream once it has begun, so what fails after that — the provider, the turn's
-time, the consent withdrawn — is the stream's `error` event, whose data is the same problem body
+time ~~and the consent withdrawn~~ — is the stream's `error` event, whose data is the same problem body
 with its `request_id` (`problem.BodyOf`); its `status` names the failure, not the response's. What
-fails before the stream begins is a problem response like any.)*
+fails before the stream begins is a problem response like any. *(Amended again 2026-10-04, ADR 0076:
+a turn the person stops is no failure — its stream ends with `done` and the reason `stopped`, and no
+`error` event.)*)*
 
 **D2 — Three extension members.** `code`: a stable snake_case identifier clients switch on;
 `request_id`: the id of the request, also sent as the `X-Request-Id` response header and

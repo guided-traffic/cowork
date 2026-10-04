@@ -19,9 +19,9 @@ the API's handlers. Every act it performs is an API request with its token, judg
 API's rules; a person with the same token and `curl` can do exactly as much (ADR 0040 D3).
 
 The same tool catalogue has a second host: the chat in the UI runs it inside the backend, with the
-person's browser session marked as its agent instead of a token, without the `api` escape hatch and
-`session_start`, and with a policy per tool that holds some acts for the person's decision. What that
-host holds, sends and leaves open is [chat.md](chat.md); this page is the client on the person's
+person's browser session marked as its agent instead of a token, holding the capabilities the person
+chose for it, and without the `api` escape hatch and `session_start`. What that host holds, sends and
+leaves open is [chat.md](chat.md); this page is the client on the person's
 machine.
 
 **Every request is marked as an agent's.** The client sends `X-Cowork-Agent:

@@ -99,10 +99,10 @@ reaches further than its person does at that moment.
 
 ## What only a session does
 
-Fourteen operations take a browser session only, and answer a token — whatever its scope, an
+Sixteen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these fourteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these sixteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -120,6 +120,8 @@ set to exactly these fourteen ([`backend/api/document_test.go`](../../backend/ap
 | `changeMyPassword` | `PUT /api/v1/me/password` | a password the person no longer knows |
 | `logout` | `POST /auth/logout` | — a token has no session to end |
 | `runChatTurn` | `POST …/chat` | — a turn's tool calls act with the person's session, and an agent that holds a token has the MCP server ([chat.md](chat.md)) |
+| `stopChatTurns` | `DELETE …/chat/turns` | — it stops the session's person's turns, which a token never starts ([chat.md](chat.md#stop)) |
+| `setMyChat` | `PUT /api/v1/me/chat` | what the person's agent in the browser may do, in every tenant of the person ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)) |
 | `listTenants` | `GET /api/v1/tenants` | — it leaves nothing; it shows a global administrator every client of the installation, which a token of theirs does not reach ([tenancy.md](tenancy.md#a-global-administrator-without-a-role)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
@@ -133,11 +135,7 @@ from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMap
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
 
-One field follows the same rule: switching the tenant's `chat_external_allowed` on — the consent that
-lets the chat send the tenant's text to a provider outside the installation — takes a session, and a
-token that sends it is `403 session_required`; switching it off stays open to an administrator's
-`admin` token ([`api/tenants.go`](../../backend/internal/api/tenants.go) `UpdateTenant`;
-`TestChatAvailability`). A session's request that the agent header marks is refused all fourteen,
+A session's request that the agent header marks is refused all sixteen,
 with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
 ([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
 
@@ -278,9 +276,10 @@ can be, is [identity-provider.md](identity-provider.md#the-token-gate) and its H
   capability: the header adds the agent rules and takes nothing away. No header value turns a
   flagged token's request into a person's
   ([`auth/principal.go`](../../backend/internal/auth/principal.go) `Mark`; ADR 0036 D3).
-- A browser session's request becomes an agent's the same way: with the header it holds every
-  capability, meets every agent rule and is refused what only a session does; its acts record the
-  mark and no token ([`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`;
+- A browser session's request becomes an agent's the same way: with the header it holds the
+  capabilities its person chose for the chat — the default where the person chose none
+  ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)) —, meets every
+  agent rule and is refused what only a session does; its acts record the mark and no token ([`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`;
   `TestTheAgentHeaderOnASession`). The chat in the UI marks every tool call so,
   `chat/<model>/<conversation>` ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)).
 - The header is `name/model/session`, each part one to 64 printable ASCII characters that

@@ -95,7 +95,8 @@ func watchTool() Tool {
   them to this repository's document (ADR 0042 D6).
 - **`limits`** — `limitsOf(text, capabilities…)` — is the part of the description that names
   the agent rules the tool can run into; `Describe(token)` appends which of the capabilities the
-  session's token holds, read once at start (ADR 0043 D6).
+  agent holds — "This agent holds …; lacks …" —, the token's, read once at start (ADR 0043 D6), or
+  in the chat the ones the person gave it, read at each turn (D5).
 - **`Surface`**: `Anywhere` for a tool that takes everything as arguments, `Terminal` for one
   that reads the working directory — today `session_start` alone. A host without a working
   directory takes `Catalogue(tools.Anywhere)`.
@@ -171,11 +172,12 @@ the generated client over its loopback, which sends each call to the server's ow
 boundary, validation, the agent rules, the audit — with a request editor that sets the person's
 session cookie and the chat's agent header, `chat/<model>/<conversation>`. It takes
 `tools.Catalogue(tools.Anywhere)` without `api`, adds three page tools of its own through
-`tools.Define`, and offers each only under a policy of its own that may hold the call for the
-person; `Session.Bind` or `BindTenant` for the page; no memory; `Assume` instead of `ReadToken`, the
-mark and every capability being known; `Person` for `open_question`'s `me`; `Tenants` to keep a
-search of every tenant in the turn's. A tool added to the catalogue is not offered by the chat until
-its policy says how ([chat.md](chat.md#adding-a-tool-to-the-chat)).
+`tools.Define`, offers each only once its `offered` names it, and runs every call at once;
+`Session.Bind` or `BindTenant` for the page; no memory; `Assume` instead of `ReadToken`, the mark and
+the person's chat capabilities being known, which `Describe` puts into the descriptions; `Person` for
+`open_question`'s `me`; `Tenants` to keep a search of every tenant in the turn's. A tool added to the
+catalogue is not offered by the chat until `offered` names it
+([chat.md](chat.md#adding-a-tool-to-the-chat)).
 
 ## Adding a tool
 
@@ -191,8 +193,8 @@ its policy says how ([chat.md](chat.md#adding-a-tool-to-the-chat)).
    refusal of the API surfacing as an error with its code.
 5. A step in [`test/integration/mcp_test.go`](../../backend/test/integration/mcp_test.go) that
    runs it through the server against the real API.
-6. The tool's policy in the chat — `policies` in
-   [`chat/confirm.go`](../../backend/internal/chat/confirm.go), or `TestEveryToolIsClassified` fails —
-   as [chat.md](chat.md#adding-a-tool-to-the-chat) says.
+6. The tool's entry in the chat — `offered` in
+   [`chat/chat.go`](../../backend/internal/chat/chat.go), or `TestEveryToolIsNamed` fails — as
+   [chat.md](chat.md#adding-a-tool-to-the-chat) says.
 7. The tool's row in [README.md, CLI (cowork-mcp)](../../README.md#cli-cowork-mcp), and ADR 0042's
    status.

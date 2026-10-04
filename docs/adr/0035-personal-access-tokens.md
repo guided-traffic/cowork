@@ -17,7 +17,10 @@ refuse the person's tokens until they sign in to the browser once — built the 
 the global administrator's view of the installation's tenants (D5: fourteen operations, the list of
 every tenant among them,
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D2). Date: 2026-10-01. Decided by the owner as the answer to the
+D2), and on 2026-10-04 by the owner's answers on the chat recorded in
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) (D5:
+sixteen operations — stopping the person's turns of the chat and choosing the chat's capabilities
+among them —, and the tenant's consent field gone with the consent; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -157,12 +160,13 @@ do. A route that does both — a grant or a mapping raised or lowered, a project
 ~~twelve~~ thirteen operations — a turn of the chat, `runChatTurn`, takes a session too, for a
 reason of its own: its tool calls act with the person's session, and an agent that holds a token
 has the MCP server ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)).
-Beside the thirteen, one field follows the rule: switching the tenant's `chat_external_allowed` on
+~~Beside the thirteen, one field follows the rule: switching the tenant's `chat_external_allowed` on
 in `PATCH /api/v1/tenants/{tenant}` takes a session — the consent lets the tenant's data leave the
 installation, which outlives a leaked token's revocation — and a token that tries is
 `403 session_required`; switching it off only takes something away and stays open to an
 administrator's `admin`-scope token ([`api/tenants.go`](../../backend/internal/api/tenants.go)
-`UpdateTenant`). A session the agent header marks is refused all ~~thirteen~~
+`UpdateTenant`).~~ *(The field is gone with the tenant's consent, 2026-10-04, ADR 0076.)* A session
+the agent header marks is refused all ~~thirteen~~
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D7).)* *(Amended 2026-10-04 for the global administrator's view,
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
@@ -172,7 +176,14 @@ installation's clients beyond the person's memberships, and a token of theirs ke
 those memberships, so a leaked one lists no other client. The same holds, in the request layer and
 not in the document, for the reach into a tenant in which the global administrator holds no role:
 a token's request there answers like an unknown tenant. A session the agent header marks is refused
-all fourteen.)*
+all ~~fourteen~~.)* *(Amended 2026-10-04 by the owner's answers on the chat, ADR 0076, and built the
+same day: ~~fourteen~~ sixteen operations. Stopping the person's running turns of the chat,
+`stopChatTurns`, takes a session as a turn does — the turns are the session's person's, and a token
+starts none. Choosing the chat's capabilities, `setMyChat` (`PUT /api/v1/me/chat`), takes a session
+by the rule itself: the set is what the person's agent in the browser may do in every tenant of the
+person, access that would outlive a leaked token's revocation; reading it, `getMyChat`, takes either
+credential. A session the agent header marks is refused all sixteen — the chat cannot stop turns or
+widen its own capabilities.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

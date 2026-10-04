@@ -102,8 +102,10 @@ password `dev-only-cowork`, or *Sign in with Dex* as `ada@example.com`, `bob@exa
 `cyd@example.com` or `dan@example.com` with `dev-only-dex` (what each is:
 [testing.md](testing.md#the-identity-provider-in-the-tests)). When LM Studio answers on
 `localhost:1234` and lists the model `COWORK_DEV_CHAT_MODEL` (`qwen/qwen3-30b-a3b-2507` `# default`),
-the backend gets it as the chat's provider, declared inside, and the UI has its assistant; load the
-model with a context of 16k tokens or more first ([chat.md](../operations/chat.md#lm-studio-on-the-operators-machine)).
+the backend gets it as the chat's one provider, `lmstudio`, and the UI has its assistant; load the
+model with a context of 16k tokens or more and one prediction first — `make dev` never loads it, and
+prints the `lms load` command when the `lms` CLI shows the model is not loaded
+([chat.md](../operations/chat.md#lm-studio-on-the-operators-machine)).
 Without it `make dev` runs without the chat and says so. The browser asks once about the dev
 server's self-signed certificate (HTTPS, because Safari stores no `Secure` cookie from
 `http://localhost`, and Dex knows `https://localhost:4200/auth/callback` as the redirect URI). A

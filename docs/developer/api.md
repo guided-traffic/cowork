@@ -27,7 +27,7 @@ into the file of its path family.
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
-| [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose ([chat.md](chat.md)) |
+| [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
@@ -120,19 +120,18 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-fourteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+sixteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
-of a leaked token, which is why a token cannot call them; a turn of the chat acts with the person's
-session, and a token's agent has the MCP server; the list of every tenant is a global
+of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
+(`setMyChat`); a turn of the chat acts with the person's session and its stop ends the session's
+person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
-[tokens.md](../security/tokens.md#what-only-a-session-does)). One field is held the same way inside
-`updateTenant`: switching `chat_external_allowed` on takes a session (`consentRules` in
-[`tenants.go`](../../backend/internal/api/tenants.go)):
+[tokens.md](../security/tokens.md#what-only-a-session-does)):
 
 - **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
   cookie is not looked at. A valid token on a session-only operation is `403 session_required`
@@ -171,8 +170,10 @@ administrator's view of the installation's clients, which a token of theirs does
   with or without the header (recorded as the header or `unknown-agent`) and holds the token's
   capabilities; a plain token with the header is an agent's holding every capability; a plain
   token without it is the person ([ADR 0036], [ADR 0043] D4). A session is read the same way as a
-  plain token: with the header its request is an agent's holding every capability, which
-  `sessionRules` then refuses what only a session does — the chat in the UI marks its tool calls so,
+  plain token: with the header its request is an agent's holding the capabilities its person chose
+  for the chat, or `auth.DefaultChatCapabilities` ([ADR 0043] D5; `chatCapabilities` in
+  [`session.go`](../../backend/internal/api/session.go), one read of `chat_capabilities` per such
+  request), which `sessionRules` then refuses what only a session does — the chat in the UI marks its tool calls so,
   `chat/<model>/<conversation>` ([chat.md](chat.md#the-loopback)); without it the session is the
   person.
 - The token's `last_used_on` is written at most once per UTC day (a process-local note, then
@@ -338,7 +339,7 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   with `replayed[T]` and `header`. The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
   come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
-  from the conversation and the call, so a decision sent twice replays ([chat.md](chat.md#the-loopback)).
+  from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
 transition carries its `from` state instead; a key sent with it is recorded on the act, not

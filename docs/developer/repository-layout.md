@@ -24,7 +24,7 @@ cowork/
 │   │   │   └── apigen/         # oapi-codegen output: server interface, models, client (generated)
 │   │   ├── auth/               # tokens, sessions, passwords, the principal and agent mark, authorization, sealing
 │   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
-│   │   ├── chat/               # the chat in the UI: a turn's loop, the tool policies, the loopback, the page tools
+│   │   ├── chat/               # the chat in the UI: a turn's loop, the tools it offers, the loopback, the page tools
 │   │   ├── config/             # COWORK_* environment variables → Config
 │   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica

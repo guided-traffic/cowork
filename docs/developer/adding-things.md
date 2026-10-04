@@ -136,7 +136,7 @@ the mechanics are [api.md](api.md)).
    an inline value is for a throw-away installation only — the database URLs and the local
    administrator have one, the server key and the identity provider's client secret none — and the
    chart says so when it is used. A variable that belongs to a switch, as every `COWORK_OIDC_*`
-   belongs to `COWORK_OIDC_ISSUER` and every `COWORK_CHAT_*` to `COWORK_CHAT_PROVIDER`, is an error
+   belongs to `COWORK_OIDC_ISSUER` and the chat's limits to `COWORK_CHAT_PROVIDERS`, is an error
    without it (`oidcVariables` in [`config/oidc.go`](../../backend/internal/config/oidc.go),
    `chatVariables` in [`config/chat.go`](../../backend/internal/config/chat.go)) and is rendered by
    the chart only with it.
@@ -196,15 +196,16 @@ the mechanics are [api.md](api.md)).
 The checklist is [mcp.md](mcp.md#adding-a-tool): first whether it should be a tool at all
 ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D1), then the route, the
 `define` in `backend/internal/tools/`, the unit tests against the fake API, a step of the
-integration test through the server, the tool's policy in the chat, and the tool's row in the
-README.
+integration test through the server, the tool's entry in the chat's `offered`, and the tool's row
+in the README.
 
 ## A tool of the chat
 
-A shared tool reaches the chat in the UI only with a policy — read, write, decision, a review of
-its own, or left out — and a page tool of the chat's own sends its `ui` event only for a path the
-frontend's `navigable` accepts. The checklist is [chat.md](chat.md#adding-a-tool-to-the-chat); a new
-wire format of a model is [chat.md](chat.md#the-gateway).
+A shared tool reaches the chat in the UI only once `offered` names it — offered, or left out — and
+then runs at once, bounded by the capabilities the person gave the chat; a page tool of the chat's
+own sends its `ui` event only for a path the frontend's `navigable` accepts. The checklist is
+[chat.md](chat.md#adding-a-tool-to-the-chat); a new wire format of a model is
+[chat.md](chat.md#the-providers-and-the-gateway).
 
 ## A CI job
 

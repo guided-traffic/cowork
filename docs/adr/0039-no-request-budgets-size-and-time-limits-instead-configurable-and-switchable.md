@@ -26,7 +26,9 @@ Amended 2026-10-04 for the chat in the UI
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) D7),
 provisionally with that record (D2: a turn's limits; D3: the turn's stream behind nginx), and built
 the same day ([`config/chat.go`](../../backend/internal/config/chat.go),
-[`api/chat.go`](../../backend/internal/api/chat.go)).
+[`api/chat.go`](../../backend/internal/api/chat.go)). Amended again on 2026-10-04 by the owner's
+answers recorded in ADR 0076 (D2: no decisions in a turn's body; the person's stop of their turns, on
+the replica that answers it), built the same day.
 
 ## Context
 
@@ -69,12 +71,15 @@ turn's stream ends with the `error` event `timeout`), `COWORK_CHAT_MAX_STEPS` (`
 a turn; the turn then ends and a new message goes on) and `COWORK_CHAT_TURNS_PER_PERSON` (`2` turns
 of one person at once on one replica; one more is `429 chat_busy`). A turn's body is held to
 `COWORK_MAX_JSON_BODY` like any. Fixed, not configured: the conversation's shape in the API document
-— at most 400 messages, a text of at most 100,000 characters, 32 tool calls a message, 32
-decisions —, a tool's answer clipped to 16,000 characters for the model and 2,000 for the person,
+— at most 400 messages, a text of at most 100,000 characters, 32 tool calls a message, ~~32
+decisions~~ —, a tool's answer clipped to 16,000 characters for the model and 2,000 for the person,
 a comment after ten seconds of silence, and the gateway's bounds on a provider: two minutes to
 begin an answer, ninety seconds of silence, a line of 1 MiB, a stream of 32 MiB, a body of 8 MiB,
 an answer's text of 256 KiB, a call's arguments of 64 KiB, 64 calls an answer, 4096 tokens an
-answer. The count of turns is a bound on what runs at once, not a budget: D1 stands.)*
+answer. The count of turns is a bound on what runs at once, not a budget: D1 stands.)* *(Amended
+2026-10-04 by the owner's answers on the chat, ADR 0076: the decisions are gone with the proposals;
+a person stops their running turns at once with `DELETE …/chat/turns`, which ends them on the
+replica that answers it, as the count of turns is that replica's.)*
 
 **D3 — The frontend proxy is sized above the backend's limits.** nginx's
 `client_max_body_size` is set from the attachment maximum plus headroom and its proxy

@@ -15,7 +15,10 @@ D7 (D6: the restrictive policies hold a group mapping's insert and update to an 
 tenant who is a global administrator as well), and for the global administrator's grant to
 themselves of [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2 (D6: a global administrator reads every tenant, inserts their own grant in any role and changes
-its role). Date: 2026-09-30.
+its role), and for the chat's capabilities of
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5 (D6: `chat_capabilities`, a named table that only its person reads and writes; built 2026-10-04).
+Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -211,7 +214,15 @@ it sees rows, is a `BEFORE UPDATE OF` trigger: `projects_restriction_guard`
 ([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql))
 refuses a change of `projects.restricted` unless the caller is an administrator of the tenant, while
 a member still changes the project's other settings; a superuser, whom no policy binds either, is
-left to it.
+left to it. *(Added 2026-10-04 for the chat's capabilities,
+[migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql):)*
+`chat_capabilities` — one row per person, the set the person gave the chat in the UI — carries no
+tenant and is read, inserted and updated by its person alone (`user_id = app_user_id()` in every
+policy), never deleted (no grant), and holds only the nine capabilities (a `CHECK`). It is a table of
+its own rather than a column of `users` because `users`' update policies are permissive and admit an
+administrator of the account, the start-up synchronisation and the identity provider: a policy that
+let a person update their own row would admit every column the runtime role may update there,
+`global_admin` and `deactivated_at` among them, and a policy sees rows, not columns.
 
 **D7 — Widening the boundary is a migration, and this record says how.** When the product
 needs a cross-tenant view, the policy of the tables concerned is amended

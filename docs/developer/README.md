@@ -38,15 +38,16 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, fourteen routes take a session only — what can give access, or outlive a leaked
-  token, a turn of the chat and a global administrator's list of every tenant — and a temporary
+  CSRF-checked, sixteen routes take a session only — what can give access, or outlive a leaked
+  token, the chat's turn, its stop and its capabilities, and a global administrator's list of every
+  tenant — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it
   ([api.md](api.md#authentication), [sessions](../security/sessions.md)).
 - **One tool catalogue, two hosts.** `internal/tools` is the catalogue of workflow tools: `cowork-mcp`
   serves it to Claude Code over stdio with a token, and the chat in the UI runs it inside the backend
-  with the person's session marked as its agent — every tool call a request through the whole
-  pipeline, never a shortcut to the store ([mcp.md](mcp.md), [chat.md](chat.md)).
+  with the person's session marked as its agent, holding the capabilities the person chose — every
+  tool call a request through the whole pipeline, never a shortcut to the store ([mcp.md](mcp.md), [chat.md](chat.md)).
 - **Two logins, one kind of session.** The local login checks a password; the identity provider's
   login is the OpenID Connect code flow with PKCE against an issuer discovered at start. Its groups
   decide who gets in and, through each tenant's mappings, who belongs where; its session reads
@@ -96,7 +97,7 @@ change.
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
-| [chat.md](chat.md) | You touch the chat in the UI: the turn, the loop, the loopback, the policy of every tool and the person's decisions, the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
+| [chat.md](chat.md) | You touch the chat in the UI: the turn and its stop, the loop, the loopback, the person's capabilities, the providers and the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
 | [testing.md](testing.md) | You are adding a test, choosing a tier, or a suite is failing and you need to know what it is for and what it needs |
 | [ci-and-release.md](ci-and-release.md) | You touch a workflow, Renovate or the release |
@@ -118,7 +119,7 @@ change.
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
 | A Claude Code session | The SessionStart hook runs `cowork-mcp session-context`, which finds the binding by the git remotes and prints the active ticket's context; the tools of `internal/tools` call the API through the generated client with the token and the agent header; the Stop hook reminds of a ticket left standing | [mcp.md](mcp.md) |
-| A turn of the chat | The browser posts the whole conversation; the backend streams the turn: it calls the configured model through `internal/llm`, runs the tools the model calls through the server's own handler as the person's agent in the turn's tenant, holds the acts a person owes a reason for as proposals, and ends with `done`, the messages to append — it keeps nothing | [chat.md](chat.md) |
+| A turn of the chat | The browser posts the whole conversation and the provider the person picked; the backend streams the turn: it calls that provider's model through `internal/llm`, runs every tool the model calls at once through the server's own handler as the person's agent — the person's chosen capabilities — in the turn's tenant, and ends with `done`, the messages to append — it keeps nothing; Stop aborts the request and `DELETE …/chat/turns` ends the person's turns on the replica | [chat.md](chat.md) |
 
 ## What has no page here
 

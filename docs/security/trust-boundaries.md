@@ -18,7 +18,7 @@ model, is [chat.md](chat.md).
 | The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
-| The backend process | The chat's provider at `COWORK_CHAT_URL`, with what a turn sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
+| The backend process | The chat's providers at their `COWORK_CHAT_<ID>_URL`, each with what a turn that picked it sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
 | The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
 | The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` and `/auth/` for anyone and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
 | The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
@@ -106,16 +106,17 @@ the backend: everything it sends comes through the browser, to `/auth/callback`.
 
 ## The chat's provider
 
-With `COWORK_CHAT_PROVIDER` set, the backend calls a model for the chat in the UI
+With `COWORK_CHAT_PROVIDERS` set, the backend calls the model of the provider a turn picked for the
+chat in the UI
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
-The provider is a boundary the other way round from the issuer: it is trusted with what a turn sends
+A provider is a boundary the other way round from the issuer: it is trusted with what a turn sends
 it — the instructions, the conversation, and every tool's answer of the turn, which is the text of
 the tenant's tickets — and with nothing it answers. Its text reaches the person as text; its tool
 calls are requests of the person's session marked as the chat's agent, which the API judges like any
-agent's; a refusal is an answer the model reads. Whether the provider may receive a tenant's text at
-all is the operator's statement (`COWORK_CHAT_INSIDE`, the provider runs inside the installation's
-trust boundary) or the tenant's consent, bound to the provider it was given to
-([chat.md](chat.md#what-leaves-the-installation-and-with-whose-consent)).
+agent's, with the capabilities the person chose; a refusal is an answer the model reads. Every
+configured provider may receive what the person can read in the turn's tenant, confidential tickets
+included — a risk the owner accepted; the operator's list of providers is the only gate
+([chat.md](chat.md#what-reaches-a-provider), H-37).
 
 What is checked rather than trusted: the address is configuration only, never a request's, and
 `https://` or `http://` on a host of the operator's own network by its name
@@ -139,7 +140,7 @@ backend.
 | The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
 | The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container, which sends it to the issuer's token endpoint |
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
-| The chat's API key, `COWORK_CHAT_API_KEY` | `chat.existingSecret` only — there is no inline value — under `chat.keys.apiKey`; required for `anthropic`, optional for `openai` | the serving container, which sends it to the provider's host and to no other ([chat.md](chat.md#what-leaves-the-installation-and-with-whose-consent)) |
+| A chat provider's API key, `COWORK_CHAT_<ID>_API_KEY` | that provider's `chat.providers[].existingSecret` only — one Secret per provider, there is no inline value — under its `keys.apiKey`; required for kind `anthropic`, optional for `openai` | the serving container, which sends it to that provider's host and to no other ([chat.md](chat.md#what-reaches-a-provider)) |
 | A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
@@ -152,7 +153,7 @@ value. The inline `database.url`, `database.owner.url` and `localAdmin.username`
 `localAdmin.password` put the credential in plain text
 into a release Secret and into `helm get values`; the chart notes warn at install time
 ([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The identity provider's client
-secret and the chat's API key have no inline path at all.
+secret and the chat providers' API keys have no inline path at all.
 
 The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
 label of its own, so no two uses share a key:
