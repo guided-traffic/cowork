@@ -306,4 +306,5 @@ watching the console for a violation; nginx has no unit test
 Response validation does not reach a turn: its answer is a stream, not a response of the generated
 server ([testing.md](testing.md#response-validation)). A real model is checked by hand
 ([docs/operations/chat.md](../operations/chat.md#lm-studio-on-the-operators-machine)); the end-to-end
-tier, which would hold a conversation against the stub, does not exist.
+tier ([testing.md](testing.md#end-to-end-tests)) configures no provider of the chat and holds no
+conversation yet.

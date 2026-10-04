@@ -26,7 +26,8 @@ pages — "create the first tenant" only while `listTenants` finds none
 [sessions.md](../security/sessions.md), [local-accounts.md](../security/local-accounts.md) and
 [csrf.md](../security/csrf.md) describe it, and `make dev` logs the browser in through it over
 HTTPS; the dev server's proxy holds no credential ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)).
-Its end-to-end paths are T29's. Left:
+Its end-to-end paths run in the tier of T29 — the local form, a temporary password, *Sign in with
+Dex*, the cookie, a write past the CSRF check and the sign-out, in Chromium and WebKit. Left:
 
 - **A token names its project restriction by id.** `Token` carries `restricted_project_id`
   ([`schemas.yaml`](../../backend/api/components/schemas.yaml#L177-L180)) beside the tenant's slug,

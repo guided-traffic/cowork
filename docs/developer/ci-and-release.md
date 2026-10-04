@@ -5,7 +5,9 @@ The two workflows, Renovate, and where the state of the runners and secrets is r
 **"Test and Release"** ([`release.yml`](../../.github/workflows/release.yml)) runs on every push
 and PR to `main`: `linter`, `gosec`, `govulncheck`, `cyclomatic-complexity`, `malware-scan`,
 `unit-tests`, `integration-tests`, `frontend`, `helm`, `container-malware-scan` (one leg per
-image: builds the `Containerfile` from its directory, Trivy at CRITICAL/HIGH), `coverage-report`
+image: builds the `Containerfile` from its directory, Trivy at CRITICAL/HIGH, and hands the scanned
+image to `e2e`), `e2e` (End-to-End Tests: both scanned images behind the Ingress stand-in in
+Chromium and WebKit, below), `coverage-report`
 (merges the backend profiles, comments the PR with the per-package table, the difference to
 `main` and the frontend lines percentage, writes the badge on `main`), `release-tooling`. On a
 push to `main`, `semantic-release` — which `needs:` every one of them — cuts a release from the
@@ -13,9 +15,12 @@ conventional commits with a GitHub App token and commits the badge.
 
 **`main` is protected** by the ruleset `main`
 ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)):
-a change arrives by pull request; the thirteen jobs are required checks, bound to the GitHub
+a change arrives by pull request; the thirteen jobs it names are required checks, bound to the GitHub
 Actions app; the branch must be up to date with `main`; history stays linear; force pushes and
-deletion are refused. A pull request is squashed, and the squash commit's subject is the pull
+deletion are refused. **The ruleset must gain the fourteenth, `End-to-End Tests`** (the job `e2e`):
+a required check is the ruleset's, which only the owner changes (ADR 0073 D6); until it is added
+the job runs on every pull request and `semantic-release` needs it, but a pull request it fails can
+still be merged. A pull request is squashed, and the squash commit's subject is the pull
 request's title — so the title is the conventional commit semantic-release reads, and a
 `fix:` or `feat:` title cuts a release. Auto-merge is on, and the head branch is deleted on
 merge. The organisation's administrators and the release App bypass the ruleset; the App
@@ -24,7 +29,7 @@ is the exception to the pull request: an administrator pushes it directly to `ma
 `[skip ci]` in the message (ADR 0073 D2). Release tags `v*` are created,
 moved or deleted only by that App (the ruleset `release tags`).
 
-Two jobs need more explanation than their targets:
+Three jobs need more explanation than their targets:
 
 - **`linter`** (Code Linting) runs `make lint` and then `make generate-check`: the generated
   files — the bundled API document, the oapi-codegen and sqlc output, the problem-code enum and
@@ -39,6 +44,17 @@ Two jobs need more explanation than their targets:
   and `COWORK_TEST_OIDC_ISSUER` from the Makefile's defaults, and `make dex-down` and
   `make minio-down` run `if: always()`. Every one of these variables is required by the tests, so a
   job that loses one fails instead of passing on zero tests.
+- **`e2e`** (End-to-End Tests) runs after `container-malware-scan`, on the images that job built
+  and scanned: each leg saves its image as the artefact `e2e-image-<component>` (kept a day), and
+  `e2e` loads both, `cowork-<component>:scan-<sha>`, and runs `make e2e` with them
+  ([testing.md](testing.md#end-to-end-tests)). It installs `make`, `libatomic1`, `curl` and
+  `openssl` with `sudo apt-get` and the browsers with `make e2e-browsers
+  PLAYWRIGHT_INSTALL_FLAGS=--with-deps`; the stack runs on the job's Docker daemon with its two
+  ports on `127.0.0.1`, which the runner reaches as the integration job reaches MinIO and Dex. Ten
+  minutes are its budget (`timeout-minutes`, ADR 0056 D4). A failed or cancelled run uploads
+  `e2e-results` — traces, videos, screenshots, the containers' logs and the HTML report, kept a
+  week — and `make e2e-down` runs `if: always()` for a run the budget cut short. **Not run on a
+  runner yet**: the job's first run is its first proof, its duration included.
 
 **"Release Docker & Helm"** ([`build.yml`](../../.github/workflows/build.yml)) runs on the
 published release: builds and pushes `guidedtraffic/cowork-backend:<version>` and

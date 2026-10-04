@@ -151,6 +151,8 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
 | All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
 | Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
+| End-to-end stack | the network `cowork-e2e` and the containers `cowork-e2e-postgres`, `-minio`, `-dex`, `-backend`, `-frontend`, `-ingress` (`E2E_NAME=` renames them); the UI on `https://localhost:18443` (`E2E_PORT`), Dex on `http://localhost:5557/dex` (`E2E_DEX_PORT`); the database `cowork_e2e`, the bucket `cowork-e2e` | `make e2e` makes and removes it, `make e2e-up` and `make e2e-down` keep it between runs; the local administrator `e2e-admin` with the password `e2e-only-cowork`, development values |
+| End-to-end data | the tenants `e2e` (a project per test, key `E` and seven random characters; the mapping `team-red` → `member`) and `e2e-visual` (the project `VIEW` of the dark-mode screenshot), the token `e2e-seed`, local accounts `e2e-<random>` | made by the suite through the API ([testing.md](docs/developer/testing.md#end-to-end-tests)) |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
 | Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, Dex as the identity provider (allowed `cowork-users`, administrator group `cowork-admins`, the button *Sign in with Dex*), the group mapping `team-red` → `member` in the tenant `dev`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | two ways in: the form as `dev`, or *Sign in with Dex* as one of the four Dex users; state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
 
@@ -301,6 +303,8 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 make test                       # backend unit + frontend unit
 make dev-up                     # the integration tier needs PostgreSQL, MinIO and Dex
 make test-integration           # a database and a bucket of its own per run
+make e2e-browsers               # once: Playwright's Chromium and WebKit
+make docker-build e2e           # the end-to-end tier: both images behind the Ingress stand-in, a stack of its own
 make lint frontend-lint helm-lint
 ```
 
@@ -1206,6 +1210,7 @@ make lint cyclo gosec vuln
 make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
+make docker-build e2e     # the end-to-end suite in Chromium and WebKit against both images (make e2e-browsers once)
 make build                # bin/cowork and frontend/dist/frontend/browser
 make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile
 make docker-build         # both images, from backend/Containerfile and frontend/Containerfile

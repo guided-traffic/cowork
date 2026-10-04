@@ -613,7 +613,10 @@ everything works and PrimeNG shows its license notice.
 vitest on jsdom through `ng test` ([testing.md](testing.md#frontend-unit-tests)); services
 against the generated client with `HttpTestingController`, components against mocked services
 (ADR 0053 D7). The generated client, `main.ts` and the production route stub are excluded from
-coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
+coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)). The production
+bundle in its image is walked by the end-to-end suite in [`frontend/e2e/`](../../frontend/e2e/), in
+Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the `data-testid`
+attributes it finds things by are part of a page's contract, and `ng lint` covers the suite too.
 
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md

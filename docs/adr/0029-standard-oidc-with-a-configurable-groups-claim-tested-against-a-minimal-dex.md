@@ -28,7 +28,8 @@ the Dex fixture ([`hack/dex/config.yaml`](../../hack/dex/config.yaml), `make dex
 integration tier against it; the security page is
 [docs/security/identity-provider.md](../security/identity-provider.md). The end-to-end tier's login
 through Dex ([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md))
-is not built.
+~~is not built~~ *(amended 2026-10-04: is built — a person of Dex signs in through the page and
+Dex's form against the built images, in Chromium and WebKit)*.
 
 ## Context
 

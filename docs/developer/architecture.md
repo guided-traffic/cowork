@@ -308,10 +308,9 @@ of one's own sessions; a global administrator's reading of the installation-leve
 the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the person-level lists, search,
 saved filters, the tenant board and the dashboard; the score beside the rank and the rebalancing
-of the rank's keys; deletion and purge; import; the notification inbox; metrics; the end-to-end
-tier, with its login through Dex. The order in which they come is
-[docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
-page of its own, when it exists.
+of the rank's keys; deletion and purge; import; the notification inbox; metrics. The order in
+which they come is [docs/planning/project-plan.md](../planning/project-plan.md); each gets its
+section here, or a page of its own, when it exists.
 
 [ADR 0001]: ../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
