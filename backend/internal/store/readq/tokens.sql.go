@@ -105,8 +105,8 @@ func (q *Queries) GetTokenOfUser(ctx context.Context, arg GetTokenOfUserParams) 
 }
 
 const listTokensOfUser = `-- name: ListTokensOfUser :many
-SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_project_id, t.created_at,
-       t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
+SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_tenant_id, t.restricted_project_id,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
 FROM tokens t
 LEFT JOIN tenants rt ON rt.id = t.restricted_tenant_id
 WHERE t.user_id = $1
@@ -129,6 +129,7 @@ type ListTokensOfUserRow struct {
 	Scope                domain.Scope
 	Agent                bool
 	Capabilities         []string
+	RestrictedTenantID   *uuid.UUID
 	RestrictedProjectID  *uuid.UUID
 	CreatedAt            time.Time
 	ExpiresAt            time.Time
@@ -159,6 +160,7 @@ func (q *Queries) ListTokensOfUser(ctx context.Context, arg ListTokensOfUserPara
 			&i.Scope,
 			&i.Agent,
 			&i.Capabilities,
+			&i.RestrictedTenantID,
 			&i.RestrictedProjectID,
 			&i.CreatedAt,
 			&i.ExpiresAt,

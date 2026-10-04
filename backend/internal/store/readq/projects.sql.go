@@ -143,6 +143,44 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]L
 	return items, nil
 }
 
+const listVisibleProjectKeys = `-- name: ListVisibleProjectKeys :many
+SELECT id, key
+FROM projects
+WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND app_project_visible(id)
+`
+
+type ListVisibleProjectKeysParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+}
+
+type ListVisibleProjectKeysRow struct {
+	ID  uuid.UUID
+	Key string
+}
+
+// The keys of the given projects the caller sees: how the person's tokens name
+// the project each is restricted to (docs/adr/0035 D3).
+func (q *Queries) ListVisibleProjectKeys(ctx context.Context, arg ListVisibleProjectKeysParams) ([]ListVisibleProjectKeysRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleProjectKeys, arg.TenantID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVisibleProjectKeysRow{}
+	for rows.Next() {
+		var i ListVisibleProjectKeysRow
+		if err := rows.Scan(&i.ID, &i.Key); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const projectKeyTaken = `-- name: ProjectKeyTaken :one
 SELECT EXISTS (SELECT 1 FROM projects WHERE tenant_id = $1 AND key = $2)
 `

@@ -21,8 +21,10 @@ async function everyPage<T>(
 /**
  * The person's own personal access tokens (docs/adr/0035): every page of the list, the creation
  * that hands the plaintext to its caller once, and the revocation. The routes name no tenant, so
- * unlike the tenant-scoped services this one does not follow the session. Nothing here keeps a
- * plaintext: `create` returns it and forgets it, and no list carries one.
+ * unlike the tenant-scoped services this one does not follow the session. A token names the
+ * project it is restricted to by its key (`restricted_project`), so nothing here looks projects up
+ * for the list. Nothing here keeps a plaintext: `create` returns it and forgets it, and no list
+ * carries one.
  */
 @Injectable({ providedIn: 'root' })
 export class TokensService {
@@ -34,46 +36,6 @@ export class TokensService {
   });
 
   readonly list = computed<Token[]>(() => (this.tokens.hasValue() ? this.tokens.value() : []));
-
-  /**
-   * The project restrictions of the listed tokens as one string, `tenant/id` each, or undefined
-   * when there is none. A resource loads again whenever its params function runs, so this is a
-   * computed: a list that reloads with the same restrictions does not load the keys again.
-   */
-  private readonly restrictions = computed(() => {
-    const each = this.list()
-      .filter((token) => token.restricted_tenant && token.restricted_project_id)
-      .map((token) => `${token.restricted_tenant}/${token.restricted_project_id}`);
-    return each.length > 0 ? [...new Set(each)].sort().join(' ') : undefined;
-  });
-
-  /**
-   * The key of each project a listed token is restricted to, by project id: the API names a
-   * token's project by its id, the person knows it by its key. A tenant whose projects cannot be
-   * read leaves its ids out, and the page shows the id instead.
-   */
-  readonly projectKeys = resource({
-    params: () => this.restrictions(),
-    loader: async ({ params }) => {
-      const tenants = new Set(params.split(' ').map((restriction) => restriction.split('/')[0]));
-      const keys = new Map<string, string>();
-      for (const tenant of tenants) {
-        try {
-          for (const project of await this.projectsOf(tenant, true)) {
-            keys.set(project.id, project.key);
-          }
-        } catch {
-          // The id is shown for these; a lookup that failed is no reason to hide the list.
-        }
-      }
-      return keys;
-    },
-  });
-
-  /** The key of a project a token is restricted to, once the lookup has found it. */
-  keyOfProject(id: string): string | undefined {
-    return this.projectKeys.hasValue() ? this.projectKeys.value().get(id) : undefined;
-  }
 
   /**
    * Creates a token (docs/adr/0035 D5). The answer carries the plaintext once; the caller shows it
@@ -95,14 +57,7 @@ export class TokensService {
   }
 
   /** The projects of one tenant the person belongs to, for the restriction of a new token. */
-  projectsOf(tenant: string, includeArchived = false): Promise<Project[]> {
-    return everyPage((cursor) =>
-      this.api.invoke(listProjects, {
-        tenant,
-        cursor,
-        limit: 200,
-        ...(includeArchived ? { include_archived: true } : {}),
-      }),
-    );
+  projectsOf(tenant: string): Promise<Project[]> {
+    return everyPage((cursor) => this.api.invoke(listProjects, { tenant, cursor, limit: 200 }));
   }
 }

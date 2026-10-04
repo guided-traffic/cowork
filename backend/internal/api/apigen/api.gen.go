@@ -1270,6 +1270,12 @@ type AuthOptions struct {
 
 	// PasswordMinLength The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
 	PasswordMinLength int `json:"password_min_length"`
+
+	// TokenMaxLifetimeDays The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+	// down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+	// maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+	// form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
+	TokenMaxLifetimeDays int `json:"token_max_lifetime_days"`
 }
 
 // Block defines model for Block.
@@ -1549,10 +1555,15 @@ type CurrentToken struct {
 	Name         string                                `json:"name"`
 	Request      RequestMark                           `json:"request"`
 
-	// RestrictedProject The key of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
 	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -2442,7 +2453,15 @@ type Token struct {
 	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
 	Name         string                                `json:"name"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -2492,7 +2511,15 @@ type TokenCreated struct {
 	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
 	Name         string                                `json:"name"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -5093,7 +5120,9 @@ type ClientInterface interface {
 	// `oidc_name`", when one is configured and its gate admits somebody —
 	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
-	// password form follows (docs/adr/0033 D3).
+	// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+	// new token the bound of the token form (docs/adr/0035 D4) — the policies
+	// of the installation, public like the rest of this answer.
 	//
 	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 	GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7943,7 +7972,9 @@ func (c *Client) LoginOidc(ctx context.Context, params *LoginOidcParams, reqEdit
 // `oidc_name`", when one is configured and its gate admits somebody —
 // `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 // (docs/adr/0030 D1, D8). The minimum password length is the policy every
-// password form follows (docs/adr/0033 D3).
+// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+// new token the bound of the token form (docs/adr/0035 D4) — the policies
+// of the installation, public like the rest of this answer.
 //
 // Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 func (c *Client) GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -16335,7 +16366,9 @@ type ClientWithResponsesInterface interface {
 	// `oidc_name`", when one is configured and its gate admits somebody —
 	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
-	// password form follows (docs/adr/0033 D3).
+	// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+	// new token the bound of the token form (docs/adr/0035 D4) — the policies
+	// of the installation, public like the rest of this answer.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -24288,7 +24321,9 @@ func (c *ClientWithResponses) LoginOidcWithResponse(ctx context.Context, params 
 // `oidc_name`", when one is configured and its gate admits somebody —
 // `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 // (docs/adr/0030 D1, D8). The minimum password length is the policy every
-// password form follows (docs/adr/0033 D3).
+// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+// new token the bound of the token form (docs/adr/0035 D4) — the policies
+// of the installation, public like the rest of this answer.
 //
 // Returns a wrapper object for the known response body format(s).
 //

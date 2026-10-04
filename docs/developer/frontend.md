@@ -79,7 +79,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the urgency override and its withdrawal (a `412` is written over once while the urgency is unchanged); every answer goes into the cache |
 | `Conversation` | Comments, questions and answers, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
-| `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
+| `TokensService` | The person's own tokens, every page of them, each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
 | `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
@@ -88,8 +88,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 in a new request object, so an equal value does not stop it (`ResourceImpl`, `extRequest`). A
 `params` function therefore reads only signals whose value is the request, or one `computed`
 that yields a primitive: `AccountsService` reads `administered` (the tenant while the person is
-its administrator), so `me` loaded again with the same role leaves the list alone, and
-`TokensService` reads `restrictions` as one sorted string.
+its administrator), so `me` loaded again with the same role leaves the list alone.
 
 **A secret cowork shows once** — a new token's plaintext, a temporary password — lives in one
 signal of the page that asked for it and is shown by

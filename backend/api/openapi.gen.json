@@ -1166,13 +1166,19 @@
             "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
             "minimum": 1,
             "type": "integer"
+          },
+          "token_max_lifetime_days": {
+            "description": "The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded\ndown (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the\nmaximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A\nform that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes\n",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "local",
           "oidc",
           "oidc_name",
-          "password_min_length"
+          "password_min_length",
+          "token_max_lifetime_days"
         ],
         "type": "object"
       },
@@ -1802,17 +1808,9 @@
             "properties": {
               "request": {
                 "$ref": "#/components/schemas/RequestMark"
-              },
-              "restricted_project": {
-                "description": "The key of the project the token is restricted to",
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             },
             "required": [
-              "restricted_project",
               "request"
             ],
             "type": "object"
@@ -4178,8 +4176,16 @@
           "name": {
             "type": "string"
           },
+          "restricted_project": {
+            "description": "The key of the project the token is restricted to (docs/adr/0035 D3); null for a token\nwithout a project restriction, and for one whose project the person no longer sees or\nwhose tenant they no longer belong to — such a token reaches nothing\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "restricted_project_id": {
-            "description": "The id of the project the token is restricted to",
+            "deprecated": true,
+            "description": "The id of the project the token is restricted to. Replaced by `restricted_project`, which\nnames the project by its key, as a person knows it; kept in `/api/v1` for the clients that\nread it, since taking a field away is a breaking change (docs/adr/0046 D7)\n",
             "format": "uuid",
             "type": [
               "string",
@@ -4213,6 +4219,7 @@
           "scope",
           "agent",
           "capabilities",
+          "restricted_project",
           "created_at",
           "expires_at",
           "state"
@@ -8960,7 +8967,7 @@
     },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3).\n",
+        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3), and the longest lifetime of a\nnew token the bound of the token form (docs/adr/0035 D4) — the policies\nof the installation, public like the rest of this answer.\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -8970,7 +8977,8 @@
                   "local": true,
                   "oidc": true,
                   "oidc_name": "Acme SSO",
-                  "password_min_length": 12
+                  "password_min_length": 12,
+                  "token_max_lifetime_days": 365
                 },
                 "schema": {
                   "$ref": "#/components/schemas/AuthOptions"

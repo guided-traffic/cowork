@@ -20,8 +20,8 @@ WHERE tenant_id IS NULL
 -- name: ListTokensOfUser :many
 -- The person's tokens, newest first, revoked and expired ones included
 -- (docs/adr/0035 D6); only one of them for a restricted token.
-SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_project_id, t.created_at,
-       t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
+SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_tenant_id, t.restricted_project_id,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
 FROM tokens t
 LEFT JOIN tenants rt ON rt.id = t.restricted_tenant_id
 WHERE t.user_id = sqlc.arg(user_id)

@@ -49,7 +49,10 @@ token, is [chat.md](chat.md).
   answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
   request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
   longer request is shortened and the answer says what the token got
-  (`TestATokensLifetimeIsClampedToTheMaximum`). An agent token has at most `write` scope and
+  (`TestATokensLifetimeIsClampedToTheMaximum`); the token form knows the bound before it asks, from
+  `GET /auth/options`, which names it in whole days — public, like the password policy beside it:
+  it tells an anonymous reader how long a token of the installation can live at most, and nothing
+  of any token (`TestAuthOptions`). An agent token has at most `write` scope and
   every capability when the request leaves `capabilities` out; a list is the capabilities, and
   an empty one is none, the baseline only (ADR 0043 D4's nine switches all off); a restriction names a tenant the person belongs to
   and a project of it they see, and a tenant or project they cannot reach is "no such" in the
@@ -76,7 +79,12 @@ token, is [chat.md](chat.md).
   development database only.
 - **Listing.** `GET /api/v1/me/tokens` shows the person's tokens with their metadata — name,
   scope, agent flag, capabilities, restriction, dates, state — never the hash or the
-  plaintext; revoked and expired tokens stay listed (ADR 0035 D6).
+  plaintext; revoked and expired tokens stay listed (ADR 0035 D6). A restriction names its
+  project by key only while the person sees the project in a tenant they belong to — read in that
+  tenant's transaction under the project predicate — and `null` otherwise, so the list names no
+  project the person could not read (`projectKeys` in [`api/me.go`](../../backend/internal/api/me.go),
+  `TestATokenNamesItsProjectByKey`); the project's id, deprecated beside it, is the token's own
+  column.
 
 ## What a request with a token may do
 

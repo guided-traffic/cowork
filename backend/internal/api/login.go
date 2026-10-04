@@ -115,7 +115,9 @@ func (h *handler) addressHash(client string) []byte {
 
 // GetAuthOptions answers what the login page offers (docs/adr/0033 D8): the
 // identity provider's button while one is configured and its gate admits
-// somebody (docs/adr/0030 D8).
+// somebody (docs/adr/0030 D8); and the policies the forms follow, the length
+// of a password and the longest lifetime of a token in whole days
+// (docs/adr/0035 D4).
 func (s *Server) GetAuthOptions(ctx context.Context, _ apigen.GetAuthOptionsRequestObject) (apigen.GetAuthOptionsResponseObject, error) {
 	local, err := s.db.LocalLoginAvailable(ctx)
 	if err != nil {
@@ -123,7 +125,7 @@ func (s *Server) GetAuthOptions(ctx context.Context, _ apigen.GetAuthOptionsRequ
 	}
 	o := s.h.opts.OIDC
 	out := apigen.GetAuthOptions200JSONResponse{Local: local, Oidc: s.h.oidcOffered(), OidcName: nullableOf[string](nil),
-		PasswordMinLength: s.h.opts.PasswordMinLength}
+		PasswordMinLength: s.h.opts.PasswordMinLength, TokenMaxLifetimeDays: int(s.h.opts.TokenMaxLifetime / (24 * time.Hour))}
 	if o.Provider != nil {
 		out.OidcName = nullableOf(&o.DisplayName)
 	}

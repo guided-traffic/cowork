@@ -92,15 +92,64 @@ func (s *Server) ListMyTokens(ctx context.Context, req apigen.ListMyTokensReques
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(t readq.ListTokensOfUserRow) string { return t.ID.String() })
+	keys, err := s.projectKeys(ctx, p.PersonID, rows)
+	if err != nil {
+		return nil, err
+	}
 	out := apigen.ListMyTokens200JSONResponse{Items: []apigen.Token{}, NextCursor: nullableString(next)}
 	now := s.h.opts.Now()
 	for _, t := range rows {
-		out.Items = append(out.Items, tokenView(t, now))
+		out.Items = append(out.Items, tokenView(t, now, keys))
 	}
 	return out, nil
 }
 
-func tokenView(t readq.ListTokensOfUserRow, now time.Time) apigen.Token {
+// projectKeys names the projects the tokens are restricted to by their keys
+// (docs/adr/0035 D3), each tenant read in its own transaction under the
+// project predicate: a project the person no longer sees, or of a tenant they
+// no longer belong to, has no key, and the token reaches nothing.
+func (s *Server) projectKeys(ctx context.Context, person uuid.UUID, tokens []readq.ListTokensOfUserRow) (map[uuid.UUID]string, error) {
+	byTenant := map[uuid.UUID][]uuid.UUID{}
+	for _, t := range tokens {
+		if t.RestrictedTenantID != nil && t.RestrictedProjectID != nil {
+			byTenant[*t.RestrictedTenantID] = append(byTenant[*t.RestrictedTenantID], *t.RestrictedProjectID)
+		}
+	}
+	keys := map[uuid.UUID]string{}
+	if len(byTenant) == 0 {
+		return keys, nil
+	}
+	var memberships []readq.ListMembershipsOfUserRow
+	err := s.db.Installation(ctx, func(r *store.Reader) error {
+		var err error
+		memberships, err = r.ListMembershipsOfUser(ctx, person)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range memberships {
+		ids, ok := byTenant[m.TenantID]
+		if !ok {
+			continue
+		}
+		err := s.db.InTenant(ctx, m.TenantID, func(r *store.Reader) error {
+			rows, err := r.ListVisibleProjectKeys(ctx, readq.ListVisibleProjectKeysParams{TenantID: m.TenantID, Ids: ids})
+			for _, row := range rows {
+				keys[row.ID] = row.Key
+			}
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
+}
+
+// tokenView is a token as the list shows it; keys names the projects of the
+// restrictions the person still sees (projectKeys).
+func tokenView(t readq.ListTokensOfUserRow, now time.Time, keys map[uuid.UUID]string) apigen.Token {
 	state := apigen.TokenStateActive
 	switch {
 	case t.RevokedAt != nil:
@@ -123,9 +172,13 @@ func tokenView(t readq.ListTokensOfUserRow, now time.Time) apigen.Token {
 		State:        state,
 	}
 	v.RestrictedTenant = nullableOf(t.RestrictedTenantSlug)
+	v.RestrictedProject = nullableOf[string](nil)
 	if t.RestrictedProjectID != nil {
 		id := *t.RestrictedProjectID
-		v.RestrictedProjectId = nullableOf(&id)
+		v.RestrictedProjectId = nullableOf(&id) //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
+		if key, ok := keys[id]; ok {
+			v.RestrictedProject = nullableOf(&key)
+		}
 	}
 	if t.LastUsedOn != nil {
 		v.LastUsedOn = nullableOf(&openapi_types.Date{Time: *t.LastUsedOn})
@@ -256,7 +309,8 @@ func (t tokenSpec) view(id uuid.UUID, createdAt time.Time) apigen.TokenCreated {
 	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: caps,
 		CreatedAt: createdAt, ExpiresAt: t.expiresAt, State: apigen.TokenStateActive}
 	v.RestrictedTenant = nullableOf(t.tenantSlug)
-	v.RestrictedProjectId = nullableOf(t.projectID)
+	v.RestrictedProject = nullableOf(t.projectKey)
+	v.RestrictedProjectId = nullableOf(t.projectID) //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
 	v.RevokedAt = nullableOf[time.Time](nil)
 	return v
 }

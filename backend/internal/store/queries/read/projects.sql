@@ -9,6 +9,13 @@ WHERE tenant_id = sqlc.arg(tenant_id)
 ORDER BY key
 LIMIT sqlc.arg(page_size);
 
+-- name: ListVisibleProjectKeys :many
+-- The keys of the given projects the caller sees: how the person's tokens name
+-- the project each is restricted to (docs/adr/0035 D3).
+SELECT id, key
+FROM projects
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = ANY (sqlc.arg(ids)::uuid[]) AND app_project_visible(id);
+
 -- name: GetProjectByKey :one
 SELECT id, key, name, description, restricted, wip_limits, archived_at, version, created_at, updated_at
 FROM projects

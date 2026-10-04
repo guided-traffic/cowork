@@ -381,7 +381,8 @@ func TestInitStateAdmitsGlobalAdministratorsOnly(t *testing.T) {
 
 	options := s.browser(t).get("/auth/options")
 	require.Equal(t, http.StatusOK, options.StatusCode)
-	assert.Equal(t, map[string]any{"local": true, "oidc": false, "oidc_name": nil, "password_min_length": float64(12)}, decode[map[string]any](t, options))
+	assert.Equal(t, map[string]any{"local": true, "oidc": false, "oidc_name": nil, "password_min_length": float64(12),
+		"token_max_lifetime_days": float64(365)}, decode[map[string]any](t, options))
 
 	b := s.browser(t)
 	res := b.login("plain", testPassword)
@@ -416,11 +417,22 @@ func TestAuthOptions(t *testing.T) {
 	iso := newIsolated(t)
 	s := newAPI(t, withLogin, iso.option)
 	got := decode[map[string]any](t, s.browser(t).get("/auth/options"))
-	assert.Equal(t, map[string]any{"local": false, "oidc": false, "oidc_name": nil, "password_min_length": float64(12)}, got, "no account: the login page says it is not configured")
+	assert.Equal(t, map[string]any{"local": false, "oidc": false, "oidc_name": nil, "password_min_length": float64(12),
+		"token_max_lifetime_days": float64(365)}, got, "no account: the login page says it is not configured")
 
 	longer := newAPI(t, withLogin, iso.option, func(o *api.Options) { o.PasswordMinLength = 20 })
 	got = decode[map[string]any](t, longer.browser(t).get("/auth/options"))
 	assert.Equal(t, float64(20), got["password_min_length"], "the policy the password forms follow")
+
+	// docs/adr/0035 D4: the longest lifetime of a new token, in whole days rounded down, is the
+	// bound of the token form; under a day only the default fits.
+	for lifetime, days := range map[time.Duration]float64{30 * 24 * time.Hour: 30, 36 * time.Hour: 1, 12 * time.Hour: 0} {
+		bounded := newAPI(t, withLogin, iso.option, func(o *api.Options) {
+			o.TokenDefaultLifetime, o.TokenMaxLifetime = lifetime, lifetime
+		})
+		got = decode[map[string]any](t, bounded.browser(t).get("/auth/options"))
+		assert.Equal(t, days, got["token_max_lifetime_days"], "COWORK_TOKEN_MAX_LIFETIME=%s", lifetime)
+	}
 
 	person, err := iso.F.Person(ctx, "ada", "Ada")
 	require.NoError(t, err)

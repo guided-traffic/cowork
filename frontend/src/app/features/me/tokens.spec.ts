@@ -25,7 +25,7 @@ function token(id: string, overrides: Partial<Token> = {}): Token {
     last_used_on: null,
     revoked_at: null,
     restricted_tenant: null,
-    restricted_project_id: null,
+    restricted_project: null,
     state: 'active',
     ...overrides,
   };
@@ -36,6 +36,7 @@ const laptop = token('t1', {
   agent: true,
   capabilities: [...CAPABILITY],
   restricted_tenant: 'acme',
+  restricted_project: 'COW',
   restricted_project_id: '0199aaaa-0000-7000-8000-00000000c0de',
   last_used_on: '2026-10-02',
 });
@@ -96,7 +97,6 @@ describe('Tokens', () => {
   let list: WritableSignal<Token[]>;
   let loading: WritableSignal<boolean>;
   let error: WritableSignal<unknown>;
-  let keys: Map<string, string>;
   let reload: MockInstance<() => boolean>;
   let revoke: MockInstance<TokensService['revoke']>;
   let memberships: WritableSignal<Membership[]>;
@@ -105,7 +105,6 @@ describe('Tokens', () => {
     list = signal<Token[]>([laptop, script, old, gone]);
     loading = signal(false);
     error = signal<unknown>(undefined);
-    keys = new Map([['0199aaaa-0000-7000-8000-00000000c0de', 'COW']]);
     reload = vi.fn<() => boolean>().mockReturnValue(true);
     revoke = vi.fn<TokensService['revoke']>().mockResolvedValue(undefined);
     memberships = signal<Membership[]>([]);
@@ -117,7 +116,6 @@ describe('Tokens', () => {
           useValue: {
             list,
             tokens: { isLoading: loading, error, reload },
-            keyOfProject: (id: string) => keys.get(id),
             revoke,
             create: vi.fn(),
             projectsOf: vi.fn().mockResolvedValue([]),
@@ -352,13 +350,11 @@ describe('Tokens', () => {
       expect(text(restriction(fixture, 't2'))).toBe('none');
     });
 
-    it('shows the tenant, and the key of the project when the token has one', async () => {
+    it('shows the tenant, and the key of the project the token names', async () => {
       const fixture = await render();
 
       expect(text(restriction(fixture, 't1'))).toBe('acme / COW');
-      expect(restriction(fixture, 't1')?.querySelector('.key')?.getAttribute('title')).toBe(
-        '0199aaaa-0000-7000-8000-00000000c0de',
-      );
+      expect(restriction(fixture, 't1')?.querySelector('.key')?.textContent).toBe('COW');
     });
 
     it('shows the tenant alone for a token that is restricted to a tenant only', async () => {
@@ -369,34 +365,19 @@ describe('Tokens', () => {
       expect(restriction(fixture, 'a')?.querySelector('.key')).toBeNull();
     });
 
-    it('shows the end of the id of a project whose key is not found, with the whole id in a title', async () => {
-      keys.clear();
-      const fixture = await render();
-
-      expect(text(restriction(fixture, 't1'))).toBe('acme / 0000c0de');
-      expect(restriction(fixture, 't1')?.querySelector('.key')?.getAttribute('title')).toBe(
-        '0199aaaa-0000-7000-8000-00000000c0de',
-      );
-    });
-
-    it('tells two projects apart whose keys are not found and whose ids were made in the same minute', async () => {
-      keys.clear();
-      // UUIDv7 starts with the time, so these two begin alike; what differs is at the end.
+    it('says so of a project the person no longer sees, which the token no longer reaches', async () => {
       list.set([
         token('a', {
           restricted_tenant: 'acme',
+          restricted_project: null,
           restricted_project_id: '0199a3c2-5b1e-7a40-8c11-4d2f9e0a71b3',
-        }),
-        token('b', {
-          restricted_tenant: 'acme',
-          restricted_project_id: '0199a3c2-5b1e-7f02-9a6d-c81e5b3402ef',
         }),
       ]);
       const fixture = await render();
 
-      expect(text(restriction(fixture, 'a'))).toBe('acme / 9e0a71b3');
-      expect(text(restriction(fixture, 'b'))).toBe('acme / 5b3402ef');
-      expect(text(restriction(fixture, 'a'))).not.toBe(text(restriction(fixture, 'b')));
+      expect(text(restriction(fixture, 'a'))).toBe('acme / a project you no longer see');
+      expect(restriction(fixture, 'a')?.querySelector('.key')).toBeNull();
+      expect(text(restriction(fixture, 'a'))).not.toContain('0199a3c2');
     });
   });
 

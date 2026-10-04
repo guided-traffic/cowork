@@ -104,16 +104,20 @@ class Host {
   readonly testId = signal('temporary-password');
 }
 
+/** The options of an installation with the default policies. */
+const installation: AuthOptions = {
+  local: true,
+  oidc: false,
+  oidc_name: null,
+  password_min_length: 12,
+  token_max_lifetime_days: 365,
+};
+
 describe('TemporaryPassword', () => {
   let options: WritableSignal<AuthOptions | undefined>;
 
   beforeEach(() => {
-    options = signal<AuthOptions | undefined>({
-      local: true,
-      oidc: false,
-      oidc_name: null,
-      password_min_length: 12,
-    });
+    options = signal<AuthOptions | undefined>(installation);
     TestBed.configureTestingModule({
       providers: [
         {
@@ -249,7 +253,7 @@ describe('TemporaryPassword', () => {
     });
 
     it('makes a password as long as an installation asks, when its minimum is longer than 24', async () => {
-      options.set({ local: true, oidc: false, oidc_name: null, password_min_length: 30 });
+      options.set({ ...installation, password_min_length: 30 });
       const fixture = await render();
 
       const password = await generate(fixture);
@@ -262,7 +266,7 @@ describe('TemporaryPassword', () => {
       const fixture = await render();
       expect(await generate(fixture)).toHaveLength(24);
 
-      options.set({ local: true, oidc: false, oidc_name: null, password_min_length: 40 });
+      options.set({ ...installation, password_min_length: 40 });
 
       expect(await generate(fixture)).toHaveLength(40);
     });
@@ -270,7 +274,7 @@ describe('TemporaryPassword', () => {
     it.each([8, 12, 16, 24])(
       'keeps to 24 characters when the minimum is %i, which is no longer',
       async (minimum) => {
-        options.set({ local: true, oidc: false, oidc_name: null, password_min_length: minimum });
+        options.set({ ...installation, password_min_length: minimum });
         const fixture = await render();
 
         expect(await generate(fixture)).toHaveLength(24);
