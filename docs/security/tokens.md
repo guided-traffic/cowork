@@ -432,10 +432,14 @@ agent a `read` token, and an administrator finds them in the tenant's audit view
 
 Live today. A stream checks its token — or its session — and its person's membership at every
 heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
-stream whose token was revoked or expired, whose session ended, whose person left the tenant,
-or whose person lost a project still receives the events its filter admitted at the last
-heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
-makes with the dead token or session is refused at once; the window is the stream's alone.
+stream whose token was revoked or expired, whose session ended or whose person was deactivated
+still receives the events its filter admitted at the last heartbeat — the keys, versions and
+kinds of the acts, no content. A person who leaves the tenant or loses a project by an act — a
+grant removed, a membership derived away, a restriction, an access entry — loses it at the stream
+before its next event, because every such act makes the stream run the boundary and compute its
+filter again ([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read));
+only such a change made in the database past the API waits for the heartbeat. Every request the
+client makes with the dead token or session is refused at once; the window is the stream's alone.
 
 <a id="h-30"></a>
 ### H-30 — With the server key, an audit row's address hash gives the address back
