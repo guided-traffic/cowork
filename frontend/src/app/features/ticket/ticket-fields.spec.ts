@@ -36,6 +36,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     confidential: false,
     assignee: sam,
     reporter: ada,
+    reporter_agent: null,
+    reporter_token: null,
     block: null,
     threat: null,
     parent: null,
@@ -231,6 +233,29 @@ describe('TicketFields', () => {
       expect(fields(fixture)['Reporter']).toBe('Ada Lovelace');
       expect(fields(fixture)['Opened']).toBe('2 days ago');
       expect(fields(fixture)['Updated']).toBe('5 minutes ago');
+    });
+
+    it('marks the reporter where an agent or a token filed the ticket in their name', async () => {
+      const byToken = await render(ticket({ reporter_token: { id: 'tok-1', name: 'ci-script' } }));
+
+      expect(fields(byToken)['Reporter']).toBe('Ada Lovelace through the token ci-script');
+      const plain = el(byToken, 'reporter')?.querySelector('[data-testid="agent-mark"]');
+      expect(plain?.getAttribute('data-token')).toBe('tok-1');
+      expect(plain?.hasAttribute('data-agent')).toBe(false);
+
+      const byAgent = await render(
+        ticket({
+          reporter_agent: 'claude-code/opus/s-1',
+          reporter_token: { id: 'tok-2', name: 'claude-laptop' },
+        }),
+      );
+
+      expect(fields(byAgent)['Reporter']).toBe(
+        'Ada Lovelace by the agent claude-code (claude-code/opus/s-1), through the token claude-laptop',
+      );
+
+      const own = await render();
+      expect(el(own, 'reporter')?.querySelector('[data-testid="agent-mark"]')).toBeNull();
     });
 
     it('gives the exact times in tooltips', async () => {

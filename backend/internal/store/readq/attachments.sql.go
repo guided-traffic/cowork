@@ -33,7 +33,8 @@ func (q *Queries) CountAttachments(ctx context.Context, arg CountAttachmentsPara
 
 const getAttachment = `-- name: GetAttachment :one
 SELECT a.id, a.comment_id, a.file_name, a.size, a.sha256, a.content_type, a.uploaded_by,
-       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.created_at
+       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.token_id, a.token_name,
+       a.created_at
 FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
@@ -58,6 +59,8 @@ type GetAttachmentRow struct {
 	UploadedByUsername *string
 	UploadedByName     *string
 	Agent              *string
+	TokenID            *uuid.UUID
+	TokenName          *string
 	CreatedAt          time.Time
 }
 
@@ -75,6 +78,8 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (G
 		&i.UploadedByUsername,
 		&i.UploadedByName,
 		&i.Agent,
+		&i.TokenID,
+		&i.TokenName,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -83,7 +88,8 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (G
 const listAttachments = `-- name: ListAttachments :many
 
 SELECT a.id, a.comment_id, a.file_name, a.size, a.sha256, a.content_type, a.uploaded_by,
-       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.created_at
+       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.token_id, a.token_name,
+       a.created_at
 FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
@@ -112,6 +118,8 @@ type ListAttachmentsRow struct {
 	UploadedByUsername *string
 	UploadedByName     *string
 	Agent              *string
+	TokenID            *uuid.UUID
+	TokenName          *string
 	CreatedAt          time.Time
 }
 
@@ -141,6 +149,8 @@ func (q *Queries) ListAttachments(ctx context.Context, arg ListAttachmentsParams
 			&i.UploadedByUsername,
 			&i.UploadedByName,
 			&i.Agent,
+			&i.TokenID,
+			&i.TokenName,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

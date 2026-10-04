@@ -46,9 +46,11 @@ func (q *Queries) CanSeeTicket(ctx context.Context, arg CanSeeTicketParams) (boo
 const getQuestion = `-- name: GetQuestion :one
 SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
        q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
+       q.asked_by_token_id, q.asked_by_token_name,
        q.asked_of, ao.username AS asked_of_username, ao.display_name AS asked_of_name,
        q.answered_by, an.username AS answered_by_username, an.display_name AS answered_by_name,
-       q.answered_at, q.recorded_by_agent, q.withdrawn_at, q.version, q.created_at, q.updated_at
+       q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
+       q.withdrawn_at, q.version, q.created_at, q.updated_at
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 LEFT JOIN users ab ON ab.id = q.asked_by
@@ -65,29 +67,33 @@ type GetQuestionParams struct {
 }
 
 type GetQuestionRow struct {
-	ID                 uuid.UUID
-	Number             int32
-	Question           string
-	Options            string
-	Recommendation     string
-	Answer             *string
-	Status             string
-	AskedBy            uuid.UUID
-	AskedByUsername    *string
-	AskedByName        *string
-	AskedByAgent       *string
-	AskedOf            *uuid.UUID
-	AskedOfUsername    *string
-	AskedOfName        *string
-	AnsweredBy         *uuid.UUID
-	AnsweredByUsername *string
-	AnsweredByName     *string
-	AnsweredAt         *time.Time
-	RecordedByAgent    bool
-	WithdrawnAt        *time.Time
-	Version            int32
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                  uuid.UUID
+	Number              int32
+	Question            string
+	Options             string
+	Recommendation      string
+	Answer              *string
+	Status              string
+	AskedBy             uuid.UUID
+	AskedByUsername     *string
+	AskedByName         *string
+	AskedByAgent        *string
+	AskedByTokenID      *uuid.UUID
+	AskedByTokenName    *string
+	AskedOf             *uuid.UUID
+	AskedOfUsername     *string
+	AskedOfName         *string
+	AnsweredBy          *uuid.UUID
+	AnsweredByUsername  *string
+	AnsweredByName      *string
+	AnsweredAt          *time.Time
+	RecordedByAgent     bool
+	AnsweredByTokenID   *uuid.UUID
+	AnsweredByTokenName *string
+	WithdrawnAt         *time.Time
+	Version             int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 func (q *Queries) GetQuestion(ctx context.Context, arg GetQuestionParams) (GetQuestionRow, error) {
@@ -105,6 +111,8 @@ func (q *Queries) GetQuestion(ctx context.Context, arg GetQuestionParams) (GetQu
 		&i.AskedByUsername,
 		&i.AskedByName,
 		&i.AskedByAgent,
+		&i.AskedByTokenID,
+		&i.AskedByTokenName,
 		&i.AskedOf,
 		&i.AskedOfUsername,
 		&i.AskedOfName,
@@ -113,6 +121,8 @@ func (q *Queries) GetQuestion(ctx context.Context, arg GetQuestionParams) (GetQu
 		&i.AnsweredByName,
 		&i.AnsweredAt,
 		&i.RecordedByAgent,
+		&i.AnsweredByTokenID,
+		&i.AnsweredByTokenName,
 		&i.WithdrawnAt,
 		&i.Version,
 		&i.CreatedAt,
@@ -125,9 +135,11 @@ const listQuestions = `-- name: ListQuestions :many
 
 SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
        q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
+       q.asked_by_token_id, q.asked_by_token_name,
        q.asked_of, ao.username AS asked_of_username, ao.display_name AS asked_of_name,
        q.answered_by, an.username AS answered_by_username, an.display_name AS answered_by_name,
-       q.answered_at, q.recorded_by_agent, q.withdrawn_at, q.version, q.created_at, q.updated_at
+       q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
+       q.withdrawn_at, q.version, q.created_at, q.updated_at
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 LEFT JOIN users ab ON ab.id = q.asked_by
@@ -148,29 +160,33 @@ type ListQuestionsParams struct {
 }
 
 type ListQuestionsRow struct {
-	ID                 uuid.UUID
-	Number             int32
-	Question           string
-	Options            string
-	Recommendation     string
-	Answer             *string
-	Status             string
-	AskedBy            uuid.UUID
-	AskedByUsername    *string
-	AskedByName        *string
-	AskedByAgent       *string
-	AskedOf            *uuid.UUID
-	AskedOfUsername    *string
-	AskedOfName        *string
-	AnsweredBy         *uuid.UUID
-	AnsweredByUsername *string
-	AnsweredByName     *string
-	AnsweredAt         *time.Time
-	RecordedByAgent    bool
-	WithdrawnAt        *time.Time
-	Version            int32
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                  uuid.UUID
+	Number              int32
+	Question            string
+	Options             string
+	Recommendation      string
+	Answer              *string
+	Status              string
+	AskedBy             uuid.UUID
+	AskedByUsername     *string
+	AskedByName         *string
+	AskedByAgent        *string
+	AskedByTokenID      *uuid.UUID
+	AskedByTokenName    *string
+	AskedOf             *uuid.UUID
+	AskedOfUsername     *string
+	AskedOfName         *string
+	AnsweredBy          *uuid.UUID
+	AnsweredByUsername  *string
+	AnsweredByName      *string
+	AnsweredAt          *time.Time
+	RecordedByAgent     bool
+	AnsweredByTokenID   *uuid.UUID
+	AnsweredByTokenName *string
+	WithdrawnAt         *time.Time
+	Version             int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // A question is visible when its ticket is (docs/adr/0065 D4).
@@ -200,6 +216,8 @@ func (q *Queries) ListQuestions(ctx context.Context, arg ListQuestionsParams) ([
 			&i.AskedByUsername,
 			&i.AskedByName,
 			&i.AskedByAgent,
+			&i.AskedByTokenID,
+			&i.AskedByTokenName,
 			&i.AskedOf,
 			&i.AskedOfUsername,
 			&i.AskedOfName,
@@ -208,6 +226,8 @@ func (q *Queries) ListQuestions(ctx context.Context, arg ListQuestionsParams) ([
 			&i.AnsweredByName,
 			&i.AnsweredAt,
 			&i.RecordedByAgent,
+			&i.AnsweredByTokenID,
+			&i.AnsweredByTokenName,
 			&i.WithdrawnAt,
 			&i.Version,
 			&i.CreatedAt,

@@ -19,6 +19,7 @@ import { Effort, SecurityClass, Severity, Ticket, TicketPatch, TicketType } from
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
+import { AgentMark } from '../../shared/agent-mark';
 import { StageBar } from '../../shared/stage-bar';
 import {
   currentStage,
@@ -54,7 +55,17 @@ export function shown(value: unknown): string {
 @Component({
   selector: 'app-ticket-fields',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, MoveDialog, Select, SelectButton, Slider, StageBar, Textarea, Tooltip],
+  imports: [
+    AgentMark,
+    FormsModule,
+    MoveDialog,
+    Select,
+    SelectButton,
+    Slider,
+    StageBar,
+    Textarea,
+    Tooltip,
+  ],
   templateUrl: './ticket-fields.html',
   styleUrl: './ticket-fields.scss',
 })

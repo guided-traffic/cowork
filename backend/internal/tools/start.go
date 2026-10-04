@@ -334,6 +334,13 @@ func actLine(a apigen.Activity) string {
 	}
 	if agent, err := a.Agent.Get(); err == nil {
 		who += " via " + agent
+	} else if tok, err := a.Token.Get(); err == nil {
+		// A person's act through a token is named so too (docs/adr/0036 D6).
+		if name, err := tok.Name.Get(); err == nil && name != "" {
+			who += " through the token " + name
+		} else {
+			who += " through a token"
+		}
 	}
 	line := who + " " + string(a.Action)
 	if a.Redacted {

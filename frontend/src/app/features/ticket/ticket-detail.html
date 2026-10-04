@@ -74,8 +74,13 @@
                 </p>
               }
               <p class="meta muted">
-                asked by {{ question.asked_by.display_name
-                }}{{ question.asked_by_agent ? ' via ' + question.asked_by_agent : '' }}
+                asked by {{ question.asked_by.display_name }}
+                @if (question.asked_by_agent || question.asked_by_token) {
+                  <app-agent-mark
+                    [mark]="question.asked_by_agent"
+                    [token]="question.asked_by_token"
+                  />
+                }
                 {{ question.asked_of ? '· of ' + question.asked_of.display_name : '' }} ·
                 {{ ago(question.created_at) }}
               </p>
@@ -94,6 +99,21 @@
                   <span class="muted">withdrawn</span>
                 }
               </p>
+              @if (question.status === 'answered' && question.answered_by) {
+                <p class="meta muted">
+                  answered by {{ question.answered_by.display_name }}
+                  @if (question.recorded_by_agent || question.answered_by_token) {
+                    · recorded
+                    <app-agent-mark
+                      [agent]="question.recorded_by_agent"
+                      [token]="question.answered_by_token"
+                    />
+                  }
+                  @if (question.answered_at) {
+                    · {{ ago(question.answered_at) }}
+                  }
+                </p>
+              }
               @if (question.status === 'answered') {
                 <app-answer-question [ticketKey]="t.key" [question]="question" />
               }
@@ -111,7 +131,10 @@
               <article class="comment" [attr.data-testid]="'comment-' + comment.id">
                 <p class="meta muted">
                   <strong>{{ comment.author.display_name }}</strong>
-                  {{ comment.agent ? 'via ' + comment.agent : '' }} · {{ ago(comment.created_at) }}
+                  @if (comment.agent || comment.token) {
+                    <app-agent-mark [mark]="comment.agent" [token]="comment.token" />
+                  }
+                  · {{ ago(comment.created_at) }}
                   {{ comment.edited ? '· edited' : '' }}
                 </p>
                 @if (comment.withdrawn) {
@@ -139,10 +162,8 @@
                 <li>
                   <span class="dot"></span>
                   <span class="what">{{ describe(item) }}</span>
-                  @if (item.agent) {
-                    <span class="agent" pTooltip="Recorded for an agent acting for this person"
-                      ><i class="pi pi-sparkles"></i>{{ item.agent }}</span
-                    >
+                  @if (item.agent || item.token) {
+                    <app-agent-mark [mark]="item.agent" [token]="item.token" />
                   }
                   <span class="when muted" [pTooltip]="dateTime(item.at)">{{ ago(item.at) }}</span>
                   @if (item.reason || item.note) {

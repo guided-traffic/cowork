@@ -17,6 +17,7 @@ import { Conversation } from '../../core/conversation.service';
 import { ProblemService, ProblemView } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TicketsService } from '../../core/tickets.service';
+import { AgentMark } from '../../shared/agent-mark';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { ago, Clock, dateTime } from '../../shared/time';
@@ -52,6 +53,7 @@ const notFound: ProblemView = {
   selector: 'app-ticket-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AgentMark,
     AnswerQuestion,
     AskQuestion,
     AttachmentsCard,

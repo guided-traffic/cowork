@@ -56,6 +56,20 @@ Person:
         A local account's username as it is stored, without the `local:` that names the identity
         (docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider
     display_name: {type: string}
+TokenMark:
+  type: object
+  description: |
+    The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act
+    recorded it, readable by whoever reads the act — never the token's secret, hash or prefix. A
+    revoked or expired token's acts keep its name.
+  required: [id, name]
+  properties:
+    id: {type: string, format: uuid}
+    name:
+      type: [string, 'null']
+      description: |
+        The token's name; null only on an act of the activity recorded before cowork kept the name,
+        which says that a token was used, not which one
 TenantRef:
   type: object
   required: [slug, name]
@@ -179,7 +193,14 @@ TokenCreate:
   additionalProperties: false
   required: [name, scope]
   properties:
-    name: {type: string, minLength: 1, maxLength: 100}
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+      description: |
+        Shown beside every act made through the token — in a ticket's activity, on its comments,
+        questions, answers, files and time — to whoever reads the act, and kept there after the token is
+        revoked (docs/adr/0036 D6)
     scope:
       $ref: '#/Scope'
     agent:
@@ -436,6 +457,11 @@ AuditEvent:
     token_id:
       type: [string, 'null']
       format: uuid
+    token_name:
+      type: [string, 'null']
+      description: |
+        The token's name as the act recorded it (docs/adr/0036 D6); null without a token, and on an act
+        recorded before cowork kept the name
     entity_type: {type: string}
     entity_id:
       type: [string, 'null']
@@ -757,8 +783,8 @@ Ticket:
   type: object
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
     urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_refinement, progress_review,
-    progress_derived, parent, reporter, assignee, confidential, opened_at, decided_at, done_at, done_from, done_by_hand,
-    open_prerequisites, version, created_at, updated_at]
+    progress_derived, parent, reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at,
+    done_at, done_from, done_by_hand, open_prerequisites, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -815,6 +841,14 @@ Ticket:
     parent: {type: [string, 'null'], description: The parent's key}
     reporter:
       $ref: '#/Person'
+    reporter_agent:
+      type: [string, 'null']
+      description: The agent mark of the request that filed the ticket in the reporter's name (docs/adr/0036 D6)
+    reporter_token:
+      description: The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     assignee:
       oneOf:
         - $ref: '#/Person'
@@ -998,12 +1032,17 @@ BlockSet:
     external_ref: {type: string, minLength: 1, maxLength: 500}
 Comment:
   type: object
-  required: [id, author, agent, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     author:
       $ref: '#/Person'
     agent: {type: [string, 'null'], description: The agent mark when an agent wrote it in the author's name}
+    token:
+      description: The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     body: {type: [string, 'null'], description: 'Markdown; null once withdrawn (docs/adr/0015 D3)'}
     withdrawn: {type: boolean}
     withdrawn_at: {type: [string, 'null'], format: date-time}
@@ -1034,12 +1073,17 @@ CommentList:
       type: [string, 'null']
 CommentRevision:
   type: object
-  required: [body, edited_by, agent, at]
+  required: [body, edited_by, agent, token, at]
   properties:
     body: {type: string, description: The text before the edit}
     edited_by:
       $ref: '#/Person'
-    agent: {type: [string, 'null']}
+    agent: {type: [string, 'null'], description: The agent mark of the edit}
+    token:
+      description: The token the edit came through; null for a browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     at: {type: string, format: date-time}
 CommentRevisionList:
   type: object
@@ -1053,7 +1097,7 @@ CommentRevisionList:
       type: [string, 'null']
 Activity:
   type: object
-  required: [id, at, actor, actor_system, agent, action, entity_type, entity_id, before, after, reason, note,
+  required: [id, at, actor, actor_system, agent, token, action, entity_type, entity_id, before, after, reason, note,
     explained_by_comment, redacted]
   properties:
     id: {type: string, format: uuid}
@@ -1064,6 +1108,11 @@ Activity:
         - type: 'null'
     actor_system: {type: [string, 'null']}
     agent: {type: [string, 'null']}
+    token:
+      description: The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     action:
       $ref: '#/AuditAction'
     entity_type: {type: string}
@@ -1092,7 +1141,7 @@ ActivityList:
       type: [string, 'null']
 Attachment:
   type: object
-  required: [id, file_name, size, sha256, content_type, comment, uploaded_by, agent, created_at, content_url]
+  required: [id, file_name, size, sha256, content_type, comment, uploaded_by, agent, token, created_at, content_url]
   properties:
     id: {type: string, format: uuid}
     file_name: {type: string, description: 'The uploaded name, sanitised (docs/adr/0016 D1)'}
@@ -1106,6 +1155,11 @@ Attachment:
     uploaded_by:
       $ref: '#/Person'
     agent: {type: [string, 'null']}
+    token:
+      description: The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     created_at: {type: string, format: date-time}
     content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
 AttachmentList:
@@ -1120,7 +1174,8 @@ AttachmentList:
       type: [string, 'null']
 TimeEntry:
   type: object
-  required: [id, ticket, person, author, minutes, day, note, voided, voided_at, edited, version, created_at, updated_at]
+  required: [id, ticket, person, author, token, minutes, day, note, voided, voided_at, edited, version, created_at,
+    updated_at]
   properties:
     id: {type: string, format: uuid}
     ticket: {type: string, description: The ticket's key}
@@ -1128,6 +1183,11 @@ TimeEntry:
       $ref: '#/Person'
     author:
       $ref: '#/Person'
+    token:
+      description: The token the booking came through; null for a browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     minutes: {type: integer, minimum: 1, maximum: 1440}
     day: {type: string, format: date, description: The day worked}
     note: {type: string}
@@ -1169,13 +1229,18 @@ TimeEntryList:
     per_page: {type: integer}
 TimeEntryRevision:
   type: object
-  required: [minutes, day, note, edited_by, at]
+  required: [minutes, day, note, edited_by, token, at]
   properties:
     minutes: {type: integer}
     day: {type: string, format: date}
     note: {type: string}
     edited_by:
       $ref: '#/Person'
+    token:
+      description: The token the correction came through; null for a browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     at: {type: string, format: date-time}
 TimeEntryRevisionList:
   type: object
@@ -1208,13 +1273,21 @@ InterestWeight:
   description: docs/adr/0013 D1
 Interest:
   type: object
-  required: [person, weight, note, since, updated_at, settled]
+  required: [person, weight, note, agent, token, since, updated_at, settled]
   properties:
     person:
       $ref: '#/Person'
     weight:
       $ref: '#/InterestWeight'
     note: {type: string}
+    agent:
+      type: [string, 'null']
+      description: The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)
+    token:
+      description: The token that write came through; null for the person's own browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     since: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
     settled: {type: boolean, description: The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)}
@@ -1243,7 +1316,8 @@ QuestionStatus:
 Question:
   type: object
   required: [id, number, question, options, recommendation, answer, status, asked_by, asked_by_agent,
-    asked_of, answered_by, answered_at, recorded_by_agent, withdrawn_at, version, created_at, updated_at]
+    asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token, withdrawn_at, version,
+    created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     number: {type: integer, description: 'Stable within the ticket: Q<n> (docs/adr/0011 D4)'}
@@ -1256,6 +1330,11 @@ Question:
     asked_by:
       $ref: '#/Person'
     asked_by_agent: {type: [string, 'null'], description: The agent mark of the request that asked}
+    asked_by_token:
+      description: The token the question was asked through; null for a browser session (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     asked_of:
       description: The person asked; null for a question open in the tenant
       oneOf:
@@ -1270,6 +1349,13 @@ Question:
     recorded_by_agent:
       type: boolean
       description: An agent wrote the person's answer down (docs/adr/0066 D8)
+    answered_by_token:
+      description: |
+        The token the answer was recorded through, an agent's or the person's own; null for a browser
+        session and while there is no answer (docs/adr/0036 D6)
+      oneOf:
+        - $ref: '#/TokenMark'
+        - type: 'null'
     withdrawn_at: {type: [string, 'null'], format: date-time}
     version: {type: integer}
     created_at: {type: string, format: date-time}

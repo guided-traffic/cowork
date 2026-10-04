@@ -29,6 +29,8 @@ function ticket(project: string, number: number, overrides: Partial<Ticket> = {}
     confidential: false,
     assignee: null,
     reporter: ada,
+    reporter_agent: null,
+    reporter_token: null,
     block: null,
     threat: null,
     parent: null,

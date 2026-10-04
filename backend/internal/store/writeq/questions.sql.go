@@ -14,25 +14,32 @@ import (
 const answerQuestion = `-- name: AnswerQuestion :one
 UPDATE questions
 SET answer = $1, status = 'answered', answered_by = $2, answered_at = now(),
-    recorded_by_agent = $3, version = version + 1, updated_at = now()
-WHERE tenant_id = $4 AND id = $5 AND version = $6 AND status <> 'withdrawn'
+    recorded_by_agent = $3, answered_by_token_id = $4,
+    answered_by_token_name = $5, version = version + 1, updated_at = now()
+WHERE tenant_id = $6 AND id = $7 AND version = $8 AND status <> 'withdrawn'
 RETURNING version
 `
 
 type AnswerQuestionParams struct {
-	Answer          *string
-	AnsweredBy      *uuid.UUID
-	RecordedByAgent bool
-	TenantID        uuid.UUID
-	ID              uuid.UUID
-	Version         int32
+	Answer              *string
+	AnsweredBy          *uuid.UUID
+	RecordedByAgent     bool
+	AnsweredByTokenID   *uuid.UUID
+	AnsweredByTokenName *string
+	TenantID            uuid.UUID
+	ID                  uuid.UUID
+	Version             int32
 }
 
+// Every answer records how it came, replacing what an earlier one recorded:
+// the agent's, and the token's or none (docs/adr/0066 D8, docs/adr/0036 D6).
 func (q *Queries) AnswerQuestion(ctx context.Context, arg AnswerQuestionParams) (int32, error) {
 	row := q.db.QueryRow(ctx, answerQuestion,
 		arg.Answer,
 		arg.AnsweredBy,
 		arg.RecordedByAgent,
+		arg.AnsweredByTokenID,
+		arg.AnsweredByTokenName,
 		arg.TenantID,
 		arg.ID,
 		arg.Version,
@@ -43,22 +50,26 @@ func (q *Queries) AnswerQuestion(ctx context.Context, arg AnswerQuestionParams) 
 }
 
 const insertQuestion = `-- name: InsertQuestion :one
-INSERT INTO questions (tenant_id, ticket_id, number, question, options, recommendation, asked_by, asked_by_agent, asked_of)
+INSERT INTO questions (tenant_id, ticket_id, number, question, options, recommendation, asked_by, asked_by_agent,
+                       asked_by_token_id, asked_by_token_name, asked_of)
 VALUES ($1, $2, $3, $4, $5,
-        $6, $7, $8, $9)
+        $6, $7, $8, $9,
+        $10, $11)
 RETURNING id
 `
 
 type InsertQuestionParams struct {
-	TenantID       uuid.UUID
-	TicketID       uuid.UUID
-	Number         int32
-	Question       string
-	Options        string
-	Recommendation string
-	AskedBy        uuid.UUID
-	AskedByAgent   *string
-	AskedOf        *uuid.UUID
+	TenantID         uuid.UUID
+	TicketID         uuid.UUID
+	Number           int32
+	Question         string
+	Options          string
+	Recommendation   string
+	AskedBy          uuid.UUID
+	AskedByAgent     *string
+	AskedByTokenID   *uuid.UUID
+	AskedByTokenName *string
+	AskedOf          *uuid.UUID
 }
 
 func (q *Queries) InsertQuestion(ctx context.Context, arg InsertQuestionParams) (uuid.UUID, error) {
@@ -71,6 +82,8 @@ func (q *Queries) InsertQuestion(ctx context.Context, arg InsertQuestionParams) 
 		arg.Recommendation,
 		arg.AskedBy,
 		arg.AskedByAgent,
+		arg.AskedByTokenID,
+		arg.AskedByTokenName,
 		arg.AskedOf,
 	)
 	var id uuid.UUID

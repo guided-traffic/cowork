@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
@@ -49,6 +50,9 @@ func (s *Server) ExportTicketContext(ctx context.Context, req apigen.ExportTicke
 	}
 	comments, acts := countOf(req.Params.Comments), countOf(req.Params.Activity)
 	doc := markdown.Context{Exported: s.h.opts.Now(), By: p.DisplayName, Agent: p.Agent}
+	if p.TokenID != uuid.Nil {
+		doc.Token = &markdown.Token{Name: p.TokenName}
+	}
 	var tc ticketCtx
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		var err error
@@ -140,7 +144,7 @@ func contextComments(ctx context.Context, r *store.Reader, t tenantScope, tc tic
 	doc.Comments = make([]markdown.Comment, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
 		c := commentView(comment(rows[i]))
-		mc := markdown.Comment{Author: c.Author.DisplayName, At: c.CreatedAt, Withdrawn: c.Withdrawn}
+		mc := markdown.Comment{Author: c.Author.DisplayName, Token: contextToken(c.Token), At: c.CreatedAt, Withdrawn: c.Withdrawn}
 		if agent, err := c.Agent.Get(); err == nil {
 			mc.Agent = agent
 		}
@@ -180,7 +184,7 @@ func contextActivity(ctx context.Context, r *store.Reader, t tenantScope, tc tic
 	doc.Activity = make([]markdown.Act, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
 		v := activityView(rows[i], visible)
-		act := markdown.Act{At: v.At, Action: string(v.Action), Redacted: v.Redacted}
+		act := markdown.Act{At: v.At, Action: string(v.Action), Token: contextToken(v.Token), Redacted: v.Redacted}
 		if actor, err := v.Actor.Get(); err == nil {
 			act.Actor = actor.DisplayName
 		} else if system, err := v.ActorSystem.Get(); err == nil {
@@ -199,6 +203,18 @@ func contextActivity(ctx context.Context, r *store.Reader, t tenantScope, tc tic
 		doc.Activity = append(doc.Activity, act)
 	}
 	return nil
+}
+
+// contextToken is the token an act came through as the context names it: by
+// its name, which an act recorded before the name was kept lacks; nil for a
+// browser session's act (docs/adr/0036 D6).
+func contextToken(v nullable.Nullable[apigen.TokenMark]) *markdown.Token {
+	tok, err := v.Get()
+	if err != nil {
+		return nil
+	}
+	name, _ := tok.Name.Get()
+	return &markdown.Token{Name: name}
 }
 
 // payload is an act's changed fields; none, or a redacted payload, is nil.

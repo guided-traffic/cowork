@@ -788,6 +788,17 @@
           "redacted": {
             "description": "The act names a ticket the caller cannot see; its payload, reason and note are withheld",
             "type": "boolean"
+          },
+          "token": {
+            "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -796,6 +807,7 @@
           "actor",
           "actor_system",
           "agent",
+          "token",
           "action",
           "entity_type",
           "entity_id",
@@ -896,6 +908,17 @@
             "format": "int64",
             "type": "integer"
           },
+          "token": {
+            "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "uploaded_by": {
             "$ref": "#/components/schemas/Person"
           }
@@ -909,6 +932,7 @@
           "comment",
           "uploaded_by",
           "agent",
+          "token",
           "created_at",
           "content_url"
         ],
@@ -1078,6 +1102,13 @@
           },
           "token_id": {
             "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_name": {
+            "description": "The token's name as the act recorded it (docs/adr/0036 D6); null without a token, and on an act\nrecorded before cowork kept the name\n",
             "type": [
               "string",
               "null"
@@ -1602,6 +1633,17 @@
             "format": "uuid",
             "type": "string"
           },
+          "token": {
+            "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -1624,6 +1666,7 @@
           "id",
           "author",
           "agent",
+          "token",
           "body",
           "withdrawn",
           "withdrawn_at",
@@ -1659,6 +1702,7 @@
       "CommentRevision": {
         "properties": {
           "agent": {
+            "description": "The agent mark of the edit",
             "type": [
               "string",
               "null"
@@ -1674,12 +1718,24 @@
           },
           "edited_by": {
             "$ref": "#/components/schemas/Person"
+          },
+          "token": {
+            "description": "The token the edit came through; null for a browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "body",
           "edited_by",
           "agent",
+          "token",
           "at"
         ],
         "type": "object"
@@ -1897,6 +1953,13 @@
       },
       "Interest": {
         "properties": {
+          "agent": {
+            "description": "The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "note": {
             "type": "string"
           },
@@ -1911,6 +1974,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "token": {
+            "description": "The token that write came through; null for the person's own browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -1923,6 +1997,8 @@
           "person",
           "weight",
           "note",
+          "agent",
+          "token",
           "since",
           "updated_at",
           "settled"
@@ -2698,6 +2774,17 @@
               }
             ]
           },
+          "answered_by_token": {
+            "description": "The token the answer was recorded through, an agent's or the person's own; null for a browser\nsession and while there is no answer (docs/adr/0036 D6)\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "asked_by": {
             "$ref": "#/components/schemas/Person"
           },
@@ -2706,6 +2793,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "asked_by_token": {
+            "description": "The token the question was asked through; null for a browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "asked_of": {
@@ -2773,10 +2871,12 @@
           "status",
           "asked_by",
           "asked_by_agent",
+          "asked_by_token",
           "asked_of",
           "answered_by",
           "answered_at",
           "recorded_by_agent",
+          "answered_by_token",
           "withdrawn_at",
           "version",
           "created_at",
@@ -3420,6 +3520,24 @@
           "reporter": {
             "$ref": "#/components/schemas/Person"
           },
+          "reporter_agent": {
+            "description": "The agent mark of the request that filed the ticket in the reporter's name (docs/adr/0036 D6)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reporter_token": {
+            "description": "The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "security": {
             "$ref": "#/components/schemas/SecurityClass"
           },
@@ -3493,6 +3611,8 @@
           "progress_derived",
           "parent",
           "reporter",
+          "reporter_agent",
+          "reporter_token",
           "assignee",
           "confidential",
           "opened_at",
@@ -3792,6 +3912,17 @@
             "description": "The ticket's key",
             "type": "string"
           },
+          "token": {
+            "description": "The token the booking came through; null for a browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -3816,6 +3947,7 @@
           "ticket",
           "person",
           "author",
+          "token",
           "minutes",
           "day",
           "note",
@@ -3924,6 +4056,17 @@
           },
           "note": {
             "type": "string"
+          },
+          "token": {
+            "description": "The token the correction came through; null for a browser session (docs/adr/0036 D6)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3931,6 +4074,7 @@
           "day",
           "note",
           "edited_by",
+          "token",
           "at"
         ],
         "type": "object"
@@ -4099,6 +4243,7 @@
             "type": "integer"
           },
           "name": {
+            "description": "Shown beside every act made through the token — in a ticket's activity, on its comments,\nquestions, answers, files and time — to whoever reads the act, and kept there after the token is\nrevoked (docs/adr/0036 D6)\n",
             "maxLength": 100,
             "minLength": 1,
             "type": "string"
@@ -4158,6 +4303,27 @@
         "required": [
           "items",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "TokenMark": {
+        "description": "The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act\nrecorded it, readable by whoever reads the act — never the token's secret, hash or prefix. A\nrevoked or expired token's acts keep its name.\n",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The token's name; null only on an act of the activity recorded before cowork kept the name,\nwhich says that a token was used, not which one\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "type": "object"
       },

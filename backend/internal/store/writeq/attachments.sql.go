@@ -12,9 +12,11 @@ import (
 )
 
 const insertAttachment = `-- name: InsertAttachment :exec
-INSERT INTO attachments (id, tenant_id, ticket_id, comment_id, file_name, size, sha256, content_type, uploaded_by, agent)
+INSERT INTO attachments (id, tenant_id, ticket_id, comment_id, file_name, size, sha256, content_type, uploaded_by, agent,
+                         token_id, token_name)
 VALUES ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10)
+        $7, $8, $9, $10, $11,
+        $12)
 `
 
 type InsertAttachmentParams struct {
@@ -28,6 +30,8 @@ type InsertAttachmentParams struct {
 	ContentType string
 	UploadedBy  uuid.UUID
 	Agent       *string
+	TokenID     *uuid.UUID
+	TokenName   *string
 }
 
 func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentParams) error {
@@ -42,6 +46,8 @@ func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentPara
 		arg.ContentType,
 		arg.UploadedBy,
 		arg.Agent,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	return err
 }

@@ -12,17 +12,20 @@ import (
 )
 
 const insertComment = `-- name: InsertComment :one
-INSERT INTO comments (tenant_id, ticket_id, author_id, agent, body)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO comments (tenant_id, ticket_id, author_id, agent, token_id, token_name, body)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7)
 RETURNING id
 `
 
 type InsertCommentParams struct {
-	TenantID uuid.UUID
-	TicketID uuid.UUID
-	AuthorID uuid.UUID
-	Agent    *string
-	Body     string
+	TenantID  uuid.UUID
+	TicketID  uuid.UUID
+	AuthorID  uuid.UUID
+	Agent     *string
+	TokenID   *uuid.UUID
+	TokenName *string
+	Body      string
 }
 
 func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (uuid.UUID, error) {
@@ -31,6 +34,8 @@ func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (u
 		arg.TicketID,
 		arg.AuthorID,
 		arg.Agent,
+		arg.TokenID,
+		arg.TokenName,
 		arg.Body,
 	)
 	var id uuid.UUID
@@ -39,8 +44,9 @@ func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (u
 }
 
 const insertCommentRevision = `-- name: InsertCommentRevision :exec
-INSERT INTO comment_revisions (tenant_id, comment_id, body, edited_by, agent)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO comment_revisions (tenant_id, comment_id, body, edited_by, agent, token_id, token_name)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7)
 `
 
 type InsertCommentRevisionParams struct {
@@ -49,6 +55,8 @@ type InsertCommentRevisionParams struct {
 	Body      string
 	EditedBy  uuid.UUID
 	Agent     *string
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 func (q *Queries) InsertCommentRevision(ctx context.Context, arg InsertCommentRevisionParams) error {
@@ -58,6 +66,8 @@ func (q *Queries) InsertCommentRevision(ctx context.Context, arg InsertCommentRe
 		arg.Body,
 		arg.EditedBy,
 		arg.Agent,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	return err
 }

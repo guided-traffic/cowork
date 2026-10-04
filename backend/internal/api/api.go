@@ -442,6 +442,7 @@ func callerOf(p auth.Principal, requestID uuid.UUID, sourceHash []byte) store.Ca
 	return store.Caller{
 		UserID:              p.PersonID,
 		TokenID:             p.TokenID,
+		TokenName:           p.TokenName,
 		SessionHash:         p.SessionHash,
 		RestrictedProjectID: p.RestrictedProjectID,
 		Agent:               p.Agent,

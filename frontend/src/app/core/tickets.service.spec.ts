@@ -53,6 +53,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     urgency_rule: 'v1:default',
     assignee: null,
     reporter: { id: 'p1', display_name: 'Hans' },
+    reporter_agent: null,
+    reporter_token: null,
     block: null,
     confidential: false,
     parent: null,

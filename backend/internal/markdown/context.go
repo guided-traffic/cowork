@@ -17,9 +17,11 @@ import (
 type Context struct {
 	Ticket Ticket
 	// Exported is when, By who and Agent through which agent the document
-	// was made; Agent is empty for a person's request.
+	// was made; Agent is empty for a person's request. Token is the token a
+	// request came through, as the document names it where no agent made it.
 	Exported  time.Time
 	By, Agent string
+	Token     *Token
 	Links     []Link
 	// Prerequisites is the tree, depth first.
 	Prerequisites []Prerequisite
@@ -44,9 +46,16 @@ type Prerequisite struct {
 	Progress                    int
 }
 
+// Token is the token an act came through (docs/adr/0036 D6): its name, empty
+// where the act did not record one. A nil *Token is a browser session's act.
+type Token struct {
+	Name string
+}
+
 // Comment is one comment of the thread; a withdrawn one has no text.
 type Comment struct {
 	Author, Agent string
+	Token         *Token
 	At            time.Time
 	Body          string
 	Withdrawn     bool
@@ -65,6 +74,7 @@ type Attachment struct {
 type Act struct {
 	At                   time.Time
 	Actor, Agent, Action string
+	Token                *Token
 	Before, After        map[string]any
 	Reason, Note         string
 	Redacted             bool
@@ -77,8 +87,8 @@ const maxQuoted = 200
 func RenderContext(c Context) []byte {
 	var b bytes.Buffer
 	by := c.By
-	if c.Agent != "" {
-		by += " (via " + c.Agent + ")"
+	if mark := via(c.Agent, c.Token); mark != "" {
+		by += " (" + strings.TrimPrefix(mark, " ") + ")"
 	}
 	fmt.Fprintf(&b, "<!-- cowork: context of %s, exported %s by %s — not an import format -->\n",
 		c.Ticket.Key, c.Exported.UTC().Format(time.RFC3339), oneLine(by))
@@ -135,7 +145,7 @@ func writeComments(b *bytes.Buffer, comments []Comment) {
 		return
 	}
 	for _, c := range comments {
-		fmt.Fprintf(b, "\n**%s**%s, %s:", oneLine(c.Author), via(c.Agent), stamp(c.At))
+		fmt.Fprintf(b, "\n**%s**%s, %s:", oneLine(c.Author), via(c.Agent, c.Token), stamp(c.At))
 		if c.Withdrawn {
 			b.WriteString(" [withdrawn]\n")
 			continue
@@ -165,7 +175,7 @@ func writeActivity(b *bytes.Buffer, acts []Act) {
 		return
 	}
 	for _, a := range acts {
-		fmt.Fprintf(b, "- %s — %s%s — %s\n", stamp(a.At), oneLine(a.Actor), via(a.Agent), summary(a))
+		fmt.Fprintf(b, "- %s — %s%s — %s\n", stamp(a.At), oneLine(a.Actor), via(a.Agent, a.Token), summary(a))
 	}
 }
 
@@ -238,11 +248,20 @@ func assignee(name string) string {
 	return oneLine(name)
 }
 
-func via(agent string) string {
-	if agent == "" {
+// via says how an act was made beside its person: by the agent, or through
+// the token where no agent made it (docs/adr/0036 D6); nothing for the
+// person's own browser session.
+func via(agent string, token *Token) string {
+	switch {
+	case agent != "":
+		return " via " + agent
+	case token == nil:
 		return ""
+	case oneLine(token.Name) == "":
+		return " through a token"
+	default:
+		return " through the token " + oneLine(token.Name)
 	}
-	return " via " + agent
 }
 
 func stamp(t time.Time) string {

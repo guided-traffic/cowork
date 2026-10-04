@@ -3,6 +3,7 @@
 
 import { AuditAction } from '../models/audit-action';
 import { Person } from '../models/person';
+import { TokenMark } from '../models/token-mark';
 export interface Comment {
 
   /**
@@ -27,6 +28,11 @@ export interface Comment {
    */
   explains: Array<AuditAction>;
   id: string;
+
+  /**
+   * The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+   */
+  token: (TokenMark | null);
   updated_at: string;
   version: number;
   withdrawn: boolean;

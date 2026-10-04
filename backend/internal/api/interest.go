@@ -50,7 +50,8 @@ func (s *Server) ListInterest(ctx context.Context, req apigen.ListInterestReques
 	out := apigen.ListInterest200JSONResponse{Items: make([]apigen.Interest, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, i := range rows {
 		out.Items = append(out.Items, apigen.Interest{Person: personView(i.UserID, i.Username, i.DisplayName),
-			Weight: apigen.InterestWeight(i.Weight), Note: i.Note, Since: i.Since, UpdatedAt: i.UpdatedAt, Settled: i.Settled})
+			Weight: apigen.InterestWeight(i.Weight), Note: i.Note, Agent: nullableOf(i.Agent),
+			Token: tokenMarkView(i.TokenID, i.TokenName), Since: i.Since, UpdatedAt: i.UpdatedAt, Settled: i.Settled})
 	}
 	return out, nil
 }
@@ -66,7 +67,8 @@ func interestNeed(weight string) auth.Need {
 }
 
 // SetInterest sets the caller's own stake; one row per person and ticket
-// (docs/adr/0013 D1).
+// (docs/adr/0013 D1). The stake carries the mark of the write that set it
+// (docs/adr/0036 D6).
 func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestObject) (apigen.SetInterestResponseObject, error) {
 	t := tenantFrom(ctx)
 	weight, note := string(req.Body.Weight), deref(req.Body.Note)
@@ -86,9 +88,11 @@ func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestO
 		cur, err := w.GetInterest(ctx, key)
 		ev := store.Event{EntityType: entityInterest, EntityID: p.PersonID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 			Action: actionInterest, After: map[string]any{fieldWeight: weight, fieldNote: note}}
+		tokenID, tokenName := actToken(p)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			err = w.InsertInterest(ctx, writeq.InsertInterestParams{TenantID: t.ID, TicketID: tc.row.ID, UserID: p.PersonID, Weight: weight, Note: note})
+			err = w.InsertInterest(ctx, writeq.InsertInterestParams{TenantID: t.ID, TicketID: tc.row.ID, UserID: p.PersonID, Weight: weight,
+				Note: note, Agent: actAgent(p), TokenID: tokenID, TokenName: tokenName})
 			created = true
 		case err != nil:
 			return err
@@ -97,7 +101,8 @@ func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestO
 			return store.ErrNoChange
 		default:
 			ev.Before = map[string]any{fieldWeight: cur.Weight, fieldNote: cur.Note}
-			err = w.UpdateInterest(ctx, writeq.UpdateInterestParams{TenantID: t.ID, TicketID: tc.row.ID, UserID: p.PersonID, Weight: weight, Note: note})
+			err = w.UpdateInterest(ctx, writeq.UpdateInterestParams{TenantID: t.ID, TicketID: tc.row.ID, UserID: p.PersonID, Weight: weight,
+				Note: note, Agent: actAgent(p), TokenID: tokenID, TokenName: tokenName})
 		}
 		if err != nil {
 			return fmt.Errorf("write the interest: %w", err)
@@ -110,7 +115,8 @@ func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestO
 		return nil, err
 	}
 	v := apigen.Interest{Person: personView(out.UserID, out.Username, out.DisplayName), Weight: apigen.InterestWeight(out.Weight),
-		Note: out.Note, Since: out.Since, UpdatedAt: out.UpdatedAt, Settled: settled}
+		Note: out.Note, Agent: nullableOf(out.Agent), Token: tokenMarkView(out.TokenID, out.TokenName), Since: out.Since,
+		UpdatedAt: out.UpdatedAt, Settled: settled}
 	if created {
 		return apigen.SetInterest201JSONResponse(v), nil
 	}

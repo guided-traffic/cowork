@@ -13,14 +13,22 @@ const sam = { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' };
 
 const key = 'acme/COW-12';
 
-function interest(person: Interest['person'], weight: InterestWeight, note = ''): Interest {
+function interest(
+  person: Interest['person'],
+  weight: InterestWeight,
+  note = '',
+  overrides: Partial<Interest> = {},
+): Interest {
   return {
     person,
     weight,
     note,
+    agent: null,
+    token: null,
     settled: false,
     since: '2026-10-02T09:00:00Z',
     updated_at: '2026-10-02T09:00:00Z',
+    ...overrides,
   };
 }
 
@@ -114,6 +122,32 @@ describe('InterestControl', () => {
       expect(holders(fixture)).toEqual([
         { who: 'Ada Lovelace', weight: 'urgent', note: 'The release waits for it' },
         { who: 'Sam Rivera', weight: 'watch', note: undefined },
+      ]);
+    });
+
+    it("marks a stake an agent or a token set in its holder's name, and no other", async () => {
+      const fixture = await render([
+        interest(ada, 'need', 'For the release', { token: { id: 'tok-1', name: 'ci-script' } }),
+        interest(sam, 'urgent', 'Blocks me', {
+          agent: 'claude-code/opus/s-1',
+          token: { id: 'tok-2', name: 'claude-laptop' },
+        }),
+        interest({ id: 'p3', display_name: 'Cyd' }, 'watch'),
+      ]);
+
+      const mark = (person: string) =>
+        el(fixture, 'stake-' + person)?.querySelector('[data-testid="agent-mark"]');
+      expect(mark('p1')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'through the token ci-script',
+      );
+      expect(mark('p1')?.hasAttribute('data-agent')).toBe(false);
+      expect(mark('p2')?.getAttribute('data-agent')).toBe('claude-code/opus/s-1');
+      expect(mark('p2')?.getAttribute('data-token')).toBe('tok-2');
+      expect(mark('p3')).toBeNull();
+      expect(holders(fixture).map((holder) => holder.who)).toEqual([
+        'Ada Lovelace',
+        'Sam Rivera',
+        'Cyd',
       ]);
     });
 

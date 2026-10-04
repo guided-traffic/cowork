@@ -39,4 +39,10 @@ export interface AuditEvent {
   request_id?: (string | null);
   ticket_key?: (string | null);
   token_id?: (string | null);
+
+  /**
+   * The token's name as the act recorded it (docs/adr/0036 D6); null without a token, and on an act
+   * recorded before cowork kept the name
+   */
+  token_name?: (string | null);
 }

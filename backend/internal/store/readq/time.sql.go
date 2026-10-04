@@ -56,7 +56,7 @@ func (q *Queries) CountTenantTime(ctx context.Context, arg CountTenantTimeParams
 const getTimeEntry = `-- name: GetTimeEntry :one
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at
 FROM time_entries e
@@ -86,6 +86,8 @@ type GetTimeEntryRow struct {
 	Day            time.Time
 	Note           string
 	VoidedAt       *time.Time
+	TokenID        *uuid.UUID
+	TokenName      *string
 	Edited         bool
 	Version        int32
 	CreatedAt      time.Time
@@ -107,6 +109,8 @@ func (q *Queries) GetTimeEntry(ctx context.Context, arg GetTimeEntryParams) (Get
 		&i.Day,
 		&i.Note,
 		&i.VoidedAt,
+		&i.TokenID,
+		&i.TokenName,
 		&i.Edited,
 		&i.Version,
 		&i.CreatedAt,
@@ -118,7 +122,7 @@ func (q *Queries) GetTimeEntry(ctx context.Context, arg GetTimeEntryParams) (Get
 const listTenantTime = `-- name: ListTenantTime :many
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at, p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title
 FROM time_entries e
@@ -165,6 +169,8 @@ type ListTenantTimeRow struct {
 	Day            time.Time
 	Note           string
 	VoidedAt       *time.Time
+	TokenID        *uuid.UUID
+	TokenName      *string
 	Edited         bool
 	Version        int32
 	CreatedAt      time.Time
@@ -208,6 +214,8 @@ func (q *Queries) ListTenantTime(ctx context.Context, arg ListTenantTimeParams) 
 			&i.Day,
 			&i.Note,
 			&i.VoidedAt,
+			&i.TokenID,
+			&i.TokenName,
 			&i.Edited,
 			&i.Version,
 			&i.CreatedAt,
@@ -230,7 +238,7 @@ const listTicketTime = `-- name: ListTicketTime :many
 
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at
 FROM time_entries e
@@ -264,6 +272,8 @@ type ListTicketTimeRow struct {
 	Day            time.Time
 	Note           string
 	VoidedAt       *time.Time
+	TokenID        *uuid.UUID
+	TokenName      *string
 	Edited         bool
 	Version        int32
 	CreatedAt      time.Time
@@ -298,6 +308,8 @@ func (q *Queries) ListTicketTime(ctx context.Context, arg ListTicketTimeParams) 
 			&i.Day,
 			&i.Note,
 			&i.VoidedAt,
+			&i.TokenID,
+			&i.TokenName,
 			&i.Edited,
 			&i.Version,
 			&i.CreatedAt,
@@ -315,7 +327,7 @@ func (q *Queries) ListTicketTime(ctx context.Context, arg ListTicketTimeParams) 
 
 const listTimeEntryRevisions = `-- name: ListTimeEntryRevisions :many
 SELECT r.id, r.minutes, r.day, r.note, r.edited_by, u.username AS edited_by_username,
-       u.display_name AS edited_by_name, r.created_at
+       u.display_name AS edited_by_name, r.token_id, r.token_name, r.created_at
 FROM time_entry_revisions r
 JOIN time_entries e ON e.tenant_id = r.tenant_id AND e.id = r.entry_id
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
@@ -343,6 +355,8 @@ type ListTimeEntryRevisionsRow struct {
 	EditedBy         uuid.UUID
 	EditedByUsername *string
 	EditedByName     *string
+	TokenID          *uuid.UUID
+	TokenName        *string
 	CreatedAt        time.Time
 }
 
@@ -368,6 +382,8 @@ func (q *Queries) ListTimeEntryRevisions(ctx context.Context, arg ListTimeEntryR
 			&i.EditedBy,
 			&i.EditedByUsername,
 			&i.EditedByName,
+			&i.TokenID,
+			&i.TokenName,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

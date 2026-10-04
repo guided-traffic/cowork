@@ -107,6 +107,7 @@ func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.E
 		PersonID:     rec.Person.ID,
 		DisplayName:  rec.Person.DisplayName,
 		TokenID:      rec.Token.ID,
+		TokenName:    rec.Token.Name,
 		Scope:        rec.Token.Scope,
 		Agent:        agent,
 		Capabilities: capabilities,

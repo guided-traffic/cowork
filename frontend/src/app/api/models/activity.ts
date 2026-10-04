@@ -3,6 +3,7 @@
 
 import { AuditAction } from '../models/audit-action';
 import { Person } from '../models/person';
+import { TokenMark } from '../models/token-mark';
 export interface Activity {
   action: AuditAction;
   actor: (Person | null);
@@ -32,4 +33,9 @@ export interface Activity {
    * The act names a ticket the caller cannot see; its payload, reason and note are withheld
    */
   redacted: boolean;
+
+  /**
+   * The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+   */
+  token: (TokenMark | null);
 }

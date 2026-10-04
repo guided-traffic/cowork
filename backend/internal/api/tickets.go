@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
@@ -50,9 +51,10 @@ func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
 		DoneFrom: nullableOf[apigen.TicketState](nil), DoneByHand: doneByHand(r),
 		OpenPrerequisites: int(r.OpenPrerequisites),
 		Version:           int(r.Version), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		Reporter: personView(r.ReporterID, r.ReporterUsername, r.ReporterName),
-		Block:    nullableOf[apigen.Block](nil), UrgencyOverride: nullableOf[apigen.UrgencyOverride](nil),
-		Assignee: nullableOf[apigen.Person](nil), Parent: nullableOf[string](nil),
+		Reporter: personView(r.ReporterID, r.ReporterUsername, r.ReporterName), ReporterAgent: nullableOf(r.ReporterAgent),
+		ReporterToken: tokenMarkView(r.ReporterTokenID, r.ReporterTokenName), Block: nullableOf[apigen.Block](nil),
+		UrgencyOverride: nullableOf[apigen.UrgencyOverride](nil), Assignee: nullableOf[apigen.Person](nil),
+		Parent: nullableOf[string](nil),
 	}
 	if r.State == domain.StateDone {
 		from := apigen.TicketState(origin(r))
@@ -156,6 +158,38 @@ func personView(id uuid.UUID, username, name *string) apigen.Person {
 		p.DisplayName = *name
 	}
 	return p
+}
+
+// actAgent is the agent mark a row records of an agent's act; nil for a
+// person's own (docs/adr/0036 D6).
+func actAgent(p auth.Principal) *string {
+	if !p.IsAgent() {
+		return nil
+	}
+	agent := p.Agent
+	return &agent
+}
+
+// actToken is the token a request came through, as a row records it beside
+// the agent mark: its id and its name, both nil for a browser session's act
+// (docs/adr/0036 D6). The name is copied, because a reader of the act may not
+// read the token's row.
+func actToken(p auth.Principal) (id *uuid.UUID, name *string) {
+	if p.TokenID == uuid.Nil {
+		return nil, nil
+	}
+	tokenID, tokenName := p.TokenID, p.TokenName
+	return &tokenID, &tokenName
+}
+
+// tokenMarkView is the token an act came through, as the API shows it; null
+// for a browser session's act. Never the token's secret or hash: the row
+// holds neither.
+func tokenMarkView(id *uuid.UUID, name *string) nullable.Nullable[apigen.TokenMark] {
+	if id == nil {
+		return nullable.NewNullNullable[apigen.TokenMark]()
+	}
+	return nullable.NewNullableWithValue(apigen.TokenMark{Id: *id, Name: nullableOf(name)})
 }
 
 // ticketCtx is a visible ticket with its project and the person's role there.
@@ -333,12 +367,14 @@ func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key st
 // The number's counter row is the project's rank lock as well, taken before
 // any ticket row is written.
 func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, p project, body apigen.TicketCreate) (writeq.InsertTicketParams, error) {
+	caller := principal(ctx)
 	ins := writeq.InsertTicketParams{
 		TenantID: t.ID, ProjectID: p.ID, Type: domain.TicketType(body.Type), Title: body.Title,
 		Severity: domain.Severity(body.Severity), Security: domain.SecurityClass(body.Security), Threat: body.Threat,
-		Effort: domain.Effort(body.Effort), ReporterID: principal(ctx).PersonID,
+		Effort: domain.Effort(body.Effort), ReporterID: caller.PersonID, ReporterAgent: actAgent(caller),
 		Confidential: domain.SecurityClass(body.Security).MakesConfidential(),
 	}
+	ins.ReporterTokenID, ins.ReporterTokenName = actToken(caller)
 	if body.Body != nil {
 		ins.Body = *body.Body
 	}

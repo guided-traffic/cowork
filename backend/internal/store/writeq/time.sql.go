@@ -13,20 +13,22 @@ import (
 )
 
 const insertTimeEntry = `-- name: InsertTimeEntry :one
-INSERT INTO time_entries (tenant_id, ticket_id, person_id, author_id, minutes, day, note)
+INSERT INTO time_entries (tenant_id, ticket_id, person_id, author_id, minutes, day, note, token_id, token_name)
 VALUES ($1, $2, $3, $4, $5,
-        $6, $7)
+        $6, $7, $8, $9)
 RETURNING id
 `
 
 type InsertTimeEntryParams struct {
-	TenantID uuid.UUID
-	TicketID uuid.UUID
-	PersonID uuid.UUID
-	AuthorID uuid.UUID
-	Minutes  int32
-	Day      time.Time
-	Note     string
+	TenantID  uuid.UUID
+	TicketID  uuid.UUID
+	PersonID  uuid.UUID
+	AuthorID  uuid.UUID
+	Minutes   int32
+	Day       time.Time
+	Note      string
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 func (q *Queries) InsertTimeEntry(ctx context.Context, arg InsertTimeEntryParams) (uuid.UUID, error) {
@@ -38,6 +40,8 @@ func (q *Queries) InsertTimeEntry(ctx context.Context, arg InsertTimeEntryParams
 		arg.Minutes,
 		arg.Day,
 		arg.Note,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -45,17 +49,20 @@ func (q *Queries) InsertTimeEntry(ctx context.Context, arg InsertTimeEntryParams
 }
 
 const insertTimeEntryRevision = `-- name: InsertTimeEntryRevision :exec
-INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by, token_id, token_name)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8)
 `
 
 type InsertTimeEntryRevisionParams struct {
-	TenantID uuid.UUID
-	EntryID  uuid.UUID
-	Minutes  int32
-	Day      time.Time
-	Note     string
-	EditedBy uuid.UUID
+	TenantID  uuid.UUID
+	EntryID   uuid.UUID
+	Minutes   int32
+	Day       time.Time
+	Note      string
+	EditedBy  uuid.UUID
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 func (q *Queries) InsertTimeEntryRevision(ctx context.Context, arg InsertTimeEntryRevisionParams) error {
@@ -66,6 +73,8 @@ func (q *Queries) InsertTimeEntryRevision(ctx context.Context, arg InsertTimeEnt
 		arg.Day,
 		arg.Note,
 		arg.EditedBy,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	return err
 }

@@ -51,7 +51,10 @@ type Principal struct {
 	PersonID    uuid.UUID
 	DisplayName string
 	// TokenID is the token the request presented; uuid.Nil for a session.
-	TokenID uuid.UUID
+	// TokenName is its name, which every act the request makes records
+	// beside it (docs/adr/0036 D6); empty for a session.
+	TokenID   uuid.UUID
+	TokenName string
 	// Session says the request was authenticated by the session cookie, and
 	// SessionHash is the SHA-256 of the cookie value it presented; both are
 	// zero for a token. The hash is what finds the session's row again and

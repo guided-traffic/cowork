@@ -52,8 +52,9 @@ export const maxLifetimeDays = 3650;
 const scopes: Scope[] = ['read', 'write', 'admin'];
 
 /**
- * Creates a personal access token (docs/adr/0035 D5): its name, scope, an agent flag with the
- * capabilities (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
+ * Creates a personal access token (docs/adr/0035 D5): its name — which shows on every act made
+ * through it, and says so (docs/adr/0036 D6) —, scope, an agent flag with the capabilities
+ * (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
  * An agent token has at most `write` scope, and the form says so before the server has to; one
  * with no capability keeps the baseline and nothing more, which is a choice like any other. The
  * lifetime is left empty unless the person fills it, which is the installation's default. The
@@ -90,9 +91,16 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             [ngModel]="name()"
             (ngModelChange)="name.set($event)"
             [attr.aria-invalid]="!!errors()['name']"
-            [attr.aria-describedby]="describedBy(errors()['name'] && 'token-name-error')"
+            [attr.aria-describedby]="
+              describedBy('token-name-hint', errors()['name'] && 'token-name-error')
+            "
             data-testid="token-name"
           />
+          <small class="muted" id="token-name-hint" data-testid="token-name-hint">
+            The name shows on what the token does: everyone who can read a ticket sees it beside the
+            acts made through this token — changes, comments, questions, answers, files, time — also
+            after you revoke it.
+          </small>
           @if (errors()['name']; as error) {
             <small
               class="error"

@@ -679,6 +679,8 @@ type Attachment struct {
 	Agent       *string
 	Search      interface{}
 	CreatedAt   time.Time
+	TokenID     *uuid.UUID
+	TokenName   *string
 }
 
 type AuditEvent struct {
@@ -704,6 +706,7 @@ type AuditEvent struct {
 	RequestID            *uuid.UUID
 	CreatedAt            time.Time
 	SourceHash           []byte
+	TokenName            *string
 }
 
 type ChatCapability struct {
@@ -725,6 +728,8 @@ type Comment struct {
 	Version     int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	TokenID     *uuid.UUID
+	TokenName   *string
 }
 
 type CommentRevision struct {
@@ -735,6 +740,8 @@ type CommentRevision struct {
 	EditedBy  uuid.UUID
 	Agent     *string
 	CreatedAt time.Time
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 type GroupMapping struct {
@@ -833,27 +840,31 @@ type ProjectRepository struct {
 }
 
 type Question struct {
-	ID              uuid.UUID
-	TenantID        uuid.UUID
-	TicketID        uuid.UUID
-	Number          int32
-	Question        string
-	Options         string
-	Recommendation  string
-	Answer          *string
-	Status          string
-	AskedBy         uuid.UUID
-	AskedByAgent    *string
-	AskedOf         *uuid.UUID
-	AnsweredBy      *uuid.UUID
-	AnsweredAt      *time.Time
-	RecordedByAgent bool
-	WithdrawnBy     *uuid.UUID
-	WithdrawnAt     *time.Time
-	Search          interface{}
-	Version         int32
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  uuid.UUID
+	TenantID            uuid.UUID
+	TicketID            uuid.UUID
+	Number              int32
+	Question            string
+	Options             string
+	Recommendation      string
+	Answer              *string
+	Status              string
+	AskedBy             uuid.UUID
+	AskedByAgent        *string
+	AskedOf             *uuid.UUID
+	AnsweredBy          *uuid.UUID
+	AnsweredAt          *time.Time
+	RecordedByAgent     bool
+	WithdrawnBy         *uuid.UUID
+	WithdrawnAt         *time.Time
+	Search              interface{}
+	Version             int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	AskedByTokenID      *uuid.UUID
+	AskedByTokenName    *string
+	AnsweredByTokenID   *uuid.UUID
+	AnsweredByTokenName *string
 }
 
 type Session struct {
@@ -927,6 +938,9 @@ type Ticket struct {
 	ProgressReviewDerived     *int16
 	DoneFrom                  *domain.TicketState
 	DoneByHand                bool
+	ReporterAgent             *string
+	ReporterTokenID           *uuid.UUID
+	ReporterTokenName         *string
 }
 
 type TicketCounter struct {
@@ -943,6 +957,9 @@ type TicketInterest struct {
 	Note      string
 	Since     time.Time
 	UpdatedAt time.Time
+	Agent     *string
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 type TicketLink struct {
@@ -969,6 +986,8 @@ type TimeEntry struct {
 	Version   int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 type TimeEntryRevision struct {
@@ -980,6 +999,8 @@ type TimeEntryRevision struct {
 	Note      string
 	EditedBy  uuid.UUID
 	CreatedAt time.Time
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 type Token struct {

@@ -13,15 +13,15 @@ import (
 
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 INSERT INTO audit_events (
-    id, tenant_id, actor_user_id, actor_system, agent, agent_capabilities, token_id,
+    id, tenant_id, actor_user_id, actor_system, agent, agent_capabilities, token_id, token_name,
     entity_type, entity_id, ticket_id, ticket_key, action, before, after,
     reason, note, explained_by_comment_id, refs, idempotency_key, request_id, source_hash
 ) VALUES (
     $1, $2, $3, $4, $5,
-    $6, $7, $8, $9,
-    $10, $11, $12, $13, $14,
-    $15, $16, $17, $18,
-    $19, $20, $21
+    $6, $7, $8, $9, $10,
+    $11, $12, $13, $14, $15,
+    $16, $17, $18, $19,
+    $20, $21, $22
 )
 `
 
@@ -33,6 +33,7 @@ type InsertAuditEventParams struct {
 	Agent                *string
 	AgentCapabilities    []string
 	TokenID              *uuid.UUID
+	TokenName            *string
 	EntityType           string
 	EntityID             *uuid.UUID
 	TicketID             *uuid.UUID
@@ -58,6 +59,7 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.Agent,
 		arg.AgentCapabilities,
 		arg.TokenID,
+		arg.TokenName,
 		arg.EntityType,
 		arg.EntityID,
 		arg.TicketID,

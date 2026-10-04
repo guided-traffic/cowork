@@ -3,6 +3,7 @@
 
 import { Person } from '../models/person';
 import { QuestionStatus } from '../models/question-status';
+import { TokenMark } from '../models/token-mark';
 export interface Question {
 
   /**
@@ -15,12 +16,23 @@ export interface Question {
    * The person whose answer it is, also when an agent wrote it down
    */
   answered_by: (Person | null);
+
+  /**
+   * The token the answer was recorded through, an agent's or the person's own; null for a browser
+   * session and while there is no answer (docs/adr/0036 D6)
+   */
+  answered_by_token: (TokenMark | null);
   asked_by: Person;
 
   /**
    * The agent mark of the request that asked
    */
   asked_by_agent: (string | null);
+
+  /**
+   * The token the question was asked through; null for a browser session (docs/adr/0036 D6)
+   */
+  asked_by_token: (TokenMark | null);
 
   /**
    * The person asked; null for a question open in the tenant

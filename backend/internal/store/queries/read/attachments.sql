@@ -2,7 +2,8 @@
 
 -- name: ListAttachments :many
 SELECT a.id, a.comment_id, a.file_name, a.size, a.sha256, a.content_type, a.uploaded_by,
-       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.created_at
+       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.token_id, a.token_name,
+       a.created_at
 FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
@@ -14,7 +15,8 @@ LIMIT sqlc.arg(page_size);
 
 -- name: GetAttachment :one
 SELECT a.id, a.comment_id, a.file_name, a.size, a.sha256, a.content_type, a.uploaded_by,
-       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.created_at
+       u.username AS uploaded_by_username, u.display_name AS uploaded_by_name, a.agent, a.token_id, a.token_name,
+       a.created_at
 FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by

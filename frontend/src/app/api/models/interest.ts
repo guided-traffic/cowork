@@ -3,7 +3,13 @@
 
 import { InterestWeight } from '../models/interest-weight';
 import { Person } from '../models/person';
+import { TokenMark } from '../models/token-mark';
 export interface Interest {
+
+  /**
+   * The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)
+   */
+  agent: (string | null);
   note: string;
   person: Person;
 
@@ -12,6 +18,11 @@ export interface Interest {
    */
   settled: boolean;
   since: string;
+
+  /**
+   * The token that write came through; null for the person's own browser session (docs/adr/0036 D6)
+   */
+  token: (TokenMark | null);
   updated_at: string;
   weight: InterestWeight;
 }

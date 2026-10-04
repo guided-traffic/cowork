@@ -126,6 +126,7 @@ export type { Token } from './models/token';
 export type { TokenCreate } from './models/token-create';
 export type { TokenCreated } from './models/token-created';
 export type { TokenList } from './models/token-list';
+export type { TokenMark } from './models/token-mark';
 export type { TokenState } from './models/token-state';
 export type { Transition } from './models/transition';
 export type { Urgency } from './models/urgency';

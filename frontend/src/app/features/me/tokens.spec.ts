@@ -170,6 +170,9 @@ describe('Tokens', () => {
       expect(host(fixture).querySelector('.lead')?.textContent).toContain(
         'cowork shows it once, when you make it, and never again',
       );
+      expect(host(fixture).querySelector('.lead')?.textContent?.replace(/\s+/g, ' ')).toContain(
+        'Whatever it does is marked as done through it, with its name, for everyone who reads the ticket.',
+      );
       expect(el(fixture, 'new-token')?.textContent?.trim()).toBe('New token');
     });
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -197,13 +198,43 @@ func stored(body any, headers map[string]string) (store.Result, error) {
 	return store.Result{Status: http.StatusCreated, Headers: headers, Body: b}, nil
 }
 
-// replayed decodes a replayed response body.
+// replayed decodes a replayed response body. A nullable field the stored body
+// does not carry — one a later release added, such as the token of an act
+// (docs/adr/0036 D6) in an answer the release before it stored — is answered
+// as null: unset, it would be written as its zero value, a token with the nil
+// id, which the act's own row, written by that release, does not hold.
 func replayed[T any](res *store.Result) (T, error) {
 	var v T
 	if err := json.Unmarshal(res.Body, &v); err != nil {
 		return v, fmt.Errorf("decode the replayed response: %w", err)
 	}
+	nullUnstored(reflect.ValueOf(&v).Elem())
 	return v, nil
+}
+
+// unset is a nullable field of the generated models (oapi-codegen/nullable).
+type unset interface {
+	IsSpecified() bool
+	SetNull()
+}
+
+// nullUnstored sets each required nullable field of a struct that its JSON did
+// not specify to null. A field the document leaves optional (`omitempty`) is
+// left alone: the server leaves it out on purpose, and the replay leaves it
+// out as the stored answer did.
+func nullUnstored(v reflect.Value) {
+	if v.Kind() != reflect.Struct {
+		return
+	}
+	for i := range v.NumField() {
+		field := v.Field(i)
+		if strings.Contains(v.Type().Field(i).Tag.Get("json"), ",omitempty") || !field.Addr().CanInterface() {
+			continue
+		}
+		if n, ok := field.Addr().Interface().(unset); ok && !n.IsSpecified() {
+			n.SetNull()
+		}
+	}
 }
 
 func header(res *store.Result, name string) *string {

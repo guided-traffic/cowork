@@ -4,14 +4,15 @@
 SELECT time_locked_until FROM tenants WHERE id = sqlc.arg(tenant_id) FOR SHARE;
 
 -- name: InsertTimeEntry :one
-INSERT INTO time_entries (tenant_id, ticket_id, person_id, author_id, minutes, day, note)
+INSERT INTO time_entries (tenant_id, ticket_id, person_id, author_id, minutes, day, note, token_id, token_name)
 VALUES (sqlc.arg(tenant_id), sqlc.arg(ticket_id), sqlc.arg(person_id), sqlc.arg(author_id), sqlc.arg(minutes),
-        sqlc.arg(day), sqlc.arg(note))
+        sqlc.arg(day), sqlc.arg(note), sqlc.narg(token_id), sqlc.narg(token_name))
 RETURNING id;
 
 -- name: InsertTimeEntryRevision :exec
-INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by)
-VALUES (sqlc.arg(tenant_id), sqlc.arg(entry_id), sqlc.arg(minutes), sqlc.arg(day), sqlc.arg(note), sqlc.arg(edited_by));
+INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by, token_id, token_name)
+VALUES (sqlc.arg(tenant_id), sqlc.arg(entry_id), sqlc.arg(minutes), sqlc.arg(day), sqlc.arg(note), sqlc.arg(edited_by),
+        sqlc.narg(token_id), sqlc.narg(token_name));
 
 -- name: UpdateTimeEntry :one
 UPDATE time_entries

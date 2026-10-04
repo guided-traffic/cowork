@@ -266,6 +266,7 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 			ActorSystem:          strPtr(caller.System),
 			Agent:                strPtr(caller.Agent),
 			TokenID:              uuidPtr(caller.TokenID),
+			TokenName:            tokenName(caller),
 			SourceHash:           caller.SourceHash,
 			EntityType:           e.EntityType,
 			EntityID:             uuidPtr(e.EntityID),
@@ -286,7 +287,8 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		if e.System != "" {
 			// The act is a system actor's, recorded in the caller's request: it
 			// carries the request, never the caller's person, token or agent.
-			p.ActorUserID, p.ActorSystem, p.Agent, p.AgentCapabilities, p.TokenID = nil, &e.System, nil, nil, nil
+			p.ActorUserID, p.ActorSystem, p.Agent, p.AgentCapabilities = nil, &e.System, nil, nil
+			p.TokenID, p.TokenName = nil, nil
 		}
 		switch {
 		case keyed:
@@ -385,6 +387,16 @@ func jsonOrNil(v any) ([]byte, error) {
 		return nil, fmt.Errorf("encode audit diff: %w", err)
 	}
 	return b, nil
+}
+
+// tokenName is the name an audit row records beside its token: the token's
+// name as the request presented it, never without the token (docs/adr/0036
+// D6).
+func tokenName(c Caller) *string {
+	if c.TokenID == uuid.Nil {
+		return nil
+	}
+	return strPtr(c.TokenName)
 }
 
 func uuidPtr(id uuid.UUID) *uuid.UUID {

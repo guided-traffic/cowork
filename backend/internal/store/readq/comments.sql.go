@@ -14,7 +14,7 @@ import (
 
 const getComment = `-- name: GetComment :one
 SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS author_name, c.agent,
-       c.body, c.withdrawn_at,
+       c.token_id, c.token_name, c.body, c.withdrawn_at,
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
@@ -38,6 +38,8 @@ type GetCommentRow struct {
 	AuthorUsername *string
 	AuthorName     *string
 	Agent          *string
+	TokenID        *uuid.UUID
+	TokenName      *string
 	Body           string
 	WithdrawnAt    *time.Time
 	Edited         bool
@@ -56,6 +58,8 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 		&i.AuthorUsername,
 		&i.AuthorName,
 		&i.Agent,
+		&i.TokenID,
+		&i.TokenName,
 		&i.Body,
 		&i.WithdrawnAt,
 		&i.Edited,
@@ -105,7 +109,7 @@ func (q *Queries) GetCommentForWrite(ctx context.Context, arg GetCommentForWrite
 
 const listCommentRevisions = `-- name: ListCommentRevisions :many
 SELECT r.id, r.body, r.edited_by, u.username AS edited_by_username, u.display_name AS edited_by_name,
-       r.agent, r.created_at
+       r.agent, r.token_id, r.token_name, r.created_at
 FROM comment_revisions r
 JOIN comments c ON c.tenant_id = r.tenant_id AND c.id = r.comment_id
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
@@ -131,6 +135,8 @@ type ListCommentRevisionsRow struct {
 	EditedByUsername *string
 	EditedByName     *string
 	Agent            *string
+	TokenID          *uuid.UUID
+	TokenName        *string
 	CreatedAt        time.Time
 }
 
@@ -156,6 +162,8 @@ func (q *Queries) ListCommentRevisions(ctx context.Context, arg ListCommentRevis
 			&i.EditedByUsername,
 			&i.EditedByName,
 			&i.Agent,
+			&i.TokenID,
+			&i.TokenName,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -171,7 +179,7 @@ func (q *Queries) ListCommentRevisions(ctx context.Context, arg ListCommentRevis
 const listComments = `-- name: ListComments :many
 
 SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS author_name, c.agent,
-       c.body, c.withdrawn_at,
+       c.token_id, c.token_name, c.body, c.withdrawn_at,
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
@@ -203,6 +211,8 @@ type ListCommentsRow struct {
 	AuthorUsername *string
 	AuthorName     *string
 	Agent          *string
+	TokenID        *uuid.UUID
+	TokenName      *string
 	Body           string
 	WithdrawnAt    *time.Time
 	Edited         bool
@@ -236,6 +246,8 @@ func (q *Queries) ListComments(ctx context.Context, arg ListCommentsParams) ([]L
 			&i.AuthorUsername,
 			&i.AuthorName,
 			&i.Agent,
+			&i.TokenID,
+			&i.TokenName,
 			&i.Body,
 			&i.WithdrawnAt,
 			&i.Edited,
@@ -256,7 +268,7 @@ func (q *Queries) ListComments(ctx context.Context, arg ListCommentsParams) ([]L
 
 const listTicketActivity = `-- name: ListTicketActivity :many
 SELECT a.id, a.actor_user_id, u.username AS actor_username, u.display_name AS actor_name, a.actor_system,
-       a.agent, a.entity_type, a.entity_id, a.action::text AS action, a.before, a.after, a.reason, a.note,
+       a.agent, a.token_id, a.token_name, a.entity_type, a.entity_id, a.action::text AS action, a.before, a.after, a.reason, a.note,
        a.explained_by_comment_id, a.refs, a.created_at
 FROM audit_events a
 LEFT JOIN users u ON u.id = a.actor_user_id
@@ -285,6 +297,8 @@ type ListTicketActivityRow struct {
 	ActorName            *string
 	ActorSystem          *string
 	Agent                *string
+	TokenID              *uuid.UUID
+	TokenName            *string
 	EntityType           string
 	EntityID             *uuid.UUID
 	Action               string
@@ -323,6 +337,8 @@ func (q *Queries) ListTicketActivity(ctx context.Context, arg ListTicketActivity
 			&i.ActorName,
 			&i.ActorSystem,
 			&i.Agent,
+			&i.TokenID,
+			&i.TokenName,
 			&i.EntityType,
 			&i.EntityID,
 			&i.Action,

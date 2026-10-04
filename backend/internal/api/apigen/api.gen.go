@@ -1162,6 +1162,9 @@ type Activity struct {
 
 	// Redacted The act names a ticket the caller cannot see; its payload, reason and note are withheld
 	Redacted bool `json:"redacted"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // ActivityList defines model for ActivityList.
@@ -1194,9 +1197,12 @@ type Attachment struct {
 	Id       openapi_types.UUID `json:"id"`
 
 	// Sha256 The hex SHA-256 of the bytes, also the download's ETag
-	Sha256     string `json:"sha256"`
-	Size       int64  `json:"size"`
-	UploadedBy Person `json:"uploaded_by"`
+	Sha256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token      nullable.Nullable[TokenMark] `json:"token"`
+	UploadedBy Person                       `json:"uploaded_by"`
 }
 
 // AttachmentContentType Detected from the bytes (docs/adr/0016 D3)
@@ -1240,6 +1246,10 @@ type AuditEvent struct {
 	RequestId      nullable.Nullable[openapi_types.UUID] `json:"request_id,omitempty"`
 	TicketKey      nullable.Nullable[string]             `json:"ticket_key,omitempty"`
 	TokenId        nullable.Nullable[openapi_types.UUID] `json:"token_id,omitempty"`
+
+	// TokenName The token's name as the act recorded it (docs/adr/0036 D6); null without a token, and on an act
+	// recorded before cowork kept the name
+	TokenName nullable.Nullable[string] `json:"token_name,omitempty"`
 }
 
 // AuditList defines model for AuditList.
@@ -1480,8 +1490,11 @@ type Comment struct {
 	Edited bool `json:"edited"`
 
 	// Explains The acts this comment explains (docs/adr/0015 D2)
-	Explains    []AuditAction                `json:"explains"`
-	Id          openapi_types.UUID           `json:"id"`
+	Explains []AuditAction      `json:"explains"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token       nullable.Nullable[TokenMark] `json:"token"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
 	Version     int                          `json:"version"`
 	Withdrawn   bool                         `json:"withdrawn"`
@@ -1496,12 +1509,16 @@ type CommentList struct {
 
 // CommentRevision defines model for CommentRevision.
 type CommentRevision struct {
+	// Agent The agent mark of the edit
 	Agent nullable.Nullable[string] `json:"agent"`
 	At    time.Time                 `json:"at"`
 
 	// Body The text before the edit
 	Body     string `json:"body"`
 	EditedBy Person `json:"edited_by"`
+
+	// Token The token the edit came through; null for a browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // CommentRevisionList defines model for CommentRevisionList.
@@ -1605,13 +1622,18 @@ type GroupMappingPatch struct {
 
 // Interest defines model for Interest.
 type Interest struct {
-	Note   string `json:"note"`
-	Person Person `json:"person"`
+	// Agent The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)
+	Agent  nullable.Nullable[string] `json:"agent"`
+	Note   string                    `json:"note"`
+	Person Person                    `json:"person"`
 
 	// Settled The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)
-	Settled   bool      `json:"settled"`
-	Since     time.Time `json:"since"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Settled bool      `json:"settled"`
+	Since   time.Time `json:"since"`
+
+	// Token The token that write came through; null for the person's own browser session (docs/adr/0036 D6)
+	Token     nullable.Nullable[TokenMark] `json:"token"`
+	UpdatedAt time.Time                    `json:"updated_at"`
 
 	// Weight docs/adr/0013 D1
 	Weight InterestWeight `json:"weight"`
@@ -1922,10 +1944,17 @@ type Question struct {
 
 	// AnsweredBy The person whose answer it is, also when an agent wrote it down
 	AnsweredBy nullable.Nullable[Person] `json:"answered_by"`
-	AskedBy    Person                    `json:"asked_by"`
+
+	// AnsweredByToken The token the answer was recorded through, an agent's or the person's own; null for a browser
+	// session and while there is no answer (docs/adr/0036 D6)
+	AnsweredByToken nullable.Nullable[TokenMark] `json:"answered_by_token"`
+	AskedBy         Person                       `json:"asked_by"`
 
 	// AskedByAgent The agent mark of the request that asked
 	AskedByAgent nullable.Nullable[string] `json:"asked_by_agent"`
+
+	// AskedByToken The token the question was asked through; null for a browser session (docs/adr/0036 D6)
+	AskedByToken nullable.Nullable[TokenMark] `json:"asked_by_token"`
 
 	// AskedOf The person asked; null for a question open in the tenant
 	AskedOf   nullable.Nullable[Person] `json:"asked_of"`
@@ -2191,10 +2220,16 @@ type Ticket struct {
 	ProgressReview int `json:"progress_review"`
 
 	// Project The project's key
-	Project  string        `json:"project"`
-	Reporter Person        `json:"reporter"`
-	Security SecurityClass `json:"security"`
-	Severity Severity      `json:"severity"`
+	Project  string `json:"project"`
+	Reporter Person `json:"reporter"`
+
+	// ReporterAgent The agent mark of the request that filed the ticket in the reporter's name (docs/adr/0036 D6)
+	ReporterAgent nullable.Nullable[string] `json:"reporter_agent"`
+
+	// ReporterToken The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
+	ReporterToken nullable.Nullable[TokenMark] `json:"reporter_token"`
+	Security      SecurityClass                `json:"security"`
+	Severity      Severity                     `json:"severity"`
 
 	// State docs/adr/0009 D1
 	State  TicketState               `json:"state"`
@@ -2326,9 +2361,12 @@ type TimeEntry struct {
 	Person  Person             `json:"person"`
 
 	// Ticket The ticket's key
-	Ticket    string    `json:"ticket"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   int       `json:"version"`
+	Ticket string `json:"ticket"`
+
+	// Token The token the booking came through; null for a browser session (docs/adr/0036 D6)
+	Token     nullable.Nullable[TokenMark] `json:"token"`
+	UpdatedAt time.Time                    `json:"updated_at"`
+	Version   int                          `json:"version"`
 
 	// Voided Kept and excluded from every sum (docs/adr/0017 D7)
 	Voided   bool                         `json:"voided"`
@@ -2370,6 +2408,9 @@ type TimeEntryRevision struct {
 	EditedBy Person             `json:"edited_by"`
 	Minutes  int                `json:"minutes"`
 	Note     string             `json:"note"`
+
+	// Token The token the correction came through; null for a browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // TimeEntryRevisionList defines model for TimeEntryRevisionList.
@@ -2426,8 +2467,12 @@ type TokenCreate struct {
 
 	// LifetimeDays Days until the token expires; by default `COWORK_TOKEN_DEFAULT_LIFETIME`,
 	// shortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)
-	LifetimeDays *int   `json:"lifetime_days,omitempty"`
-	Name         string `json:"name"`
+	LifetimeDays *int `json:"lifetime_days,omitempty"`
+
+	// Name Shown beside every act made through the token — in a ticket's activity, on its comments,
+	// questions, answers, files and time — to whoever reads the act, and kept there after the token is
+	// revoked (docs/adr/0036 D6)
+	Name string `json:"name"`
 
 	// Project The key of the project of that tenant the token is restricted to; needs `tenant`
 	Project *string `json:"project,omitempty"`
@@ -2471,6 +2516,17 @@ type TokenCreated struct {
 type TokenList struct {
 	Items      []Token                   `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// TokenMark The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act
+// recorded it, readable by whoever reads the act — never the token's secret, hash or prefix. A
+// revoked or expired token's acts keep its name.
+type TokenMark struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The token's name; null only on an act of the activity recorded before cowork kept the name,
+	// which says that a token was used, not which one
+	Name nullable.Nullable[string] `json:"name"`
 }
 
 // TokenState defines model for TokenState.

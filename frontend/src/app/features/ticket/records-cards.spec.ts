@@ -26,6 +26,7 @@ const local = (year: number, month: number, day: number, hour = 12, minute = 0) 
   new Date(year, month - 1, day, hour, minute).getTime();
 const ada = { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' };
 const sam = { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' };
+const script = { id: 'tok-1', name: 'ci-script' };
 const key = 'acme/COW-12';
 
 function attachment(overrides: Partial<Attachment> = {}): Attachment {
@@ -38,6 +39,7 @@ function attachment(overrides: Partial<Attachment> = {}): Attachment {
     size: 2048,
     uploaded_by: ada,
     agent: null,
+    token: null,
     comment: null,
     created_at: '2026-10-03T11:55:00Z',
     ...overrides,
@@ -50,6 +52,7 @@ function entry(overrides: Partial<TimeEntry> = {}): TimeEntry {
     ticket: key,
     person: ada,
     author: ada,
+    token: null,
     day: '2026-10-02',
     minutes: 90,
     note: '',
@@ -221,6 +224,51 @@ describe('record cards', () => {
         expect(second?.querySelector('a')?.textContent).toBe('report.pdf');
         expect(text(fixture, '[data-testid="attachment-f-2"] .muted')).toBe(
           '840 B · Sam Rivera · 5 minutes ago',
+        );
+        expect(first?.querySelector('[data-testid="agent-mark"]')).toBeNull();
+      });
+
+      it('marks a file an agent uploaded in the name of its uploader', async () => {
+        relations.attachments.value.set({
+          items: [attachment({ agent: 'claude-code/opus/s-1' })],
+          next_cursor: null,
+        });
+
+        const fixture = await render(AttachmentsCard);
+
+        expect(text(fixture, '[data-testid="attachment-f-1"] > .muted')).toBe(
+          '2 KB · Ada Lovelace by the agent claude-code (claude-code/opus/s-1) · 5 minutes ago',
+        );
+        expect(
+          el(fixture, 'attachment-f-1')
+            ?.querySelector('[data-testid="agent-mark"]')
+            ?.getAttribute('data-agent'),
+        ).toBe('claude-code/opus/s-1');
+      });
+
+      it("marks a file uploaded through a token with the token, and an agent's with both", async () => {
+        relations.attachments.value.set({
+          items: [
+            attachment({ id: 'f-1', token: script }),
+            attachment({
+              id: 'f-2',
+              agent: 'claude-code/opus/s-1',
+              token: { id: 'tok-2', name: 'claude-laptop' },
+            }),
+          ],
+          next_cursor: null,
+        });
+
+        const fixture = await render(AttachmentsCard);
+
+        expect(text(fixture, '[data-testid="attachment-f-1"] > .muted')).toBe(
+          '2 KB · Ada Lovelace through the token ci-script · 5 minutes ago',
+        );
+        const plain = el(fixture, 'attachment-f-1')?.querySelector('[data-testid="agent-mark"]');
+        expect(plain?.getAttribute('data-token')).toBe('tok-1');
+        expect(plain?.hasAttribute('data-agent')).toBe(false);
+        expect(text(fixture, '[data-testid="attachment-f-2"] > .muted')).toBe(
+          '2 KB · Ada Lovelace by the agent claude-code (claude-code/opus/s-1), through the token claude-laptop · 5 minutes ago',
         );
       });
 
@@ -418,6 +466,21 @@ describe('record cards', () => {
         expect(text(fixture, '[data-testid="time-e-2"] .muted')).toBe('Sam Rivera · 2026-10-03');
         expect(el(fixture, 'time-e-2')?.querySelector('.note')).toBeNull();
         expect(text(fixture, '[data-testid="time-total"]')).toBe('2 h 15 min');
+      });
+
+      it('marks an entry booked through a token with the token, and leaves the others unmarked', async () => {
+        booked(entry({ id: 'e-1', token: script }), entry({ id: 'e-2', person: sam }));
+
+        const fixture = await render(TimeCard);
+
+        expect(text(fixture, '[data-testid="time-e-1"] .muted')).toBe(
+          'Ada Lovelace through the token ci-script · 2026-10-02',
+        );
+        const mark = el(fixture, 'time-e-1')?.querySelector('[data-testid="agent-mark"]');
+        expect(mark?.getAttribute('data-token')).toBe('tok-1');
+        expect(mark?.hasAttribute('data-agent')).toBe(false);
+        expect(mark?.querySelector('.pi-microchip-ai')).not.toBeNull();
+        expect(el(fixture, 'time-e-2')?.querySelector('[data-testid="agent-mark"]')).toBeNull();
       });
 
       it('leaves out the entries that were voided', async () => {

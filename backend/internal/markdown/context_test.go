@@ -81,6 +81,41 @@ func TestContextCarriesTheCanonicalDocument(t *testing.T) {
 	assert.NotContains(t, got, "## Recent activity", "activity=0 leaves the section out")
 }
 
+// A person's act through a token is named by the token where the context
+// names an agent's act by the agent (docs/adr/0036 D6): the request's own
+// line, a comment and an act; a token whose name the act did not record is
+// "a token". Everything else reads as before; the other golden files hold
+// that.
+func TestRenderContextNamesTheTokenOfAPersonsAct(t *testing.T) {
+	c := Context{
+		Ticket: Ticket{Key: "acme/VKO-15", Title: "Marked", Type: "task", State: "filed", Severity: "low",
+			Security: "none", Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
+		Exported: *at("2026-10-04T09:12:00Z"), By: "Sam", Token: &Token{Name: "ci-script"},
+		Comments: []Comment{
+			{Author: "Sam", Token: &Token{Name: "ci-script"}, At: *at("2026-10-03T10:00:00Z"), Body: "Built."},
+			{Author: "Ada Lovelace", Agent: "claude-code/opus/7f3a", Token: &Token{Name: "claude-laptop"},
+				At: *at("2026-10-03T11:00:00Z"), Body: "Checked."},
+			{Author: "Ada Lovelace", At: *at("2026-10-03T12:00:00Z"), Body: "Agreed."},
+		},
+		Activity: []Act{
+			{At: *at("2026-10-03T10:00:00Z"), Actor: "Sam", Token: &Token{Name: "ci-script"}, Action: "commented"},
+			{At: *at("2026-10-03T10:30:00Z"), Actor: "Sam", Token: &Token{}, Action: "updated",
+				Before: map[string]any{"title": "x"}, After: map[string]any{"title": "Marked"}},
+			{At: *at("2026-10-03T11:00:00Z"), Actor: "Ada Lovelace", Agent: "claude-code/opus/7f3a",
+				Token: &Token{Name: "claude-laptop"}, Action: "commented"},
+			{At: *at("2026-10-03T12:00:00Z"), Actor: "Ada Lovelace", Action: "commented"},
+		},
+	}
+	got := RenderContext(c)
+	path := filepath.Join("testdata", "context-token.md")
+	if *update {
+		require.NoError(t, os.WriteFile(path, got, 0o600))
+	}
+	want, err := os.ReadFile(path)
+	require.NoError(t, err, "run with -update to write %s", path)
+	assert.Equal(t, string(want), string(got))
+}
+
 func TestSize(t *testing.T) {
 	assert.Equal(t, "512 B", size(512))
 	assert.Equal(t, "1.5 KiB", size(1536))

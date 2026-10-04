@@ -50,7 +50,8 @@ func attachmentView(t tenantScope, tc ticketCtx, a attachment) apigen.Attachment
 		Id: a.ID, FileName: a.FileName, Size: a.Size, Sha256: hex.EncodeToString(a.Sha256),
 		ContentType: apigen.AttachmentContentType(a.ContentType), Comment: nullableOf(a.CommentID),
 		UploadedBy: personView(a.UploadedBy, a.UploadedByUsername, a.UploadedByName), Agent: nullableOf(a.Agent),
-		CreatedAt: a.CreatedAt, ContentUrl: ticketURL(t, tc.project.Key, tc.row.Number) + "/attachments/" + a.ID.String() + "/content",
+		Token: tokenMarkView(a.TokenID, a.TokenName), CreatedAt: a.CreatedAt,
+		ContentUrl: ticketURL(t, tc.project.Key, tc.row.Number) + "/attachments/" + a.ID.String() + "/content",
 	}
 }
 
@@ -219,6 +220,7 @@ func (s *Server) storeFile(ctx context.Context, w *store.Writer, t tenantScope, 
 	p := principal(ctx)
 	ins := writeq.InsertAttachmentParams{ID: id, TenantID: t.ID, TicketID: tc.row.ID, CommentID: f.comment, FileName: f.name,
 		Size: int64(len(f.data)), Sha256: f.sum[:], ContentType: f.contentType, UploadedBy: p.PersonID}
+	ins.TokenID, ins.TokenName = actToken(p)
 	if p.IsAgent() {
 		ins.Agent = &p.Agent
 	}

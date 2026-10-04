@@ -68,6 +68,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
+       t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
@@ -130,6 +131,9 @@ type GetWrittenTicketRow struct {
 	ReporterID                uuid.UUID
 	ReporterUsername          *string
 	ReporterName              *string
+	ReporterAgent             *string
+	ReporterTokenID           *uuid.UUID
+	ReporterTokenName         *string
 	AssigneeID                *uuid.UUID
 	AssigneeUsername          *string
 	AssigneeName              *string
@@ -192,6 +196,9 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 		&i.ReporterID,
 		&i.ReporterUsername,
 		&i.ReporterName,
+		&i.ReporterAgent,
+		&i.ReporterTokenID,
+		&i.ReporterTokenName,
 		&i.AssigneeID,
 		&i.AssigneeUsername,
 		&i.AssigneeName,
@@ -213,34 +220,39 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 const insertTicket = `-- name: InsertTicket :one
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential, rank
+    urgency_derived, urgency_rule, effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
+    reporter_token_name, assignee_id, confidential, rank
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
     $11, $12, $13, $14,
-    $15, $16, $17::text
+    $15, $16, $17,
+    $18, $19, $20::text
 )
 RETURNING id
 `
 
 type InsertTicketParams struct {
-	TenantID       uuid.UUID
-	ProjectID      uuid.UUID
-	Number         int32
-	Type           domain.TicketType
-	Title          string
-	Body           string
-	Severity       domain.Severity
-	Security       domain.SecurityClass
-	Threat         *string
-	UrgencyDerived domain.Urgency
-	UrgencyRule    string
-	Effort         domain.Effort
-	ParentID       *uuid.UUID
-	ReporterID     uuid.UUID
-	AssigneeID     *uuid.UUID
-	Confidential   bool
-	Rank           string
+	TenantID          uuid.UUID
+	ProjectID         uuid.UUID
+	Number            int32
+	Type              domain.TicketType
+	Title             string
+	Body              string
+	Severity          domain.Severity
+	Security          domain.SecurityClass
+	Threat            *string
+	UrgencyDerived    domain.Urgency
+	UrgencyRule       string
+	Effort            domain.Effort
+	ParentID          *uuid.UUID
+	ReporterID        uuid.UUID
+	ReporterAgent     *string
+	ReporterTokenID   *uuid.UUID
+	ReporterTokenName *string
+	AssigneeID        *uuid.UUID
+	Confidential      bool
+	Rank              string
 }
 
 // A new ticket, with its key at the bottom of its project's rank
@@ -261,6 +273,9 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (uui
 		arg.Effort,
 		arg.ParentID,
 		arg.ReporterID,
+		arg.ReporterAgent,
+		arg.ReporterTokenID,
+		arg.ReporterTokenName,
 		arg.AssigneeID,
 		arg.Confidential,
 		arg.Rank,

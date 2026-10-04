@@ -307,7 +307,7 @@ func (s *Server) ListAudit(ctx context.Context, req apigen.ListAuditRequestObjec
 func auditView(a readq.ListAuditForTenantRow) apigen.AuditEvent {
 	v := apigen.AuditEvent{
 		Id: a.ID, CreatedAt: a.CreatedAt, EntityType: a.EntityType, Action: apigen.AuditAction(a.Action),
-		Agent: nullableOf(a.Agent), TokenId: nullableOf(a.TokenID), EntityId: nullableOf(a.EntityID),
+		Agent: nullableOf(a.Agent), TokenId: nullableOf(a.TokenID), TokenName: nullableOf(a.TokenName), EntityId: nullableOf(a.EntityID),
 		TicketKey: nullableOf(a.TicketKey), Reason: nullableOf(a.Reason), Note: nullableOf(a.Note),
 		RequestId: nullableOf(a.RequestID), IdempotencyKey: nullableOf(a.IdempotencyKey),
 	}
@@ -335,17 +335,22 @@ func auditView(a readq.ListAuditForTenantRow) apigen.AuditEvent {
 }
 
 // auditCSV renders audit rows as CSV; a cell that a spreadsheet would read
-// as a formula is prefixed with an apostrophe.
+// as a formula is prefixed with an apostrophe. A column added after a release
+// goes last, so a reader that takes the columns by position keeps reading the
+// released ones where they were — token_name since 2026-10-04.
 func auditCSV(rows []readq.ListAuditForTenantRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"id", "created_at", "actor_user_id", "actor_system", "agent", "token_id", "entity_type",
-		"entity_id", "ticket_key", "action", "reason", fieldNote, "request_id", "before", "after"})
+	_ = w.Write([]string{"id", "created_at", "actor_user_id", "actor_system", "agent", "token_id",
+		"entity_type", "entity_id", "ticket_key", "action", "reason", fieldNote, "request_id", "before", "after",
+		"token_name"})
 	for _, a := range rows {
 		_ = w.Write(neutralise([]string{
 			a.ID.String(), a.CreatedAt.UTC().Format(time.RFC3339Nano), uuidString(a.ActorUserID), deref(a.ActorSystem),
-			deref(a.Agent), uuidString(a.TokenID), a.EntityType, uuidString(a.EntityID), deref(a.TicketKey), a.Action,
+			deref(a.Agent), uuidString(a.TokenID), a.EntityType, uuidString(a.EntityID), deref(a.TicketKey),
+			a.Action,
 			deref(a.Reason), deref(a.Note), uuidString(a.RequestID), string(a.Before), string(a.After),
+			deref(a.TokenName),
 		}))
 	}
 	w.Flush()

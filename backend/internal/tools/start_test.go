@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 )
 
 // fakeWorkspace is a repository as the tools read it.
@@ -319,4 +322,24 @@ func TestAToolCallBindsTheSessionOnce(t *testing.T) {
 	res := call(t, h.session(true), "comment", `{"key": "COW-12", "text": "Seen."}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Empty(t, h.calls(http.MethodGet, "/api/v1/me/repositories/lookup"), "a session without a working directory looks nothing up")
+}
+
+// An act's line names who made it as the record does: the agent where an agent
+// made it, the token where a person's act came through one, nobody else for
+// the person's own browser session (docs/adr/0036 D6).
+func TestActLineNamesTheAgentOrTheToken(t *testing.T) {
+	act := func(fields string) apigen.Activity {
+		var a apigen.Activity
+		require.NoError(t, json.Unmarshal([]byte(`{"id":"0199a3c2-1d2e-7f00-8000-0000000000e9","at":"2026-10-04T07:00:00Z",
+			"actor":{"id":"0199a3c2-1d2e-7f00-8000-000000000002","display_name":"Sam"},"actor_system":null,
+			"action":"commented","entity_type":"comment","entity_id":null,"before":null,"after":null,"reason":null,
+			"note":null,"explained_by_comment":null,"redacted":false,`+fields+`}`), &a))
+		return a
+	}
+	token := `"token":{"id":"0199a3c2-1d2e-7f00-8000-000000000005","name":"ci-script"}`
+	assert.Equal(t, "Sam via claude-code/opus/x commented", actLine(act(`"agent":"claude-code/opus/x",`+token)))
+	assert.Equal(t, "Sam through the token ci-script commented", actLine(act(`"agent":null,`+token)))
+	assert.Equal(t, "Sam through a token commented",
+		actLine(act(`"agent":null,"token":{"id":"0199a3c2-1d2e-7f00-8000-000000000005","name":null}`)))
+	assert.Equal(t, "Sam commented", actLine(act(`"agent":null,"token":null`)))
 }

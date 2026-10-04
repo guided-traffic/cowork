@@ -31,16 +31,20 @@ func (q *Queries) DeleteInterest(ctx context.Context, arg DeleteInterestParams) 
 }
 
 const insertInterest = `-- name: InsertInterest :exec
-INSERT INTO ticket_interest (tenant_id, ticket_id, user_id, weight, note)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO ticket_interest (tenant_id, ticket_id, user_id, weight, note, agent, token_id, token_name)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7, $8)
 `
 
 type InsertInterestParams struct {
-	TenantID uuid.UUID
-	TicketID uuid.UUID
-	UserID   uuid.UUID
-	Weight   string
-	Note     string
+	TenantID  uuid.UUID
+	TicketID  uuid.UUID
+	UserID    uuid.UUID
+	Weight    string
+	Note      string
+	Agent     *string
+	TokenID   *uuid.UUID
+	TokenName *string
 }
 
 func (q *Queries) InsertInterest(ctx context.Context, arg InsertInterestParams) error {
@@ -50,28 +54,40 @@ func (q *Queries) InsertInterest(ctx context.Context, arg InsertInterestParams) 
 		arg.UserID,
 		arg.Weight,
 		arg.Note,
+		arg.Agent,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	return err
 }
 
 const updateInterest = `-- name: UpdateInterest :exec
 UPDATE ticket_interest
-SET weight = $1, note = $2, updated_at = now()
-WHERE tenant_id = $3 AND ticket_id = $4 AND user_id = $5
+SET weight = $1, note = $2, agent = $3, token_id = $4,
+    token_name = $5, updated_at = now()
+WHERE tenant_id = $6 AND ticket_id = $7 AND user_id = $8
 `
 
 type UpdateInterestParams struct {
-	Weight   string
-	Note     string
-	TenantID uuid.UUID
-	TicketID uuid.UUID
-	UserID   uuid.UUID
+	Weight    string
+	Note      string
+	Agent     *string
+	TokenID   *uuid.UUID
+	TokenName *string
+	TenantID  uuid.UUID
+	TicketID  uuid.UUID
+	UserID    uuid.UUID
 }
 
+// A changed stake carries the mark of the write that changed it, none for a
+// person's own session (docs/adr/0036 D6).
 func (q *Queries) UpdateInterest(ctx context.Context, arg UpdateInterestParams) error {
 	_, err := q.db.Exec(ctx, updateInterest,
 		arg.Weight,
 		arg.Note,
+		arg.Agent,
+		arg.TokenID,
+		arg.TokenName,
 		arg.TenantID,
 		arg.TicketID,
 		arg.UserID,

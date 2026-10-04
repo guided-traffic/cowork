@@ -2,7 +2,7 @@
 -- The tenant's audit record, newest first (docs/adr/0026 D6). Each filter is
 -- optional; actions combine with OR, the filters with AND.
 SELECT a.id, a.created_at, a.actor_user_id, a.actor_system, a.agent, a.agent_capabilities,
-       a.token_id, a.entity_type, a.entity_id, a.ticket_key, a.action::text AS action, a.before,
+       a.token_id, a.token_name, a.entity_type, a.entity_id, a.ticket_key, a.action::text AS action, a.before,
        a.after, a.reason, a.note, a.request_id, a.idempotency_key,
        u.username AS actor_username, u.display_name AS actor_display_name
 FROM audit_events a
