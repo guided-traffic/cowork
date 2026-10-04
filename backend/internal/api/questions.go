@@ -174,7 +174,8 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 			return fmt.Errorf("insert the question: %w", err)
 		}
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf}})
+			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf},
+			Notices: told(store.NoticeAsked, body.AskedOf)})
 		if asked, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: n}); err != nil {
 			return err
 		}
@@ -234,8 +235,9 @@ func (s *Server) UpdateQuestion(ctx context.Context, req apigen.UpdateQuestionRe
 		up := writeq.UpdateQuestionParams{TenantID: t.ID, ID: q.ID, Version: q.Version, Question: q.Question,
 			Options: q.Options, Recommendation: q.Recommendation, AskedOf: q.AskedOf}
 		applyQuestionPatch(body, &up)
-		if up.AskedOf != nil && (q.AskedOf == nil || *up.AskedOf != *q.AskedOf) {
-			if err := checkAskedOf(ctx, w.Reader, t, tc, *up.AskedOf); err != nil {
+		anew := askedAnew(q.AskedOf, up.AskedOf)
+		if anew != nil {
+			if err := checkAskedOf(ctx, w.Reader, t, tc, *anew); err != nil {
 				return err
 			}
 		}
@@ -253,8 +255,9 @@ func (s *Server) UpdateQuestion(ctx context.Context, req apigen.UpdateQuestionRe
 		} else if err != nil {
 			return err
 		}
+		// Asked of another person now: a question asked of them (docs/adr/0020 D2).
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: q.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-			Action: actionEdited, Before: before, After: after})
+			Action: actionEdited, Before: before, After: after, Notices: told(store.NoticeAsked, anew)})
 		out, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: q.Number})
 		return err
 	})
@@ -298,6 +301,15 @@ func applyQuestionPatch(body apigen.QuestionPatch, up *writeq.UpdateQuestionPara
 	}
 }
 
+// askedAnew is the person an edit asks a question of who was not asked
+// before; nil when it is asked of nobody or of the same person.
+func askedAnew(before, after *uuid.UUID) *uuid.UUID {
+	if after == nil || (before != nil && *before == *after) {
+		return nil
+	}
+	return after
+}
+
 func questionFields(p writeq.UpdateQuestionParams) map[string]any {
 	var askedOf any
 	if p.AskedOf != nil {
@@ -337,7 +349,8 @@ func (s *Server) AnswerQuestion(ctx context.Context, req apigen.AnswerQuestionRe
 		}
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: q.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 			Action: questionAnswered, Before: map[string]any{fieldAnswer: q.Answer},
-			After: map[string]any{fieldAnswer: req.Body.Answer, "recorded_by_agent": p.IsAgent()}})
+			After:   map[string]any{fieldAnswer: req.Body.Answer, "recorded_by_agent": p.IsAgent()},
+			Notices: []store.Notice{{Reason: store.NoticeAnswered, People: []uuid.UUID{q.AskedBy}}}})
 		out, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: q.Number})
 		return err
 	})

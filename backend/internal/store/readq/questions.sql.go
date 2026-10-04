@@ -10,34 +10,24 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
 const canSeeTicket = `-- name: CanSeeTicket :one
-SELECT EXISTS (
-    SELECT 1
-    FROM tickets t
-    JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
-    JOIN memberships m ON m.tenant_id = t.tenant_id AND m.user_id = $1
-    WHERE t.tenant_id = $2 AND t.id = $3
-      AND (NOT p.restricted OR m.role = 'admin'
-           OR EXISTS (SELECT 1 FROM project_access a
-                      WHERE a.tenant_id = t.tenant_id AND a.project_id = p.id AND a.user_id = m.user_id))
-      AND (NOT t.confidential OR m.role = 'admin' OR t.assignee_id = m.user_id OR t.reporter_id = m.user_id)
-) AS visible
+SELECT person_sees_ticket($1, $2, $3) AS visible
 `
 
 type CanSeeTicketParams struct {
-	UserID   uuid.UUID
 	TenantID uuid.UUID
 	TicketID uuid.UUID
+	UserID   uuid.UUID
 }
 
 // Whether a person can see a ticket: its project (docs/adr/0034 D3) and,
 // while it is confidential, as administrator, assignee or reporter
 // (docs/adr/0065 D4). A question is asked only of such a person.
-// visibility: exempt (whether another person sees a ticket the caller reads)
 func (q *Queries) CanSeeTicket(ctx context.Context, arg CanSeeTicketParams) (bool, error) {
-	row := q.db.QueryRow(ctx, canSeeTicket, arg.UserID, arg.TenantID, arg.TicketID)
+	row := q.db.QueryRow(ctx, canSeeTicket, arg.TenantID, arg.TicketID, arg.UserID)
 	var visible bool
 	err := row.Scan(&visible)
 	return visible, err
@@ -129,6 +119,154 @@ func (q *Queries) GetQuestion(ctx context.Context, arg GetQuestionParams) (GetQu
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listOpenDecisions = `-- name: ListOpenDecisions :many
+SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
+       q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
+       q.asked_by_token_id, q.asked_by_token_name,
+       q.asked_of, ao.username AS asked_of_username, ao.display_name AS asked_of_name,
+       q.answered_by, an.username AS answered_by_username, an.display_name AS answered_by_name,
+       q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
+       q.withdrawn_at, q.version, q.created_at, q.updated_at,
+       p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
+       t.rank AS ticket_rank
+FROM questions q
+JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
+JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
+LEFT JOIN users ab ON ab.id = q.asked_by
+LEFT JOIN users ao ON ao.id = q.asked_of
+LEFT JOIN users an ON an.id = q.answered_by
+WHERE q.tenant_id = $1 AND q.status = 'open'
+  AND (q.asked_of = $2::uuid OR q.asked_of IS NULL)
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND (NOT $3::boolean
+       OR p.key > $4::text
+       OR (p.key = $4::text
+           AND CASE WHEN $5::text IS NULL
+                    THEN (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
+                         AND (t.number, q.number) > ($6::integer, $7::integer)
+                    ELSE (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
+                         OR (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) > $5::text
+                         OR ((CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) = $5::text
+                             AND (t.number, q.number) > ($6::integer, $7::integer))
+               END))
+ORDER BY p.key, (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) NULLS LAST, t.number, q.number
+LIMIT $8
+`
+
+type ListOpenDecisionsParams struct {
+	TenantID      uuid.UUID
+	UserID        uuid.UUID
+	HasAfter      bool
+	AfterProject  string
+	AfterRank     *string
+	AfterNumber   int32
+	AfterQuestion int32
+	PageSize      int32
+}
+
+type ListOpenDecisionsRow struct {
+	ID                  uuid.UUID
+	Number              int32
+	Question            string
+	Options             string
+	Recommendation      string
+	Answer              *string
+	Status              string
+	AskedBy             uuid.UUID
+	AskedByUsername     *string
+	AskedByName         *string
+	AskedByAgent        *string
+	AskedByTokenID      *uuid.UUID
+	AskedByTokenName    *string
+	AskedOf             *uuid.UUID
+	AskedOfUsername     *string
+	AskedOfName         *string
+	AnsweredBy          *uuid.UUID
+	AnsweredByUsername  *string
+	AnsweredByName      *string
+	AnsweredAt          *time.Time
+	RecordedByAgent     bool
+	AnsweredByTokenID   *uuid.UUID
+	AnsweredByTokenName *string
+	WithdrawnAt         *time.Time
+	Version             int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ProjectKey          string
+	TicketNumber        int32
+	TicketTitle         string
+	TicketState         domain.TicketState
+	TicketRank          *string
+}
+
+// The open decisions of a person in the tenant (docs/adr/0018 D3): the open
+// questions asked of them and those open in the tenant, on tickets they see.
+// Ordered as the person-level lists are until the score exists
+// (docs/adr/0014 D5): the project's key, the ticket's rank — a done or
+// dropped ticket, which has none, after the ranked ones —, its number, the
+// question's. The cursor resumes after a position of that order.
+func (q *Queries) ListOpenDecisions(ctx context.Context, arg ListOpenDecisionsParams) ([]ListOpenDecisionsRow, error) {
+	rows, err := q.db.Query(ctx, listOpenDecisions,
+		arg.TenantID,
+		arg.UserID,
+		arg.HasAfter,
+		arg.AfterProject,
+		arg.AfterRank,
+		arg.AfterNumber,
+		arg.AfterQuestion,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenDecisionsRow{}
+	for rows.Next() {
+		var i ListOpenDecisionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Question,
+			&i.Options,
+			&i.Recommendation,
+			&i.Answer,
+			&i.Status,
+			&i.AskedBy,
+			&i.AskedByUsername,
+			&i.AskedByName,
+			&i.AskedByAgent,
+			&i.AskedByTokenID,
+			&i.AskedByTokenName,
+			&i.AskedOf,
+			&i.AskedOfUsername,
+			&i.AskedOfName,
+			&i.AnsweredBy,
+			&i.AnsweredByUsername,
+			&i.AnsweredByName,
+			&i.AnsweredAt,
+			&i.RecordedByAgent,
+			&i.AnsweredByTokenID,
+			&i.AnsweredByTokenName,
+			&i.WithdrawnAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProjectKey,
+			&i.TicketNumber,
+			&i.TicketTitle,
+			&i.TicketState,
+			&i.TicketRank,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listQuestions = `-- name: ListQuestions :many

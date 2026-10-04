@@ -300,6 +300,7 @@ func runJobs(ctx context.Context, db *store.DB, logger *slog.Logger, sessionIdle
 		{"login expiry", func(ctx context.Context) (int64, error) {
 			return db.ExpireLoginState(ctx, time.Now(), store.LoginWindow)
 		}},
+		{"notification expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
 	}
 	for {
 		for _, job := range jobs {

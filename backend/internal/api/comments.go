@@ -146,7 +146,7 @@ func writeComment(ctx context.Context, w *store.Writer, t tenantScope, tc ticket
 		return uuid.Nil, fmt.Errorf("insert the comment: %w", err)
 	}
 	w.Record(store.Event{EntityType: entityComment, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-		Action: actionCommented})
+		Action: actionCommented, Notices: []store.Notice{{Reason: store.NoticeCommented, Watchers: true}}})
 	return id, nil
 }
 

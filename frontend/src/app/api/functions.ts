@@ -3,10 +3,20 @@
 
 export type { GetMe$Params as GetMe$Params } from './fn/me/get-me';
 export { getMe as getMe } from './fn/me/get-me';
+export type { ListMyAssigned$Params as ListMyAssigned$Params } from './fn/me/list-my-assigned';
+export { listMyAssigned as listMyAssigned } from './fn/me/list-my-assigned';
 export type { GetMyChat$Params as GetMyChat$Params } from './fn/me/get-my-chat';
 export { getMyChat as getMyChat } from './fn/me/get-my-chat';
 export type { SetMyChat$Params as SetMyChat$Params } from './fn/me/set-my-chat';
 export { setMyChat as setMyChat } from './fn/me/set-my-chat';
+export type { ListMyDecisions$Params as ListMyDecisions$Params } from './fn/me/list-my-decisions';
+export { listMyDecisions as listMyDecisions } from './fn/me/list-my-decisions';
+export type { ListMyInbox$Params as ListMyInbox$Params } from './fn/me/list-my-inbox';
+export { listMyInbox as listMyInbox } from './fn/me/list-my-inbox';
+export type { MarkMyInboxRead$Params as MarkMyInboxRead$Params } from './fn/me/mark-my-inbox-read';
+export { markMyInboxRead as markMyInboxRead } from './fn/me/mark-my-inbox-read';
+export type { MarkNotificationRead$Params as MarkNotificationRead$Params } from './fn/me/mark-notification-read';
+export { markNotificationRead as markNotificationRead } from './fn/me/mark-notification-read';
 export type { ChangeMyPassword$Params as ChangeMyPassword$Params } from './fn/me/change-my-password';
 export { changeMyPassword as changeMyPassword } from './fn/me/change-my-password';
 export type { GetMyToken$Params as GetMyToken$Params } from './fn/me/get-my-token';

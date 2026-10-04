@@ -32,7 +32,14 @@ Cursor:
   name: cursor
   in: query
   description: The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
-  schema: {type: string, minLength: 1, maxLength: 512}
+  schema: {type: string, minLength: 1, maxLength: 1024}
+MeTenant:
+  name: tenant
+  in: query
+  description: |
+    Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
+    none of them is `404 not_found`, whether or not the tenant exists
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
 Limit:
   name: limit
   in: query

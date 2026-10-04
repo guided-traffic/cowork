@@ -432,7 +432,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated]
+    password_reset, deactivated, reactivated, read]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -1810,3 +1810,98 @@ ChatCapabilitiesUpdate:
       description: The whole set; an empty one leaves the chat the baseline
       items:
         $ref: '#/Capability'
+InboxReason:
+  type: string
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent]
+  description: |
+    Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
+    question they asked answered, a ticket they watch changed state or got a comment, a ticket that
+    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+InboxEntry:
+  type: object
+  required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
+  properties:
+    id: {type: string, format: uuid}
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    reason:
+      $ref: '#/InboxReason'
+    act:
+      $ref: '#/Activity'
+    blocker:
+      description: For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+      oneOf:
+        - $ref: '#/TicketRef'
+        - type: 'null'
+    withdrawn:
+      type: boolean
+      description: The comment or question the act is on has been withdrawn since
+    read: {type: boolean}
+    created_at: {type: string, format: date-time}
+InboxList:
+  type: object
+  required: [items, next_cursor, unread]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/InboxEntry'
+    next_cursor:
+      type: [string, 'null']
+    unread:
+      type: integer
+      description: The person's unread notifications in the tenants the request reaches
+InboxState:
+  type: object
+  required: [unread]
+  properties:
+    unread: {type: integer}
+InboxReadThrough:
+  type: object
+  additionalProperties: false
+  required: [through]
+  properties:
+    through:
+      type: string
+      format: uuid
+      description: The newest notification the person saw; it and every older one are marked read
+MyTicket:
+  type: object
+  required: [tenant, ticket]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/Ticket'
+MyTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MyTicket'
+    next_cursor:
+      type: [string, 'null']
+Decision:
+  type: object
+  required: [tenant, ticket, question]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    question:
+      $ref: '#/Question'
+DecisionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Decision'
+    next_cursor:
+      type: [string, 'null']

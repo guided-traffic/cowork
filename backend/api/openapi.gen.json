@@ -59,7 +59,7 @@
         "in": "query",
         "name": "cursor",
         "schema": {
-          "maxLength": 512,
+          "maxLength": 1024,
           "minLength": 1,
           "type": "string"
         }
@@ -323,6 +323,15 @@
           "default": 50,
           "minimum": 1,
           "type": "integer"
+        }
+      },
+      "MeTenant": {
+        "description": "Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names\nnone of them is `404 not_found`, whether or not the tenant exists\n",
+        "in": "query",
+        "name": "tenant",
+        "schema": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
         }
       },
       "OpenedAfter": {
@@ -997,7 +1006,8 @@
           "password_changed",
           "password_reset",
           "deactivated",
-          "reactivated"
+          "reactivated",
+          "read"
         ],
         "type": "string"
       },
@@ -1820,6 +1830,46 @@
         ],
         "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)"
       },
+      "Decision": {
+        "properties": {
+          "question": {
+            "$ref": "#/components/schemas/Question"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketRef"
+          }
+        },
+        "required": [
+          "tenant",
+          "ticket",
+          "question"
+        ],
+        "type": "object"
+      },
+      "DecisionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "Effort": {
         "enum": [
           "XS",
@@ -1948,6 +1998,124 @@
         },
         "required": [
           "role"
+        ],
+        "type": "object"
+      },
+      "InboxEntry": {
+        "properties": {
+          "act": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "blocker": {
+            "description": "For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/InboxReason"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketRef"
+          },
+          "withdrawn": {
+            "description": "The comment or question the act is on has been withdrawn since",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "ticket",
+          "reason",
+          "act",
+          "blocker",
+          "withdrawn",
+          "read",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "InboxList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread": {
+            "description": "The person's unread notifications in the tenants the request reaches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "unread"
+        ],
+        "type": "object"
+      },
+      "InboxReadThrough": {
+        "additionalProperties": false,
+        "properties": {
+          "through": {
+            "description": "The newest notification the person saw; it and every older one are marked read",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "through"
+        ],
+        "type": "object"
+      },
+      "InboxReason": {
+        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them\n",
+        "enum": [
+          "assigned",
+          "asked",
+          "answered",
+          "state_changed",
+          "blocker_closed",
+          "commented",
+          "urgent"
+        ],
+        "type": "string"
+      },
+      "InboxState": {
+        "properties": {
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread"
         ],
         "type": "object"
       },
@@ -2369,6 +2537,42 @@
           "grant"
         ],
         "type": "string"
+      },
+      "MyTicket": {
+        "properties": {
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/Ticket"
+          }
+        },
+        "required": [
+          "tenant",
+          "ticket"
+        ],
+        "type": "object"
+      },
+      "MyTicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MyTicket"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "PasswordChange": {
         "additionalProperties": false,
@@ -4568,6 +4772,42 @@
         ]
       }
     },
+    "/api/v1/me/assigned": {
+      "get": {
+        "description": "\"Assigned to me\" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is\nassigned to the person, in every tenant they belong to, each with its tenant — one read per\ntenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the\ntenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3\nexists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed\n(docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a\nproject that project (docs/adr/0035 D3).\n",
+        "operationId": "listMyAssigned",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTicketList"
+                }
+              }
+            },
+            "description": "A page of the person's tickets"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The open tickets assigned to the person, across their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/chat": {
       "get": {
         "description": "The chat acts as the person's agent, and its requests hold exactly this set\n(docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused\nto the chat with `403 agent_forbidden` and stays the person's. A person who never chose\nholds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,\nand `chosen` is false.\n",
@@ -4642,6 +4882,155 @@
           }
         ],
         "summary": "Choose the capabilities the person gives the chat in the UI",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/decisions": {
+      "get": {
+        "description": "\"Open decisions\" (docs/adr/0018 D3): the open questions asked of the person and those open in\ntheir tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its\ntenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,\nthe project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,\nwhich has none, after the ranked ones — and the question's number, until the score exists\n(docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on\n`GET /api/v1/me/assigned`.\n",
+        "operationId": "listMyDecisions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionList"
+                }
+              }
+            },
+            "description": "A page of the open decisions"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The open decisions of the person, across their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox": {
+      "get": {
+        "description": "One inbox per person, a union over the tenants they belong to — one read per tenant, never one\nquery across them (docs/adr/0020 D1, docs/adr/0021 D5). A notification is written by the act\nthat caused it, for the events of docs/adr/0020 D2: a ticket assigned to the person, a\nquestion asked of them, a question they asked answered, a state change of — or a comment on —\na ticket they watch (docs/adr/0013 D6: a stake, the assignee, the reporter, an open question\nasked by or of them), a ticket that blocks one they watch reaching `done` or `dropped`, and an\n`urgent` stake on a ticket assigned to them. Their own acts and their agents' tell them\nnothing. Each entry names its tenant beside the ticket and renders from the act (D3): the\nticket as it is now, the act as the ticket's activity shows it — without its payload where\nit names a ticket the person cannot see — and whether the comment or question it is on has\nbeen withdrawn since. A notification of a ticket the person no longer sees, or of a tenant\nthey left, is absent and counts nowhere (docs/adr/0065 D5).\n\n`unread` counts the person's unread notifications in the tenants the request reaches. A\ntoken restricted to a tenant reads that tenant's, one restricted to a project that project's\n(docs/adr/0035 D3). Cursor paging only; the cursor holds the place, so a notification that\narrives while the person reads shifts nothing (docs/adr/0048 D3).\n",
+        "operationId": "listMyInbox",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxList"
+                }
+              }
+            },
+            "description": "A page of the inbox and the unread count"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The person's notifications across their tenants, newest first",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox/read": {
+      "put": {
+        "description": "\"Mark all read\" (docs/adr/0020 D6): every unread notification of the person up to and\nincluding `through`, in the tenants the request reaches; one that arrived after it stays\nunread. One act `read` per tenant where something changed; none where nothing did. Needs\n`write` scope. Read notifications are kept ninety days, unread ones until they are read.\n",
+        "operationId": "markMyInboxRead",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxReadThrough"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxState"
+                }
+              }
+            },
+            "description": "The unread count after the marking"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Mark the person's notifications read, up to one they saw",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox/{notification}/read": {
+      "parameters": [
+        {
+          "description": "The notification's id",
+          "in": "path",
+          "name": "notification",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "description": "Recorded as the act `read`; one already read changes nothing and records nothing. A\nnotification that is not the person's, or of a ticket they no longer see, is `404 not_found`.\nNeeds `write` scope.\n",
+        "operationId": "markNotificationRead",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxState"
+                }
+              }
+            },
+            "description": "The unread count after the marking"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Mark one of the person's notifications read",
         "tags": [
           "me"
         ]
@@ -5561,7 +5950,7 @@
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream also carries\nthe person's own events across every tenant they belong to (docs/adr/0054 D1):\n`inbox.changed` with `data: {\"unread\": n}`, the person's unread notifications in every tenant\nthe request reaches (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and\nwhenever the inbox changes — a notification for them, or theirs marked read —; and\n`question.changed` of a question asked of them in another tenant, which arrives only while\nthey are a member of that tenant and see its ticket, as the tenant's own stream would judge\nit. Neither carries an `id:` or is replayed: the count says how things stand, and the client\nreloads its person-level lists when the stream opens. A token restricted to a tenant hears\nnothing of another (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -5571,6 +5960,15 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "description": "Adds the person's own events across their tenants (docs/adr/0054 D1)",
+            "in": "query",
+            "name": "me",
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
