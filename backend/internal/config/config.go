@@ -214,6 +214,9 @@ type Config struct {
 	// (docs/adr/0029); nil when COWORK_OIDC_ISSUER is unset, and the login
 	// page then offers none.
 	OIDC *OIDC
+	// Chat is the model the chat in the UI talks to (docs/adr/0076); nil when
+	// COWORK_CHAT_PROVIDER is unset, and no tenant has a chat.
+	Chat *Chat
 }
 
 // OIDC is the identity provider: the issuer cowork is a relying party of, and
@@ -307,6 +310,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	l.storage(&cfg)
 	l.login(&cfg)
 	l.trustedProxies(&cfg)
+	l.chat(&cfg)
 	return cfg, errors.Join(l.errs...)
 }
 

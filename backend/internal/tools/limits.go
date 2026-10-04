@@ -10,7 +10,7 @@ import (
 // use holds (docs/adr/0043 D6): "" while the token is unknown or is a
 // person's, whose acts the capabilities do not bound.
 func capsLine(tok Token, caps ...string) string {
-	if !tok.Known || !tok.Agent {
+	if !tok.Known || !tok.Agent || len(caps) == 0 {
 		return ""
 	}
 	var has, lacks []string
@@ -48,10 +48,11 @@ func limitsOf(text string, caps ...string) func(Token) string {
 
 // The capabilities the tools name.
 const (
-	capDecide        = auth.CapDecide
-	capClose         = auth.CapClose
-	capDrop          = auth.CapDrop
-	capInterest      = auth.CapInterest
-	capCreateProject = auth.CapCreateProject
-	capRecordAnswer  = auth.CapRecordAnswer
+	capDecide          = auth.CapDecide
+	capClose           = auth.CapClose
+	capDrop            = auth.CapDrop
+	capOverrideUrgency = auth.CapOverrideUrgency
+	capInterest        = auth.CapInterest
+	capCreateProject   = auth.CapCreateProject
+	capRecordAnswer    = auth.CapRecordAnswer
 )

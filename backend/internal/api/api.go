@@ -106,6 +106,9 @@ type Options struct {
 	// OIDC is the identity provider and its gate; the zero value is none
 	// (docs/adr/0029, docs/adr/0030).
 	OIDC OIDCOptions
+	// Chat is the chat in the UI; nil configures none, and every tenant
+	// answers that it has no chat (docs/adr/0076).
+	Chat *ChatOptions
 }
 
 // OIDCOptions is the identity provider the browser logs in through, and the
@@ -158,6 +161,9 @@ type handler struct {
 	// refresh carries no groups claim makes the refresh read nothing
 	// (docs/adr/0030 D5).
 	noRefreshToken, noGroups sync.Once
+	// turns counts the turns of the chat each person runs on this replica.
+	turnsMu sync.Mutex
+	turns   map[uuid.UUID]int
 }
 
 // New builds the API handler. It fails only when the embedded document does
@@ -190,6 +196,7 @@ func New(opts Options) (http.Handler, error) {
 		mux:     http.NewServeMux(),
 		logger:  opts.Logger,
 		touched: map[uuid.UUID]string{},
+		turns:   map[uuid.UUID]int{},
 
 		addressKey:     newAddressKey(opts.SessionKey),
 		dummyHash:      dummy,
@@ -283,7 +290,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			problem.Write(w, r, perr)
 			return
 		}
-		if perr := h.sessionRules(r, p, opID); perr != nil {
+		if perr := h.sessionRules(r, p, opID, accepts); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
@@ -313,6 +320,15 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveEvents(w, r)
 		return
 	}
+	h.serveOperation(w, r.WithContext(ctx), route, pathParams)
+}
+
+// serveOperation holds an admitted request to the request timeout, the body
+// limit and the document, and serves it: a turn of the chat by serveChat,
+// every other operation by the generated server.
+func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *routers.Route, pathParams map[string]string) {
+	ctx := r.Context()
+	unlimited := ctx
 	if h.opts.RequestTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, h.opts.RequestTimeout)
@@ -328,11 +344,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, perr)
 		return
 	}
-	if h.opts.ValidateResponses {
+	switch {
+	case route.Operation.OperationID == opRunChatTurn:
+		// The request timeout bounded reading the body; a turn has a limit
+		// of its own and streams (docs/adr/0039 D2).
+		h.serveChat(w, r.WithContext(unlimited))
+	case h.opts.ValidateResponses:
 		h.serveValidated(w, r, route, pathParams)
-		return
+	default:
+		h.mux.ServeHTTP(w, r)
 	}
-	h.mux.ServeHTTP(w, r)
 }
 
 // writeRouteError answers a request no operation of the document matches:
@@ -378,15 +399,22 @@ func openQuery(op *openapi3.Operation) bool {
 }
 
 // sessionRules are what holds a request authenticated by a session and no
-// other: the CSRF check on its writes (docs/adr/0037 D1), and the temporary
-// password that has to be changed before anything else (docs/adr/0033 D4). A
-// token's request has no cookie, and neither applies (docs/adr/0035 D7).
-func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string) *problem.Error {
+// other: the CSRF check on its writes (docs/adr/0037 D1); what only a session
+// does, which is a person's and never an agent's — a session marked as an
+// agent's by its header is refused it, so the mark cannot make a token, change
+// a password or give access (docs/adr/0035 D5, docs/adr/0043 D3); and the
+// temporary password that has to be changed before anything else
+// (docs/adr/0033 D4). A token's request has no cookie, and none of them
+// applies (docs/adr/0035 D7).
+func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string, accepts credentials) *problem.Error {
 	if !p.Session {
 		return nil
 	}
 	if perr := h.csrf(r); perr != nil {
 		return perr
+	}
+	if p.IsAgent() && !accepts.bearer {
+		return problem.New(problem.AgentForbidden, "hard-off: what only a browser session does is a person's act, never an agent's")
 	}
 	if p.PasswordChangeRequired && !whileChangingPassword[opID] {
 		return problem.New(problem.PasswordChangeRequired, "the password of this account is temporary: change it with PUT /api/v1/me/password first")

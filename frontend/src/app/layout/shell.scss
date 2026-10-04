@@ -5,11 +5,11 @@
 
 .frame {
   display: grid;
-  grid-template-columns: 15.5rem minmax(0, 1fr);
+  grid-template-columns: 15.5rem minmax(0, 1fr) auto;
   grid-template-rows: 4.25rem minmax(0, 1fr);
   grid-template-areas:
-    'top top'
-    'nav main';
+    'top top top'
+    'nav main chat';
   height: 100%;
 }
 
@@ -166,6 +166,33 @@
 .content {
   grid-area: main;
   overflow-y: auto;
+}
+
+// The assistant takes its width beside the content; on a narrow window it lies over the content,
+// up to the width of `overlayQuery` in shell.ts, which closes it on Escape and on the focus moving
+// into the page beneath.
+app-chat-panel {
+  grid-area: chat;
+}
+
+@media (max-width: 64rem) {
+  app-chat-panel {
+    position: fixed;
+    top: 4.25rem;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(24rem, 100vw);
+    box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--p-text-color) 24%, transparent);
+  }
+}
+
+.chat-toggle.on {
+  color: var(--p-primary-color);
+}
+
+.chat-blocked {
+  opacity: 0.55;
 }
 
 .add {

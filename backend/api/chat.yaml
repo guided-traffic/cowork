@@ -1,0 +1,129 @@
+# The chat of the UI (docs/adr/0076): a person's conversation with the model the
+# operator configured, which acts through this API as the person's agent. A
+# turn is served outside the generated server, like the event stream: a stream
+# is not a response a handler returns.
+chat:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: getChatAvailability
+    tags: [chat]
+    summary: Whether the chat is available in the tenant, and with which model
+    description: |
+      For every member of the tenant. The chat is available when the installation configures a
+      provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
+      the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
+      allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
+      to, its wire format, host and model, and one given to another provider is none. Otherwise
+      `reason` says why.
+      The provider's address is never shown, and nothing here asks the provider whether it
+      answers: a turn that cannot reach it ends with an `error` event.
+    responses:
+      '200':
+        description: The chat's availability in the tenant
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ChatAvailability'
+            example:
+              available: true
+              provider: openai
+              model: qwen/qwen3.6-35b-a3b
+              inside: true
+              reason: null
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: runChatTurn
+    tags: [chat]
+    summary: One turn of the chat, answered as server-sent events
+    description: |
+      A person in a browser session, any member of the tenant: a token is `403 session_required` —
+      an agent with a token has the MCP server (docs/adr/0040) — and the CSRF check holds as for
+      every write of a session (docs/adr/0037). A tenant without the chat is `409
+      chat_unavailable`, and `GET …/chat` says why. A person with as many turns running as
+      `COWORK_CHAT_TURNS_PER_PERSON` allows on the replica — in another tab, say — is `429
+      chat_busy`. The backend keeps nothing between turns: the request carries the conversation,
+      and the answer the messages to append to it.
+
+      A turn runs the model and the tools it calls: at most `COWORK_CHAT_MAX_STEPS` calls of the
+      model, for at most `COWORK_CHAT_TURN_TIMEOUT`, the tenant's chat asked again before every
+      call of the model. Every tool call is a request of this API with the person's session,
+      marked as the agent `chat/<model>/<conversation>` (docs/adr/0036) — with `+confirmed` after
+      the conversation for a call the person ran —: it passes validation, authorization, the agent
+      rules (docs/adr/0043) and the audit like any agent's request, and what it changes reaches
+      the event stream. It works in the turn's tenant only. A tool the API refuses is an answer
+      the model reads, not a failed turn. A call's creating requests carry keys derived from the
+      conversation and the call, so a decision sent twice is answered from what the first stored;
+      a turn the model answers anew repeats its acts: a client never retries one by itself.
+
+      The answer is `200` with `text/event-stream`, each event an `event:` line with its name and
+      a `data:` line with its JSON, flushed one by one:
+
+      - `text` — `ChatTextEvent`: the next piece of the assistant's text.
+      - `tool_call` — `ChatToolCall`: a call the model made, with its arguments, before it runs.
+      - `ui` — `ChatUiEvent`: between a call of `open_ticket`, `open_backlog` or `open_board` and its
+        result, the page of this UI the client shows next.
+      - `tool_result` — `ChatToolResultEvent`: whether the call succeeded, and the start of what it
+        answered the model.
+      - `confirm` — `ChatConfirmEvent`: in place of `tool_result`, a call the person decides before
+        it runs, with the act in words — a move to `decided`, `done`, `dropped` or `blocked`, a
+        backward move, a reopen, taking back a done (docs/adr/0009), `finish_work`, a progress write
+        that closes or reopens the ticket, recording an answer, creating a project, a call the chat
+        cannot tell the act of, and every write once the conversation read a confidential ticket
+        (docs/adr/0065). What it read to tell the act is pinned into the call's `arguments` —
+        `from`, the ticket's state, `version`, its version —, and a ticket that moved before the
+        person ran the call refuses it. It ends the turn.
+      - `error` — `Problem`: why the turn failed once it had begun — `chat_provider_failed`,
+        `timeout` (`COWORK_CHAT_TURN_TIMEOUT`), `chat_unavailable` (the consent was withdrawn, or
+        the provider changed, while the turn ran), `not_ready` (the server is shutting down: send
+        the turn again), `internal`.
+      - `done` — `ChatDoneEvent`, always the last: the messages the turn added, to be appended to
+        the conversation as they are, and why the turn ended.
+
+      A `: keep-alive` comment follows ten seconds without an event, so no proxy closes a turn
+      while the model thinks. A stream that ends without `done` was cut — the network, a
+      shutdown —, and the acts its `tool_result` events reported have happened.
+
+      **A decision.** After `confirm`, the next turn sends the conversation as `done` left it — its
+      last assistant message holds the call that waits, and the calls before it have their tool
+      messages — and `confirmations` with the person's decision on it, the first call that waits
+      and no other: `run: true` runs the call as proposed, `run: false` answers the model that the
+      person skipped it, and so does a turn without a decision. The decided call's `tool_result`
+      comes without a new `tool_call`: its card is the person's already. The calls after it then
+      run in order, each with its `tool_call`; one that needs a decision of its own is answered
+      that it did not run, and the model makes it again, which proposes it. A call still waiting
+      when the person writes a new message instead is answered as skipped; the conversation keeps
+      it without an answer, and every later turn answers it the same way. An answer of the model
+      that is white space only adds no message: `done` carries none for it.
+
+      **Limits.** A body above `COWORK_MAX_JSON_BODY` is `413 payload_too_large`; more messages or
+      longer texts than `ChatTurn` allows are `400 validation_failed` — the conversation is too
+      long, and a new one begins. A message the model could not read in its place — a tool
+      message that answers no call, a decision on another call than the first that waits — is
+      `400 validation_failed` naming it.
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ChatTurn'
+          example:
+            conversation: 0199a3c2-1d2e-7f00-8000-000000000042
+            messages:
+              - role: user
+                text: File a bug for the login that fails in Safari, and rank it to now.
+            context:
+              path: /t/acme/p/COW/board
+              project: COW
+    responses:
+      '200':
+        description: The turn, as server-sent events
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      default:
+        $ref: './components/responses.yaml#/Problem'

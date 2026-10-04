@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -83,4 +84,28 @@ func TestRecordAnswer(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Text, "missing capability: record-answer")
 	assert.Contains(t, res.Text, "the act is a person's")
+}
+
+// A host that knows the person answers "me" itself, and a host confined to a
+// tenant searches that tenant for "every tenant": neither asks
+// GET /api/v1/me, which the chat in the backend may not call.
+func TestAHostThatKnowsThePerson(t *testing.T) {
+	f := newFake(t)
+	f.on("POST "+ticketPath+"/questions", http.StatusCreated, map[string]any{"number": 1, "question": "Retry?"})
+	f.on("GET "+ticketPath+"/questions", http.StatusOK, list())
+	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
+	s := f.session(true)
+	s.Person = &Person{ID: uuid.MustParse(samID), Name: "Sam Doe"}
+	s.Tenants = []string{"acme"}
+
+	res := call(t, s, "open_question", `{"key": "COW-12", "question": "Retry?", "options": "-", "recommendation": "retry", "asked_of": "me"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Contains(t, res.Text, "asked of Sam Doe")
+	assert.Equal(t, samID, decodeBody(t, f.calls(http.MethodPost, ticketPath+"/questions")[0])["asked_of"])
+
+	res = call(t, s, "search", `{"query": "gate", "scope": "all"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Contains(t, res.Text, "Tickets in the tenants this session works in, acme matching")
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/tenants/acme/tickets"), 1)
+	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "the person and the tenants came from the host")
 }

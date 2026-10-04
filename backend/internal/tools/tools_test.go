@@ -15,8 +15,9 @@ import (
 )
 
 // The tool set of docs/adr/0042 D1 and D2: twelve workflow tools,
-// record_answer, create_project and the api escape hatch, each with a name a
-// host accepts, a description, an object schema and the operations it calls.
+// record_answer, create_project, set_urgency and the api escape hatch, each
+// with a name a host accepts, a description, an object schema and the
+// operations it calls.
 func TestTheCatalogue(t *testing.T) {
 	names := make([]string, 0, len(Catalogue()))
 	valid := regexp.MustCompile(`^[a-z][a-z_]{1,63}$`)
@@ -31,7 +32,8 @@ func TestTheCatalogue(t *testing.T) {
 		assert.Equal(t, false, schema["additionalProperties"], "%s refuses arguments it does not know", tool.Name)
 	}
 	assert.ElementsMatch(t, []string{"session_start", "get_ticket", "search", "file_ticket", "record_state", "open_question",
-		"record_answer", "comment", "transition", "set_progress", "link", "watch", "finish_work", "create_project", "api"}, names)
+		"record_answer", "comment", "transition", "set_progress", "link", "watch", "set_urgency", "finish_work", "create_project",
+		"api"}, names)
 
 	anywhere := Catalogue(Anywhere)
 	assert.Len(t, anywhere, len(names)-1, "only session_start needs a terminal")
@@ -89,6 +91,11 @@ func TestDescriptionsNameTheLimits(t *testing.T) {
 	assert.NotContains(t, full, "lacks")
 	person := transition.Describe(&Token{Known: true})
 	assert.NotContains(t, person, "This session's token", "a person's request is not bounded by capabilities")
+
+	for _, tool := range Catalogue() {
+		d := tool.Describe(&Token{Known: true, Agent: true, Capabilities: []string{"close"}})
+		assert.NotContains(t, d, "token .", "%s names no capability, and says nothing of them", tool.Name)
+	}
 }
 
 // The arguments are held to the schema before anything is sent.

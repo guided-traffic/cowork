@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,16 +45,19 @@ func (s *Server) GetTenant(ctx context.Context, _ apigen.GetTenantRequestObject)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTenant200JSONResponse{Body: tenantView(row), Headers: apigen.GetTenant200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.GetTenant200JSONResponse{Body: s.tenantView(row), Headers: apigen.GetTenant200ResponseHeaders{ETag: etag(row.Version)}}, nil
 }
 
-func tenantView(t readq.GetTenantRow) apigen.Tenant {
+// tenantView is the tenant as the API answers it; its consent to the chat's
+// provider counts only for the provider configured now (docs/adr/0076).
+func (s *Server) tenantView(t readq.GetTenantRow) apigen.Tenant {
 	v := apigen.Tenant{
 		Slug:                  t.Slug,
 		Name:                  t.Name,
 		Version:               int(t.Version),
 		TimeVisibleToMembers:  t.TimeVisibleToMembers,
 		MembersCreateProjects: t.MembersCreateProjects,
+		ChatExternalAllowed:   consented(t.ChatExternalAllowed, t.ChatExternalProvider, s.h.chatProvider()),
 		CreatedAt:             t.CreatedAt,
 		UpdatedAt:             t.UpdatedAt,
 	}
@@ -65,33 +69,58 @@ func tenantView(t readq.GetTenantRow) apigen.Tenant {
 	return v
 }
 
-// tenantSettings is the writable part of a tenant.
+// tenantSettings is the writable part of a tenant. ChatAllowed and
+// ChatProvider are the consent to the chat's provider as stored — the yes, and
+// the provider it was given to —, provider the provider configured now.
 type tenantSettings struct {
 	Name                  string
 	TimeVisibleToMembers  bool
 	TimeLockedUntil       *time.Time
 	MembersCreateProjects bool
+	ChatAllowed           bool
+	ChatProvider          *string
+	provider              string
 }
 
-func settingsOf(t readq.GetTenantRow) tenantSettings {
-	return tenantSettings{t.Name, t.TimeVisibleToMembers, t.TimeLockedUntil, t.MembersCreateProjects}
+// The tenant's consent to an outside provider of the chat and the provider it
+// was given to (docs/adr/0076).
+const (
+	fieldChatExternalAllowed  = "chat_external_allowed"
+	fieldChatExternalProvider = "chat_external_provider"
+)
+
+func settingsOf(t readq.GetTenantRow, provider string) tenantSettings {
+	return tenantSettings{t.Name, t.TimeVisibleToMembers, t.TimeLockedUntil, t.MembersCreateProjects, t.ChatExternalAllowed,
+		t.ChatExternalProvider, provider}
+}
+
+// consented is a tenant's consent to the provider configured now: a yes given
+// to another provider is none.
+func consented(allowed bool, given *string, provider string) bool {
+	return allowed && provider != "" && given != nil && *given == provider
 }
 
 func (s tenantSettings) values() map[string]any {
-	var lock any
+	var lock, provider any
 	if s.TimeLockedUntil != nil {
 		lock = s.TimeLockedUntil.Format(time.DateOnly)
+	}
+	if s.ChatProvider != nil {
+		provider = *s.ChatProvider
 	}
 	return map[string]any{
 		fieldName:                 s.Name,
 		"time_visible_to_members": s.TimeVisibleToMembers,
 		fieldTimeLockedUntil:      lock,
 		"members_create_projects": s.MembersCreateProjects,
+		fieldChatExternalAllowed:  consented(s.ChatAllowed, s.ChatProvider, s.provider),
+		fieldChatExternalProvider: provider,
 	}
 }
 
 // apply returns the settings with the patch applied and the names of the
-// fields the patch sends.
+// fields the patch sends. A consent is given to the provider configured now;
+// withdrawn, it names none.
 func (s tenantSettings) apply(p apigen.TenantPatch) (tenantSettings, []string) {
 	var sent []string
 	if p.Name != nil {
@@ -111,12 +140,22 @@ func (s tenantSettings) apply(p apigen.TenantPatch) (tenantSettings, []string) {
 	if p.MembersCreateProjects != nil {
 		s.MembersCreateProjects, sent = *p.MembersCreateProjects, append(sent, "members_create_projects")
 	}
+	if p.ChatExternalAllowed != nil {
+		s.ChatAllowed, s.ChatProvider, sent = *p.ChatExternalAllowed, nil, append(sent, fieldChatExternalAllowed)
+		if s.ChatAllowed {
+			provider := s.provider
+			s.ChatProvider = &provider
+		}
+	}
 	return s, sent
 }
 
 // UpdateTenant changes the tenant's name or settings: an administration act
 // with If-Match (docs/adr/0050 D3). Moving the time lock is recorded as
-// locked (docs/adr/0026 D1), everything else as updated.
+// locked (docs/adr/0026 D1), everything else as updated. Allowing an outside
+// provider of the chat takes a session: the consent lets the tenant's data
+// leave the installation and outlives a leaked token's revocation, while
+// withdrawing it only takes access away (docs/adr/0035 D5, docs/adr/0076).
 func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantRequestObject) (apigen.UpdateTenantResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
@@ -132,8 +171,11 @@ func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantReques
 		if err != nil {
 			return err
 		}
-		before := settingsOf(cur)
+		before := settingsOf(cur, s.h.chatProvider())
 		after, sent := before.apply(*req.Body)
+		if perr := consentRules(ctx, before, after, sent); perr != nil {
+			return perr
+		}
 		if cur.Version != version {
 			return stale(cur.Version, pick(before.values(), sent))
 		}
@@ -145,6 +187,7 @@ func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantReques
 		_, err = w.UpdateTenantSettings(ctx, writeq.UpdateTenantSettingsParams{
 			TenantID: t.ID, Version: version, Name: after.Name, TimeVisibleToMembers: after.TimeVisibleToMembers,
 			TimeLockedUntil: after.TimeLockedUntil, MembersCreateProjects: after.MembersCreateProjects,
+			ChatExternalAllowed: after.ChatAllowed, ChatExternalProvider: after.ChatProvider,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return stale(cur.Version, pick(before.values(), sent))
@@ -159,7 +202,27 @@ func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantReques
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.UpdateTenant200JSONResponse{Body: tenantView(out), Headers: apigen.UpdateTenant200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.UpdateTenant200JSONResponse{Body: s.tenantView(out), Headers: apigen.UpdateTenant200ResponseHeaders{ETag: etag(out.Version)}}, nil
+}
+
+// consentRules hold a change of the consent to the chat's provider: a yes
+// needs a provider to say it to, and takes a session — the consent lets the
+// tenant's data leave the installation and outlives a leaked token's
+// revocation, while withdrawing it only takes access away (docs/adr/0035 D5,
+// docs/adr/0076).
+func consentRules(ctx context.Context, before, after tenantSettings, sent []string) *problem.Error {
+	switch {
+	case !slices.Contains(sent, fieldChatExternalAllowed) || !after.ChatAllowed:
+		return nil
+	case after.provider == "":
+		return problem.New(problem.ChatUnavailable, "this installation configures no chat provider to allow")
+	case before.values()[fieldChatExternalAllowed] == true:
+		// The provider has the tenant's yes already.
+		return nil
+	case !principal(ctx).Session:
+		return problem.New(problem.SessionRequired, "allowing an outside provider of the chat takes a browser session; a token may only withdraw it")
+	}
+	return nil
 }
 
 func recordSettingsChange(w *store.Writer, tenantID uuid.UUID, before, after map[string]any) {
@@ -423,7 +486,7 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 		if created, err = w.GetTenant(ctx, id); err != nil {
 			return err
 		}
-		res, err := stored(tenantView(created), map[string]string{headerETag: *etag(created.Version), headerLocation: tenantURL(created.Slug)})
+		res, err := stored(s.tenantView(created), map[string]string{headerETag: *etag(created.Version), headerLocation: tenantURL(created.Slug)})
 		if err != nil {
 			return err
 		}
@@ -442,7 +505,7 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
 	location := tenantURL(created.Slug)
-	return apigen.CreateTenant201JSONResponse{Body: tenantView(created), Headers: apigen.CreateTenant201ResponseHeaders{
+	return apigen.CreateTenant201JSONResponse{Body: s.tenantView(created), Headers: apigen.CreateTenant201ResponseHeaders{
 		ETag: etag(created.Version), Location: &location}}, nil
 }
 

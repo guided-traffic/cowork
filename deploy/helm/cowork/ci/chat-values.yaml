@@ -1,0 +1,25 @@
+# The chat shape (docs/adr/0076): a provider outside the installation, its key
+# from a Secret with a key name of its own (docs/adr/0058 D3), and the limits
+# changed from their defaults. A turn runs in a browser session, so the shape
+# has a login and the public origin.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+session:
+  existingSecret: cowork-session
+localAdmin:
+  existingSecret: cowork-local-admin
+chat:
+  provider: anthropic
+  url: https://api.anthropic.com
+  model: claude-sonnet-4-5
+  existingSecret: cowork-chat
+  keys:
+    apiKey: anthropic-api-key
+  inside: false
+  turnTimeout: 10m
+  maxSteps: 12
+backend:
+  config:
+    baseURL: https://cowork.example.com

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
+	"github.com/guided-traffic/cowork/backend/internal/llm"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -145,17 +147,21 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 
 	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson)
 	go db.Listen(ctx, hub.Publish, hub.SetUp)
-	var objects *storage.Client
-	if cfg.Storage != nil {
-		if objects, err = storage.New(*cfg.Storage); err != nil {
-			logger.Error("object storage setup failed", "error", err)
-			return 1
-		}
-	} else {
-		logger.Warn("no object storage configured; attachments cannot be uploaded", "variable", config.EnvS3Endpoint)
+	objects, err := objectStorage(cfg, logger)
+	if err != nil {
+		logger.Error("object storage setup failed", "error", err)
+		return 1
 	}
 	if len(cfg.TrustedProxies) > 0 {
 		logger.Info("client addresses are read through trusted proxies", "variable", config.EnvTrustedProxies, "networks", cfg.TrustedProxies)
+	}
+	// The chat's tool calls go through the whole server, which is built
+	// after the API it serves: the loop reads it at the first turn.
+	var root http.Handler
+	chatOptions, err := chatOf(ctx, cfg, func() http.Handler { return root }, logger)
+	if err != nil {
+		logger.Error("chat setup failed", "error", err)
+		return 1
 	}
 	apiHandler, err := api.New(api.Options{
 		DB:                     db,
@@ -184,21 +190,55 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		TokenMaxLifetime:     cfg.TokenMaxLifetime,
 		TrustedProxies:       cfg.TrustedProxies,
 		OIDC:                 identity,
+		Chat:                 chatOptions,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
 		return 1
 	}
-	handler := httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
+	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
 	go runJobs(ctx, db, logger, cfg.SessionIdle)
 
 	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
-	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, handler, cfg.ShutdownTimeout, hub.Close); err != nil {
+	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, root, cfg.ShutdownTimeout, hub.Close); err != nil {
 		logger.Error("server stopped with error", "error", err)
 		return 1
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// objectStorage is the configuration's object storage, or nil without one,
+// which the start says (docs/adr/0016 D1).
+func objectStorage(cfg config.Config, logger *slog.Logger) (*storage.Client, error) {
+	if cfg.Storage == nil {
+		logger.Warn("no object storage configured; attachments cannot be uploaded", "variable", config.EnvS3Endpoint)
+		return nil, nil
+	}
+	return storage.New(*cfg.Storage)
+}
+
+// chatOf is the chat of the configuration (docs/adr/0076), or nil without a
+// provider. The start says which provider and model the chat talks to and
+// whether it is declared inside the installation — never the key. The
+// signal that ends the server ends the turns that run (docs/adr/0054 D9).
+func chatOf(ctx context.Context, cfg config.Config, root func() http.Handler, logger *slog.Logger) (*api.ChatOptions, error) {
+	c := cfg.Chat
+	if c == nil {
+		return nil, nil
+	}
+	provider, err := llm.New(llm.Config{Format: c.Provider, URL: c.URL, APIKey: c.APIKey, Model: c.Model})
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("the chat talks to a model", "variable", config.EnvChatProvider, "provider", c.Provider, "model", c.Model,
+		"inside", c.Inside, "turn_timeout", c.TurnTimeout, "max_steps", c.MaxSteps, "turns_per_person", c.Turns)
+	if !c.Inside {
+		logger.Info("the chat's provider is outside the installation: a tenant has the chat once its administrators allow it",
+			"variable", config.EnvChatInside)
+	}
+	return &api.ChatOptions{Provider: provider, Kind: c.Provider, Model: c.Model, Inside: c.Inside, Fingerprint: c.Fingerprint(),
+		TurnTimeout: c.TurnTimeout, MaxSteps: c.MaxSteps, TurnsPerPerson: c.Turns, Shutdown: ctx, Loopback: root}, nil
 }
 
 // discoverIssuer discovers the configured identity provider (docs/adr/0029 D1,

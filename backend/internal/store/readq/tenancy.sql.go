@@ -60,7 +60,7 @@ func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (GetMember
 
 const getTenant = `-- name: GetTenant :one
 SELECT id, slug, name, version, time_visible_to_members, time_locked_until,
-       members_create_projects, created_at, updated_at
+       members_create_projects, chat_external_allowed, chat_external_provider, created_at, updated_at
 FROM tenants
 WHERE id = $1
 `
@@ -73,6 +73,8 @@ type GetTenantRow struct {
 	TimeVisibleToMembers  bool
 	TimeLockedUntil       *time.Time
 	MembersCreateProjects bool
+	ChatExternalAllowed   bool
+	ChatExternalProvider  *string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
@@ -88,6 +90,8 @@ func (q *Queries) GetTenant(ctx context.Context, tenantID uuid.UUID) (GetTenantR
 		&i.TimeVisibleToMembers,
 		&i.TimeLockedUntil,
 		&i.MembersCreateProjects,
+		&i.ChatExternalAllowed,
+		&i.ChatExternalProvider,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

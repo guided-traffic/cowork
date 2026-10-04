@@ -34,12 +34,14 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // operation takes either credential. What a leaked token must not be able to
 // make — a token, a tenant, an account, a password the administrator knows, a
 // role, a mapping, a person's way into a restricted project — outlives its
-// revocation; what only takes access away stays open to a token.
+// revocation; what only takes access away stays open to a token. A turn of
+// the chat acts with the person's session; an agent with a token has the MCP
+// server (docs/adr/0076, docs/adr/0040).
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true,
 	"createAccount": true, "resetAccountPassword": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
-	"setProjectRestriction": true, "setProjectAccess": true,
+	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true,
 }
 
 // The document is part of the security documentation (docs/adr/0046 D8):

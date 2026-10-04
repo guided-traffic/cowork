@@ -38,13 +38,16 @@ ProblemCode:
     - period_locked
     - attachment_limit
     - uploads_disabled
+    - chat_unavailable
     - precondition_failed
     - payload_too_large
     - unsupported_media_type
     - idempotency_mismatch
     - precondition_required
     - too_many_attempts
+    - chat_busy
     - internal
+    - chat_provider_failed
     - not_ready
     - timeout
     - backend_unreachable

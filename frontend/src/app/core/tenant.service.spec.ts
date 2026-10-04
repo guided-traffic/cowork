@@ -36,6 +36,7 @@ function tenant(slug: string, overrides: Partial<Tenant> = {}): Tenant {
     slug,
     name: `Tenant ${slug}`,
     members_create_projects: false,
+    chat_external_allowed: false,
     time_visible_to_members: false,
     time_locked_until: null,
     created_at: '2026-10-01T10:00:00Z',

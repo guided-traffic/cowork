@@ -16,3 +16,13 @@ export const HARD_NAVIGATION = new InjectionToken<HardNavigation>('HARD_NAVIGATI
   providedIn: 'root',
   factory: () => (url) => window.location.assign(url),
 });
+
+/**
+ * Loads this document again, for the reason `HARD_NAVIGATION` loads another: a tab whose session
+ * changed in another tab starts from nothing (`SessionService`). Tests provide a function of their
+ * own.
+ */
+export const RELOAD = new InjectionToken<() => void>('RELOAD', {
+  providedIn: 'root',
+  factory: () => () => window.location.reload(),
+});

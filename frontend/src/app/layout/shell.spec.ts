@@ -9,8 +9,9 @@ import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { Observable, of, throwError } from 'rxjs';
 import type { MockInstance } from 'vitest';
-import { Me, Membership, Project } from '../api/models';
+import { ChatAvailability, Me, Membership, Project } from '../api/models';
 import { AuthService } from '../core/auth.service';
+import { ChatEntry, ChatService } from '../core/chat.service';
 import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
 import { ProjectsService } from '../core/projects.service';
@@ -19,7 +20,7 @@ import { TenantService } from '../core/tenant.service';
 import { VersionInfo, VersionService } from '../core/version.service';
 import { NewProjectDialog } from '../features/project/new-project-dialog';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
-import { initials, Shell } from './shell';
+import { chatNotAllowedText, initials, Shell } from './shell';
 
 const acme: Membership = {
   role: 'admin',
@@ -63,6 +64,32 @@ function project(key: string, name: string): Project {
 @Component({ template: '<p data-testid="page">a routed page</p>' })
 class Page {}
 
+/** The part of the chat the shell and its panel read, with what a test sets. */
+class FakeChat {
+  readonly availabilityValue = signal<ChatAvailability | undefined>(undefined);
+  readonly availability = {
+    hasValue: () => this.availabilityValue() !== undefined,
+    value: () => this.availabilityValue(),
+  };
+  readonly available = computed(() => this.availabilityValue()?.available ?? false);
+  readonly open = signal(false);
+  readonly setOpen = vi.fn((open: boolean) => this.open.set(open));
+  readonly entries = signal<ChatEntry[]>([]);
+  readonly busy = signal(false);
+  readonly send = vi.fn();
+  readonly decide = vi.fn();
+  readonly stop = vi.fn();
+  readonly restart = vi.fn();
+}
+
+const chatAvailable: ChatAvailability = {
+  available: true,
+  provider: 'openai',
+  model: 'qwen/qwen3.6-35b-a3b',
+  inside: true,
+  reason: null,
+};
+
 describe('Shell', () => {
   let memberships: WritableSignal<Membership[]>;
   let tenant: WritableSignal<string | null>;
@@ -80,8 +107,11 @@ describe('Shell', () => {
   let version: MockInstance<() => Observable<VersionInfo>>;
   let navigate: MockInstance<Router['navigate']>;
   let hardNavigate: MockInstance<HardNavigation>;
+  let signedOut: MockInstance<() => void>;
+  let chat: FakeChat;
 
   beforeEach(() => {
+    chat = new FakeChat();
     memberships = signal<Membership[]>([acme]);
     tenant = signal<string | null>('acme');
     person = signal<Me | undefined>(ada);
@@ -94,6 +124,7 @@ describe('Shell', () => {
     cycle = vi.fn<() => void>();
     version = vi.fn<() => Observable<VersionInfo>>(() => of(backend));
     hardNavigate = vi.fn<HardNavigation>();
+    signedOut = vi.fn<() => void>();
   });
 
   function configure() {
@@ -109,6 +140,7 @@ describe('Shell', () => {
             memberships,
             tenant,
             membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
+            signedOut,
           },
         },
         { provide: ProjectsService, useValue: projects },
@@ -118,6 +150,7 @@ describe('Shell', () => {
         { provide: EventStreamService, useValue: { status } },
         { provide: ThemeService, useValue: { preference, cycle } },
         { provide: VersionService, useValue: { get: version } },
+        { provide: ChatService, useValue: chat },
       ],
     });
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -177,6 +210,17 @@ describe('Shell', () => {
       expect(navigate).not.toHaveBeenCalledWith(['/login']);
     });
 
+    it("tells the application's other tabs once the backend has ended the session, before it leaves", async () => {
+      const { fixture } = await render();
+      hardNavigate.mockImplementation(() => expect(signedOut).toHaveBeenCalledOnce());
+
+      item(fixture, 'Sign out').command?.({});
+      await fixture.whenStable();
+
+      expect(signedOut).toHaveBeenCalledOnce();
+      expect(hardNavigate).toHaveBeenCalledOnce();
+    });
+
     it('loads the login page only after the backend has ended the session', async () => {
       let finish: () => void = () => undefined;
       logout.mockReturnValueOnce(
@@ -219,6 +263,7 @@ describe('Shell', () => {
       expect(toasts).toHaveBeenCalledTimes(1);
       expect(hardNavigate).not.toHaveBeenCalled();
       expect(navigate).not.toHaveBeenCalledWith(['/login']);
+      expect(signedOut).not.toHaveBeenCalled();
     });
   });
 
@@ -413,6 +458,272 @@ describe('Shell', () => {
     });
   });
 
+  describe('the assistant', () => {
+    const toggle = (page: HTMLElement) =>
+      page.querySelector<HTMLButtonElement>('[data-testid="chat-toggle"]');
+    const panel = (page: HTMLElement) =>
+      page.querySelector<HTMLElement>('[data-testid="chat-panel"]');
+
+    it('is neither offered nor shown while the tenant has no chat', async () => {
+      chat.availabilityValue.set({ ...chatAvailable, available: false, reason: 'not_configured' });
+
+      const { page } = await render();
+
+      expect(toggle(page)).toBeNull();
+      expect(panel(page)).toBeNull();
+      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
+    });
+
+    it('is neither offered nor shown before its availability is known', async () => {
+      const { page } = await render();
+
+      expect(toggle(page)).toBeNull();
+      expect(panel(page)).toBeNull();
+    });
+
+    it('is a toggle in the top bar that says whether the panel it controls is open', async () => {
+      chat.availabilityValue.set(chatAvailable);
+
+      const { page } = await render();
+
+      expect(toggle(page)?.tagName).toBe('BUTTON');
+      expect(toggle(page)?.closest('.topbar')).not.toBeNull();
+      expect(toggle(page)?.getAttribute('aria-label')).toBe('Assistant');
+      expect(toggle(page)?.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle(page)?.getAttribute('aria-controls')).toBe('chat-panel');
+      expect(page.querySelector('#chat-panel')).toBe(panel(page));
+      expect(panel(page)?.hidden).toBe(true);
+    });
+
+    it('stands at the right of the content', async () => {
+      chat.availabilityValue.set(chatAvailable);
+
+      const { page } = await render();
+
+      expect(panel(page)?.parentElement?.classList).toContain('frame');
+      expect(panel(page)?.previousElementSibling?.tagName).toBe('MAIN');
+    });
+
+    it('opens from the toggle and takes the keyboard into its input', async () => {
+      chat.availabilityValue.set(chatAvailable);
+      const { fixture, page } = await render();
+
+      toggle(page)?.click();
+      await fixture.whenStable();
+
+      expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(true);
+      expect(panel(page)?.hidden).toBe(false);
+      expect(toggle(page)?.getAttribute('aria-expanded')).toBe('true');
+      expect(toggle(page)?.classList).toContain('on');
+      expect(document.activeElement).toBe(page.querySelector('[data-testid="chat-input"]'));
+    });
+
+    it('closes from the toggle, which keeps the keyboard', async () => {
+      chat.availabilityValue.set(chatAvailable);
+      chat.open.set(true);
+      const { fixture, page } = await render();
+      toggle(page)?.focus();
+
+      toggle(page)?.click();
+      await fixture.whenStable();
+
+      expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
+      expect(panel(page)?.hidden).toBe(true);
+      expect(toggle(page)?.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(toggle(page));
+    });
+
+    it('is open as the person left it, without taking the keyboard', async () => {
+      chat.availabilityValue.set(chatAvailable);
+      chat.open.set(true);
+
+      const { page } = await render();
+
+      expect(panel(page)?.hidden).toBe(false);
+      expect(document.activeElement).not.toBe(page.querySelector('[data-testid="chat-input"]'));
+    });
+
+    it('tells an administrator where the tenant allows it, while it does not', async () => {
+      chat.availabilityValue.set({
+        ...chatAvailable,
+        available: false,
+        inside: false,
+        reason: 'not_allowed_in_tenant',
+      });
+      isAdmin.set(true);
+
+      const { page } = await render();
+
+      const hint = page.querySelector('[data-testid="chat-not-allowed"]');
+      expect(hint?.tagName).toBe('A');
+      expect(hint?.getAttribute('href')).toBe('/t/acme/settings');
+      expect(hint?.getAttribute('aria-label')).toBe(chatNotAllowedText);
+      expect(chatNotAllowedText).toBe(
+        'The assistant is not allowed in this tenant: an administrator can allow the configured model in the tenant settings.',
+      );
+      expect(toggle(page)).toBeNull();
+      expect(panel(page)).toBeNull();
+    });
+
+    it('says nothing of it to anybody else', async () => {
+      chat.availabilityValue.set({
+        ...chatAvailable,
+        available: false,
+        inside: false,
+        reason: 'not_allowed_in_tenant',
+      });
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
+    });
+
+    it('says nothing to an administrator where no model is configured', async () => {
+      chat.availabilityValue.set({
+        available: false,
+        provider: null,
+        model: null,
+        inside: false,
+        reason: 'not_configured',
+      });
+      isAdmin.set(true);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="chat-not-allowed"]')).toBeNull();
+    });
+
+    describe('lying over the content on a narrow window', () => {
+      /** jsdom has no matchMedia; this one says whether the window is narrow, and records the query. */
+      function windowIs(narrow: boolean): string[] {
+        const queries: string[] = [];
+        Object.defineProperty(window, 'matchMedia', {
+          configurable: true,
+          writable: true,
+          value: (query: string) => {
+            queries.push(query);
+            return { matches: narrow, addEventListener: () => undefined };
+          },
+        });
+        return queries;
+      }
+
+      afterEach(() => Reflect.deleteProperty(window, 'matchMedia'));
+
+      async function opened(): Promise<{ fixture: ComponentFixture<Shell>; page: HTMLElement }> {
+        chat.availabilityValue.set(chatAvailable);
+        chat.open.set(true);
+        return render();
+      }
+
+      const input = (page: HTMLElement) =>
+        page.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]') as HTMLElement;
+
+      function escape(target: HTMLElement, init: KeyboardEventInit = {}): void {
+        target.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init }),
+        );
+      }
+
+      it('closes on Escape, and the keyboard goes back to the toggle', async () => {
+        const queries = windowIs(true);
+        const { fixture, page } = await opened();
+        input(page).focus();
+
+        escape(input(page));
+        await fixture.whenStable();
+
+        expect(queries).toContain('(max-width: 64rem)');
+        expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
+        expect(panel(page)?.hidden).toBe(true);
+        expect(document.activeElement).toBe(toggle(page));
+      });
+
+      it('stays open on the Escape that ends a composition', async () => {
+        windowIs(true);
+        const { fixture, page } = await opened();
+
+        escape(input(page), { isComposing: true });
+        await fixture.whenStable();
+
+        expect(chat.setOpen).not.toHaveBeenCalled();
+        expect(panel(page)?.hidden).toBe(false);
+      });
+
+      it('closes when the focus moves into the content beneath it', async () => {
+        windowIs(true);
+        const { fixture, page } = await opened();
+        await TestBed.inject(Router).navigateByUrl('/somewhere');
+        await fixture.whenStable();
+
+        page
+          .querySelector('[data-testid="page"]')
+          ?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        await fixture.whenStable();
+
+        expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
+        expect(panel(page)?.hidden).toBe(true);
+      });
+
+      it('closes when the focus moves into the navigation beneath it', async () => {
+        windowIs(true);
+        const { fixture, page } = await opened();
+
+        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        await fixture.whenStable();
+
+        expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
+      });
+
+      it('stays open when the focus goes to the top bar, which it does not cover', async () => {
+        windowIs(true);
+        const { fixture, page } = await opened();
+
+        page.querySelector<HTMLElement>('[data-testid="theme-toggle"]')?.focus();
+        await fixture.whenStable();
+
+        expect(chat.setOpen).not.toHaveBeenCalled();
+        expect(panel(page)?.hidden).toBe(false);
+      });
+
+      it('stays open beside the content on a wide window, for Escape and for the focus', async () => {
+        windowIs(false);
+        const { fixture, page } = await opened();
+
+        escape(input(page));
+        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        await fixture.whenStable();
+
+        expect(chat.setOpen).not.toHaveBeenCalled();
+      });
+
+      it('stays open where the browser cannot tell the width of the window', async () => {
+        const { fixture, page } = await opened();
+
+        escape(input(page));
+        await fixture.whenStable();
+
+        expect(chat.setOpen).not.toHaveBeenCalled();
+      });
+
+      it("leaves the person's choice alone while the panel is closed, or the tenant has no chat", async () => {
+        windowIs(true);
+        chat.open.set(true);
+        chat.availabilityValue.set({ ...chatAvailable, available: false, reason: 'not_configured' });
+        const { fixture, page } = await render();
+
+        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        chat.availabilityValue.set(chatAvailable);
+        chat.open.set(false);
+        await fixture.whenStable();
+        page.querySelector<HTMLElement>('[data-testid="nav-members"]')?.focus();
+        await fixture.whenStable();
+
+        expect(chat.setOpen).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('the person', () => {
     it('shows the initials of the person in the avatar', async () => {
       const { page } = await render();
@@ -601,6 +912,7 @@ describe('Shell, creating a project', () => {
           useValue: { preference: signal<ThemePreference>('system'), cycle: vi.fn() },
         },
         { provide: VersionService, useValue: { get: () => of(backend) } },
+        { provide: ChatService, useValue: new FakeChat() },
       ],
     });
   });

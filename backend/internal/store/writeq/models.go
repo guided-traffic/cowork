@@ -875,6 +875,8 @@ type Tenant struct {
 	TimeVisibleToMembers  bool
 	TimeLockedUntil       *time.Time
 	MembersCreateProjects bool
+	ChatExternalAllowed   bool
+	ChatExternalProvider  *string
 }
 
 type Ticket struct {

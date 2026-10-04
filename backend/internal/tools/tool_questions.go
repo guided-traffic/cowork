@@ -79,11 +79,11 @@ func person(ctx context.Context, s *Session, tenant, who string) (openapi_types.
 		return id, who, nil
 	}
 	if strings.EqualFold(who, "me") {
-		me, err := s.API.GetMeWithResponse(ctx)
-		if err := check(me, err, http.StatusOK); err != nil {
+		me, err := s.Me(ctx)
+		if err != nil {
 			return openapi_types.UUID{}, "", err
 		}
-		return me.JSON200.Id, me.JSON200.DisplayName, nil
+		return me.ID, me.Name, nil
 	}
 	var cursor *string
 	for range 20 {

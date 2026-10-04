@@ -152,3 +152,29 @@ func TestFinishWork(t *testing.T) {
 	assert.Empty(t, f2.calls(http.MethodPost, ticketPath+"/transitions"))
 	assert.True(t, strings.Contains(res.Text, "Cowork-Ticket: acme/COW-12"))
 }
+
+// A precondition the caller read is the act's: transition sends it as the
+// move's from, set_progress as If-Match, finish_work compares it before it
+// writes anything — so an act decided on one state never lands on another
+// (docs/adr/0045 D2, docs/adr/0050 D3).
+func TestPreconditionsTheCallerRead(t *testing.T) {
+	f := newFake(t)
+	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "review"), "ETag", `"9"`)
+	f.on("POST "+ticketPath+"/transitions", http.StatusOK, ticket("acme/COW-12", "done"))
+	f.on("PATCH "+ticketPath, http.StatusOK, ticket("acme/COW-12", "review"))
+	s := f.session(true)
+
+	res := call(t, s, "transition", `{"key": "COW-12", "to": "done", "reason_or_note": "ok", "from": "in-progress"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Equal(t, "in-progress", decodeBody(t, f.calls(http.MethodPost, ticketPath+"/transitions")[0])["from"],
+		"the state read when the act was decided, not the state now")
+
+	res = call(t, s, "set_progress", `{"key": "COW-12", "percent": 60, "version": 7}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Equal(t, `"7"`, f.calls(http.MethodPatch, ticketPath)[0].Header.Get("If-Match"))
+
+	res = call(t, s, "finish_work", `{"key": "COW-12", "verification_note": "ok", "from": "in-progress"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "acme/COW-12 is review now, not in-progress as it was read: nothing was done")
+	assert.Empty(t, f.calls(http.MethodPost, ticketPath+"/comments"), "nothing was written")
+}

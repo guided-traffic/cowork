@@ -248,6 +248,102 @@ func (e Capability) Valid() bool {
 	}
 }
 
+// Defines values for ChatProvider.
+const (
+	ChatProviderAnthropic ChatProvider = "anthropic"
+	ChatProviderOpenai    ChatProvider = "openai"
+)
+
+// Valid indicates whether the value is a known member of the ChatProvider enum.
+func (e ChatProvider) Valid() bool {
+	switch e {
+	case ChatProviderAnthropic:
+		return true
+	case ChatProviderOpenai:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatRole.
+const (
+	ChatRoleAssistant ChatRole = "assistant"
+	ChatRoleTool      ChatRole = "tool"
+	ChatRoleUser      ChatRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the ChatRole enum.
+func (e ChatRole) Valid() bool {
+	switch e {
+	case ChatRoleAssistant:
+		return true
+	case ChatRoleTool:
+		return true
+	case ChatRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatTurnEnd.
+const (
+	ChatTurnEndAnswered  ChatTurnEnd = "answered"
+	ChatTurnEndConfirm   ChatTurnEnd = "confirm"
+	ChatTurnEndError     ChatTurnEnd = "error"
+	ChatTurnEndStepLimit ChatTurnEnd = "step_limit"
+)
+
+// Valid indicates whether the value is a known member of the ChatTurnEnd enum.
+func (e ChatTurnEnd) Valid() bool {
+	switch e {
+	case ChatTurnEndAnswered:
+		return true
+	case ChatTurnEndConfirm:
+		return true
+	case ChatTurnEndError:
+		return true
+	case ChatTurnEndStepLimit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatUiAction.
+const (
+	ChatUiActionNavigate ChatUiAction = "navigate"
+)
+
+// Valid indicates whether the value is a known member of the ChatUiAction enum.
+func (e ChatUiAction) Valid() bool {
+	switch e {
+	case ChatUiActionNavigate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatUnavailableReason.
+const (
+	ChatUnavailableReasonNotAllowedInTenant ChatUnavailableReason = "not_allowed_in_tenant"
+	ChatUnavailableReasonNotConfigured      ChatUnavailableReason = "not_configured"
+)
+
+// Valid indicates whether the value is a known member of the ChatUnavailableReason enum.
+func (e ChatUnavailableReason) Valid() bool {
+	switch e {
+	case ChatUnavailableReasonNotAllowedInTenant:
+		return true
+	case ChatUnavailableReasonNotConfigured:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Effort.
 const (
 	EffortL  Effort = "L"
@@ -358,6 +454,9 @@ const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
 	ProblemCodeBackendUnreachable     ProblemCode = "backend_unreachable"
+	ProblemCodeChatBusy               ProblemCode = "chat_busy"
+	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
+	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
 	ProblemCodeCsrf                   ProblemCode = "csrf"
 	ProblemCodeForbidden              ProblemCode = "forbidden"
 	ProblemCodeGrantExists            ProblemCode = "grant_exists"
@@ -410,6 +509,12 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeAttachmentLimit:
 		return true
 	case ProblemCodeBackendUnreachable:
+		return true
+	case ProblemCodeChatBusy:
+		return true
+	case ProblemCodeChatProviderFailed:
+		return true
+	case ProblemCodeChatUnavailable:
 		return true
 	case ProblemCodeCsrf:
 		return true
@@ -1195,6 +1300,173 @@ type BlockSet struct {
 // Capability An agent capability (docs/adr/0043 D4)
 type Capability string
 
+// ChatAvailability defines model for ChatAvailability.
+type ChatAvailability struct {
+	// Available The members of the tenant may hold a conversation (POST …/chat)
+	Available bool `json:"available"`
+
+	// Inside The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)
+	// — a model on the operator's machine or network, such as LM Studio —, and the chat is available
+	// in every tenant; outside, only where the tenant's chat_external_allowed is on
+	Inside bool `json:"inside"`
+
+	// Model The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured
+	Model nullable.Nullable[string] `json:"model"`
+
+	// Provider The configured provider's wire format; null when none is configured
+	Provider nullable.Nullable[ChatProvider] `json:"provider"`
+
+	// Reason Why the chat is not available; null when it is
+	Reason nullable.Nullable[ChatUnavailableReason] `json:"reason"`
+}
+
+// ChatConfirmEvent The data of a chat turn's event `confirm`, a call that waits for the person's decision
+type ChatConfirmEvent struct {
+	// Arguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+	Arguments ChatToolArguments `json:"arguments"`
+
+	// Description The act in words, for the person who decides it
+	Description string `json:"description"`
+
+	// Id The call's id, which the decision names
+	Id string `json:"id"`
+
+	// Name The tool's name
+	Name string `json:"name"`
+}
+
+// ChatConfirmation The person's decision on a call that waits for it
+type ChatConfirmation struct {
+	// Run True runs the call as the model proposed it; false answers the model that the person skipped it
+	Run        bool   `json:"run"`
+	ToolCallId string `json:"tool_call_id"`
+}
+
+// ChatDoneEvent The data of a chat turn's event `done`, the last of every turn
+type ChatDoneEvent struct {
+	// Messages The messages the turn added, to be appended to the conversation as they are
+	Messages []ChatMessage `json:"messages"`
+
+	// Reason Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
+	// COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+	// before
+	Reason ChatTurnEnd `json:"reason"`
+}
+
+// ChatMessage One message of a conversation, in the neutral model the backend translates for its provider. A
+// `user` message carries `text`, what the person wrote; an `assistant` message `text`, what the model
+// said, and `tool_calls`, the calls it made — at least one of the two; a `tool` message
+// `tool_call_id`, the call it answers, `ok`, and `text`, the answer the model read. There is no
+// system message: the backend writes the model's instructions on every turn (docs/adr/0076).
+type ChatMessage struct {
+	// Ok On a tool message, whether the call succeeded; a refusal of the API is a failure the model reads
+	Ok *bool `json:"ok,omitempty"`
+
+	// Role Whom a message of the chat is from — the person, the model, or a tool answering the model
+	Role       ChatRole        `json:"role"`
+	Text       *string         `json:"text,omitempty"`
+	ToolCallId *string         `json:"tool_call_id,omitempty"`
+	ToolCalls  *[]ChatToolCall `json:"tool_calls,omitempty"`
+}
+
+// ChatPageContext The page the person is on as they send the turn: the model's instructions name it, and a short
+// key the model uses resolves against its project
+type ChatPageContext struct {
+	// Path The page's path in this UI, without query or fragment, such as /t/acme/p/COW/board
+	Path *string `json:"path,omitempty"`
+
+	// Project The key of the project the page shows
+	Project *string `json:"project,omitempty"`
+
+	// Ticket The short key of the ticket the page shows, <PROJECT>-<number>
+	Ticket *string `json:"ticket,omitempty"`
+}
+
+// ChatProvider The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which
+// OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+type ChatProvider string
+
+// ChatRole Whom a message of the chat is from — the person, the model, or a tool answering the model
+type ChatRole string
+
+// ChatTextEvent The data of a chat turn's event `text`
+type ChatTextEvent struct {
+	// Delta The next piece of the assistant's text, to be appended to the pieces before it
+	Delta string `json:"delta"`
+}
+
+// ChatToolArguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+type ChatToolArguments = json.RawMessage
+
+// ChatToolCall A call of a tool the model made
+type ChatToolCall struct {
+	// Arguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+	Arguments ChatToolArguments `json:"arguments"`
+
+	// Id The call's id, which the tool message answering it names
+	Id string `json:"id"`
+
+	// Name The tool's name
+	Name string `json:"name"`
+}
+
+// ChatToolResultEvent The data of a chat turn's event `tool_result`
+type ChatToolResultEvent struct {
+	// Id The id of the call it answers
+	Id string `json:"id"`
+
+	// Ok The call succeeded; false for a refusal of the API, which the model reads like any answer, and
+	// for a call the person skipped
+	Ok bool `json:"ok"`
+
+	// Summary The start of what the tool answered, Markdown as the tool wrote it, at most 2000 characters;
+	// the whole answer is the text of the tool message in `done`
+	Summary string `json:"summary"`
+}
+
+// ChatTurn defines model for ChatTurn.
+type ChatTurn struct {
+	// Confirmations The person's decision on the call that waits — the first of them, which the last turn proposed
+	Confirmations *[]ChatConfirmation `json:"confirmations,omitempty"`
+
+	// Context The page the person is on as they send the turn: the model's instructions name it, and a short
+	// key the model uses resolves against its project
+	Context *ChatPageContext `json:"context,omitempty"`
+
+	// Conversation The conversation's id, made by the client when the conversation begins and sent with each of
+	// its turns; the agent mark of the tool calls carries it, so the activity tells one
+	// conversation's acts from another's (docs/adr/0036 D3)
+	Conversation openapi_types.UUID `json:"conversation"`
+
+	// Messages The conversation so far, oldest first: the person's messages and what the `done` events added.
+	// It ends with the person's new message, or — to decide a call that waits — as the last `done`
+	// left it
+	Messages []ChatMessage `json:"messages"`
+}
+
+// ChatTurnEnd Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
+// COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+// before
+type ChatTurnEnd string
+
+// ChatUiAction What a UI tool of the chat asks the client to do
+type ChatUiAction string
+
+// ChatUiEvent The data of a chat turn's event `ui`
+type ChatUiEvent struct {
+	// Action What a UI tool of the chat asks the client to do
+	Action ChatUiAction `json:"action"`
+
+	// Path The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
+	// /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
+	Path string `json:"path"`
+}
+
+// ChatUnavailableReason Why the chat is not available: the installation configures no provider, or its provider is not
+// declared inside the installation's trust boundary and the tenant's administrators have not
+// allowed it (the tenant's chat_external_allowed)
+type ChatUnavailableReason string
+
 // Comment defines model for Comment.
 type Comment struct {
 	// Agent The agent mark when an agent wrote it in the author's name
@@ -1816,7 +2088,12 @@ type Severity string
 
 // Tenant defines model for Tenant.
 type Tenant struct {
-	CreatedAt time.Time `json:"created_at"`
+	// ChatExternalAllowed The chat may send the tenant's data to the provider configured now, which the operator does
+	// not declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names
+	// the provider it was given to — its wire format, host and model — and one given to another
+	// provider reads false; a provider inside needs no consent (docs/adr/0076)
+	ChatExternalAllowed bool      `json:"chat_external_allowed"`
+	CreatedAt           time.Time `json:"created_at"`
 
 	// MembersCreateProjects Members create projects; off, only administrators do (docs/adr/0034 D9)
 	MembersCreateProjects bool   `json:"members_create_projects"`
@@ -1842,6 +2119,11 @@ type TenantCreate struct {
 
 // TenantPatch defines model for TenantPatch.
 type TenantPatch struct {
+	// ChatExternalAllowed Switching it on gives the consent to the provider configured now, recorded with it, and takes
+	// a session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with
+	// no provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`
+	// token too
+	ChatExternalAllowed   *bool                                 `json:"chat_external_allowed,omitempty"`
 	MembersCreateProjects *bool                                 `json:"members_create_projects,omitempty"`
 	Name                  *string                               `json:"name,omitempty"`
 	TimeLockedUntil       nullable.Nullable[openapi_types.Date] `json:"time_locked_until,omitempty"`
@@ -3350,7 +3632,10 @@ type ClientInterface interface {
 	// UpdateTenantWithBody Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3).
+	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+	// consent to the chat's provider configured now and takes a session — a token is `403
+	// session_required` (docs/adr/0035 D5), an installation without a provider `409
+	// chat_unavailable` —; switching it off does not.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3360,7 +3645,10 @@ type ClientInterface interface {
 	// UpdateTenant Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3).
+	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+	// consent to the chat's provider configured now and takes a session — a token is `403
+	// session_required` (docs/adr/0035 D5), an installation without a provider `409
+	// chat_unavailable` —; switching it off does not.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3417,7 +3705,11 @@ type ClientInterface interface {
 	// The person can no longer log in, their tokens are revoked and their
 	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
 	// Not for the administrator's own account (`403 forbidden`). Deactivating a
-	// deactivated account changes nothing.
+	// deactivated account changes nothing. A deactivation that would leave the
+	// tenant without an administrator who can log in is `409 last_admin` and
+	// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+	// administrators who deactivate each other at once are decided one after
+	// the other.
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
 	DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3480,6 +3772,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	//
+	// For every member of the tenant. The chat is available when the installation configures a
+	// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
+	// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
+	// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
+	// to, its wire format, host and model, and one given to another provider is none. Otherwise
+	// `reason` says why.
+	// The provider's address is never shown, and nothing here asks the provider whether it
+	// answers: a turn that cannot reach it ends with an `error` event.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+	GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGroupMappings The tenant's group mappings, by group
 	//
@@ -4944,7 +5250,10 @@ func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ..
 // UpdateTenantWithBody Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3).
+// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+// consent to the chat's provider configured now and takes a session — a token is `403
+// session_required` (docs/adr/0035 D5), an installation without a provider `409
+// chat_unavailable` —; switching it off does not.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4964,7 +5273,10 @@ func (c *Client) UpdateTenantWithBody(ctx context.Context, tenant TenantSlug, pa
 // UpdateTenant Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3).
+// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+// consent to the chat's provider configured now and takes a session — a token is `403
+// session_required` (docs/adr/0035 D5), an installation without a provider `409
+// chat_unavailable` —; switching it off does not.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5061,7 +5373,11 @@ func (c *Client) CreateAccount(ctx context.Context, tenant TenantSlug, params *C
 // The person can no longer log in, their tokens are revoked and their
 // sessions end (docs/adr/0024 D5); the person and every act they made stay.
 // Not for the administrator's own account (`403 forbidden`). Deactivating a
-// deactivated account changes nothing.
+// deactivated account changes nothing. A deactivation that would leave the
+// tenant without an administrator who can log in is `409 last_admin` and
+// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+// administrators who deactivate each other at once are decided one after
+// the other.
 //
 // Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
 func (c *Client) DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5175,6 +5491,30 @@ func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, user
 // Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAuditRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetChatAvailability Whether the chat is available in the tenant, and with which model
+//
+// For every member of the tenant. The chat is available when the installation configures a
+// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
+// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
+// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
+// to, its wire format, host and model, and one given to another provider is none. Otherwise
+// `reason` says why.
+// The provider's address is never shown, and nothing here asks the provider whether it
+// answers: a turn that cannot reach it ends with an `error` event.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetChatAvailabilityRequest(c.Server, tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -8240,6 +8580,40 @@ func NewListAuditRequest(server string, tenant TenantSlug, params *ListAuditPara
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetChatAvailabilityRequest constructs an http.Request for the GetChatAvailability method
+func NewGetChatAvailabilityRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/chat", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -13953,7 +14327,10 @@ type ClientWithResponsesInterface interface {
 	// UpdateTenantWithBodyWithResponse Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3).
+	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+	// consent to the chat's provider configured now and takes a session — a token is `403
+	// session_required` (docs/adr/0035 D5), an installation without a provider `409
+	// chat_unavailable` —; switching it off does not.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -13963,7 +14340,10 @@ type ClientWithResponsesInterface interface {
 	// UpdateTenantWithResponse Change the tenant's name or settings
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-	// `If-Match` is required (docs/adr/0050 D3).
+	// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+	// consent to the chat's provider configured now and takes a session — a token is `403
+	// session_required` (docs/adr/0035 D5), an installation without a provider `409
+	// chat_unavailable` —; switching it off does not.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14022,7 +14402,11 @@ type ClientWithResponsesInterface interface {
 	// The person can no longer log in, their tokens are revoked and their
 	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
 	// Not for the administrator's own account (`403 forbidden`). Deactivating a
-	// deactivated account changes nothing.
+	// deactivated account changes nothing. A deactivation that would leave the
+	// tenant without an administrator who can log in is `409 last_admin` and
+	// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+	// administrators who deactivate each other at once are decided one after
+	// the other.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14093,6 +14477,22 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAuditWithResponse(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*ListAuditResponse, error)
+
+	// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which model
+	//
+	// For every member of the tenant. The chat is available when the installation configures a
+	// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
+	// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
+	// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
+	// to, its wire format, host and model, and one given to another provider is none. Otherwise
+	// `reason` says why.
+	// The provider's address is never shown, and nothing here asks the provider whether it
+	// answers: a turn that cannot reach it ends with an `error` event.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+	GetChatAvailabilityWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetChatAvailabilityResponse, error)
 
 	// ListGroupMappingsWithResponse The tenant's group mappings, by group
 	//
@@ -16332,6 +16732,61 @@ func (r ListAuditResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetChatAvailabilityResponseDefaultHeaders the declared response headers of an HTTP default response for GetChatAvailability
+type GetChatAvailabilityResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetChatAvailabilityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatAvailability
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetChatAvailabilityResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetChatAvailabilityResponse) GetJSON200() *ChatAvailability {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetChatAvailabilityResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetChatAvailabilityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetChatAvailabilityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetChatAvailabilityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetChatAvailabilityResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -20822,7 +21277,10 @@ func (c *ClientWithResponses) GetTenantWithResponse(ctx context.Context, tenant 
 // UpdateTenantWithBodyWithResponse Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3).
+// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+// consent to the chat's provider configured now and takes a session — a token is `403
+// session_required` (docs/adr/0035 D5), an installation without a provider `409
+// chat_unavailable` —; switching it off does not.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20838,7 +21296,10 @@ func (c *ClientWithResponses) UpdateTenantWithBodyWithResponse(ctx context.Conte
 // UpdateTenantWithResponse Change the tenant's name or settings
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-// `If-Match` is required (docs/adr/0050 D3).
+// `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+// consent to the chat's provider configured now and takes a session — a token is `403
+// session_required` (docs/adr/0035 D5), an installation without a provider `409
+// chat_unavailable` —; switching it off does not.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20921,7 +21382,11 @@ func (c *ClientWithResponses) CreateAccountWithResponse(ctx context.Context, ten
 // The person can no longer log in, their tokens are revoked and their
 // sessions end (docs/adr/0024 D5); the person and every act they made stay.
 // Not for the administrator's own account (`403 forbidden`). Deactivating a
-// deactivated account changes nothing.
+// deactivated account changes nothing. A deactivation that would leave the
+// tenant without an administrator who can log in is `409 last_admin` and
+// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+// administrators who deactivate each other at once are decided one after
+// the other.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -21027,6 +21492,28 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, tenant 
 		return nil, err
 	}
 	return ParseListAuditResponse(rsp)
+}
+
+// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which model
+//
+// For every member of the tenant. The chat is available when the installation configures a
+// provider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside
+// the installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators
+// allowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given
+// to, its wire format, host and model, and one given to another provider is none. Otherwise
+// `reason` says why.
+// The provider's address is never shown, and nothing here asks the provider whether it
+// answers: a turn that cannot reach it ends with an `error` event.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+func (c *ClientWithResponses) GetChatAvailabilityWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetChatAvailabilityResponse, error) {
+	rsp, err := c.GetChatAvailability(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetChatAvailabilityResponse(rsp)
 }
 
 // ListGroupMappingsWithResponse The tenant's group mappings, by group
@@ -23700,6 +24187,52 @@ func ParseListAuditResponse(rsp *http.Response) (*ListAuditResponse, error) {
 	switch {
 	case true:
 		var headers ListAuditResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetChatAvailabilityResponse parses an HTTP response from a GetChatAvailabilityWithResponse call
+func ParseGetChatAvailabilityResponse(rsp *http.Response) (*GetChatAvailabilityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetChatAvailabilityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatAvailability
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetChatAvailabilityResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -27578,6 +28111,9 @@ type ServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
+	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	// (GET /api/v1/tenants/{tenant}/chat)
+	GetChatAvailability(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
@@ -28517,6 +29053,32 @@ func (siw *ServerInterfaceWrapper) ListAudit(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAudit(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetChatAvailability operation middleware
+func (siw *ServerInterfaceWrapper) GetChatAvailability(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChatAvailability(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -33498,6 +34060,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
@@ -34412,6 +34975,49 @@ type ListAuditdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListAuditdefaultApplicationProblemPlusJSONResponse) VisitListAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatAvailabilityRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetChatAvailabilityResponseObject interface {
+	VisitGetChatAvailabilityResponse(w http.ResponseWriter) error
+}
+
+type GetChatAvailability200JSONResponse ChatAvailability
+
+func (response GetChatAvailability200JSONResponse) VisitGetChatAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse) VisitGetChatAvailabilityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -38309,6 +38915,9 @@ type StrictServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
+	// GetChatAvailability Whether the chat is available in the tenant, and with which model
+	// (GET /api/v1/tenants/{tenant}/chat)
+	GetChatAvailability(ctx context.Context, request GetChatAvailabilityRequestObject) (GetChatAvailabilityResponseObject, error)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
@@ -39090,6 +39699,32 @@ func (sh *strictHandler) ListAudit(w http.ResponseWriter, r *http.Request, tenan
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAuditResponseObject); ok {
 		if err := validResponse.VisitListAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetChatAvailability operation middleware
+func (sh *strictHandler) GetChatAvailability(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetChatAvailabilityRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChatAvailability(ctx, request.(GetChatAvailabilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChatAvailability")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChatAvailabilityResponseObject); ok {
+		if err := validResponse.VisitGetChatAvailabilityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

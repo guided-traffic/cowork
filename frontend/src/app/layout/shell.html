@@ -25,6 +25,43 @@
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
+    @if (chat.available()) {
+      <button
+        pButton
+        type="button"
+        class="chat-toggle"
+        [class.on]="chat.open()"
+        [text]="true"
+        [rounded]="true"
+        severity="secondary"
+        pTooltip="Assistant"
+        tooltipPosition="bottom"
+        [iconOnly]="true"
+        aria-label="Assistant"
+        aria-controls="chat-panel"
+        [attr.aria-expanded]="chat.open()"
+        (click)="toggleChat()"
+        data-testid="chat-toggle"
+      >
+        <i class="pi pi-sparkles"></i>
+      </button>
+    } @else if (chatNotAllowed(); as tenant) {
+      <a
+        pButton
+        class="chat-blocked"
+        [routerLink]="['/t', tenant, 'settings']"
+        [text]="true"
+        [rounded]="true"
+        severity="secondary"
+        [pTooltip]="chatNotAllowedText"
+        tooltipPosition="bottom"
+        [iconOnly]="true"
+        [attr.aria-label]="chatNotAllowedText"
+        data-testid="chat-not-allowed"
+      >
+        <i class="pi pi-sparkles"></i>
+      </a>
+    }
     <button
       pButton
       type="button"
@@ -55,7 +92,7 @@
     }
   </header>
 
-  <nav class="sidebar" aria-label="Main">
+  <nav class="sidebar" aria-label="Main" (focusin)="closeOverPage()">
     @if (session.tenant(); as tenant) {
       <div class="section">
         <a
@@ -155,7 +192,14 @@
   </nav>
 
   <!-- The page scrolls here, not in the window: a drag scrolls it at its edges and follows its scroll. -->
-  <main class="content" cdkScrollable>
+  <main class="content" cdkScrollable (focusin)="closeOverPage()">
     <router-outlet />
   </main>
+
+  <!-- The panel's code loads once the tenant's chat is available, not with the shell. -->
+  @if (chat.available()) {
+    @defer (on immediate) {
+      <app-chat-panel [hidden]="!chat.open()" (keydown.escape)="closeOnEscape($event)" />
+    }
+  }
 </div>

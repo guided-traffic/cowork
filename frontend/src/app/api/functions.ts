@@ -65,6 +65,10 @@ export type { ResetAccountPassword$Params as ResetAccountPassword$Params } from 
 export { resetAccountPassword as resetAccountPassword } from './fn/accounts/reset-account-password';
 export type { EndAccountSessions$Params as EndAccountSessions$Params } from './fn/accounts/end-account-sessions';
 export { endAccountSessions as endAccountSessions } from './fn/accounts/end-account-sessions';
+export type { GetChatAvailability$Params as GetChatAvailability$Params } from './fn/chat/get-chat-availability';
+export { getChatAvailability as getChatAvailability } from './fn/chat/get-chat-availability';
+export type { RunChatTurn$Params as RunChatTurn$Params } from './fn/chat/run-chat-turn';
+export { runChatTurn as runChatTurn } from './fn/chat/run-chat-turn';
 export type { StreamEvents$Params as StreamEvents$Params } from './fn/events/stream-events';
 export { streamEvents as streamEvents } from './fn/events/stream-events';
 export type { ListProjects$Params as ListProjects$Params } from './fn/projects/list-projects';

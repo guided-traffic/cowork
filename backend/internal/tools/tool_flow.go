@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -22,6 +23,7 @@ type transitionInput struct {
 	BlockKind    string `json:"block_kind,omitempty" jsonschema:"what a ticket entering blocked waits on"`
 	BlockedBy    string `json:"blocked_by,omitempty" jsonschema:"the ticket it waits on, with block_kind ticket"`
 	Comment      string `json:"comment,omitempty" jsonschema:"a comment that explains the move, written with it"`
+	From         string `json:"from,omitempty" jsonschema:"the state the ticket was read in; the move is refused when the ticket is no longer there. Left out, the state read now"`
 }
 
 func transitionTool() Tool {
@@ -37,6 +39,7 @@ func transitionTool() Tool {
 			capDecide, capClose, capDrop),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "to", ticketStates...)
+		enum(s, "from", ticketStates...)
 		enum(s, "block_kind", blockKinds...)
 	}, runTransition)
 }
@@ -52,6 +55,11 @@ func runTransition(ctx context.Context, s *Session, in transitionInput) (string,
 	}
 	to := apigen.TicketState(in.To)
 	body := apigen.Transition{From: tk.State, To: to}
+	if in.From != "" {
+		// The state the caller read is the move's precondition: a ticket
+		// that moved meanwhile refuses it (docs/adr/0045 D2).
+		body.From = apigen.TicketState(in.From)
+	}
 	text := strings.TrimSpace(in.ReasonOrNote)
 	switch {
 	case to == apigen.TicketStateDone && text == "":
@@ -78,7 +86,7 @@ func runTransition(ctx context.Context, s *Session, in transitionInput) (string,
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Moved %s from %s to %s.", moved.Key, tk.State, moved.State), nil
+	return fmt.Sprintf("Moved %s from %s to %s.", moved.Key, body.From, moved.State), nil
 }
 
 // move sends a transition with its Idempotency-Key, which the act records
@@ -99,6 +107,7 @@ type setProgressInput struct {
 	Note    string `json:"note,omitempty" jsonschema:"the verification note, needed when this brings the last of the three stages to 100, which closes the ticket"`
 	Reason  string `json:"reason,omitempty" jsonschema:"needed when lowering a stage reopens a ticket its stages closed"`
 	Comment string `json:"comment,omitempty" jsonschema:"a comment that explains the change, written with it"`
+	Version *int   `json:"version,omitempty" jsonschema:"the ticket's version when it was read; the write is refused when the ticket changed since. Left out, the version read now"`
 }
 
 func setProgressTool() Tool {
@@ -112,6 +121,7 @@ func setProgressTool() Tool {
 		limits:     limitsOf("Closing by the stages needs close, from in-progress or review; without it that write is refused whole. "+refusalNote, capClose),
 	}, func(s *jsonschema.Schema) {
 		bound(s, "percent", 0, 100)
+		bound(s, "version", 1, 2147483647)
 		five := 5.0
 		s.Properties["percent"].MultipleOf = &five
 		enum(s, "stage", "refinement", "implementation", "review")
@@ -123,6 +133,9 @@ func setProgressTool() Tool {
 		before, etag, err := getTicket(ctx, s, ref)
 		if err != nil {
 			return "", err
+		}
+		if in.Version != nil {
+			etag = strconv.Quote(strconv.Itoa(*in.Version))
 		}
 		patch := apigen.TicketPatch{}
 		stage := in.Stage
@@ -168,6 +181,7 @@ func patchTicket(ctx context.Context, s *Session, ref ticketRef, etag string, pa
 type finishWorkInput struct {
 	Key              string `json:"key"`
 	VerificationNote string `json:"verification_note" jsonschema:"what was run, against what, with what result"`
+	From             string `json:"from,omitempty" jsonschema:"the state the ticket was read in; nothing is done when the ticket is no longer there"`
 }
 
 func finishWorkTool() Tool {
@@ -182,6 +196,7 @@ func finishWorkTool() Tool {
 	}, func(s *jsonschema.Schema) {
 		minLen := 1
 		s.Properties["verification_note"].MinLength = &minLen
+		enum(s, "from", ticketStates...)
 	}, runFinishWork)
 }
 
@@ -193,6 +208,9 @@ func runFinishWork(ctx context.Context, s *Session, in finishWorkInput) (string,
 	tk, etag, err := getTicket(ctx, s, ref)
 	if err != nil {
 		return "", err
+	}
+	if in.From != "" && string(tk.State) != in.From {
+		return "", usage("%s is %s now, not %s as it was read: nothing was done. Read it again and decide anew", ref.Full(), tk.State, in.From)
 	}
 	tok := s.Token()
 	if !tok.Known {

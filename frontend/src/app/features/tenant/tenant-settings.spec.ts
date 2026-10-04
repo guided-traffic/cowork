@@ -4,7 +4,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Problem, Tenant } from '../../api/models';
+import { ChatAvailability, Problem, Tenant } from '../../api/models';
+import { ChatService } from '../../core/chat.service';
 import { TenantService } from '../../core/tenant.service';
 import { TenantSettings } from './tenant-settings';
 
@@ -13,6 +14,7 @@ function tenant(overrides: Partial<Tenant> = {}): Tenant {
     slug: 'acme',
     name: 'Acme Corp',
     members_create_projects: true,
+    chat_external_allowed: false,
     time_visible_to_members: false,
     time_locked_until: null,
     version: 2,
@@ -27,17 +29,50 @@ function refusal(status: number, title: string, detail: string) {
   return new HttpErrorResponse({ status, statusText: title, error: body });
 }
 
+const notConfigured: ChatAvailability = {
+  available: false,
+  provider: null,
+  model: null,
+  inside: false,
+  reason: 'not_configured',
+};
+
+const outside: ChatAvailability = {
+  available: false,
+  provider: 'openai',
+  model: 'gpt-x',
+  inside: false,
+  reason: 'not_allowed_in_tenant',
+};
+
 describe('TenantSettings', () => {
   let value: WritableSignal<Tenant | undefined>;
   let isAdmin: WritableSignal<boolean>;
   let update: MockInstance<TenantService['update']>;
+  let availability: WritableSignal<ChatAvailability | undefined>;
+  let reloadAvailability: MockInstance<() => void>;
 
   beforeEach(() => {
     value = signal<Tenant | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
+    availability = signal<ChatAvailability | undefined>(notConfigured);
+    reloadAvailability = vi.fn<() => void>();
     TestBed.configureTestingModule({
-      providers: [MessageService, { provide: TenantService, useValue: { value, isAdmin, update } }],
+      providers: [
+        MessageService,
+        { provide: TenantService, useValue: { value, isAdmin, update } },
+        {
+          provide: ChatService,
+          useValue: {
+            availability: {
+              hasValue: () => availability() !== undefined,
+              value: () => availability(),
+            },
+            reloadAvailability,
+          },
+        },
+      ],
     });
   });
 
@@ -214,6 +249,97 @@ describe('TenantSettings', () => {
 
       expect(saveButton(fixture)?.disabled).toBe(false);
       expect(saveButton(fixture)?.querySelector('i.pi-spinner')).toBeNull();
+    });
+  });
+
+  describe("the assistant's provider outside the installation", () => {
+    const text = (fixture: ComponentFixture<TenantSettings>) =>
+      el(fixture, 'chat-external-text')?.textContent?.replace(/\s+/g, ' ').trim();
+
+    it('is offered to an administrator, with the model, its API and what switching it on sends', async () => {
+      availability.set(outside);
+
+      const fixture = await render();
+
+      expect(switched(fixture, 'chat-external')).toBe('false');
+      expect(switchDisabled(fixture, 'chat-external')).toBe(false);
+      expect(text(fixture)).toBe(
+        'The assistant may use the model gpt-x through an OpenAI-compatible API — switched on, what the assistant reads in this tenant is sent to that provider, outside this installation',
+      );
+      expect(el(fixture, 'chat-external-text')?.querySelector('code')?.textContent).toBe('gpt-x');
+    });
+
+    it('names the Anthropic API', async () => {
+      availability.set({ ...outside, provider: 'anthropic', model: 'claude-x' });
+
+      const fixture = await render();
+
+      expect(text(fixture)).toContain('the model claude-x through the Anthropic API');
+    });
+
+    it('shows the consent as the tenant has it, and follows it', async () => {
+      availability.set(outside);
+      value.set(tenant({ chat_external_allowed: true }));
+      const fixture = await render();
+      expect(switched(fixture, 'chat-external')).toBe('true');
+
+      value.set(tenant({ chat_external_allowed: false, version: 3 }));
+      await settle(fixture);
+
+      expect(switched(fixture, 'chat-external')).toBe('false');
+    });
+
+    it('writes the consent with the settings, and asks for the availability again', async () => {
+      availability.set(outside);
+      const fixture = await render();
+      flip(fixture, 'chat-external', true);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(update).toHaveBeenCalledExactlyOnceWith({
+        name: 'Acme Corp',
+        members_create_projects: true,
+        time_visible_to_members: false,
+        chat_external_allowed: true,
+      });
+      expect(reloadAvailability).toHaveBeenCalledOnce();
+    });
+
+    it('asks for nothing again when the write is refused', async () => {
+      availability.set(outside);
+      update.mockRejectedValue(refusal(400, 'Invalid', 'no'));
+      const fixture = await render();
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(reloadAvailability).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a provider inside the installation, which needs no consent', { ...outside, inside: true }],
+      ['no provider', notConfigured],
+      ['an availability not known yet', undefined],
+    ])('is not offered for %s, and not written', async (_case, known) => {
+      availability.set(known);
+      const fixture = await render();
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(el(fixture, 'chat-external')).toBeNull();
+      expect(Object.keys(update.mock.calls[0][0])).not.toContain('chat_external_allowed');
+      expect(reloadAvailability).not.toHaveBeenCalled();
+    });
+
+    it('is not offered to anybody else', async () => {
+      availability.set(outside);
+      isAdmin.set(false);
+
+      const fixture = await render();
+
+      expect(el(fixture, 'chat-external')).toBeNull();
     });
   });
 

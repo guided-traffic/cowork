@@ -10,9 +10,14 @@ generate:
   client: true
 output-options:
   nullable-type: true
-  # The event stream is served outside the generated server
-  # (internal/api/events.go): a stream is not a response a handler returns.
-  exclude-operation-ids: [streamEvents]
+  # The event stream and a chat turn are served outside the generated server
+  # (internal/api/events.go, chat.go): a stream is not a response a handler
+  # returns.
+  exclude-operation-ids: [streamEvents, runChatTurn]
+  # Keep the models nothing generated refers to: the chat turn's body, which
+  # only the excluded operation takes, and the data of its events, which only
+  # the document's components name. The server reads and writes those types.
+  skip-prune: true
 compatibility:
   # Every enum constant carries its type's name (EffortS, SecurityClassNone),
   # so adding a value elsewhere never renames one.

@@ -242,3 +242,35 @@ The key of auth.oidc.existingSecret that holds the client secret
 {{- define "cowork.oidcClientSecretKey" -}}
 {{- .Values.auth.oidc.keys.clientSecret }}
 {{- end }}
+
+{{/*
+Whether the chat is configured (docs/adr/0076): chat.provider is set. It needs
+a provider the backend speaks, the provider's URL and the model, and for
+anthropic the key, which comes from a Secret only. Without the provider the
+other chat values are not rendered, so emptying the provider alone switches
+the chat off; the backend refuses to start on a chat variable without it.
+chat.inside must be a boolean: the notes warn by it, and a string "false"
+would read as true there while the backend reads false.
+*/}}
+{{- define "cowork.chatEnabled" -}}
+{{- $chat := .Values.chat -}}
+{{- if $chat.provider -}}
+{{- $provider := lower $chat.provider -}}
+{{- if not (has $provider (list "openai" "anthropic")) -}}
+{{- fail (printf "chat.provider: %q is not one of openai, anthropic" $chat.provider) -}}
+{{- end -}}
+{{- if not $chat.url -}}
+{{- fail "set chat.url: the provider's base URL is required with chat.provider, e.g. https://api.anthropic.com or http://ollama.ai.svc:11434/v1" -}}
+{{- end -}}
+{{- if not $chat.model -}}
+{{- fail "set chat.model: the model by the name its provider knows it is required with chat.provider" -}}
+{{- end -}}
+{{- if and (eq $provider "anthropic") (not $chat.existingSecret) -}}
+{{- fail "set chat.existingSecret: anthropic needs an API key, and the key comes from a Secret only, never from the values (docs/adr/0058 D3)" -}}
+{{- end -}}
+{{- if not (kindIs "bool" $chat.inside) -}}
+{{- fail (printf "chat.inside must be the boolean true or false, without quotes; got %q" (toString $chat.inside)) -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end }}

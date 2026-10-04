@@ -280,3 +280,43 @@ func TestRemind(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, line, "no known start")
 }
+
+// A session in a repository is bound before its first tool call, once: a
+// short key works without session_start, the binding is not looked up again,
+// and a repository nobody bound still answers that the session is unbound
+// (docs/adr/0067 D1).
+func TestAToolCallBindsTheSessionOnce(t *testing.T) {
+	f := newFake(t)
+	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
+	f.on("POST "+ticketPath+"/comments", http.StatusCreated, map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000003"})
+	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "in-progress"), "ETag", `"3"`)
+	s := startSession(f, fakeWorkspace{remotes: origin})
+
+	for range 2 {
+		res := call(t, s, "comment", `{"key": "COW-12", "text": "Seen."}`)
+		require.False(t, res.IsError, res.Text)
+		assert.Contains(t, res.Text, "Commented on acme/COW-12")
+	}
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/me/repositories/lookup"), 1, "looked up once")
+	require.NotNil(t, s.Binding())
+	assert.Equal(t, "acme/COW", s.Binding().Key())
+
+	g := newFake(t)
+	g.on("GET /api/v1/me/repositories/lookup", http.StatusOK, map[string]any{"status": "unbound",
+		"remotes": []any{map[string]any{"remote": origin[0].URL, "identity": "github.com/acme/cowork"}}, "bindings": []any{},
+		"proposal": nil, "proposal_unavailable": "no tenant"})
+	u := startSession(g, fakeWorkspace{remotes: origin})
+	for range 2 {
+		res := call(t, u, "comment", `{"key": "COW-12", "text": "Seen."}`)
+		assert.True(t, res.IsError)
+		assert.Contains(t, res.Text, "bound to no project")
+	}
+	assert.Len(t, g.calls(http.MethodGet, "/api/v1/me/repositories/lookup"), 1, "an unbound resolution is not repeated")
+
+	h := newFake(t)
+	h.on("POST "+ticketPath+"/comments", http.StatusCreated, map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000004"})
+	h.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "in-progress"), "ETag", `"3"`)
+	res := call(t, h.session(true), "comment", `{"key": "COW-12", "text": "Seen."}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Empty(t, h.calls(http.MethodGet, "/api/v1/me/repositories/lookup"), "a session without a working directory looks nothing up")
+}

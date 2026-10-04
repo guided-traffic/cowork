@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { HARD_NAVIGATION } from './hard-navigation';
+import { HARD_NAVIGATION, RELOAD } from './hard-navigation';
 
 describe('HARD_NAVIGATION', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -35,5 +35,18 @@ describe('HARD_NAVIGATION', () => {
     TestBed.inject(HARD_NAVIGATION)('/login');
 
     expect(navigate).toHaveBeenCalledExactlyOnceWith('/login');
+  });
+});
+
+describe('RELOAD', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('loads the document again, by the location of the window', () => {
+    const reload = vi.fn<() => void>();
+    vi.stubGlobal('location', { reload });
+
+    TestBed.inject(RELOAD)();
+
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

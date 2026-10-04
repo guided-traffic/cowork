@@ -65,11 +65,25 @@ seed -username sam -agent=false >/dev/null
 # The server key stays the same across restarts: list cursors and the login throttle's address
 # hashes outlive a restart (sessions are database rows and outlive it anyway).
 [ -s "$STATE/session-key" ] || (umask 077 && openssl rand -base64 32 >"$STATE/session-key")
+# The chat of the UI talks to a local LM Studio when it answers on :1234 and lists the model
+# (COWORK_DEV_CHAT_MODEL, an instruct model that calls tools); it runs on this machine, so it is
+# inside the installation and every tenant may use it (docs/adr/0076). Without it make dev runs
+# without the chat.
+CHAT_MODEL=${COWORK_DEV_CHAT_MODEL:-qwen/qwen3-30b-a3b-2507}
+chat_env=()
+if curl -sf -m 2 http://localhost:1234/v1/models 2>/dev/null | grep -q "\"$CHAT_MODEL\""; then
+	chat_env=(COWORK_CHAT_PROVIDER=openai COWORK_CHAT_URL=http://localhost:1234/v1
+		COWORK_CHAT_MODEL="$CHAT_MODEL" COWORK_CHAT_INSIDE=true)
+	chat_note="the chat at the right edge talks to LM Studio's $CHAT_MODEL"
+else
+	chat_note="no chat: LM Studio does not answer on :1234 with $CHAT_MODEL (COWORK_DEV_CHAT_MODEL names another)"
+fi
 # Dex is the identity provider: it has https://localhost:4200/auth/callback (COWORK_BASE_URL +
 # /auth/callback) registered as a redirect URI, members of cowork-users pass the gate, members of
 # cowork-admins are global administrators (docs/adr/0030 D1), and offline_access brings the
 # refresh token the groups refresh needs (docs/adr/0030 D5).
-COWORK_DATABASE_URL="$DB_APP" COWORK_DATABASE_OWNER_URL="$DB_OWNER" \
+env ${chat_env[@]+"${chat_env[@]}"} \
+	COWORK_DATABASE_URL="$DB_APP" COWORK_DATABASE_OWNER_URL="$DB_OWNER" \
 	COWORK_SESSION_KEY="$(cat "$STATE/session-key")" COWORK_LOG_FORMAT=text \
 	COWORK_LISTEN_ADDR=127.0.0.1:8080 \
 	COWORK_LOCAL_ADMIN_USERNAME="$ADMIN_USER" COWORK_LOCAL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
@@ -99,4 +113,5 @@ step "the UI on $UI; Ctrl-C stops everything. Two ways in, with development-only
 echo "    the form: $ADMIN_USER with the password $ADMIN_PASSWORD"
 echo "    Sign in with Dex: ada@example.com (administrator group), bob@example.com (team-red, a member of dev),"
 echo "    cyd@example.com (in no mapped group) or dan@example.com (outside the gate), each with the password $DEX_PASSWORD"
+echo "    $chat_note"
 COWORK_DEV_BACKEND=http://127.0.0.1:8080 make -s frontend-serve NG_SERVE_FLAGS=--ssl

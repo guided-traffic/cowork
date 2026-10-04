@@ -20,6 +20,15 @@ auth:
     existingSecret: cowork-oidc
     allowedGroups:
       - cowork-users
+# The chat to a model in the cluster that takes no key, declared inside the
+# installation, with both limits switched off (docs/adr/0076).
+chat:
+  provider: openai
+  url: http://ollama.ai.svc:11434/v1
+  model: llama3:8b
+  inside: true
+  turnTimeout: 0
+  maxSteps: 0
 backend:
   config:
     baseURL: http://localhost:4200

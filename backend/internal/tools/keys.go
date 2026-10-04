@@ -44,8 +44,10 @@ func (s *Session) resolveProject(raw string) (tenant, project string, err error)
 	raw = strings.TrimSpace(raw)
 	b := s.Binding()
 	switch {
-	case raw == "" && b != nil:
+	case raw == "" && b != nil && b.Project != "":
 		return b.Tenant, b.Project, nil
+	case raw == "" && b != nil:
+		return "", "", usage("name the project: its key in the tenant %s, or tenant/KEY", b.Tenant)
 	case raw == "":
 		return "", "", usage("this session is bound to no project: name one, tenant/KEY")
 	}

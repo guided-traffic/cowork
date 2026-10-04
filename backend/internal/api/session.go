@@ -18,7 +18,11 @@ import (
 // D1, D3, D6). Whatever is wrong with the cookie — malformed, unknown, ended,
 // past a limit, its person deactivated — is the same 401, and the answer tells
 // the browser to drop it. A session has no agent flag and no scope: it acts
-// with the person's whole role, which the scope admin leaves to the role.
+// with the person's whole role, which the scope admin leaves to the role. An
+// X-Cowork-Agent header makes its request an agent's, with every capability
+// and held to the hard-off list as a plain token's with the header — the chat
+// of the UI marks its tool calls so (docs/adr/0036 D3, docs/adr/0076); the
+// header only ever narrows, and a malformed one is refused.
 func (h *handler) authenticateSession(r *http.Request, value string) (auth.Principal, *problem.Error) {
 	ctx := r.Context()
 	dead := sessionEnded()
@@ -52,10 +56,14 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 			return auth.Principal{}, dead
 		}
 	}
+	header, perr := agentHeader(r)
+	if perr != nil {
+		return auth.Principal{}, perr
+	}
 	if err := h.opts.DB.TouchSession(ctx, rec, now); err != nil {
 		h.logger.Error("touching the session failed", "request_id", requestid.From(ctx), "error", err)
 	}
-	return auth.Principal{
+	p := auth.Principal{
 		PersonID:               rec.Person.ID,
 		DisplayName:            rec.Person.DisplayName,
 		Session:                true,
@@ -65,7 +73,23 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 		Scope:                  domain.ScopeAdmin,
 		GlobalAdmin:            rec.Person.GlobalAdmin,
 		PasswordChangeRequired: rec.Person.PasswordChangeRequired,
-	}, nil
+	}
+	p.Agent, p.Capabilities = auth.Mark(false, nil, header)
+	return p, nil
+}
+
+// agentHeader reads the X-Cowork-Agent header of a request: empty without
+// one, a validation problem for one that breaks the rule (docs/adr/0036 D3).
+func agentHeader(r *http.Request) (string, *problem.Error) {
+	v := r.Header.Get(auth.AgentHeader)
+	if v == "" {
+		return "", nil
+	}
+	parsed, err := auth.ParseAgentHeader(v)
+	if err != nil {
+		return "", problem.Field("header:"+auth.AgentHeader, err.Error())
+	}
+	return parsed, nil
 }
 
 // sessionLive reports whether neither limit has passed: the absolute one, set

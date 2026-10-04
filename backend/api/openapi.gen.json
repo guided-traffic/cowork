@@ -1227,6 +1227,342 @@
         ],
         "type": "string"
       },
+      "ChatAvailability": {
+        "properties": {
+          "available": {
+            "description": "The members of the tenant may hold a conversation (POST …/chat)",
+            "type": "boolean"
+          },
+          "inside": {
+            "description": "The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)\n— a model on the operator's machine or network, such as LM Studio —, and the chat is available\nin every tenant; outside, only where the tenant's chat_external_allowed is on\n",
+            "type": "boolean"
+          },
+          "model": {
+            "description": "The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "description": "The configured provider's wire format; null when none is configured",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatProvider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "description": "Why the chat is not available; null when it is",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatUnavailableReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "available",
+          "provider",
+          "model",
+          "inside",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ChatConfirmEvent": {
+        "description": "The data of a chat turn's event `confirm`, a call that waits for the person's decision",
+        "properties": {
+          "arguments": {
+            "$ref": "#/components/schemas/ChatToolArguments"
+          },
+          "description": {
+            "description": "The act in words, for the person who decides it",
+            "type": "string"
+          },
+          "id": {
+            "description": "The call's id, which the decision names",
+            "type": "string"
+          },
+          "name": {
+            "description": "The tool's name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "arguments",
+          "description"
+        ],
+        "type": "object"
+      },
+      "ChatConfirmation": {
+        "additionalProperties": false,
+        "description": "The person's decision on a call that waits for it",
+        "properties": {
+          "run": {
+            "description": "True runs the call as the model proposed it; false answers the model that the person skipped it",
+            "type": "boolean"
+          },
+          "tool_call_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "run"
+        ],
+        "type": "object"
+      },
+      "ChatDoneEvent": {
+        "description": "The data of a chat turn's event `done`, the last of every turn",
+        "properties": {
+          "messages": {
+            "description": "The messages the turn added, to be appended to the conversation as they are",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ChatTurnEnd"
+          }
+        },
+        "required": [
+          "messages",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ChatMessage": {
+        "additionalProperties": false,
+        "description": "One message of a conversation, in the neutral model the backend translates for its provider. A\n`user` message carries `text`, what the person wrote; an `assistant` message `text`, what the model\nsaid, and `tool_calls`, the calls it made — at least one of the two; a `tool` message\n`tool_call_id`, the call it answers, `ok`, and `text`, the answer the model read. There is no\nsystem message: the backend writes the model's instructions on every turn (docs/adr/0076).\n",
+        "properties": {
+          "ok": {
+            "description": "On a tool message, whether the call succeeded; a refusal of the API is a failure the model reads",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ChatRole"
+          },
+          "text": {
+            "maxLength": 100000,
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ChatToolCall"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "ChatPageContext": {
+        "additionalProperties": false,
+        "description": "The page the person is on as they send the turn: the model's instructions name it, and a short\nkey the model uses resolves against its project\n",
+        "properties": {
+          "path": {
+            "description": "The page's path in this UI, without query or fragment, such as /t/acme/p/COW/board",
+            "maxLength": 256,
+            "pattern": "^/[A-Za-z0-9/._~-]*$",
+            "type": "string"
+          },
+          "project": {
+            "description": "The key of the project the page shows",
+            "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+            "type": "string"
+          },
+          "ticket": {
+            "description": "The short key of the ticket the page shows, \u003cPROJECT\u003e-\u003cnumber\u003e",
+            "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ChatProvider": {
+        "description": "The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which\nOpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)\n",
+        "enum": [
+          "openai",
+          "anthropic"
+        ],
+        "type": "string"
+      },
+      "ChatRole": {
+        "description": "Whom a message of the chat is from — the person, the model, or a tool answering the model",
+        "enum": [
+          "user",
+          "assistant",
+          "tool"
+        ],
+        "type": "string"
+      },
+      "ChatTextEvent": {
+        "description": "The data of a chat turn's event `text`",
+        "properties": {
+          "delta": {
+            "description": "The next piece of the assistant's text, to be appended to the pieces before it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta"
+        ],
+        "type": "object"
+      },
+      "ChatToolArguments": {
+        "additionalProperties": true,
+        "description": "A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean",
+        "type": "object",
+        "x-go-type": "json.RawMessage"
+      },
+      "ChatToolCall": {
+        "additionalProperties": false,
+        "description": "A call of a tool the model made",
+        "properties": {
+          "arguments": {
+            "$ref": "#/components/schemas/ChatToolArguments"
+          },
+          "id": {
+            "description": "The call's id, which the tool message answering it names",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "description": "The tool's name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "type": "object"
+      },
+      "ChatToolResultEvent": {
+        "description": "The data of a chat turn's event `tool_result`",
+        "properties": {
+          "id": {
+            "description": "The id of the call it answers",
+            "type": "string"
+          },
+          "ok": {
+            "description": "The call succeeded; false for a refusal of the API, which the model reads like any answer, and\nfor a call the person skipped\n",
+            "type": "boolean"
+          },
+          "summary": {
+            "description": "The start of what the tool answered, Markdown as the tool wrote it, at most 2000 characters;\nthe whole answer is the text of the tool message in `done`\n",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ok",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "ChatTurn": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmations": {
+            "description": "The person's decision on the call that waits — the first of them, which the last turn proposed",
+            "items": {
+              "$ref": "#/components/schemas/ChatConfirmation"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "context": {
+            "$ref": "#/components/schemas/ChatPageContext"
+          },
+          "conversation": {
+            "description": "The conversation's id, made by the client when the conversation begins and sent with each of\nits turns; the agent mark of the tool calls carries it, so the activity tells one\nconversation's acts from another's (docs/adr/0036 D3)\n",
+            "format": "uuid",
+            "type": "string"
+          },
+          "messages": {
+            "description": "The conversation so far, oldest first: the person's messages and what the `done` events added.\nIt ends with the person's new message, or — to decide a call that waits — as the last `done`\nleft it\n",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "maxItems": 400,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "ChatTurnEnd": {
+        "description": "Why a turn ended: the model answered; a call waits for the person's decision; the turn reached\nCOWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came\nbefore\n",
+        "enum": [
+          "answered",
+          "confirm",
+          "step_limit",
+          "error"
+        ],
+        "type": "string"
+      },
+      "ChatUiAction": {
+        "description": "What a UI tool of the chat asks the client to do",
+        "enum": [
+          "navigate"
+        ],
+        "type": "string"
+      },
+      "ChatUiEvent": {
+        "description": "The data of a chat turn's event `ui`",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ChatUiAction"
+          },
+          "path": {
+            "description": "The page to show, a path of this UI in the turn's tenant: /t/\u003ctenant\u003e/tickets/\u003cPROJECT\u003e-\u003cnumber\u003e,\n/t/\u003ctenant\u003e/p/\u003cPROJECT\u003e/backlog or /t/\u003ctenant\u003e/p/\u003cPROJECT\u003e/board\n",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "path"
+        ],
+        "type": "object"
+      },
+      "ChatUnavailableReason": {
+        "description": "Why the chat is not available: the installation configures no provider, or its provider is not\ndeclared inside the installation's trust boundary and the tenant's administrators have not\nallowed it (the tenant's chat_external_allowed)\n",
+        "enum": [
+          "not_configured",
+          "not_allowed_in_tenant"
+        ],
+        "type": "string"
+      },
       "Comment": {
         "properties": {
           "agent": {
@@ -2077,13 +2413,16 @@
           "period_locked",
           "attachment_limit",
           "uploads_disabled",
+          "chat_unavailable",
           "precondition_failed",
           "payload_too_large",
           "unsupported_media_type",
           "idempotency_mismatch",
           "precondition_required",
           "too_many_attempts",
+          "chat_busy",
           "internal",
+          "chat_provider_failed",
           "not_ready",
           "timeout",
           "backend_unreachable"
@@ -2805,6 +3144,10 @@
       },
       "Tenant": {
         "properties": {
+          "chat_external_allowed": {
+            "description": "The chat may send the tenant's data to the provider configured now, which the operator does\nnot declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names\nthe provider it was given to — its wire format, host and model — and one given to another\nprovider reads false; a provider inside needs no consent (docs/adr/0076)\n",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -2845,6 +3188,7 @@
           "version",
           "time_visible_to_members",
           "members_create_projects",
+          "chat_external_allowed",
           "created_at",
           "updated_at"
         ],
@@ -2874,6 +3218,10 @@
         "additionalProperties": false,
         "minProperties": 1,
         "properties": {
+          "chat_external_allowed": {
+            "description": "Switching it on gives the consent to the provider configured now, recorded with it, and takes\na session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with\nno provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`\ntoken too\n",
+            "type": "boolean"
+          },
           "members_create_projects": {
             "type": "boolean"
           },
@@ -3938,7 +4286,7 @@
         "type": "http"
       },
       "sessionCookie": {
-        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;\nSameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its\nperson with no agent flag and with the whole of the person's role: it\nhas no scope of its own.\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
+        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;\nSameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its\nperson with no agent flag and with the whole of the person's role: it\nhas no scope of its own. An `X-Cowork-Agent` header makes its request\nan agent's — every capability, the agent rules, the mark on its acts —\nand refuses it what only a session does with `403 agent_forbidden`\n(docs/adr/0036 D3); the chat marks its tool calls so (docs/adr/0076).\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
         "in": "cookie",
         "name": "__Host-cowork-session",
         "type": "apiKey"
@@ -3946,7 +4294,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few — creating a token,\na tenant or a local account, resetting or changing a password, logging out,\nand the administration acts that give access: adding a member, setting a\ngrant, making or changing a group mapping, restricting or opening a\nproject, putting a person on its access list — a session only. A request\nof a session that writes must come from the installation's origin and\ncarry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an\nagent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat, and the administration acts that\ngive access: adding a member, setting a grant, making or changing a group\nmapping, restricting or opening a project, putting a person on its access\nlist. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -4392,7 +4740,7 @@
         }
       ],
       "patch": {
-        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n",
+        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the\nconsent to the chat's provider configured now and takes a session — a token is `403\nsession_required` (docs/adr/0035 D5), an installation without a provider `409\nchat_unavailable` —; switching it off does not.\n",
         "operationId": "updateTenant",
         "parameters": [
           {
@@ -4534,7 +4882,7 @@
         }
       ],
       "put": {
-        "description": "The person can no longer log in, their tokens are revoked and their\nsessions end (docs/adr/0024 D5); the person and every act they made stay.\nNot for the administrator's own account (`403 forbidden`). Deactivating a\ndeactivated account changes nothing.\n",
+        "description": "The person can no longer log in, their tokens are revoked and their\nsessions end (docs/adr/0024 D5); the person and every act they made stay.\nNot for the administrator's own account (`403 forbidden`). Deactivating a\ndeactivated account changes nothing. A deactivation that would leave the\ntenant without an administrator who can log in is `409 last_admin` and\nchanges nothing (docs/adr/0034 D1); it takes the tenant's lock, so two\nadministrators who deactivate each other at once are decided one after\nthe other.\n",
         "operationId": "deactivateAccount",
         "responses": {
           "204": {
@@ -4745,6 +5093,94 @@
           "$ref": "#/components/parameters/TenantSlug"
         }
       ]
+    },
+    "/api/v1/tenants/{tenant}/chat": {
+      "get": {
+        "description": "For every member of the tenant. The chat is available when the installation configures a\nprovider (`COWORK_CHAT_PROVIDER`, `COWORK_CHAT_MODEL`) and that provider either runs inside\nthe installation's trust boundary (`COWORK_CHAT_INSIDE`) or the tenant's administrators\nallowed it (the tenant's `chat_external_allowed`) — a consent names the provider it was given\nto, its wire format, host and model, and one given to another provider is none. Otherwise\n`reason` says why.\nThe provider's address is never shown, and nothing here asks the provider whether it\nanswers: a turn that cannot reach it ends with an `error` event.\n",
+        "operationId": "getChatAvailability",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "available": true,
+                  "inside": true,
+                  "model": "qwen/qwen3.6-35b-a3b",
+                  "provider": "openai",
+                  "reason": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAvailability"
+                }
+              }
+            },
+            "description": "The chat's availability in the tenant"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Whether the chat is available in the tenant, and with which model",
+        "tags": [
+          "chat"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "A person in a browser session, any member of the tenant: a token is `403 session_required` —\nan agent with a token has the MCP server (docs/adr/0040) — and the CSRF check holds as for\nevery write of a session (docs/adr/0037). A tenant without the chat is `409\nchat_unavailable`, and `GET …/chat` says why. A person with as many turns running as\n`COWORK_CHAT_TURNS_PER_PERSON` allows on the replica — in another tab, say — is `429\nchat_busy`. The backend keeps nothing between turns: the request carries the conversation,\nand the answer the messages to append to it.\n\nA turn runs the model and the tools it calls: at most `COWORK_CHAT_MAX_STEPS` calls of the\nmodel, for at most `COWORK_CHAT_TURN_TIMEOUT`, the tenant's chat asked again before every\ncall of the model. Every tool call is a request of this API with the person's session,\nmarked as the agent `chat/\u003cmodel\u003e/\u003cconversation\u003e` (docs/adr/0036) — with `+confirmed` after\nthe conversation for a call the person ran —: it passes validation, authorization, the agent\nrules (docs/adr/0043) and the audit like any agent's request, and what it changes reaches\nthe event stream. It works in the turn's tenant only. A tool the API refuses is an answer\nthe model reads, not a failed turn. A call's creating requests carry keys derived from the\nconversation and the call, so a decision sent twice is answered from what the first stored;\na turn the model answers anew repeats its acts: a client never retries one by itself.\n\nThe answer is `200` with `text/event-stream`, each event an `event:` line with its name and\na `data:` line with its JSON, flushed one by one:\n\n- `text` — `ChatTextEvent`: the next piece of the assistant's text.\n- `tool_call` — `ChatToolCall`: a call the model made, with its arguments, before it runs.\n- `ui` — `ChatUiEvent`: between a call of `open_ticket`, `open_backlog` or `open_board` and its\n  result, the page of this UI the client shows next.\n- `tool_result` — `ChatToolResultEvent`: whether the call succeeded, and the start of what it\n  answered the model.\n- `confirm` — `ChatConfirmEvent`: in place of `tool_result`, a call the person decides before\n  it runs, with the act in words — a move to `decided`, `done`, `dropped` or `blocked`, a\n  backward move, a reopen, taking back a done (docs/adr/0009), `finish_work`, a progress write\n  that closes or reopens the ticket, recording an answer, creating a project, a call the chat\n  cannot tell the act of, and every write once the conversation read a confidential ticket\n  (docs/adr/0065). What it read to tell the act is pinned into the call's `arguments` —\n  `from`, the ticket's state, `version`, its version —, and a ticket that moved before the\n  person ran the call refuses it. It ends the turn.\n- `error` — `Problem`: why the turn failed once it had begun — `chat_provider_failed`,\n  `timeout` (`COWORK_CHAT_TURN_TIMEOUT`), `chat_unavailable` (the consent was withdrawn, or\n  the provider changed, while the turn ran), `not_ready` (the server is shutting down: send\n  the turn again), `internal`.\n- `done` — `ChatDoneEvent`, always the last: the messages the turn added, to be appended to\n  the conversation as they are, and why the turn ended.\n\nA `: keep-alive` comment follows ten seconds without an event, so no proxy closes a turn\nwhile the model thinks. A stream that ends without `done` was cut — the network, a\nshutdown —, and the acts its `tool_result` events reported have happened.\n\n**A decision.** After `confirm`, the next turn sends the conversation as `done` left it — its\nlast assistant message holds the call that waits, and the calls before it have their tool\nmessages — and `confirmations` with the person's decision on it, the first call that waits\nand no other: `run: true` runs the call as proposed, `run: false` answers the model that the\nperson skipped it, and so does a turn without a decision. The decided call's `tool_result`\ncomes without a new `tool_call`: its card is the person's already. The calls after it then\nrun in order, each with its `tool_call`; one that needs a decision of its own is answered\nthat it did not run, and the model makes it again, which proposes it. A call still waiting\nwhen the person writes a new message instead is answered as skipped; the conversation keeps\nit without an answer, and every later turn answers it the same way. An answer of the model\nthat is white space only adds no message: `done` carries none for it.\n\n**Limits.** A body above `COWORK_MAX_JSON_BODY` is `413 payload_too_large`; more messages or\nlonger texts than `ChatTurn` allows are `400 validation_failed` — the conversation is too\nlong, and a new one begins. A message the model could not read in its place — a tool\nmessage that answers no call, a decision on another call than the first that waits — is\n`400 validation_failed` naming it.\n",
+        "operationId": "runChatTurn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "context": {
+                  "path": "/t/acme/p/COW/board",
+                  "project": "COW"
+                },
+                "conversation": "0199a3c2-1d2e-7f00-8000-000000000042",
+                "messages": [
+                  {
+                    "role": "user",
+                    "text": "File a bug for the login that fails in Safari, and rank it to now."
+                  }
+                ]
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ChatTurn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The turn, as server-sent events"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "One turn of the chat, answered as server-sent events",
+        "tags": [
+          "chat"
+        ]
+      }
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
@@ -8246,6 +8682,9 @@
     },
     {
       "name": "events"
+    },
+    {
+      "name": "chat"
     }
   ]
 }

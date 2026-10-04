@@ -37,16 +37,43 @@ type Session struct {
 	// POST, one per act, the same on every retry of it (docs/adr/0045 D5).
 	Now    func() time.Time
 	NewKey func() uuid.UUID
+	// Person is the person the requests act for, where the host knows it —
+	// the chat in the backend does —; nil reads it from GET /api/v1/me.
+	Person *Person
+	// Tenants are the tenants a search of every tenant looks through; empty
+	// is every tenant of the person. A host confined to one tenant names it.
+	Tenants []string
 
 	mu      sync.Mutex
 	binding *Binding
 	token   *Token
+	// bindTried says the binding of the working directory was looked up
+	// before a tool call, which happens once (bindOnce).
+	bindTried bool
 }
 
 // NewSession returns a session with the system clock and UUIDv7 keys.
 func NewSession(api *apigen.ClientWithResponses, installation string) *Session {
 	return &Session{API: api, Installation: strings.TrimRight(installation, "/"), Now: time.Now,
 		NewKey: func() uuid.UUID { return uuid.Must(uuid.NewV7()) }}
+}
+
+// Person is a person the tools name.
+type Person struct {
+	ID   uuid.UUID
+	Name string
+}
+
+// Me is the person the requests act for.
+func (s *Session) Me(ctx context.Context) (Person, error) {
+	if s.Person != nil {
+		return *s.Person, nil
+	}
+	me, err := s.API.GetMeWithResponse(ctx)
+	if err := check(me, err, http.StatusOK); err != nil {
+		return Person{}, err
+	}
+	return Person{ID: me.JSON200.Id, Name: me.JSON200.DisplayName}, nil
 }
 
 // Binding is the tenant and the project a session works in, and how it was
@@ -81,6 +108,35 @@ func (s *Session) Bind(tenant, project string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.binding = &Binding{Tenant: tenant, Project: project, Source: sourceHost}
+}
+
+// bindOnce resolves the binding of a session that runs in a working directory
+// and has none, before its first tool call: the SessionStart hook tells the
+// model the session is bound, and a short key then works without
+// session_start (docs/adr/0067 D1). It is tried once — a resolution that
+// fails or finds no binding is not repeated on every call; session_start
+// resolves on its own.
+func (s *Session) bindOnce(ctx context.Context) {
+	if s.Workspace == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.binding != nil || s.bindTried {
+		s.mu.Unlock()
+		return
+	}
+	s.bindTried = true
+	s.mu.Unlock()
+	_, _ = Resolve(ctx, s)
+}
+
+// BindTenant binds the session to a tenant and no project — the chat on a
+// page that shows none: short keys resolve in the tenant, a search looks
+// through it, and a tool that needs a project asks for one.
+func (s *Session) BindTenant(tenant string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.binding = &Binding{Tenant: tenant, Source: sourceHost}
 }
 
 func (s *Session) setBinding(b *Binding) {
@@ -144,6 +200,17 @@ func (s *Session) ReadToken(ctx context.Context) (Token, error) {
 	s.token = &tok
 	s.mu.Unlock()
 	return tok, nil
+}
+
+// Assume sets what the session's requests are without reading a token: a host
+// that presents none — the chat in the backend presents the person's session
+// with an agent header — knows the mark and the capabilities itself
+// (docs/adr/0036 D3).
+func (s *Session) Assume(tok Token) {
+	tok.Known = true
+	s.mu.Lock()
+	s.token = &tok
+	s.mu.Unlock()
 }
 
 // Token returns the token read, or one that is not Known.

@@ -8,9 +8,11 @@ import { effect } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
 import { Subject } from 'rxjs';
+import type { MockInstance } from 'vitest';
 import { Me, Membership } from '../api/models';
 import { EventStreamService, StreamEvent } from './event-stream.service';
-import { SessionService } from './session.service';
+import { RELOAD } from './hard-navigation';
+import { SESSION_CHANNEL, SessionChannel, SessionService } from './session.service';
 
 const asAdmin: Membership = {
   role: 'admin',
@@ -32,8 +34,29 @@ const fail = (request: TestRequest, status: number) =>
         { status, statusText: `Status ${status}` },
       );
 
+/** The other tabs as a test plays them: what this one told them, and a way to tell it something. */
+class FakeChannel implements SessionChannel {
+  readonly told: unknown[] = [];
+  private listener: ((event: MessageEvent) => void) | undefined;
+
+  postMessage(message: unknown): void {
+    this.told.push(message);
+  }
+
+  addEventListener(_type: 'message', listener: (event: MessageEvent) => void): void {
+    this.listener = listener;
+  }
+
+  /** Another tab says something. */
+  say(data: unknown): void {
+    this.listener?.(new MessageEvent('message', { data }));
+  }
+}
+
+const hansId = '0199aaaa-0000-7000-8000-000000000001';
+
 const person = (memberships: Membership[]): Me => ({
-  id: '0199aaaa-0000-7000-8000-000000000001',
+  id: hansId,
   display_name: 'Hans',
   username: 'local:hans',
   global_admin: false,
@@ -46,6 +69,8 @@ describe('SessionService', () => {
   let service: SessionService;
   let http: HttpTestingController;
   let stream: Subject<StreamEvent>;
+  let channel: FakeChannel;
+  let reload: MockInstance<() => void>;
 
   /** Runs the effects, which starts the load, and hands out the request of GET /api/v1/me. */
   const meRequest = () => {
@@ -71,12 +96,16 @@ describe('SessionService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     stream = new Subject<StreamEvent>();
+    channel = new FakeChannel();
+    reload = vi.fn<() => void>();
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         provideApiConfiguration(''),
         { provide: EventStreamService, useValue: { events: stream.asObservable() } },
+        { provide: SESSION_CHANNEL, useValue: channel },
+        { provide: RELOAD, useValue: reload },
       ],
     });
     service = TestBed.inject(SessionService);
@@ -329,5 +358,141 @@ describe('SessionService', () => {
 
       expect(service.person()?.display_name).toBe('Hans');
     });
+  });
+
+  describe("the application's other tabs in the browser", () => {
+    it('hear whose session this tab has once it knows, and not again for the same person', async () => {
+      TestBed.tick();
+      expect(channel.told).toEqual([]);
+
+      await load(person([asAdmin]));
+      expect(channel.told).toEqual([{ person: hansId }]);
+
+      stream.next({ name: 'poll' });
+      await settle();
+      http.expectOne('/api/v1/me').flush(person([asMember]));
+      await settle();
+
+      expect(channel.told).toEqual([{ person: hansId }]);
+    });
+
+    it('hear that this tab signed out', () => {
+      service.signedOut();
+
+      expect(channel.told).toEqual([{ signedOut: true }]);
+    });
+
+    it('make this tab load again when another person signs in in one of them', async () => {
+      await load(person([asAdmin]));
+
+      channel.say({ person: '0199aaaa-0000-7000-8000-000000000002' });
+
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it('make this tab load again when one of them signs out', async () => {
+      await load(person([asAdmin]));
+
+      channel.say({ signedOut: true });
+
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it('leave this tab as it is when they have the person it shows', async () => {
+      await load(person([asAdmin]));
+
+      channel.say({ person: hansId });
+
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it("leave a tab alone that has shown nobody yet, which holds nobody's state", () => {
+      channel.say({ person: '0199aaaa-0000-7000-8000-000000000002' });
+      channel.say({ signedOut: true });
+
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it("make a tab load again that has lost its session since, and still holds its person's state", async () => {
+      await load(person([asAdmin]));
+      stream.next({ name: 'poll' });
+      await settle();
+      fail(http.expectOne('/api/v1/me'), 401);
+      await settle();
+      expect(service.person()).toBeUndefined();
+
+      channel.say({ person: '0199aaaa-0000-7000-8000-000000000002' });
+
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it.each([null, undefined, 'signed out', 42, {}, { person: 7 }, { signedOut: 'yes' }])(
+      'say nothing to this tab with %j',
+      async (data) => {
+        await load(person([asAdmin]));
+
+        channel.say(data);
+
+        expect(reload).not.toHaveBeenCalled();
+      },
+    );
+  });
+});
+
+describe('SessionService where the browser has no BroadcastChannel', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    TestBed.resetTestingModule();
+  });
+
+  it('keeps the session to its own tab', async () => {
+    vi.useFakeTimers();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideApiConfiguration(''),
+        { provide: EventStreamService, useValue: { events: new Subject<StreamEvent>() } },
+        { provide: SESSION_CHANNEL, useValue: null },
+      ],
+    });
+    const service = TestBed.inject(SessionService);
+    const http = TestBed.inject(HttpTestingController);
+    TestBed.tick();
+
+    http.expectOne('/api/v1/me').flush(person([asAdmin]));
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+    service.signedOut();
+
+    expect(service.person()?.id).toBe(hansId);
+    http.verify();
+  });
+});
+
+describe('SESSION_CHANNEL', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  it("is the browser's BroadcastChannel cowork.session, closed with the application", () => {
+    const close = vi.spyOn(BroadcastChannel.prototype, 'close');
+
+    const channel = TestBed.inject(SESSION_CHANNEL);
+
+    expect(channel).toBeInstanceOf(BroadcastChannel);
+    expect((channel as BroadcastChannel).name).toBe('cowork.session');
+    expect(close).not.toHaveBeenCalled();
+    TestBed.resetTestingModule();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('is none where the browser has no BroadcastChannel', () => {
+    vi.stubGlobal('BroadcastChannel', undefined);
+
+    expect(TestBed.inject(SESSION_CHANNEL)).toBeNull();
   });
 });

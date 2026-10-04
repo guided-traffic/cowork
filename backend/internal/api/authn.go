@@ -96,13 +96,9 @@ func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.E
 	if perr := h.tokenGate(r, rec, now); perr != nil {
 		return auth.Principal{}, perr
 	}
-	header := ""
-	if v := r.Header.Get(auth.AgentHeader); v != "" {
-		parsed, err := auth.ParseAgentHeader(v)
-		if err != nil {
-			return auth.Principal{}, problem.Field("header:"+auth.AgentHeader, err.Error())
-		}
-		header = parsed
+	header, perr := agentHeader(r)
+	if perr != nil {
+		return auth.Principal{}, perr
 	}
 	agent, capabilities := auth.Mark(rec.Token.Agent, rec.Token.Capabilities, header)
 	h.touch(r, rec, now)

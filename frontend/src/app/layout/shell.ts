@@ -1,10 +1,13 @@
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
+  Injector,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -20,6 +23,7 @@ import { Tooltip } from 'primeng/tooltip';
 import { catchError, of } from 'rxjs';
 import { Wordmark } from '../brand/logo';
 import { AuthService } from '../core/auth.service';
+import { ChatService } from '../core/chat.service';
 import { EventStreamService } from '../core/event-stream.service';
 import { HARD_NAVIGATION } from '../core/hard-navigation';
 import { ProblemService } from '../core/problem.service';
@@ -30,6 +34,7 @@ import { SessionService } from '../core/session.service';
 import { VersionService } from '../core/version.service';
 import { devRoutes } from '../dev/dev.routes';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
+import { ChatPanel } from './chat-panel';
 import { LiveIndicator } from './live-indicator';
 
 const themeTexts: Record<ThemePreference, { icon: string; label: string }> = {
@@ -46,7 +51,17 @@ export function initials(name: string): string {
   return letters.toUpperCase();
 }
 
-/** The frame of every page: the top bar, the navigation of the tenant, the content. */
+/** Says where the assistant is when the tenant has not allowed its model (docs/adr/0076). */
+export const chatNotAllowedText =
+  'The assistant is not allowed in this tenant: an administrator can allow the configured model in the tenant settings.';
+
+/** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
+export const overlayQuery = '(max-width: 64rem)';
+
+/**
+ * The frame of every page: the top bar, the navigation of the tenant, the content, and the
+ * assistant at the right edge where the tenant's chat is available.
+ */
 @Component({
   selector: 'app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +69,7 @@ export function initials(name: string): string {
     Avatar,
     ButtonDirective,
     CdkScrollable,
+    ChatPanel,
     FormsModule,
     LiveIndicator,
     Menu,
@@ -76,8 +92,19 @@ export class Shell {
   protected readonly stream = inject(EventStreamService);
   protected readonly theme = inject(ThemeService);
   protected readonly tenantInfo = inject(TenantService);
+  protected readonly chat = inject(ChatService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
+  protected readonly chatNotAllowedText = chatNotAllowedText;
+  /** The tenant whose administrators could allow the assistant, for its administrator. */
+  protected readonly chatNotAllowed = computed(() => {
+    const availability = this.chat.availability;
+    return this.tenantInfo.isAdmin() &&
+      availability.hasValue() &&
+      availability.value().reason === 'not_allowed_in_tenant'
+      ? this.session.tenant()
+      : null;
+  });
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(
@@ -96,6 +123,8 @@ export class Shell {
   private readonly auth = inject(AuthService);
   private readonly problems = inject(ProblemService);
   private readonly navigate = inject(HARD_NAVIGATION);
+  private readonly injector = inject(Injector);
+  private readonly host: HTMLElement = inject(ElementRef).nativeElement;
 
   /** The person's own menu: who is signed in, their tokens, their password, the way out. */
   protected readonly meItems = computed<MenuItem[]>(() => {
@@ -125,11 +154,13 @@ export class Shell {
   /**
    * Signing out ends with a new document, so that the next person in this tab starts from nothing:
    * the login page, or the identity provider's logout where the backend names one, which ends the
-   * person's session there too and comes back to the login page (docs/adr/0031 D4).
+   * person's session there too and comes back to the login page (docs/adr/0031 D4). The other tabs
+   * of the application start anew as well ({@link SessionService.signedOut}).
    */
   protected async signOut(): Promise<void> {
     try {
       const next = await this.auth.logout();
+      this.session.signedOut();
       this.navigate(next ?? '/login');
     } catch (error) {
       this.problems.report(error);
@@ -138,5 +169,52 @@ export class Shell {
 
   protected switchTenant(slug: string): void {
     void this.router.navigate(['/t', slug]);
+  }
+
+  /**
+   * Opens or closes the assistant; opened, it takes the keyboard into its input. The panel is
+   * loaded apart from the shell, once the tenant's chat is available, so it is found by its id.
+   */
+  protected toggleChat(): void {
+    const open = !this.chat.open();
+    this.chat.setOpen(open);
+    if (open) {
+      afterNextRender(() => this.host.querySelector<HTMLElement>('#chat-panel textarea')?.focus(), {
+        injector: this.injector,
+      });
+    }
+  }
+
+  /**
+   * Escape closes the assistant where it lies over the content, and the toggle gets the keyboard;
+   * the Escape that ends a composition (an IME) does not. A component's host names no event type.
+   */
+  protected closeOnEscape(event: Event): void {
+    if (!(event as KeyboardEvent).isComposing && this.overlaid()) {
+      this.chat.setOpen(false);
+      this.host.querySelector<HTMLElement>('.chat-toggle')?.focus();
+    }
+  }
+
+  /**
+   * Where the assistant lies over the content, the focus moving into the page beneath it — the
+   * navigation or the content, by the keyboard or by a click — closes it, so that the focus never
+   * stands on a control the panel covers, and the part of the page beside it stays usable. The
+   * focus leaving the panel is no such sign: the input lets go of it while a turn runs, the window
+   * loses it, a toast takes it, and the top bar with the toggle is not covered.
+   */
+  protected closeOverPage(): void {
+    if (this.overlaid()) {
+      this.chat.setOpen(false);
+    }
+  }
+
+  /** Whether the assistant is open over the content; the window's width is asked as it matters. */
+  private overlaid(): boolean {
+    return (
+      this.chat.available() &&
+      this.chat.open() &&
+      (this.host.ownerDocument.defaultView?.matchMedia?.(overlayQuery).matches ?? false)
+    );
   }
 }

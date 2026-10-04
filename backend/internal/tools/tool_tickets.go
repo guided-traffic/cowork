@@ -17,6 +17,9 @@ const (
 	stateInProgress = string(apigen.TicketStateInProgress)
 	stateReview     = string(apigen.TicketStateReview)
 	opGetTicket     = "getTicket"
+	// scopeProject is the search scope of one project, the one a search
+	// without words lists.
+	scopeProject = "project"
 )
 
 // The vocabularies the tools' schemas offer (docs/adr/0008, 0009, 0010, 0012,
@@ -73,7 +76,7 @@ func getTicketTool() Tool {
 }
 
 type searchInput struct {
-	Query           string   `json:"query" jsonschema:"words to find in the titles and bodies"`
+	Query           string   `json:"query,omitempty" jsonschema:"words to find in the titles and bodies; left out in a project, its tickets in rank order"`
 	Scope           string   `json:"scope,omitempty" jsonschema:"project (the bound project, the default when bound), tenant (the bound tenant), or all (every tenant of the person, the default when unbound)"`
 	Project         string   `json:"project,omitempty" jsonschema:"another project to search, tenant/KEY, instead of the bound one"`
 	State           []string `json:"state,omitempty" jsonschema:"only these states"`
@@ -90,15 +93,14 @@ func searchTool() Tool {
 		Name: "search",
 		Description: "Find tickets by full text over their titles and bodies — in the bound project, its tenant, or every tenant " +
 			"of the person — newest first in a tenant, in rank order in a project. Lists keys, titles, states and assignees; " +
-			"get_ticket reads one. Done and dropped tickets only with include_terminal.",
+			"get_ticket reads one. Without a query, lists a project's tickets in rank order. Done and dropped tickets only with " +
+			"include_terminal.",
 		ReadOnly:   true,
 		Operations: []string{"listProjectTickets", "listTenantTickets", "getMe"},
 	}, func(s *jsonschema.Schema) {
-		enum(s, "scope", "project", "tenant", "all")
+		enum(s, "scope", scopeProject, "tenant", "all")
 		enum(s, "state", ticketStates...)
 		enum(s, "type", ticketTypes...)
-		minLen := 1
-		s.Properties["query"].MinLength = &minLen
 	}, runSearch)
 }
 
@@ -108,17 +110,14 @@ func runSearch(ctx context.Context, s *Session, in searchInput) (string, error) 
 		q.assignee = "me"
 	}
 	b := s.Binding()
-	scope := in.Scope
-	if scope == "" {
-		scope = "all"
-		if b != nil || in.Project != "" {
-			scope = "project"
-		}
+	scope := searchScope(in, b)
+	if q.query == "" && scope != scopeProject {
+		return "", usage("give words to find, or search one project to list its tickets")
 	}
 	var hits []apigen.Ticket
 	var where string
 	switch scope {
-	case "project":
+	case scopeProject:
 		tenant, project, err := s.resolveProject(in.Project)
 		if err != nil {
 			return "", err
@@ -138,35 +137,70 @@ func runSearch(ctx context.Context, s *Session, in searchInput) (string, error) 
 		}
 	default:
 		where = "every tenant of the person"
+		if len(s.Tenants) > 0 {
+			where = "the tenants this session works in, " + strings.Join(s.Tenants, ", ")
+		}
 		var err error
 		if hits, err = searchEveryTenant(ctx, s, q); err != nil {
 			return "", err
 		}
 	}
+	if q.query == "" {
+		return hitList(hits, fmt.Sprintf("Tickets in %s, in rank order:", where),
+			fmt.Sprintf("No ticket in %s.", where), "narrow the filters"), nil
+	}
+	return hitList(hits, fmt.Sprintf("Tickets in %s matching %q:", where, q.query),
+		fmt.Sprintf("No ticket in %s matches %q.", where, q.query), "narrow the query or the filters"), nil
+}
+
+// hitList lists the hits of a search under its heading, or says there are
+// none; a full page says how to see the rest.
+func hitList(hits []apigen.Ticket, heading, none, narrow string) string {
 	if len(hits) == 0 {
-		return fmt.Sprintf("No ticket in %s matches %q.", where, q.query), nil
+		return none
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "Tickets in %s matching %q:\n\n", where, q.query)
+	out.WriteString(heading + "\n\n")
 	for _, t := range hits {
 		fmt.Fprintf(&out, "- %s — %s (%s, %s, %s)\n", t.Key, t.Title, t.Type, t.State, assigneeName(t))
 	}
 	if len(hits) == maxSearchHits {
-		out.WriteString("\nThere may be more; narrow the query or the filters.\n")
+		fmt.Fprintf(&out, "\nThere may be more; %s.\n", narrow)
 	}
-	return out.String(), nil
+	return out.String()
+}
+
+// searchScope is the scope a search names, or the narrowest the session
+// knows: the project it names or is bound to, the tenant it is bound to, or
+// every tenant of the person.
+func searchScope(in searchInput, b *Binding) string {
+	switch {
+	case in.Scope != "":
+		return in.Scope
+	case in.Project != "" || (b != nil && b.Project != ""):
+		return scopeProject
+	case b != nil:
+		return "tenant"
+	}
+	return "all"
 }
 
 // searchEveryTenant searches each tenant of the person, one at a time
-// (docs/adr/0023 D2).
+// (docs/adr/0023 D2), or the tenants the session is confined to.
 func searchEveryTenant(ctx context.Context, s *Session, q ticketQuery) ([]apigen.Ticket, error) {
-	me, err := s.API.GetMeWithResponse(ctx)
-	if err := check(me, err, http.StatusOK); err != nil {
-		return nil, err
+	tenants := s.Tenants
+	if len(tenants) == 0 {
+		me, err := s.API.GetMeWithResponse(ctx)
+		if err := check(me, err, http.StatusOK); err != nil {
+			return nil, err
+		}
+		for _, m := range me.JSON200.Memberships {
+			tenants = append(tenants, m.Tenant.Slug)
+		}
 	}
 	var hits []apigen.Ticket
-	for _, m := range me.JSON200.Memberships {
-		found, err := searchTenant(ctx, s, m.Tenant.Slug, q)
+	for _, tenant := range tenants {
+		found, err := searchTenant(ctx, s, tenant, q)
 		if err != nil {
 			return nil, err
 		}
@@ -400,6 +434,66 @@ func watchTool() Tool {
 		}
 		return "The person watches " + ref.Full() + ".", nil
 	})
+}
+
+// urgencies are the urgencies a ticket holds, the most pressing first
+// (docs/adr/0010 D3).
+var urgencies = []string{"now", "release", "next", "later", "icebox"}
+
+type setUrgencyInput struct {
+	Key      string `json:"key"`
+	Urgency  string `json:"urgency,omitempty" jsonschema:"the urgency the ticket holds from now on, over the derived one; left out with withdraw"`
+	Reason   string `json:"reason,omitempty" jsonschema:"why — needed with urgency: an agent never sets an override without a reason"`
+	Withdraw bool   `json:"withdraw,omitempty" jsonschema:"withdraw the override, so the derived urgency holds again"`
+}
+
+func setUrgencyTool() Tool {
+	return define(Tool{
+		Name: "set_urgency",
+		Description: "Override a ticket's derived urgency — now, release, next, later or icebox — with a reason, or withdraw " +
+			"the override so the derived urgency holds again (docs/adr/0010 D3). The override stays when what the urgency " +
+			"is derived from changes. Ranking a ticket to now is the urgency now; its place within a column is a move on " +
+			"the board, a person's.",
+		Operations: []string{opGetTicket, "overrideUrgency", "withdrawUrgencyOverride"},
+		limits:     limitsOf("An agent needs override-urgency, and gives a reason for every override it sets. "+refusalNote, capOverrideUrgency),
+	}, func(s *jsonschema.Schema) {
+		enum(s, "urgency", urgencies...)
+	}, runSetUrgency)
+}
+
+func runSetUrgency(ctx context.Context, s *Session, in setUrgencyInput) (string, error) {
+	reason := strings.TrimSpace(in.Reason)
+	switch {
+	case in.Withdraw && in.Urgency != "":
+		return "", usage("pass urgency to override, or withdraw to withdraw the override, not both")
+	case !in.Withdraw && in.Urgency == "":
+		return "", usage("pass urgency — %s — with a reason, or withdraw", strings.Join(urgencies, ", "))
+	case !in.Withdraw && reason == "":
+		return "", usage("an urgency override needs a reason: an agent never sets one without")
+	}
+	ref, err := s.resolveKey(in.Key)
+	if err != nil {
+		return "", err
+	}
+	_, etag, err := getTicket(ctx, s, ref)
+	if err != nil {
+		return "", err
+	}
+	if in.Withdraw {
+		res, err := s.API.WithdrawUrgencyOverrideWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+			&apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})
+		if err := check(res, err, http.StatusOK); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Withdrew the urgency override of %s: its derived urgency, %s, holds.", res.JSON200.Key, res.JSON200.UrgencyDerived), nil
+	}
+	res, err := s.API.OverrideUrgencyWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.Urgency(in.Urgency), Reason: &reason})
+	if err := check(res, err, http.StatusOK); err != nil {
+		return "", err
+	}
+	tk := res.JSON200
+	return fmt.Sprintf("Set the urgency of %s to %s, over the derived %s, with the reason: %s", tk.Key, tk.Urgency, tk.UrgencyDerived, reason), nil
 }
 
 // uuidOf reads a person id the model passed.

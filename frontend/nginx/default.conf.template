@@ -25,6 +25,20 @@ server {
     gzip_types text/plain text/css application/javascript application/json image/svg+xml;
     gzip_min_length 1024;
 
+    # The content security policy of the UI: everything the shell loads and
+    # every request it makes stays on this origin. Its scripts are the
+    # bundle's files — the production build inlines no critical CSS
+    # ("inlineCritical": false in angular.json), because the inliner loads the
+    # rest of the stylesheet with an inline script this policy refuses —; its
+    # styles are files plus the <style> elements Angular and PrimeNG write at
+    # run time, hence 'unsafe-inline' for styles and never for scripts; fonts
+    # and icons are files; its requests are /api/, /auth/, the event stream and
+    # the chat's stream; the PrimeUI license is checked in the page, offline.
+    # The assistant shows what a model writes as text; this policy is the
+    # second line should that ever fail. An add_header in a location replaces
+    # those of the server, so every location that serves the UI adds it.
+    set $ui_csp "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+
     # The frontend's own health: answered by nginx, says nothing about the backend.
     location = /healthz {
         access_log off;
@@ -119,12 +133,14 @@ server {
     location ~ ^/(?:favicon\.(?:ico|svg)|apple-touch-icon\.png)$ {
         try_files $uri =404;
         add_header Cache-Control "no-cache";
+        add_header Content-Security-Policy $ui_csp always;
     }
 
     # Hashed bundles never change under their name.
     location ~* \.(?:js|css|woff2?|ttf|svg|png|ico)$ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Content-Security-Policy $ui_csp always;
     }
 
     # The application shell: every path the router owns resolves to it, and it
@@ -132,5 +148,6 @@ server {
     location / {
         try_files $uri /index.html;
         add_header Cache-Control "no-store";
+        add_header Content-Security-Policy $ui_csp always;
     }
 }

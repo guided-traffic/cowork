@@ -127,8 +127,8 @@ func mustCall(t *testing.T, cs *mcp.ClientSession, name string, args map[string]
 
 // docs/adr/0042 D6, docs/adr/0066 D3: the working day through the MCP server
 // against the API — the proposal, the project created on the person's yes,
-// a ticket filed, decided, worked, asked about, answered, finished — each
-// act the agent's, with the client's name in the record.
+// a ticket filed, decided, worked, asked about, answered, ranked, finished —
+// each act the agent's, with the client's name in the record.
 func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 	e := newMCPEnv(t)
 	cs := e.serve(t, e.tk.AgentA)
@@ -171,6 +171,8 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 	mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now."})
 	mustCall(t, cs, "set_progress", map[string]any{"key": "VO-1", "percent": 50})
 	mustCall(t, cs, "watch", map[string]any{"key": key})
+	ranked := mustCall(t, cs, "set_urgency", map[string]any{"key": "VO-1", "urgency": "now", "reason": "the failover gates the release"})
+	assert.Contains(t, ranked, "Set the urgency of "+key+" to now")
 	other := mustCall(t, cs, "file_ticket", map[string]any{"type": "task", "title": "Write the retry", "severity": "low",
 		"security": "none", "effort": "S", "links": []any{map[string]any{"type": "relates-to", "key": "VO-1"}}})
 	assert.Contains(t, other, "Linked: "+e.SlugA+"/VO-2 relates-to "+key)

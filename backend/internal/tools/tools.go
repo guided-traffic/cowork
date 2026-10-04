@@ -88,6 +88,17 @@ type Result struct {
 	IsError bool
 }
 
+// Valid reports whether arguments match the tool's schema, as Call checks
+// them before it runs: a host that classifies a call reads only arguments
+// whose every key the schema declares.
+func (t Tool) Valid(args json.RawMessage) bool {
+	var instance any
+	if json.Unmarshal(args, &instance) != nil {
+		return false
+	}
+	return t.resolved.Validate(instance) == nil
+}
+
 // Call validates the arguments against the schema and runs the tool. A
 // refusal of the API is a result like any other, marked as an error, with the
 // code and the message the API gave (docs/adr/0040 D3).
@@ -102,11 +113,21 @@ func (t Tool) Call(ctx context.Context, s *Session, args json.RawMessage) Result
 	if err := t.resolved.Validate(instance); err != nil {
 		return Result{Text: "The arguments do not match the tool's schema: " + err.Error(), IsError: true}
 	}
+	if t.Surface != Terminal {
+		// A tool that reads the working directory resolves the binding itself.
+		s.bindOnce(ctx)
+	}
 	text, err := t.run(ctx, s, args)
 	if err != nil {
 		return Result{Text: failure(err), IsError: true}
 	}
 	return Result{Text: text}
+}
+
+// Define builds a tool of a host's own, the way the catalogue builds its tools:
+// the chat in the backend adds the tools that move the person's page.
+func Define[In any](t Tool, shape func(*jsonschema.Schema), run func(ctx context.Context, s *Session, in In) (string, error)) Tool {
+	return define(t, shape, run)
 }
 
 // define builds a tool whose input is the type In: its schema is inferred
@@ -160,12 +181,12 @@ func bound(s *jsonschema.Schema, property string, lo, hi float64) {
 }
 
 // Catalogue is the tool set of the first release (docs/adr/0042 D1, D2): the
-// twelve workflow tools, record_answer and create_project, and the api
-// escape hatch. surfaces narrows it; none is every tool.
+// twelve workflow tools, record_answer, create_project and set_urgency, and
+// the api escape hatch. surfaces narrows it; none is every tool.
 func Catalogue(surfaces ...Surface) []Tool {
 	all := []Tool{
 		sessionStartTool(), getTicketTool(), searchTool(), fileTicketTool(), recordStateTool(), openQuestionTool(),
-		recordAnswerTool(), commentTool(), transitionTool(), setProgressTool(), linkTool(), watchTool(),
+		recordAnswerTool(), commentTool(), transitionTool(), setProgressTool(), linkTool(), watchTool(), setUrgencyTool(),
 		finishWorkTool(), createProjectTool(), apiTool(),
 	}
 	if len(surfaces) == 0 {
@@ -201,6 +222,10 @@ var errUsage = errors.New("usage")
 func usage(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", errUsage, fmt.Sprintf(format, args...))
 }
+
+// Usage is a call a host's tool refuses itself, answered to the model as it
+// is written.
+func Usage(format string, args ...any) error { return usage(format, args...) }
 
 // failure renders an error as the tool's answer.
 func failure(err error) string {

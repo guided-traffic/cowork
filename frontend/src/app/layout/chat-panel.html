@@ -1,0 +1,195 @@
+<header class="head">
+  <h2 class="title"><i class="pi pi-sparkles" aria-hidden="true"></i>Assistant</h2>
+  <button
+    pButton
+    type="button"
+    [text]="true"
+    [rounded]="true"
+    severity="secondary"
+    size="small"
+    [iconOnly]="true"
+    aria-label="New conversation"
+    pTooltip="New conversation"
+    tooltipPosition="bottom"
+    [disabled]="chat.busy() || chat.entries().length === 0"
+    (click)="chat.restart()"
+    data-testid="chat-new"
+  >
+    <i class="pi pi-plus"></i>
+  </button>
+</header>
+
+<!-- The log takes the focus, so that a conversation of text alone scrolls from the keyboard (WebKit). -->
+<div
+  #log
+  class="log"
+  role="log"
+  tabindex="0"
+  aria-label="Conversation with the assistant"
+  [attr.aria-busy]="chat.busy()"
+  (scroll)="scrolled()"
+  data-testid="chat-log"
+>
+  <!-- A message's text sits right against its tags: it keeps its own line breaks and spaces. -->
+  @for (entry of chat.entries(); track entry.id) {
+    @switch (entry.kind) {
+      @case ('user') {
+        <div class="message user" data-testid="chat-message">{{ entry.text }}</div>
+      }
+      @case ('assistant') {
+        <div class="message assistant" data-testid="chat-message">{{ entry.text }}</div>
+        @if (entry.noTools) {
+          <p class="no-tools" data-testid="chat-no-tools">
+            <i class="pi pi-info-circle" aria-hidden="true"></i>
+            No tool was called for this answer: nothing it says about cowork was looked up.
+          </p>
+        }
+      }
+      @case ('call') {
+        <div class="call" [attr.data-state]="entry.state" data-testid="chat-tool">
+          <div class="call-head">
+            <i class="pi pi-wrench" aria-hidden="true"></i>
+            <code class="name" data-testid="chat-tool-name">{{ entry.call.name }}</code>
+            <span class="state" data-testid="chat-tool-state">{{ stateTexts[entry.state] }}</span>
+          </div>
+          @if (entry.description !== undefined) {
+            <p class="description" data-testid="chat-proposal">{{ entry.description }}</p>
+          }
+          <details class="arguments">
+            <summary>Arguments</summary>
+            <pre data-testid="chat-tool-arguments">{{ json(entry.call.arguments) }}</pre>
+          </details>
+          @if (entry.summary !== undefined) {
+            <div class="summary" data-testid="chat-tool-summary">{{ entry.summary }}</div>
+          }
+          @if (entry.refused !== undefined) {
+            <p class="refused" data-testid="chat-tool-refused">
+              Not opened: {{ entry.refused }} is not a ticket, a backlog or a board of this tenant.
+            </p>
+          }
+          @if (entry.state === 'waiting') {
+            <div class="decide">
+              <button
+                pButton
+                type="button"
+                size="small"
+                [disabled]="chat.busy()"
+                (click)="decide(entry.call.id, true)"
+                data-testid="chat-confirm-run"
+              >
+                Run
+              </button>
+              <button
+                pButton
+                type="button"
+                size="small"
+                severity="secondary"
+                [outlined]="true"
+                [disabled]="chat.busy()"
+                (click)="decide(entry.call.id, false)"
+                data-testid="chat-confirm-skip"
+              >
+                Skip
+              </button>
+            </div>
+          }
+        </div>
+      }
+      @case ('problem') {
+        <p-message severity="error" size="small" data-testid="chat-problem"
+          ><strong>{{ entry.problem.title }}</strong>
+          @if (entry.problem.detail) {
+            — {{ entry.problem.detail }}
+          }
+        </p-message>
+      }
+      @case ('notice') {
+        <p class="notice" data-testid="chat-notice">{{ entry.text }}</p>
+        @if (entry.restart) {
+          <button
+            pButton
+            type="button"
+            size="small"
+            severity="secondary"
+            [outlined]="true"
+            class="restart"
+            [disabled]="chat.busy()"
+            (click)="restart()"
+            data-testid="chat-notice-new"
+          >
+            <i class="pi pi-plus"></i>New conversation
+          </button>
+        }
+      }
+    }
+  } @empty {
+    <div class="empty" data-testid="chat-empty">
+      <p>
+        Ask in your own words. The assistant works in this tenant as your agent: it searches and
+        reads tickets, files them, comments, moves them on, and opens a ticket, a backlog or a board
+        for you.
+      </p>
+      <p>
+        Every act shows in the activity as the assistant's. A step that needs your reason or note —
+        closing, dropping or blocking a ticket, a move back — waits for you to run or skip it.
+      </p>
+      @if (model(); as name) {
+        <p class="model" data-testid="chat-model">
+          Model <code>{{ name }}</code
+          >,
+          @if (inside()) {
+            inside this installation.
+          } @else {
+            outside this installation: what the assistant reads here is sent to its provider.
+          }
+        </p>
+      }
+    </div>
+  }
+  @if (chat.busy()) {
+    <p class="working" data-testid="chat-working">
+      <i class="pi pi-spinner pi-spin" aria-hidden="true"></i>The assistant is working
+    </p>
+  }
+</div>
+
+<form class="compose" (submit)="submit($event)">
+  <textarea
+    #input
+    pTextarea
+    rows="3"
+    maxlength="100000"
+    placeholder="Ask the assistant"
+    aria-label="Message to the assistant"
+    aria-describedby="chat-keys"
+    (input)="draft.set(input.value)"
+    (keydown)="keydown($event)"
+    [disabled]="chat.busy()"
+    data-testid="chat-input"
+  ></textarea>
+  <div class="actions">
+    <small id="chat-keys" class="keys">Enter sends, Shift+Enter starts a new line</small>
+    @if (chat.busy()) {
+      <button
+        pButton
+        type="button"
+        size="small"
+        severity="secondary"
+        (click)="chat.stop()"
+        data-testid="chat-stop"
+      >
+        <i class="pi pi-stop-circle"></i>Stop
+      </button>
+    } @else {
+      <button
+        pButton
+        type="submit"
+        size="small"
+        [disabled]="draft().trim() === ''"
+        data-testid="chat-send"
+      >
+        <i class="pi pi-send"></i>Send
+      </button>
+    }
+  </div>
+</form>

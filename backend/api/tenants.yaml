@@ -66,7 +66,10 @@ tenant:
     summary: Change the tenant's name or settings
     description: |
       An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
-      `If-Match` is required (docs/adr/0050 D3).
+      `If-Match` is required (docs/adr/0050 D3). Switching `chat_external_allowed` on gives the
+      consent to the chat's provider configured now and takes a session — a token is `403
+      session_required` (docs/adr/0035 D5), an installation without a provider `409
+      chat_unavailable` —; switching it off does not.
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:

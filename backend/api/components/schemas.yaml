@@ -238,7 +238,8 @@ RequestMark:
         $ref: '#/Capability'
 Tenant:
   type: object
-  required: [slug, name, version, time_visible_to_members, members_create_projects, created_at, updated_at]
+  required: [slug, name, version, time_visible_to_members, members_create_projects, chat_external_allowed, created_at,
+    updated_at]
   properties:
     slug: {type: string}
     name: {type: string}
@@ -253,6 +254,13 @@ Tenant:
     members_create_projects:
       type: boolean
       description: Members create projects; off, only administrators do (docs/adr/0034 D9)
+    chat_external_allowed:
+      type: boolean
+      description: |
+        The chat may send the tenant's data to the provider configured now, which the operator does
+        not declare inside the installation's trust boundary (COWORK_CHAT_INSIDE); a consent names
+        the provider it was given to — its wire format, host and model — and one given to another
+        provider reads false; a provider inside needs no consent (docs/adr/0076)
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
 TenantCreate:
@@ -276,6 +284,13 @@ TenantPatch:
       type: [string, 'null']
       format: date
     members_create_projects: {type: boolean}
+    chat_external_allowed:
+      type: boolean
+      description: |
+        Switching it on gives the consent to the provider configured now, recorded with it, and takes
+        a session, as every act that leaves access behind a token's revocation (docs/adr/0035 D5); with
+        no provider configured it is `409 chat_unavailable`. Switching it off is open to an `admin`
+        token too
 Member:
   type: object
   required: [person, email, role, origins, local]
@@ -1464,3 +1479,224 @@ AccountPasswordReset:
       type: string
       minLength: 1
       maxLength: 1024
+ChatProvider:
+  type: string
+  enum: [openai, anthropic]
+  description: |
+    The wire format of the configured provider (COWORK_CHAT_PROVIDER): OpenAI Chat Completions, which
+    OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+ChatUnavailableReason:
+  type: string
+  enum: [not_configured, not_allowed_in_tenant]
+  description: |
+    Why the chat is not available: the installation configures no provider, or its provider is not
+    declared inside the installation's trust boundary and the tenant's administrators have not
+    allowed it (the tenant's chat_external_allowed)
+ChatAvailability:
+  type: object
+  required: [available, provider, model, inside, reason]
+  properties:
+    available:
+      type: boolean
+      description: The members of the tenant may hold a conversation (POST …/chat)
+    provider:
+      description: The configured provider's wire format; null when none is configured
+      oneOf:
+        - $ref: '#/ChatProvider'
+        - type: 'null'
+    model:
+      type: [string, 'null']
+      description: The configured model by the name its provider knows it (COWORK_CHAT_MODEL); null when none is configured
+    inside:
+      type: boolean
+      description: |
+        The operator declares the provider inside the installation's trust boundary (COWORK_CHAT_INSIDE)
+        — a model on the operator's machine or network, such as LM Studio —, and the chat is available
+        in every tenant; outside, only where the tenant's chat_external_allowed is on
+    reason:
+      description: Why the chat is not available; null when it is
+      oneOf:
+        - $ref: '#/ChatUnavailableReason'
+        - type: 'null'
+ChatRole:
+  type: string
+  enum: [user, assistant, tool]
+  description: Whom a message of the chat is from — the person, the model, or a tool answering the model
+ChatToolArguments:
+  type: object
+  additionalProperties: true
+  description: A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+  # The generated Go keeps the arguments as they came; the generated file
+  # imports encoding/json already.
+  x-go-type: json.RawMessage
+ChatToolCall:
+  type: object
+  additionalProperties: false
+  required: [id, name, arguments]
+  description: A call of a tool the model made
+  properties:
+    id:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: The call's id, which the tool message answering it names
+    name: {type: string, minLength: 1, maxLength: 128, description: The tool's name}
+    arguments:
+      $ref: '#/ChatToolArguments'
+ChatMessage:
+  type: object
+  additionalProperties: false
+  required: [role]
+  description: |
+    One message of a conversation, in the neutral model the backend translates for its provider. A
+    `user` message carries `text`, what the person wrote; an `assistant` message `text`, what the model
+    said, and `tool_calls`, the calls it made — at least one of the two; a `tool` message
+    `tool_call_id`, the call it answers, `ok`, and `text`, the answer the model read. There is no
+    system message: the backend writes the model's instructions on every turn (docs/adr/0076).
+  properties:
+    role:
+      $ref: '#/ChatRole'
+    text: {type: string, maxLength: 100000}
+    tool_calls:
+      type: array
+      minItems: 1
+      maxItems: 32
+      items:
+        $ref: '#/ChatToolCall'
+    tool_call_id: {type: string, minLength: 1, maxLength: 128}
+    ok:
+      type: boolean
+      description: On a tool message, whether the call succeeded; a refusal of the API is a failure the model reads
+ChatPageContext:
+  type: object
+  additionalProperties: false
+  description: |
+    The page the person is on as they send the turn: the model's instructions name it, and a short
+    key the model uses resolves against its project
+  properties:
+    path:
+      type: string
+      maxLength: 256
+      pattern: '^/[A-Za-z0-9/._~-]*$'
+      description: The page's path in this UI, without query or fragment, such as /t/acme/p/COW/board
+    project:
+      type: string
+      pattern: '^[A-Z][A-Z0-9]{1,9}$'
+      description: The key of the project the page shows
+    ticket:
+      type: string
+      pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'
+      description: The short key of the ticket the page shows, <PROJECT>-<number>
+ChatConfirmation:
+  type: object
+  additionalProperties: false
+  required: [tool_call_id, run]
+  description: The person's decision on a call that waits for it
+  properties:
+    tool_call_id: {type: string, minLength: 1, maxLength: 128}
+    run:
+      type: boolean
+      description: True runs the call as the model proposed it; false answers the model that the person skipped it
+ChatTurn:
+  type: object
+  additionalProperties: false
+  required: [conversation, messages]
+  properties:
+    conversation:
+      type: string
+      format: uuid
+      description: |
+        The conversation's id, made by the client when the conversation begins and sent with each of
+        its turns; the agent mark of the tool calls carries it, so the activity tells one
+        conversation's acts from another's (docs/adr/0036 D3)
+    messages:
+      type: array
+      minItems: 1
+      maxItems: 400
+      description: |
+        The conversation so far, oldest first: the person's messages and what the `done` events added.
+        It ends with the person's new message, or — to decide a call that waits — as the last `done`
+        left it
+      items:
+        $ref: '#/ChatMessage'
+    context:
+      $ref: '#/ChatPageContext'
+    confirmations:
+      type: array
+      maxItems: 32
+      description: The person's decision on the call that waits — the first of them, which the last turn proposed
+      items:
+        $ref: '#/ChatConfirmation'
+ChatTextEvent:
+  type: object
+  required: [delta]
+  description: The data of a chat turn's event `text`
+  properties:
+    delta:
+      type: string
+      description: The next piece of the assistant's text, to be appended to the pieces before it
+ChatToolResultEvent:
+  type: object
+  required: [id, ok, summary]
+  description: The data of a chat turn's event `tool_result`
+  properties:
+    id: {type: string, description: The id of the call it answers}
+    ok:
+      type: boolean
+      description: |
+        The call succeeded; false for a refusal of the API, which the model reads like any answer, and
+        for a call the person skipped
+    summary:
+      type: string
+      description: |
+        The start of what the tool answered, Markdown as the tool wrote it, at most 2000 characters;
+        the whole answer is the text of the tool message in `done`
+ChatUiAction:
+  type: string
+  enum: [navigate]
+  description: What a UI tool of the chat asks the client to do
+ChatUiEvent:
+  type: object
+  required: [action, path]
+  description: The data of a chat turn's event `ui`
+  properties:
+    action:
+      $ref: '#/ChatUiAction'
+    path:
+      type: string
+      description: |
+        The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
+        /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
+ChatConfirmEvent:
+  type: object
+  required: [id, name, arguments, description]
+  description: The data of a chat turn's event `confirm`, a call that waits for the person's decision
+  properties:
+    id:
+      type: string
+      description: The call's id, which the decision names
+    name: {type: string, description: The tool's name}
+    arguments:
+      $ref: '#/ChatToolArguments'
+    description:
+      type: string
+      description: The act in words, for the person who decides it
+ChatTurnEnd:
+  type: string
+  enum: [answered, confirm, step_limit, error]
+  description: |
+    Why a turn ended: the model answered; a call waits for the person's decision; the turn reached
+    COWORK_CHAT_MAX_STEPS calls of the model, and a new message goes on; or an `error` event came
+    before
+ChatDoneEvent:
+  type: object
+  required: [messages, reason]
+  description: The data of a chat turn's event `done`, the last of every turn
+  properties:
+    messages:
+      type: array
+      description: The messages the turn added, to be appended to the conversation as they are
+      items:
+        $ref: '#/ChatMessage'
+    reason:
+      $ref: '#/ChatTurnEnd'

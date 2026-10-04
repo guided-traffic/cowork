@@ -77,8 +77,25 @@ func TestSearch(t *testing.T) {
 	assert.Contains(t, res.Text, "beta/OPS-1")
 	res = call(t, f.session(false), "search", `{"query": "x", "scope": "tenant"}`)
 	assert.True(t, res.IsError)
-	res = call(t, f.session(true), "search", `{"query": ""}`)
-	assert.True(t, res.IsError, "an empty query is refused by the schema")
+
+	// Without words a search lists the project in rank order, and sends no q;
+	// outside one project it asks for words.
+	listed := len(f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets"))
+	for _, args := range []string{`{}`, `{"query": " "}`} {
+		res = call(t, f.session(true), "search", args)
+		require.False(t, res.IsError, res.Text)
+		assert.Contains(t, res.Text, "Tickets in acme/COW, in rank order:")
+		assert.Contains(t, res.Text, "acme/COW-3")
+	}
+	for _, sent := range f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets")[listed:] {
+		q, _ := url.ParseQuery(sent.Query)
+		assert.False(t, q.Has("q"), sent.Query)
+	}
+	res = call(t, f.session(true), "search", `{"scope": "tenant"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "give words to find, or search one project to list its tickets")
+	res = call(t, f.session(false), "search", `{"query": ""}`)
+	assert.True(t, res.IsError)
 }
 
 // file_ticket files with an Idempotency-Key (docs/adr/0045 D5), links in
@@ -162,4 +179,75 @@ func TestCommentLinkAndWatch(t *testing.T) {
 	res = call(t, s, "watch", `{"key": "COW-12"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Equal(t, "watch", decodeBody(t, f.calls(http.MethodPut, ticketPath+"/interest")[0])["weight"])
+}
+
+// set_urgency overrides with a reason or withdraws, each with the version read
+// (docs/adr/0010 D3, docs/adr/0050); without a reason, or with both or
+// neither of a value and the withdrawal, nothing is sent; a refusal is the
+// API's (docs/adr/0042 D3).
+func TestSetUrgency(t *testing.T) {
+	f := newFake(t)
+	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
+	f.on("PUT "+ticketPath+"/urgency-override", http.StatusOK, ticket("acme/COW-12", "decided", func(m map[string]any) {
+		m["urgency"] = "now"
+	}))
+	f.on("DELETE "+ticketPath+"/urgency-override", http.StatusOK, ticket("acme/COW-12", "decided"))
+	s := f.session(true)
+
+	res := call(t, s, "set_urgency", `{"key": "COW-12", "urgency": "now", "reason": "the release waits for it"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Equal(t, "Set the urgency of acme/COW-12 to now, over the derived later, with the reason: the release waits for it", res.Text)
+	put := f.calls(http.MethodPut, ticketPath+"/urgency-override")
+	require.Len(t, put, 1)
+	assert.Equal(t, `"3"`, put[0].Header.Get("If-Match"))
+	assert.Equal(t, map[string]any{"value": "now", "reason": "the release waits for it"}, decodeBody(t, put[0]))
+
+	res = call(t, s, "set_urgency", `{"key": "COW-12", "withdraw": true}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Equal(t, "Withdrew the urgency override of acme/COW-12: its derived urgency, later, holds.", res.Text)
+	assert.Equal(t, `"3"`, f.calls(http.MethodDelete, ticketPath+"/urgency-override")[0].Header.Get("If-Match"))
+
+	for args, want := range map[string]string{
+		`{"key": "COW-12", "urgency": "now"}`:                                  "needs a reason",
+		`{"key": "COW-12", "urgency": "now", "reason": "  "}`:                  "needs a reason",
+		`{"key": "COW-12"}`:                                                    "pass urgency",
+		`{"key": "COW-12", "urgency": "now", "reason": "x", "withdraw": true}`: "not both",
+		`{"key": "COW-12", "urgency": "soon", "reason": "x"}`:                  "urgency",
+	} {
+		res := call(t, s, "set_urgency", args)
+		assert.True(t, res.IsError, args)
+		assert.Contains(t, res.Text, want, args)
+	}
+	assert.Len(t, f.calls(http.MethodPut, ticketPath+"/urgency-override"), 1, "nothing was sent for the refused calls")
+
+	g := newFake(t)
+	g.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
+	g.refuse("PUT "+ticketPath+"/urgency-override", http.StatusForbidden, "agent_forbidden", "missing capability: override-urgency")
+	res = call(t, g.session(true), "set_urgency", `{"key": "COW-12", "urgency": "now", "reason": "x"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "403 `agent_forbidden`: missing capability: override-urgency")
+}
+
+// A session bound to a tenant and no project — the chat on a page that shows
+// none — searches the tenant by default, resolves short keys in it, and asks
+// for the project where a tool needs one.
+func TestATenantBinding(t *testing.T) {
+	f := newFake(t)
+	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
+	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
+	s := f.session(false)
+	s.BindTenant("acme")
+
+	res := call(t, s, "search", `{"query": "gate"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Contains(t, res.Text, "Tickets in the tenant acme matching")
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/tenants/acme/tickets"), 1)
+	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "nothing outside the tenant")
+
+	res = call(t, s, "set_urgency", `{"key": "COW-12", "withdraw": true}`)
+	assert.Len(t, f.calls(http.MethodGet, ticketPath), 1, "a short key resolves in the tenant: %s", res.Text)
+
+	res = call(t, s, "file_ticket", `{"type": "task", "title": "x", "severity": "low", "security": "none", "effort": "S"}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "name the project: its key in the tenant acme")
 }

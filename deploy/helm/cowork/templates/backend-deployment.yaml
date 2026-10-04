@@ -203,6 +203,27 @@ spec:
               value: /etc/cowork/s3-ca/{{ .Values.storage.tls.keys.ca }}
             {{- end }}
             {{- end }}
+            {{- if include "cowork.chatEnabled" . }}
+            - name: COWORK_CHAT_PROVIDER
+              value: {{ .Values.chat.provider | quote }}
+            - name: COWORK_CHAT_URL
+              value: {{ .Values.chat.url | quote }}
+            {{- if .Values.chat.existingSecret }}
+            - name: COWORK_CHAT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.chat.existingSecret }}
+                  key: {{ .Values.chat.keys.apiKey }}
+            {{- end }}
+            - name: COWORK_CHAT_MODEL
+              value: {{ .Values.chat.model | quote }}
+            - name: COWORK_CHAT_INSIDE
+              value: {{ .Values.chat.inside | quote }}
+            - name: COWORK_CHAT_TURN_TIMEOUT
+              value: {{ .Values.chat.turnTimeout | quote }}
+            - name: COWORK_CHAT_MAX_STEPS
+              value: {{ .Values.chat.maxSteps | int64 | toString | quote }}
+            {{- end }}
             - name: COWORK_LOG_LEVEL
               value: {{ .Values.backend.config.logLevel | quote }}
             - name: COWORK_LOG_FORMAT
