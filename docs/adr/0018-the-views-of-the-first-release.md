@@ -49,7 +49,11 @@ block a card directly and that the caller can see (`open_prerequisites`,
 drags between the columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
 the note when the last stage fills, the moves with done by hand and its withdrawal, questions
 with the answer form, links, interest, comments, activity, attachments and time (the body as
-text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's
+text until it is rendered), and since 2026-10-04 the title and the body edited there, the parent
+and the horizon chosen there, the confidential flag for a tenant administrator, the prerequisite
+tree with its upward reading, comments edited, their earlier texts and their withdrawal, an open
+question's text edited, uploads to a comment, the preview of raster images and the correction of
+time; the time report; and as the tenant's
 front page, until D6's dashboard, each project's open tickets by state with the tickets updated
 last. Not built: the score's marker in the backlog, D3–D7.
 

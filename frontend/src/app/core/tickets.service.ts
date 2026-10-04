@@ -174,6 +174,27 @@ export class TicketsService {
     });
   }
 
+  /**
+   * Every open ticket of a project, in its rank, every page of it, into the cache — what a person
+   * picks a parent from (docs/adr/0008 D2). A one-off read, not an open list: nothing reloads it.
+   */
+  async openTickets(tenant: string, project: string): Promise<Ticket[]> {
+    const tickets: Ticket[] = [];
+    let cursor: string | undefined;
+    do {
+      const list = await this.api.invoke(listProjectTickets, {
+        tenant,
+        project,
+        cursor,
+        limit: pageSize,
+      });
+      this.keep(list);
+      tickets.push(...list.items);
+      cursor = list.next_cursor ?? undefined;
+    } while (cursor);
+    return tickets;
+  }
+
   /** Fetches one ticket by its canonical key into the cache. */
   async refresh(key: string): Promise<Ticket> {
     const ticket = await this.api.invoke(resolveTicket, splitKey(key));

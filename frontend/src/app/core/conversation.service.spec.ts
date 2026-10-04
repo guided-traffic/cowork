@@ -2,7 +2,7 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { Question } from '../api/models';
+import { Comment, Question } from '../api/models';
 import { Conversation } from './conversation.service';
 
 const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
@@ -277,5 +277,61 @@ describe('Conversation', () => {
 
     http.expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/comments').flush({ id: 'c1' });
     await done;
+  });
+
+  describe('the comments of a comment (docs/adr/0015 D3)', () => {
+    const comment = {
+      id: '0199aaaa-0000-7000-8000-0000000000c1',
+      version: 2,
+      body: 'Before',
+    } as Comment;
+    const at = `${base}/comments/0199aaaa-0000-7000-8000-0000000000c1`;
+
+    it('edits a comment over the version the editing began with', async () => {
+      const done = conversation.editComment(key, comment, 'After');
+
+      const sent = http.expectOne(at);
+      expect(sent.request.method).toBe('PATCH');
+      expect(sent.request.headers.get('If-Match')).toBe('"2"');
+      expect(sent.request.body).toEqual({ body: 'After' });
+      sent.flush({ ...comment, version: 3, body: 'After' });
+
+      expect((await done).version).toBe(3);
+    });
+
+    it('reads the earlier texts of a comment, oldest first, as the API orders them', async () => {
+      const done = conversation.commentRevisions(key, comment);
+
+      http
+        .expectOne(`${at}/revisions?limit=200`)
+        .flush({ items: [{ body: 'First' }, { body: 'Before' }], next_cursor: null });
+
+      expect((await done).map((revision) => revision.body)).toEqual(['First', 'Before']);
+    });
+
+    it('withdraws a comment, which takes no version', async () => {
+      const done = conversation.withdrawComment(key, comment);
+
+      const sent = http.expectOne(`${at}/withdrawal`);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.headers.has('If-Match')).toBe(false);
+      sent.flush({ ...comment, withdrawn: true, body: null });
+
+      expect((await done).withdrawn).toBe(true);
+    });
+  });
+
+  describe('editQuestion (docs/adr/0011 D2)', () => {
+    it('changes the text of an open question over the version the editing began with', async () => {
+      const done = conversation.editQuestion(key, question(), { question: 'Which way now?' });
+
+      const sent = http.expectOne(`${base}/questions/3`);
+      expect(sent.request.method).toBe('PATCH');
+      expect(sent.request.headers.get('If-Match')).toBe('"4"');
+      expect(sent.request.body).toEqual({ question: 'Which way now?' });
+      sent.flush(question({ question: 'Which way now?', version: 5 }));
+
+      expect((await done).version).toBe(5);
+    });
   });
 });

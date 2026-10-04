@@ -1,13 +1,13 @@
 ---
 id: T32
-title: an upload cannot go to a comment, a raster attachment has no preview, a time entry cannot be corrected in the browser, and the tenant has no attachment quota
+title: the tenant has no attachment quota
 state: in-progress
 severity: medium
 security: none
 threat:
-urgency: later        # rule 4: decided fixes for the browser's parts; the quota waits for Q1
+urgency: icebox       # rule 5: the quota needs the owner's call on Q1
 effort: M
-blocked-by:
+blocked-by: decision
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03
@@ -16,39 +16,17 @@ done:
 
 ## Current state
 
-Released: the detail page lists, uploads and downloads attachments and books and voids the
-person's own time ([`records-cards.ts`](../../frontend/src/app/features/ticket/records-cards.ts)),
-and `/t/{slug}/time` shows the time report per project, ticket, person or tenant over a period
-([`time-report.ts`](../../frontend/src/app/features/time/time-report.ts)). Time entries are not
-published on the event stream ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D4): the page that books reloads them. Missing:
+The browser uploads to a comment of the person's own, shows a raster attachment as a preview —
+each load a recorded download — and corrects a time entry over its version, with its earlier
+values on request ([`frontend.md`](../developer/frontend.md#the-detail-page)). Missing:
 
-- **An upload to a comment:** `uploadAttachment` takes a `comment_id`
-  ([`attachments.yaml`](../../backend/api/attachments.yaml#L25-L45)); the page sends none.
-- **The preview of a raster attachment**, which the backend delivers inline
-  ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-  D5).
-- **Correcting a time entry and its revisions**
-  ([ADR 0017](../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)):
-  `TicketRecords.edit` writes a correction with `If-Match`
-  ([`ticket-records.service.ts`](../../frontend/src/app/core/ticket-records.service.ts#L33-L41))
-  and only its unit test calls it; `listTimeEntryRevisions`
-  ([`time.yaml`](../../backend/api/time.yaml#L130)) has no caller.
 - **The per-tenant attachment quota** of ADR 0016 D6, carried over from phase 2: limits per file
   (`COWORK_ATTACHMENT_MAX_BYTES`) and per ticket (`COWORK_ATTACHMENT_MAX_PER_TICKET`) exist,
   nothing counts a tenant's bytes. Whether the quota refuses an upload is open (Q1).
 
 ## Required changes
 
-### Independent of the open question
-
-1. An upload to a comment; the inline preview of a raster attachment.
-2. Correcting a time entry with `If-Match`, and its revisions, in the browser.
-3. Unit tests for both.
-
-### Depends on the answer
-
-4. The per-tenant quota: its setting, the usage in the tenant's administration and, by Q1's
+1. The per-tenant quota: its setting, the usage in the tenant's administration and, by Q1's
    answer, the refusal before bytes are stored with its problem code; integration tests across
    two tenants; the README reference for the quota's variable and code; ADR 0016 amended where
    the answer departs from it.

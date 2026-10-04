@@ -39,7 +39,8 @@ stage derived from the children's same stage (`ticket_derived_stage`), settable 
 but `dropped`, the done act and the reopen of
 [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5, and the three
 stages in the export. The bars on the board's cards and the detail's three sliders are the
-views' ([ADR 0018](0018-the-views-of-the-first-release.md)).
+views' ([ADR 0018](0018-the-views-of-the-first-release.md)). *(2026-10-04.)* In the browser the
+author corrects an entry over its version and reads its earlier values (D7).
 
 ## Context
 

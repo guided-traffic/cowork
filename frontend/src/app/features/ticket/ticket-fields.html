@@ -93,9 +93,37 @@
   <dt>Horizon</dt>
   <dd>
     @let reason = ticket().urgency_override?.reason;
-    <span [pTooltip]="meanings.urgency[ticket().urgency] + (reason ? ' — ' + reason : '')">{{
-      ticket().urgency
-    }}</span>
+    <p-select
+      [options]="horizons"
+      [ngModel]="ticket().urgency"
+      (ngModelChange)="setHorizon($event)"
+      size="small"
+      variant="filled"
+      ariaLabel="Horizon"
+      data-testid="field-horizon"
+      [pTooltip]="meanings.urgency[ticket().urgency] + (reason ? ' — ' + reason : '')"
+      tooltipPosition="left"
+    >
+      <ng-template #item let-option>
+        <span [pTooltip]="horizonMeaning(option)" tooltipPosition="left">{{ option }}</span>
+      </ng-template>
+    </p-select>
+    @if (horizonAsked(); as asked) {
+      <input
+        pInputText
+        size="small"
+        class="reason"
+        data-testid="field-horizon-reason"
+        [ngModel]="horizonReason()"
+        (ngModelChange)="horizonReason.set($event)"
+        [readOnly]="sendingReason()"
+        (keydown.enter)="sendHorizonReason()"
+        (keydown.escape)="dismissHorizonReason()"
+        (blur)="dismissHorizonReason()"
+        [attr.aria-label]="'Why ' + asked + ', optional'"
+        [placeholder]="'Why ' + asked + '? Enter saves, Esc skips'"
+      />
+    }
   </dd>
 
   <dt class="top">Progress</dt>
@@ -145,9 +173,32 @@
     }
   </dd>
 
-  @if (ticket().parent) {
-    <dt>Parent</dt>
-    <dd>{{ ticket().parent }}</dd>
+  <dt>Parent</dt>
+  <dd>
+    <app-parent-picker
+      [tenant]="place().tenant"
+      [project]="place().project"
+      [value]="ticket().parent"
+      [exclude]="ticket().key"
+      variant="filled"
+      label="Parent"
+      (picked)="write({ parent: $event })"
+    />
+  </dd>
+
+  @if (administers()) {
+    <dt>Confidential</dt>
+    <dd class="confidential" data-testid="field-confidential">
+      <span>{{ ticket().confidential ? 'yes' : 'no' }}</span>
+      <button
+        type="button"
+        class="link"
+        data-testid="field-confidential-change"
+        (click)="confidentialOpen.set(true)"
+      >
+        {{ ticket().confidential ? 'Lift…' : 'Make confidential…' }}
+      </button>
+    </dd>
   }
 
   <dt>Opened</dt>
@@ -157,3 +208,10 @@
 </dl>
 
 <app-move-dialog [ticket]="ticket()" [request]="stageRequest()" (closed)="stageClosed()" />
+@if (administers()) {
+  <app-confidential-dialog
+    [ticket]="ticket()"
+    [open]="confidentialOpen()"
+    (closed)="confidentialOpen.set(false)"
+  />
+}
