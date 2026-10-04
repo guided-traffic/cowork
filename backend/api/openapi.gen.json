@@ -2414,6 +2414,118 @@
         ],
         "type": "object"
       },
+      "PrerequisiteNode": {
+        "description": "A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)",
+        "properties": {
+          "assignee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocked_from": {
+            "description": "The state a blocked ticket came from; null unless it is blocked (docs/adr/0009 D2)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "description": "1 for a ticket next to the one asked about — blocking it, or blocked by it read upward",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "key": {
+            "description": "The canonical key; a ticket of another project names it",
+            "type": "string"
+          },
+          "progress": {
+            "description": "The implementation stage as the ticket shows it (docs/adr/0017 D2, D3)",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_derived": {
+            "description": "The stages are derived from the ticket's children",
+            "type": "boolean"
+          },
+          "progress_refinement": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_review": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeated": {
+            "description": "The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it",
+            "type": "boolean"
+          },
+          "settled": {
+            "description": "Done or dropped (docs/adr/0012 D6)",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "state",
+          "blocked_from",
+          "assignee",
+          "progress",
+          "progress_refinement",
+          "progress_review",
+          "progress_derived",
+          "depth",
+          "settled",
+          "repeated"
+        ],
+        "type": "object"
+      },
+      "PrerequisiteTree": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrerequisiteNode"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open": {
+            "description": "The open tickets of the whole tree the caller can see, each counted once, on every page",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "open"
+        ],
+        "type": "object"
+      },
       "Problem": {
         "properties": {
           "code": {
@@ -7680,6 +7792,87 @@
           }
         },
         "summary": "The canonical Markdown of the ticket",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites": {
+      "get": {
+        "description": "docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
+        "operationId": "listPrerequisites",
+        "parameters": [
+          {
+            "description": "down for the prerequisites, the default; up for the dependents",
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "down",
+              "enum": [
+                "down",
+                "up"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "assignee": {
+                        "display_name": "Ada",
+                        "id": "0190f4c2-6f1e-7a3b-9c2d-1e2f3a4b5c6d",
+                        "username": "ada"
+                      },
+                      "blocked_from": null,
+                      "depth": 1,
+                      "key": "acme/COW-7",
+                      "progress": 40,
+                      "progress_derived": false,
+                      "progress_refinement": 100,
+                      "progress_review": 0,
+                      "repeated": false,
+                      "settled": false,
+                      "state": "in-progress",
+                      "title": "Pick the format"
+                    }
+                  ],
+                  "next_cursor": null,
+                  "open": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/PrerequisiteTree"
+                }
+              }
+            },
+            "description": "A page of the tree, depth first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's prerequisite tree, or read upward its dependents",
         "tags": [
           "tickets"
         ]

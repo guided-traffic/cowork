@@ -183,6 +183,33 @@ tenant's lock (`LockBlocks`) and refuses a cycle (`blocks_path_exists`) with
 both tickets (`linked`, `unlinked`, each with the other ticket in `Refs`). An existing link is
 `200` without a second act, a new one `201`; removing a missing link is `204`.
 
+### The prerequisite tree
+
+`GET …/{number}/prerequisites` ([ADR 0012] D6,
+[`prerequisites.go`](../../backend/internal/api/prerequisites.go)) is the tree of the tickets that
+block a ticket, what blocks those, and so on; `direction=up` reads the `blocks` links the other
+way, the dependents. The walk is SQL, `ListPrerequisites` and its mirror `ListDependents` in
+[`links.sql`](../../backend/internal/store/queries/read/links.sql):
+
+- **Each link once per depth, never each path.** The recursive part keeps `(ticket, the ticket it
+  blocks, depth)` with `UNION`, so a dense graph costs its links times the depth. A walk that
+  carried each path — the context's before this route — costs the number of paths: forty tickets
+  in eight layers of five, every one blocking the five below, are 5^8 paths and took eleven seconds
+  for one request; the same graph answers in milliseconds now
+  (`TestPrerequisiteTreeCostsItsLinksNotItsPaths`).
+- **Eight levels** (`treeDepth`), depth first, siblings by id — in the order they were filed.
+- **A ticket under two others** stands in full once, under the first of them nearest the root (the
+  smallest depth, then the earliest filed), and under each other one as a `repeated` leaf, without
+  what lies behind it. The context's `## Prerequisites` leaves the repeated ones out.
+- **Visibility.** Every step calls `app_ticket_visible` on the ticket it steps to: the walk never
+  passes a ticket the caller cannot see, so that ticket and whatever lies only behind it are absent,
+  and nothing is counted for them ([ADR 0065] D5).
+- **`open`** counts the open tickets of the whole tree, each once, on every page (a window count
+  before the page is cut); `settled` marks done and dropped.
+- **Paging.** The cursor carries the node's path — its ids from the first level down, sixteen
+  bytes each in base64url, which at eight levels keeps the cursor within the document's 512
+  characters (`TestATreeCursorFitsTheDocument`) — bound to the ticket and the direction.
+
 ## Transitions
 
 `POST …/transitions` with `from`, `to` and what the move needs

@@ -32,6 +32,16 @@ D4, D5). The owner chose on 2026-10-03 that the card shows this count (D6 as ame
 count of the transitive closure cached on the ticket, as D6 had it, would be the same for every
 caller and would count prerequisites some of them cannot see; a transitive walk per read over
 what the reader can see would either tell that a hidden link exists or undercount.
+*(2026-10-04.)* D6's view is built in the API: `GET …/tickets/{number}/prerequisites`, and its
+mirror, the dependents, as the same route with `direction=up`
+([`prerequisites.go`](../../backend/internal/api/prerequisites.go)); eight levels deep, the
+context's depth; one recursive query per direction that steps only to tickets the caller can see,
+so a hidden node and what lies only behind it are absent (ADR 0065 D5). D4 forbids cycles, not two
+paths to one ticket: a ticket the tree reaches under two others stands in full once, under the
+first, and as a `repeated` leaf under each other one, and `open` counts each ticket once. The walk
+keeps each link once per depth instead of each path — the context's walk before it carried each
+path and took seconds on a few dozen densely linked tickets — and the context shows this tree, each
+prerequisite once.
 
 ## Context
 

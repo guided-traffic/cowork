@@ -236,6 +236,9 @@ The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_deriv
 read the tenant's tickets past the predicate for the same reasons; row-level security still
 holds them to the tenant. The ticket's columns count `open_prerequisites` in a subquery with
 the predicate on every prerequisite, `GetWrittenTicket` included: a hidden one is never counted.
+The prerequisite tree (`ListPrerequisites`, `ListDependents`) is the one walk that returns
+tickets: it calls the predicate on every ticket it steps to, so it never passes a hidden one, and
+it keeps each link once per depth, never each path ([domain.md](domain.md#the-prerequisite-tree)).
 
 ## The ticket list builder
 

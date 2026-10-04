@@ -71,6 +71,8 @@ export type { MembershipOrigin } from './models/membership-origin';
 export type { MembershipSource } from './models/membership-source';
 export type { PasswordChange } from './models/password-change';
 export type { Person } from './models/person';
+export type { PrerequisiteNode } from './models/prerequisite-node';
+export type { PrerequisiteTree } from './models/prerequisite-tree';
 export type { Problem } from './models/problem';
 export type { ProblemCode } from './models/problem-code';
 export type { Project } from './models/project';

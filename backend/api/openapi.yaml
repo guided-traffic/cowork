@@ -164,6 +164,8 @@ paths:
     $ref: './comments.yaml#/activity'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest:
     $ref: './tickets.yaml#/interest'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites:
+    $ref: './tickets.yaml#/prerequisites'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries:
     $ref: './time.yaml#/ticketTime'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}:
