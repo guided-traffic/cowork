@@ -204,7 +204,7 @@ func bind(ctx context.Context, w *store.Writer, t tenantScope, p project, b boun
 			return repository{}, false, err
 		}
 		w.Record(store.Event{EntityType: entityRepository, EntityID: row.ID, Action: actionLinked,
-			After: map[string]any{"project": p.Key, fieldRepository: b.identity, fieldPath: b.path, fieldRemote: b.remote}})
+			After: map[string]any{fieldProject: p.Key, fieldRepository: b.identity, fieldPath: b.path, fieldRemote: b.remote}})
 		return row, true, nil
 	case err != nil:
 		return repository{}, false, err
@@ -281,7 +281,7 @@ func (s *Server) UnbindRepository(ctx context.Context, req apigen.UnbindReposito
 			return err
 		}
 		w.Record(store.Event{EntityType: entityRepository, EntityID: row.ID, Action: actionUnlinked,
-			Before: map[string]any{"project": p.Key, fieldRepository: row.Identity, fieldPath: row.Path, fieldRemote: row.Remote}})
+			Before: map[string]any{fieldProject: p.Key, fieldRepository: row.Identity, fieldPath: row.Path, fieldRemote: row.Remote}})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {

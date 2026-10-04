@@ -28,6 +28,9 @@ const (
 	fieldUser           = "user"
 	fieldGroup          = "group"
 	fieldRestricted     = "restricted"
+	// fieldProject keys the project in the audit rows of an access entry and of
+	// a repository binding.
+	fieldProject = "project"
 )
 
 // adminRead is an administrator's read: the admin role and a token's read
@@ -664,7 +667,7 @@ func (s *Server) SetProjectAccess(ctx context.Context, req apigen.SetProjectAcce
 			}
 			out.CreatedAt = row.CreatedAt
 			w.Record(store.Event{EntityType: entityProjectAccess, EntityID: row.ID, Action: actionCreated,
-				After: map[string]any{"project": proj.Key, fieldUser: person, fieldRole: role}, Membership: accessChange(person, proj.ID)})
+				After: map[string]any{fieldProject: proj.Key, fieldUser: person, fieldRole: role}, Membership: accessChange(person, proj.ID)})
 		case err != nil:
 			return err
 		case cur.Role == role:
@@ -709,7 +712,7 @@ func (s *Server) RemoveProjectAccess(ctx context.Context, req apigen.RemoveProje
 			return err
 		}
 		w.Record(store.Event{EntityType: entityProjectAccess, EntityID: row.ID, Action: actionDeleted,
-			Before: map[string]any{"project": proj.Key, fieldUser: person, fieldRole: row.Role}, Membership: accessChange(person, proj.ID)})
+			Before: map[string]any{fieldProject: proj.Key, fieldUser: person, fieldRole: row.Role}, Membership: accessChange(person, proj.ID)})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
