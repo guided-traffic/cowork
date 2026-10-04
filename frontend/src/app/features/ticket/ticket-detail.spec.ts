@@ -1475,6 +1475,29 @@ describe('TicketDetail', () => {
       expect(page.querySelector('[data-testid="ticket-title"]')?.textContent).toBe('Next');
       expect(update).not.toHaveBeenCalled();
     });
+
+    it('closes the editors of a comment and of a question with the ticket they belong to', async () => {
+      show();
+      cache.put('acme/COW-13', ticket({ id: 't-13', key: 'acme/COW-13', number: 13 }));
+      const { fixture, page } = await render('COW-12', {
+        comments: list(comment()),
+        questions: list(question()),
+      });
+      (page.querySelector('[data-testid="comment-edit-c-1"]') as HTMLButtonElement).click();
+      (page.querySelector('[data-testid="edit-question-1"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).not.toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).not.toBeNull();
+
+      fixture.componentRef.setInput('key', 'COW-13');
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).toBeNull();
+    });
   });
 
   describe('a ticket that cannot be shown', () => {
