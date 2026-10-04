@@ -1,17 +1,18 @@
 ---
 id: T47
 title: phase 4 (OIDC and authorization) was built in one night on provisional decisions — the owner reviews them before the release
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
-urgency: release      # rule 2: gates the release — merging the branch releases phase 4
+urgency: release      # rule 2: it gated the release of 0.3.0
 effort: S
-blocked-by: human
+blocked-by:
 filed-from: docs/planning/project-plan.md phase 4, converted and built 2026-10-04 (ADR 0074 D2)
 opened: 2026-10-04
 decided: 2026-10-04
-done:
+done: 2026-10-04
+shipped: 0.3.0 — phase 4: sign-in through an identity provider behind a group gate, group mappings by global administrators, grants, the access list of a restricted project, the token gate with a maximum age of the groups, the self-grant of a global administrator
 ---
 
 ## Current state
@@ -61,8 +62,7 @@ best knowledge, leave a gate open when in doubt, file what the owner should look
 
 ## Required changes
 
-1. Phase close: the remaining items here or in T29/T40, the phase-4 lines
-   of [project-plan.md](../planning/project-plan.md) gone, this ticket archived.
+None: the remaining items are T29 and T40, and the phase-4 lines of the project plan are gone.
 
 ## Open questions
 
@@ -207,5 +207,4 @@ administrator is recovered by the self-grant of Q3. Recorded in ADR 0034 D1.
 
 - T29 — the end-to-end tier; the sign-in through Dex joins it
 - T40 — the administrators' view of their members' tokens
-- T45 (medium, boundary, XS, in-progress) — embargoed security finding, open - details in its own ticket file until it is fixed
-- T46 (medium, boundary, XS, in-progress) — embargoed security finding, open - details in its own ticket file until it is fixed
+- T45, T46 — the two boundary findings of the phase-4 frontend review, fixed in 0.3.0 (archived)

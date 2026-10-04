@@ -1,17 +1,18 @@
 ---
 id: T48
 title: phase 5 (the LLM interface, the workflow of Claude Code and the chat) was built in one night on provisional decisions — the owner reviews them before the release
-state: in-progress
+state: done
 severity: medium
 security: hardening
 threat: the live check of the plugin would additionally cover a hook or a skill that acts otherwise than its tests say
-urgency: release      # rule 2: gates the release — merging the branch releases phase 5
+urgency: release      # rule 2: it gated the release of 0.3.0
 effort: S
-blocked-by: human
+blocked-by:
 filed-from: docs/planning/project-plan.md phase 5, converted and built 2026-10-04 (ADR 0074 D2)
 opened: 2026-10-04
 decided: 2026-10-04
-done:
+done: 2026-10-04
+shipped: 0.3.0 — phase 5: cowork-mcp with its workflow tools, hooks and Claude Code plugin, the repository binding and the ticket context, attested release binaries, and the chat in the UI
 ---
 
 ## Current state
@@ -55,14 +56,8 @@ knowledge, leave a gate open when in doubt, file what the owner should look at).
 
 ## Required changes
 
-1. A live check of the plugin: install it from this repository, start `claude` in a bound
-   repository, and walk the phase's verification — the session names its ticket, Claude records its
-   state, opens a question and finishes with a verification note, all visible in the UI with the
-   agent's mark.
-2. The SessionStart hook passes the model to `cowork-mcp` where Claude Code's hook input carries it,
-   so the agent mark names it.
-3. Phase close: T44 answered, the remaining items here or in their tickets, the phase-5 lines of
-   [project-plan.md](../planning/project-plan.md) gone, this ticket archived.
+None: the live check of the plugin and the model in the agent mark are T50, the model check of
+the chat is T44, and the phase-5 lines of the project plan are gone.
 
 ## Open questions
 
@@ -103,4 +98,5 @@ notarisation is T49. Recorded in ADR 0041 D2.
 
 - T44 — the chat, its open questions
 - T22 — the agent gates the MCP tools and the chat inherit
-- T47 — phase 4
+- T47 — phase 4 (archived)
+- T50 — the live check of the plugin and the model in the agent mark

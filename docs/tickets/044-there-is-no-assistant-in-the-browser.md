@@ -15,7 +15,7 @@ done:
 
 ## Current state
 
-The chat at the right edge of every tenant page is built on the branch `feat/phase-4-and-5`
+The chat at the right edge of every tenant page is released in `0.3.0`
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)),
 with the owner's answers of 2026-10-04 below.
 
@@ -43,7 +43,6 @@ with the owner's answers of 2026-10-04 below.
 
 1. A model check: which models of LM Studio, Ollama and the hosted providers call the tools reliably
    enough; a short list in the chat's operations page.
-2. Phase close: this ticket archived with T48.
 
 ## Open questions
 
@@ -128,5 +127,5 @@ the panel.
 
 ## Related
 
-- T48 — phase 5, the MCP server and the workflow of Claude Code
+- T48 — phase 5, closed with 0.3.0 (archived)
 - T22 — the agent gates the chat inherits

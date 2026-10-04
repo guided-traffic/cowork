@@ -5,9 +5,9 @@ one person working across many projects with an LLM as co-worker. Two containers
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
 (`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart; and a third
 binary, `cowork-mcp`, on a person's machine for Claude Code.
-**Status: phase 3 (UI v1) is in progress, its first part released as `0.2.0`; phases 4 (the
-identity provider) and 5 (`cowork-mcp` and the chat in the UI) are built on this branch, with the
-owner's answers of 2026-10-04 to its open decisions** — the work lists are in
+**Status: phases 4 (the identity provider) and 5 (`cowork-mcp` and the chat in the UI) are
+released as `0.3.0`; phase 3 (UI v1) is in progress and comes next, by the owner's choice of
+2026-10-04, before phase 6** — the work lists are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and what comes after
 is [the project plan](docs/planning/project-plan.md).
 

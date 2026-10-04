@@ -23,9 +23,11 @@ Written 2026-09-29.
 
 ## Done
 
-Phases 0 (skeleton, 2026-09-29), 1 (the decisions, 2026-10-01) and 2 (the core domain and the
+Phases 0 (skeleton, 2026-09-29), 1 (the decisions, 2026-10-01), 2 (the core domain and the
 API, 2026-10-02, released as `0.1.0` on 2026-10-03 with a green pipeline, the images on Docker
-Hub and the chart in its Helm repository) are done and deleted from this file
+Hub and the chart in its Helm repository), 4 (OIDC and authorization) and 5 (the LLM interface,
+the workflow of Claude Code and the chat in the UI) — both built ahead of phase 3 and released
+as `0.3.0` on 2026-10-04 — are done and deleted from this file
 ([ADR 0002](../adr/0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
 D10): what they built is in the ADRs' `Status` sections and their index, how it works in
 [docs/developer/](../developer/README.md), and its gaps in [docs/security/](../security/README.md).
@@ -40,33 +42,6 @@ D2), and this section was consumed by them. By the owner's answer of 2026-10-03 
 moved here from phase 4: the browser never holds a token
 ([ADR 0035](../adr/0035-personal-access-tokens.md) D7), so the UI needs the login first
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)).
-
-## Phase 4 — OIDC and authorization (built 2026-10-04)
-
-**Goal:** people log in through the identity provider; only allowed groups get in; roles hold.
-The phase became a family ticket in [docs/tickets/](../tickets/README.md) when it started
-([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
-D2) and was built in the same change; the owner answered its open decisions on 2026-10-04. What it
-built is in the Status sections of ADR 0029–0035 and in
-[identity-provider.md](../security/identity-provider.md).
-
-## Phase 5 — The LLM interface, the VS Code workflow and the chat in the UI (built 2026-10-04)
-
-**Goal:** a Claude Code session in any bound repository starts with its ticket context and
-ends with the ticket updated by Claude; and in the UI, a chat panel at the right edge lets an
-agent operate cowork for the person, through a model the installation names — a local LM
-Studio first. The phase became tickets in [docs/tickets/](../tickets/README.md) when it started
-([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
-D2) and was built on the branch; the owner answered its open decisions on 2026-10-04, the chat's
-among them ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)). What it built is in the Status sections of ADR 0040–0045, ADR 0066–0070 and ADR 0076, in
-[claude-code.md](../operations/claude-code.md) and [chat.md](../operations/chat.md) for running it,
-[mcp.md](../developer/mcp.md) and [chat.md](../developer/chat.md) for changing it, and
-[agent-client.md](../security/agent-client.md) and [chat.md](../security/chat.md) for what it leaves
-open; the workflow document it consumed is deleted (ADR 0074 D3). Verified on 2026-10-04: the MCP
-server over stdio against a fresh backend, and the chat against LM Studio — a ticket filed, its
-urgency set to `now`, moved to `analysed`, each act the chat's, an act beyond the person's chosen
-capabilities refused, and Stop ending the turn and the model's generation at once. Not verified: a
-live `claude` session with the plugin, its hooks and its skills.
 
 ## Phase 6 — Import and cut-over
 
