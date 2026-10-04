@@ -127,12 +127,15 @@ jobs:
           dockerhub-password: ${{ secrets.DOCKERHUB_PAT }}
 
   # The MCP server for Claude Code, a static binary per platform with a
-  # SHA-256 file each, attached to the release (docs/adr/0041 D2).
+  # SHA-256 file each and a build provenance attestation, attached to the
+  # release (docs/adr/0041 D2).
   release-mcp:
     name: Release cowork-mcp Binaries
     runs-on: self-hosted
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -158,7 +161,14 @@ jobs:
               BUILD_TIME="$BUILD_TIME" MCP_OUT="$PWD/dist/$name"
             (cd dist && sha256sum "$name" > "$name.sha256")
           done
+          # The binaries, not their checksum files, are the subjects of the attestation.
+          cat dist/*.sha256 > subjects.sha256
           ls -l dist
+
+      - name: Attest the provenance of the binaries
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: subjects.sha256
 
       - name: Upload the binaries to the release
         uses: softprops/action-gh-release@v3
