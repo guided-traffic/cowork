@@ -19,8 +19,11 @@ type Caller struct {
 	// System names a system actor, "system:<name>"; empty for a person.
 	System string
 	// TokenID is the personal access token the request presented; uuid.Nil
-	// for a browser session.
-	TokenID uuid.UUID
+	// for a browser session. TokenName is its name, which an audit row
+	// records beside the id so that a reader who may not read the token's row
+	// still reads it (docs/adr/0036 D6); empty for a browser session.
+	TokenID   uuid.UUID
+	TokenName string
 	// SessionHash is the SHA-256 of the session cookie the request presented
 	// (docs/adr/0031 D1); the policies of the sessions table admit that one
 	// row to the request through it. It is never recorded in an audit row
@@ -37,6 +40,10 @@ type Caller struct {
 	Capabilities []string
 	// RequestID is the request's id (docs/adr/0047 D2).
 	RequestID uuid.UUID
+	// SourceHash is the keyed hash of the request's client address, which
+	// every audit row written for the request carries (docs/adr/0035 D2); nil
+	// for a job.
+	SourceHash []byte
 }
 
 type callerKey struct{}

@@ -19,6 +19,26 @@ version:
               build_time: '1759363200'
       default:
         $ref: './components/responses.yaml#/Problem'
+coworkYamlSchema:
+  get:
+    operationId: getCoworkYamlSchema
+    tags: [meta]
+    summary: The JSON Schema of a repository's `.cowork.yaml`
+    description: |
+      The optional binding file of a repository without a remote or of a fork
+      (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+      sub-directory of a monorepo it binds — and `url`, the installation it
+      belongs to. Unauthenticated, so an editor can load it.
+    security: []
+    responses:
+      '200':
+        description: The schema, JSON Schema draft 2020-12
+        content:
+          application/json:
+            schema:
+              type: object
+      default:
+        $ref: './components/responses.yaml#/Problem'
 document:
   get:
     operationId: getOpenAPI

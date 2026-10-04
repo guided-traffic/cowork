@@ -11,7 +11,22 @@ D10.
 
 **Implemented** in the change that wrote this record: `docs/planning/questions.md` is a
 tombstone that says where its content went; `project-plan.md` marks phase 1 as done and
-phase 2 as the next, to be ticketed in a dedicated session; `vscode-workflow.md` stays.
+phase 2 as the next, to be ticketed in a dedicated session; ~~`vscode-workflow.md` stays~~.
+
+**D3 fulfilled 2026-10-04.** Phase 5 built the workflow, and every step and building block of
+`vscode-workflow.md` was checked against [docs/operations/claude-code.md](../operations/claude-code.md),
+[docs/developer/mcp.md](../developer/mcp.md) and the records: the session start, the binding by
+remote and its override, the tools with their capabilities, the commit strings, the hooks, the
+skills, the `CLAUDE.md` block and the finish with its extraction reminder are built and described
+there ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)–[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md),
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)–[ADR 0069](0069-rules-stay-in-git-work-moves-to-cowork.md));
+the person-level views of its morning are [ADR 0018](0018-the-views-of-the-first-release.md) D3,
+not built; its cut-over of the other repositories moved into phase 6 of
+[the project plan](../planning/project-plan.md); its evening report across all tenants was never
+decided — [ADR 0018](0018-the-views-of-the-first-release.md) D8 leaves a view across tenants
+beyond D3 out of the first release — and its optional VS Code tasks file was never built. The file
+is deleted. **D4 not yet:** phases 6 and 7 have not started, so `docs/planning/` stays with the
+plan and the tombstone.
 
 ## Context
 
@@ -39,7 +54,8 @@ D5, which is ticket one. Phases 3 to 7 stay in `project-plan.md` until each star
 
 **D3 — `vscode-workflow.md` stays until phase 5 writes its steps into operations and
 developer pages;** every mechanism it describes is now decided (ADR 0040–0043, 0066–0071),
-and the page is the plan of record for building them.
+and the page is the plan of record for building them. *(Fulfilled 2026-10-04: the steps are
+in the operations and developer pages, and the file is deleted — Status above.)*
 
 **D4 — `docs/planning/` is deleted when the plan's last phase has started and the workflow
 document has been written into its pages,** as ADR 0002 D10 says.
@@ -71,5 +87,7 @@ conventional commit (`docs:` scope), on the owner's word; this record does not c
 
 - [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D10 — planning documents are transitional
 - [docs/adr/README.md](README.md) — the index every question became part of
-- [docs/planning/project-plan.md](../planning/project-plan.md), [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — what stays, and until when
+- [docs/planning/project-plan.md](../planning/project-plan.md) — what stays, and until when;
+  the workflow document it named is consumed into
+  [docs/operations/claude-code.md](../operations/claude-code.md) and [docs/developer/mcp.md](../developer/mcp.md)
 - [docs/tickets/README.md](../tickets/README.md) — where a new open question lives

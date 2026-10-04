@@ -7,7 +7,12 @@ beside the MCP server?": workflow subcommands on the MCP binary, case by case, o
 all, over a full command-line client, and over a third-party OpenAPI CLI. The rules of D4–D6
 were put to the owner with the question and not objected to.
 
-**Not built.** No `cowork-mcp`.
+**Partly built** (phase 5, 2026-10-04): D1, D3 and D4; of D2 `token check` and `lookup`, each
+with `--json` — `token check` reads `GET /api/v1/me/token` with an agent header, as the server
+does, so it reports the capabilities a session holds. `export` waits for the project export
+of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
+which does not exist; D5 with it. D6 — the integration tier runs the subcommands by their
+command line against the fixture environment, and once by running the built binary.
 
 ## Context
 

@@ -15,10 +15,16 @@ import { AnswerQuestion, AskQuestion, CommentComposer, LinkAdder } from './conve
 const ada: Member = {
   role: 'admin',
   person: { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' },
+  origins: [{ source: 'grant', role: 'admin' }],
+  local: true,
+  email: null,
 };
 const sam: Member = {
   role: 'member',
   person: { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' },
+  origins: [{ source: 'grant', role: 'member' }],
+  local: true,
+  email: null,
 };
 
 const key = 'acme/COW-12';
@@ -36,8 +42,10 @@ function question(overrides: Partial<Question> = {}): Question {
     answered_by: null,
     asked_by: ada.person,
     asked_by_agent: null,
+    asked_by_token: null,
     asked_of: null,
     recorded_by_agent: false,
+    answered_by_token: null,
     withdrawn_at: null,
     created_at: '2026-10-03T11:00:00Z',
     updated_at: '2026-10-03T11:00:00Z',

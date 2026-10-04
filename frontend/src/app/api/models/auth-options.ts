@@ -9,9 +9,16 @@ export interface AuthOptions {
   local: boolean;
 
   /**
-   * An identity provider is configured; none is built yet, so false
+   * The login page shows the identity provider's button: one is configured,
+   * and `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group —
+   * without either nobody may log in through it (docs/adr/0030 D1, D8)
    */
   oidc: boolean;
+
+  /**
+   * The provider's name on the button, "Sign in with <oidc_name>", `COWORK_OIDC_DISPLAY_NAME`; null without a provider
+   */
+  oidc_name: (string | null);
 
   /**
    * The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it

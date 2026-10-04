@@ -38,6 +38,12 @@ const (
 var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapOverrideUrgency,
 	CapInterest, CapUpload, CapCreateProject, CapRecordAnswer}
 
+// DefaultChatCapabilities is what the chat in the UI holds for a person who
+// never chose (docs/adr/0043 D5): every capability but decide, close and drop,
+// which the owner keeps a person's, and record-answer, because without a
+// confirmation an injected text could record an answer in the person's name.
+var DefaultChatCapabilities = []string{CapRank, CapOverrideUrgency, CapInterest, CapUpload, CapCreateProject}
+
 // Principal is who a request acts for, after authentication: a person through
 // a personal access token or through a browser session, resolved by one
 // authentication step (docs/adr/0031 D6).
@@ -45,13 +51,22 @@ type Principal struct {
 	PersonID    uuid.UUID
 	DisplayName string
 	// TokenID is the token the request presented; uuid.Nil for a session.
-	TokenID uuid.UUID
+	// TokenName is its name, which every act the request makes records
+	// beside it (docs/adr/0036 D6); empty for a session.
+	TokenID   uuid.UUID
+	TokenName string
 	// Session says the request was authenticated by the session cookie, and
 	// SessionHash is the SHA-256 of the cookie value it presented; both are
 	// zero for a token. The hash is what finds the session's row again and
 	// is recorded nowhere (docs/adr/0031 D7).
 	Session     bool
 	SessionHash []byte
+	// SessionMethod is how the session's person logged in, local or oidc
+	// (docs/adr/0031 D1); empty for a token.
+	SessionMethod string
+	// Provider says the person is one of the identity provider, whom the gate
+	// holds (docs/adr/0030 D1, docs/adr/0035 D8).
+	Provider bool
 	// Scope is the token's scope. A session has no scope of its own: it
 	// acts with the person's full role, which is what the scope admin
 	// leaves to the role (docs/adr/0035 D3).
@@ -113,11 +128,13 @@ func checkAgentPart(part string) error {
 	return nil
 }
 
-// Mark decides the agent mark and the capability set of a request: a flagged
-// token is an agent's whatever the header says, recorded by the header or as
-// unknown-agent; a plain token is an agent's only when the header says so,
-// and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
-// header is the validated header value or empty.
+// Mark decides the agent mark and the capability set of a token's request: a
+// flagged token is an agent's whatever the header says, recorded by the header
+// or as unknown-agent; a plain token is an agent's only when the header says
+// so, and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
+// header is the validated header value or empty. A session the header marks
+// holds the person's chat capabilities instead (docs/adr/0043 D5), which the
+// session's resolver reads.
 func Mark(flagged bool, tokenCapabilities []string, header string) (agent string, capabilities []string) {
 	switch {
 	case flagged && header != "":

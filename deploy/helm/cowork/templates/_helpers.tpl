@@ -205,3 +205,107 @@ or the release Secret rendered from the inline values. The existing Secret wins.
 {{- "password" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Whether the login through an identity provider is configured (docs/adr/0029
+D4): auth.oidc.issuer is set. It needs the public URL for the redirect URI, a
+client id and a client secret. Without the issuer the other auth.oidc values
+are not rendered, so emptying the issuer alone switches the provider off. A
+group name with a comma would split in COWORK_OIDC_ALLOWED_GROUPS and admit a
+group nobody listed.
+*/}}
+{{- define "cowork.oidcEnabled" -}}
+{{- $oidc := .Values.auth.oidc -}}
+{{- if $oidc.issuer -}}
+{{- if not .Values.backend.config.baseURL -}}
+{{- fail "set backend.config.baseURL: the identity provider redirects to <baseURL>/auth/callback (docs/adr/0029 D4)" -}}
+{{- end -}}
+{{- if not (or $oidc.clientId (and $oidc.existingSecret $oidc.keys.clientId)) -}}
+{{- fail "set auth.oidc.clientId, or auth.oidc.existingSecret with auth.oidc.keys.clientId" -}}
+{{- end -}}
+{{- if not $oidc.existingSecret -}}
+{{- fail "set auth.oidc.existingSecret: the client secret comes from a Secret only, never from the values (docs/adr/0058 D3)" -}}
+{{- end -}}
+{{- range toStrings $oidc.allowedGroups -}}
+{{- if contains "," . -}}
+{{- fail (printf "auth.oidc.allowedGroups: %q holds a comma, which separates the groups in COWORK_OIDC_ALLOWED_GROUPS and cannot be part of one" .) -}}
+{{- end -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The key of auth.oidc.existingSecret that holds the client secret
+(docs/adr/0058 D3).
+*/}}
+{{- define "cowork.oidcClientSecretKey" -}}
+{{- .Values.auth.oidc.keys.clientSecret }}
+{{- end }}
+
+{{/*
+Whether the chat is configured (docs/adr/0076): chat.providers holds at least
+one provider. Each needs an id the backend takes — the variables are named
+after it —, a kind the backend speaks, its URL and its model, and for
+anthropic its key, which comes from a Secret of its own and never from the
+values (docs/adr/0058 D3). Without a provider the limits are not rendered, so
+emptying the list alone switches the chat off; the backend refuses to start on
+a chat variable without it.
+*/}}
+{{- define "cowork.chatEnabled" -}}
+{{- $providers := .Values.chat.providers | default list -}}
+{{- if not (kindIs "slice" $providers) -}}
+{{- fail "chat.providers must be a list of providers, each with id, kind, url and model" -}}
+{{- end -}}
+{{- $seen := dict -}}
+{{- range $i, $p := $providers -}}
+{{- $at := printf "chat.providers[%d]" $i -}}
+{{- if not (kindIs "map" $p) -}}
+{{- fail (printf "%s must be a provider with id, kind, url and model" $at) -}}
+{{- end -}}
+{{- $id := toString ($p.id | default "") -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$" $id) -}}
+{{- fail (printf "%s.id must be 1 to 32 lowercase letters, digits and dashes, a dash neither first nor last" $at) -}}
+{{- end -}}
+{{- if hasKey $seen $id -}}
+{{- fail (printf "%s.id: %q names two providers" $at $id) -}}
+{{- end -}}
+{{- $_ := set $seen $id true -}}
+{{- $kind := lower (toString ($p.kind | default "")) -}}
+{{- if not (has $kind (list "openai" "anthropic")) -}}
+{{- fail (printf "%s.kind must be openai or anthropic" $at) -}}
+{{- end -}}
+{{- if not $p.url -}}
+{{- fail (printf "set %s.url: the provider's base URL, e.g. https://api.anthropic.com or http://ollama.ai.svc:11434/v1" $at) -}}
+{{- end -}}
+{{- if not $p.model -}}
+{{- fail (printf "set %s.model: the model by the name its provider knows it" $at) -}}
+{{- end -}}
+{{- if hasKey $p "apiKey" -}}
+{{- fail (printf "%s.apiKey: a provider's key comes from a Secret only, never from the values — set %s.existingSecret (docs/adr/0058 D3)" $at $at) -}}
+{{- end -}}
+{{- if and (eq $kind "anthropic") (not $p.existingSecret) -}}
+{{- fail (printf "set %s.existingSecret: anthropic needs an API key, and the key comes from a Secret only, never from the values (docs/adr/0058 D3)" $at) -}}
+{{- end -}}
+{{- end -}}
+{{- if $providers -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+COWORK_CHAT_PROVIDERS: the providers' ids in their order.
+*/}}
+{{- define "cowork.chatProviderIds" -}}
+{{- $ids := list -}}
+{{- range .Values.chat.providers }}{{ $ids = append $ids (toString .id) }}{{ end -}}
+{{- join "," $ids -}}
+{{- end }}
+
+{{/*
+The variable prefix of a chat provider: COWORK_CHAT_ and the id upper-cased,
+its dashes as underscores (config.ChatEnv).
+*/}}
+{{- define "cowork.chatEnv" -}}
+{{- printf "COWORK_CHAT_%s" (upper (replace "-" "_" (toString .))) -}}
+{{- end }}

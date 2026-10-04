@@ -13,7 +13,8 @@ import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { dateTime } from '../../shared/time';
 import { Accounts, flagMeanings } from './accounts';
-import { NewAccountDialog, roleMeanings } from './new-account-dialog';
+import { NewAccountDialog } from './new-account-dialog';
+import { roleMeanings } from './roles';
 import { ResetPasswordDialog } from './reset-password-dialog';
 
 function account(username: string, overrides: Partial<Account> = {}): Account {
@@ -51,7 +52,13 @@ const me = (username: string | null = 'ada'): Me => ({
   global_admin: false,
   local: true,
   password_change_required: false,
-  memberships: [{ role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } }],
+  memberships: [
+    {
+      role: 'admin',
+      tenant: { slug: 'acme', name: 'Acme Corp' },
+      origins: [{ source: 'grant', role: 'admin' }],
+    },
+  ],
 });
 
 function refusal(status: number, title: string, detail: string) {
@@ -233,6 +240,19 @@ describe('Accounts', () => {
       expect(testIds(fixture, 'ada')).not.toContain('flag-locked');
       expect(testIds(fixture, 'ada')).not.toContain('flag-password');
       expect(testIds(fixture, 'ada')).not.toContain('flag-deactivated');
+    });
+
+    it('says sign-in, as the rest of the UI does, never log in', async () => {
+      list.set([sam, kim]);
+      const fixture = await render();
+
+      expect(tooltipOf(fixture, 'flag-locked')).toBe(
+        'Failed sign-ins locked the account. Unlock it, or wait: a lock ends by itself when the installation lets it.',
+      );
+      expect(tooltipOf(fixture, 'flag-deactivated')).toContain(
+        'No sign-in, no token and no session; nothing reactivates it.',
+      );
+      expect(Object.values(flagMeanings).join(' ')).not.toMatch(/log ?in/i);
     });
 
     it('marks a deactivated account, with the day since when', async () => {
@@ -451,7 +471,8 @@ describe('Accounts', () => {
       const warning = host.querySelector('[role="alert"]')?.textContent ?? '';
       expect(warning).toContain('Shown once.');
       expect(warning).toContain('Give it to Sam Rivera yourself');
-      expect(warning).toContain('They must change it at their first login');
+      expect(warning).toContain('They must change it at their first sign-in');
+      expect(warning).not.toMatch(/log ?in/i);
     });
 
     it('holds the temporary password in one place only, and in none once the dialog is closed', async () => {
@@ -547,6 +568,33 @@ describe('Accounts', () => {
       expect(fixture.componentInstance['resetting']()).toBeNull();
       expect(fixture.componentInstance['secret']()).toBeNull();
     });
+
+    // The page is reused when only the tenant changes: an answer now would send the account of
+    // the tenant before to the tenant shown.
+    it.each([
+      ['the deactivation', 'account-deactivate-sam', 'Deactivate'],
+      ['ending the sessions', 'account-sessions-sam', 'End sessions'],
+    ])(
+      'closes the question of %s, whose answer would act in the tenant shown now',
+      async (_, testId, accept) => {
+        const dialog = () => document.body.querySelector('.p-confirmdialog');
+        const fixture = await render();
+        el(fixture, testId)?.click();
+        await settle(fixture);
+        expect(dialog()).not.toBeNull();
+
+        tenantSlug.set('globex');
+        await settle(fixture);
+
+        expect(dialog()).toBeNull();
+        [...document.body.querySelectorAll('button')]
+          .find((button) => button.textContent?.trim() === accept)
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(deactivate).not.toHaveBeenCalled();
+        expect(endSessions).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('the acts of a row', () => {
@@ -565,7 +613,7 @@ describe('Accounts', () => {
           expect.objectContaining({
             severity: 'success',
             summary: 'Account unlocked',
-            detail: 'sam can try to log in again.',
+            detail: 'sam can try to sign in again.',
           }),
         );
       });
@@ -596,6 +644,18 @@ describe('Accounts', () => {
         el(fixture, `account-sessions-${username}`)?.click();
         await settle(fixture);
       }
+
+      it('quotes the username as text, never as markup', async () => {
+        const fixture = await render();
+
+        fixture.componentInstance['endSessions'](account('<a href="x">y</a>'));
+        await settle(fixture);
+
+        expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toContain(
+          'Every session of <a href="x">y</a> ends',
+        );
+        expect(dialog()?.querySelector('a')).toBeNull();
+      });
 
       it('asks first, naming the account, and says that its tokens are not affected', async () => {
         const fixture = await render();
@@ -767,6 +827,7 @@ describe('Accounts', () => {
         await ask(fixture);
 
         expect(dialog()?.textContent).toContain('Deactivate sam?');
+        expect(dialog()?.textContent).toContain('No sign-in, no token and no session from now on');
         expect(dialog()?.textContent).toContain('nothing reactivates the account');
         expect(dialog()?.textContent).toContain('everything they did stay');
         expect(deactivate).not.toHaveBeenCalled();
@@ -807,7 +868,7 @@ describe('Accounts', () => {
           expect.objectContaining({
             severity: 'success',
             summary: 'Account deactivated',
-            detail: 'sam cannot log in any more.',
+            detail: 'sam cannot sign in any more.',
           }),
         );
       });

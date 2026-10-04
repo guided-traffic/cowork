@@ -204,6 +204,7 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 		"listAccounts": both, "unlockAccount": both, "deactivateAccount": both, "endAccountSessions": both,
 		"createMyToken": {session: true}, "changeMyPassword": {session: true}, "createTenant": {session: true}, "logout": {session: true},
 		"createAccount": {session: true}, "resetAccountPassword": {session: true},
+		"getChatAvailability": both, "runChatTurn": {session: true},
 		"getVersion": {}, "getOpenAPI": {}, "loginLocal": {}, "getAuthOptions": {},
 	} {
 		got, ok := opCredentials[id]
@@ -215,4 +216,28 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 			assert.True(t, originChecked(post), "the login is origin-checked")
 		}
 	}
+}
+
+// docs/adr/0036 D3, docs/adr/0035 D5: a session the header marks as an
+// agent's is refused what only a session does — a token, a password, a role
+// — after the CSRF check and before anything else; on a route either
+// credential takes, it passes on to the agent rules like any agent's request.
+func TestAnAgentSessionIsRefusedWhatOnlyASessionDoes(t *testing.T) {
+	const base = "https://cowork.example.com"
+	h := &handler{opts: Options{BaseOrigin: base}}
+	write := request(http.MethodPost, "Origin", base, "X-Requested-With", "cowork")
+	agent := auth.Principal{Session: true, Agent: "chat/m/c", Capabilities: auth.AllCapabilities}
+	person := auth.Principal{Session: true}
+	sessionOnly, either := credentials{session: true}, credentials{bearer: true, session: true}
+
+	for _, op := range []string{"createMyToken", "changeMyPassword", "setMemberGrant", "runChatTurn", "logout"} {
+		perr := h.sessionRules(write, agent, op, sessionOnly)
+		require.NotNil(t, perr, op)
+		assert.Equal(t, problem.AgentForbidden, perr.Code, op)
+		assert.Nil(t, h.sessionRules(write, person, op, sessionOnly), "a person's session may: %s", op)
+	}
+	assert.Nil(t, h.sessionRules(write, agent, "createTicket", either), "the agent rules decide the rest")
+	perr := h.sessionRules(request(http.MethodPost), agent, "createMyToken", sessionOnly)
+	require.NotNil(t, perr)
+	assert.Equal(t, problem.Csrf, perr.Code, "the CSRF check comes first")
 }

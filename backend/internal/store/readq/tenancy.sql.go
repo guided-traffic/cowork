@@ -13,6 +13,51 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
+const getMember = `-- name: GetMember :one
+SELECT u.id, u.username, u.display_name, u.email, max(m.role)::tenant_role AS role,
+       array_agg(m.source::text ORDER BY m.source)::text[] AS sources,
+       array_agg(m.role::text ORDER BY m.source)::text[] AS roles,
+       (u.username IS NOT NULL)::boolean AS local
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+WHERE m.tenant_id = $1 AND m.user_id = $2
+GROUP BY u.id, u.username, u.display_name, u.email
+`
+
+type GetMemberParams struct {
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+type GetMemberRow struct {
+	ID          uuid.UUID
+	Username    *string
+	DisplayName string
+	Email       *string
+	Role        domain.Role
+	Sources     []string
+	Roles       []string
+	Local       bool
+}
+
+// One member of the tenant, as the list shows them; no row when the person is
+// not a member.
+func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (GetMemberRow, error) {
+	row := q.db.QueryRow(ctx, getMember, arg.TenantID, arg.UserID)
+	var i GetMemberRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.Email,
+		&i.Role,
+		&i.Sources,
+		&i.Roles,
+		&i.Local,
+	)
+	return i, err
+}
+
 const getTenant = `-- name: GetTenant :one
 SELECT id, slug, name, version, time_visible_to_members, time_locked_until,
        members_create_projects, created_at, updated_at
@@ -46,6 +91,29 @@ func (q *Queries) GetTenant(ctx context.Context, tenantID uuid.UUID) (GetTenantR
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getTenantBySlug = `-- name: GetTenantBySlug :one
+SELECT id, slug, name
+FROM tenants
+WHERE slug = $1
+`
+
+type GetTenantBySlugRow struct {
+	ID   uuid.UUID
+	Slug string
+	Name string
+}
+
+// A tenant by slug, whoever is a member: the tenant boundary's read for a
+// global administrator who holds no role in it (docs/adr/0034 D2). The tenants
+// policy admits the row to a global administrator and to the tenant's members
+// only (migration 26), so for anybody else it is no row.
+func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (GetTenantBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getTenantBySlug, slug)
+	var i GetTenantBySlugRow
+	err := row.Scan(&i.ID, &i.Slug, &i.Name)
 	return i, err
 }
 
@@ -87,7 +155,9 @@ func (q *Queries) GetTenantForPerson(ctx context.Context, arg GetTenantForPerson
 const getUser = `-- name: GetUser :one
 SELECT u.id, u.username, u.display_name, u.deactivated_at, u.created_at, u.global_admin,
        (a.user_id IS NOT NULL)::boolean AS local,
-       COALESCE(a.password_change_required, false)::boolean AS password_change_required
+       COALESCE(a.password_change_required, false)::boolean AS password_change_required,
+       (u.oidc_issuer IS NOT NULL)::boolean AS provider, u.oidc_issuer, u.oidc_subject, u.oidc_groups,
+       u.oidc_groups_at, u.gate_checked_at
 FROM users u
 LEFT JOIN local_accounts a ON a.user_id = u.id
 WHERE u.id = $1
@@ -102,13 +172,21 @@ type GetUserRow struct {
 	GlobalAdmin            bool
 	Local                  bool
 	PasswordChangeRequired bool
+	Provider               bool
+	OidcIssuer             *string
+	OidcSubject            *string
+	OidcGroups             []string
+	OidcGroupsAt           *time.Time
+	GateCheckedAt          *time.Time
 }
 
 // The person with what the resolvers and GET /api/v1/me need: whether they are
 // a global administrator, whether they have a local account, and whether its
 // password must be changed before anything else (docs/adr/0033 D4). The
 // account row is the person's own to read, so another person's flags are not
-// this query's to answer.
+// this query's to answer. A person of the identity provider comes with their
+// groups as of the last login or refresh and when the token gate last checked
+// them (docs/adr/0035 D8).
 func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, userID)
 	var i GetUserRow
@@ -121,17 +199,26 @@ func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, er
 		&i.GlobalAdmin,
 		&i.Local,
 		&i.PasswordChangeRequired,
+		&i.Provider,
+		&i.OidcIssuer,
+		&i.OidcSubject,
+		&i.OidcGroups,
+		&i.OidcGroupsAt,
+		&i.GateCheckedAt,
 	)
 	return i, err
 }
 
 const listMembers = `-- name: ListMembers :many
-SELECT u.id, u.username, u.display_name, max(m.role)::tenant_role AS role
+SELECT u.id, u.username, u.display_name, u.email, max(m.role)::tenant_role AS role,
+       array_agg(m.source::text ORDER BY m.source)::text[] AS sources,
+       array_agg(m.role::text ORDER BY m.source)::text[] AS roles,
+       (u.username IS NOT NULL)::boolean AS local
 FROM memberships m
 JOIN users u ON u.id = m.user_id
 WHERE m.tenant_id = $1
   AND ($2::uuid IS NULL OR u.id > $2::uuid)
-GROUP BY u.id, u.username, u.display_name
+GROUP BY u.id, u.username, u.display_name, u.email
 ORDER BY u.id
 LIMIT $3
 `
@@ -146,11 +233,18 @@ type ListMembersRow struct {
 	ID          uuid.UUID
 	Username    *string
 	DisplayName string
+	Email       *string
 	Role        domain.Role
+	Sources     []string
+	Roles       []string
+	Local       bool
 }
 
 // The tenant's members by person id (docs/adr/0034 D7), a page after the
-// cursor's person.
+// cursor's person: the highest role, every source of it with its own role —
+// the mapping before the grant — whether the person is a local account rather
+// than one of the identity provider (docs/adr/0030 D4, docs/adr/0033), and
+// the address, which the handler shows the tenant's administrators only.
 func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]ListMembersRow, error) {
 	rows, err := q.db.Query(ctx, listMembers, arg.TenantID, arg.After, arg.PageSize)
 	if err != nil {
@@ -164,7 +258,11 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 			&i.ID,
 			&i.Username,
 			&i.DisplayName,
+			&i.Email,
 			&i.Role,
+			&i.Sources,
+			&i.Roles,
+			&i.Local,
 		); err != nil {
 			return nil, err
 		}
@@ -177,7 +275,9 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 }
 
 const listMembershipsOfUser = `-- name: ListMembershipsOfUser :many
-SELECT t.id AS tenant_id, t.slug, t.name, max(m.role)::tenant_role AS role
+SELECT t.id AS tenant_id, t.slug, t.name, max(m.role)::tenant_role AS role,
+       array_agg(m.source::text ORDER BY m.source)::text[] AS sources,
+       array_agg(m.role::text ORDER BY m.source)::text[] AS roles
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
 WHERE m.user_id = $1
@@ -190,9 +290,13 @@ type ListMembershipsOfUserRow struct {
 	Slug     string
 	Name     string
 	Role     domain.Role
+	Sources  []string
+	Roles    []string
 }
 
-// The person's tenants with the highest role in each (GET /api/v1/me).
+// The person's tenants with the highest role in each (GET /api/v1/me), and
+// every source of it with its own role, the mapping before the grant
+// (docs/adr/0030 D4).
 func (q *Queries) ListMembershipsOfUser(ctx context.Context, userID uuid.UUID) ([]ListMembershipsOfUserRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsOfUser, userID)
 	if err != nil {
@@ -207,7 +311,55 @@ func (q *Queries) ListMembershipsOfUser(ctx context.Context, userID uuid.UUID) (
 			&i.Slug,
 			&i.Name,
 			&i.Role,
+			&i.Sources,
+			&i.Roles,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTenants = `-- name: ListTenants :many
+SELECT t.slug, t.name, COALESCE(max(m.role)::text, '')::text AS role
+FROM tenants t
+LEFT JOIN memberships m ON m.tenant_id = t.id AND m.user_id = $1
+WHERE $2::text IS NULL OR t.slug > $2::text
+GROUP BY t.id, t.slug, t.name
+ORDER BY t.slug
+LIMIT $3
+`
+
+type ListTenantsParams struct {
+	UserID   uuid.UUID
+	After    *string
+	PageSize int32
+}
+
+type ListTenantsRow struct {
+	Slug string
+	Name string
+	Role string
+}
+
+// Every tenant of the installation by slug, a page after the cursor's slug,
+// with the person's highest role in each — ” where they hold none: the
+// tenant list of a global administrator (docs/adr/0034 D2), whom alone the
+// tenants policy shows every row.
+func (q *Queries) ListTenants(ctx context.Context, arg ListTenantsParams) ([]ListTenantsRow, error) {
+	rows, err := q.db.Query(ctx, listTenants, arg.UserID, arg.After, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantsRow{}
+	for rows.Next() {
+		var i ListTenantsRow
+		if err := rows.Scan(&i.Slug, &i.Name, &i.Role); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

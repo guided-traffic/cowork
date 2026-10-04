@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-03.
+tree on 2026-10-04.
 
 ## Projects, keys and the counter
 
@@ -23,6 +23,51 @@ reads both forms, splits at the last hyphen and refuses a number that is not pos
 leading zero or exceeds `int32`; the path's `{number}` stops at 2147483647 as well. Every answer
 carries the full key (`domain.FullKey`). `GET /api/v1/tickets/{tenant}/{key}` resolves a short
 key in one path segment to the same body and `ETag` as the ticket's own route.
+
+## Repositories
+
+A project owns zero or more repositories ([ADR 0006] D3), each bound by its normalised remote
+identity ([ADR 0066] D1), [`domain/repository.go`](../../backend/internal/domain/repository.go)
+and [`api/repositories.go`](../../backend/internal/api/repositories.go):
+
+- **The identity.** `NormaliseRemote` reduces an SSH, scp-style, git or HTTP(S) URL to
+  `host/path`: the scheme, the user, a default port, a trailing `.git` and trailing slashes
+  removed, the host lower-cased, the path's case and all of its segments kept;
+  `git@github.com:acme/app.git`, `https://github.com/acme/app` and
+  `ssh://git@github.com:22/acme/app/` are `github.com/acme/app`, and a non-default port stays
+  (`gitlab.example.com:2222/group/sub/repo`). A local path or a `file://` URL names no host and
+  binds nothing (`ErrNotARemote`). `TestNormaliseRemote` is the table.
+- **The binding** (`project_repositories`, migration 23) holds the identity, an optional
+  sub-directory of a monorepo (`NormaliseRepositoryPath`: relative, no `..`, `""` for the whole
+  repository) and the remote as it was last given, without credentials (`SanitiseRemote`: an
+  HTTP(S) URL loses its user information, another URL its password). The identity and the
+  sub-directory are unique in the tenant: a repository is in at most one project of a tenant
+  ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
+- **Binding and unbinding** (`POST`, `DELETE …/projects/{project}/repositories`) are the act of
+  creating a project (`creating`): an administrator, or a member while the tenant lets members
+  create projects, judged by the role in the project; `write`; an agent with `create-project`
+  ([ADR 0043] D4). Binding is idempotent over the identity and the sub-directory — `201` for a
+  new binding, `200` for one the project holds, its remote updated to the form given —, and one
+  another project of the tenant holds is `409 repository_bound`, naming that project only to a
+  caller who sees it. Unbinding answers `204` also when the binding is gone. The acts are
+  `linked`, `updated` and `unlinked` on the entity `repository`.
+- **Creating a project for a repository** (`POST …/projects` with `repository`,
+  [ADR 0066] D3, D5): the project, its counter and the binding in one act, `created` with the
+  repository in its `after`. When a project of the tenant binds the repository already the
+  answer is `200` with that project and nothing is created — `409 repository_bound` when the
+  caller cannot see it.
+- **The lookup** (`GET /api/v1/me/repositories/lookup`, D2) normalises every remote, keeps
+  their order, and reads each of the person's tenants — a token's restriction narrows them — for
+  the bindings of projects the caller sees. The first remote with a binding whose sub-directory
+  covers the working directory's (`PathCovers`) decides, the most specific sub-directory
+  first: one binding is `bound`, several `ambiguous`. With none, the proposal comes from the
+  first remote with an identity: the tenants where the caller may create a project — none for
+  a project-restricted token — narrowed to the only one (`only-tenant`), else to the one that
+  binds repositories under the same owner, the identity without its last segment (`remote-owner`;
+  several of them, or none, are the list to `choose` from); the repository's name as the name;
+  and per tenant a key free there — `ProposeProjectKey`, the initials of the parts a hyphen, an
+  underscore or a dot divides (`valkey-operator` is `VO`), else the first three letters, then
+  `KeyCandidate` with 2, 3, … appended until `ProjectKeyTaken` says free.
 
 ## Fields and vocabularies
 
@@ -275,6 +320,7 @@ A question belongs to a ticket and has a number there, taken under the ticket's 
 | edit (`If-Match`) | the asker, while it is open |
 | answer | the person asked, or any member when it is open in the tenant; a person changes their own answer, with `If-Match` |
 | answer as an agent | needs `record-answer`; the answer stays its person's, `recorded_by_agent` is set, and an agent changes only an answer an agent recorded ([ADR 0066] D8) |
+| answer through a token | the token is `answered_by_token`, an agent's or the person's own; every answer sets or clears it, so a changed answer carries its own ([ADR 0036] D6) |
 | withdraw | the asker; an agent only what an agent asked |
 
 A withdrawn question takes no answer; an answered or withdrawn one no edit.
@@ -284,7 +330,8 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
 [`comments.go`](../../backend/internal/api/comments.go), [ADR 0015]:
 
 - **The thread** is oldest first, `order=desc` reverses it. A comment is written by a person, or
-  by an agent in its person's name with the agent mark.
+  by an agent in its person's name with the agent mark; one written through a token carries the
+  token as well, and so does each revision ([who made an act](#who-made-an-act)).
 - **Edits** keep the previous text in `comment_revisions`. **Withdrawal** keeps the entry and
   hides its text: `body` is `null` in every answer and the revision list is empty. Nothing is
   deleted. A person changes their own comments and those their agents wrote; an agent only those
@@ -308,7 +355,7 @@ ticket's work and shows as `settled` once it is done or dropped ([ADR 0013]). `P
 sets the caller's own (`201` new, `200` changed or unchanged), `DELETE` removes it (`204`, also
 when there is none). `watch` is open to viewers; `need` and `urgent` need a member, and an agent
 needs `interest`; an agent may remove its person's stake. The act is `interest`, with the person
-as entity.
+as entity; the stake carries the mark of the write that set it ([who made an act](#who-made-an-act)).
 
 ## Progress
 
@@ -377,7 +424,35 @@ The stages move the state ([ADR 0009] D5), decided by the pure
   ([data-access.md](data-access.md#visibility-in-sql)); a ticket's list carries the visible sum
   (`total_minutes`), the tenant's list and the report (by ticket, project, person or tenant) answer
   JSON or CSV.
-- Time entries appear neither in a ticket's activity nor on the event stream.
+- Time entries appear neither in a ticket's activity nor on the event stream; an entry and each
+  revision carry the token they came through ([who made an act](#who-made-an-act)), which is where
+  a booking through a token shows.
+
+## Who made an act
+
+[ADR 0036] D1, D6: the actor of an act through a token is its person, and the act says it came
+through the token. Beside the agent mark (`agent`, `asked_by_agent`, `recorded_by_agent`,
+`reporter_agent`), the rows record the token's id and name, copied from the principal when the act
+is written (`actAgent`, `actToken`):
+
+| Row | Token columns | API |
+|---|---|---|
+| `tickets`, the filing | `reporter_token_id`, `reporter_token_name`, beside `reporter_agent` | `Ticket.reporter_agent`, `Ticket.reporter_token` |
+| `ticket_interest`, the stake as last set | `token_id`, `token_name`, beside `agent` | `Interest.agent`, `Interest.token` |
+| `audit_events` | `token_id`, `token_name` | `Activity.token`; the tenant's audit view `token_name` |
+| `comments`, `comment_revisions` | `token_id`, `token_name` | `Comment.token`, `CommentRevision.token` |
+| `attachments` | `token_id`, `token_name` | `Attachment.token` |
+| `questions` | `asked_by_token_id`, `asked_by_token_name`; `answered_by_token_id`, `answered_by_token_name` | `Question.asked_by_token`, `Question.answered_by_token` |
+| `time_entries`, `time_entry_revisions` | `token_id`, `token_name` | `TimeEntry.token`, `TimeEntryRevision.token` |
+
+A session's act — the chat's included — writes none. The name is a copy because a reader may not
+read another person's `tokens` row ([ADR 0021] D6) and must still read it after a revocation; it is
+`null` only on an audit row written before migration 27, which named the token by its id alone.
+A stake's write sets its mark or clears it, so the stake shows who set it as it stands. The context
+document and the summary of `session_start` name a plain token's act `through the token <name>`
+where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A link's creator and an
+urgency override's setter carry no mark of their own — no view of the UI shows them; the activity
+marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
 
 ## Not built
 
@@ -398,11 +473,14 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0014]: ../adr/0014-rank-is-the-decision-score-is-the-warning.md
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
+[ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0022]: ../adr/0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
+[ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

@@ -3,7 +3,8 @@
 # (docs/adr/0001 D3): the backend reads X-Forwarded-For from the networks of
 # backend.config.trustedProxies (docs/adr/0035 D2), so no pod but the proxy
 # in front of it may be able to reach it and write that header. Egress is not
-# restricted — the backend reaches the database, the object storage and DNS.
+# restricted — the backend reaches the database, the object storage, the
+# identity provider, the chat's providers and DNS.
 # Traffic from the node a pod runs on, which is where the kubelet's probes come
 # from, is always allowed (kubernetes.io, Network Policies).
 apiVersion: networking.k8s.io/v1

@@ -45,6 +45,8 @@ import { TicketMoves } from './ticket-moves';
 
 const ada = { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' };
 const sam = { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' };
+const script = { id: 'tok-1', name: 'ci-script' };
+const laptop = { id: 'tok-2', name: 'claude-laptop' };
 const now = Date.parse('2026-10-03T12:00:00Z');
 
 function ticket(overrides: Partial<Ticket> = {}): Ticket {
@@ -62,6 +64,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     confidential: false,
     assignee: sam,
     reporter: ada,
+    reporter_agent: null,
+    reporter_token: null,
     block: null,
     threat: null,
     parent: null,
@@ -100,8 +104,10 @@ function question(overrides: Partial<Question> = {}): Question {
     answered_by: null,
     asked_by: ada,
     asked_by_agent: null,
+    asked_by_token: null,
     asked_of: null,
     recorded_by_agent: false,
+    answered_by_token: null,
     withdrawn_at: null,
     created_at: '2026-10-03T11:00:00Z',
     updated_at: '2026-10-03T11:00:00Z',
@@ -115,6 +121,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     id: 'c-1',
     author: ada,
     agent: null,
+    token: null,
     body: 'Reproduced on the second board.',
     edited: false,
     explains: [],
@@ -134,6 +141,7 @@ function activity(overrides: Partial<Activity> = {}): Activity {
     actor: ada,
     actor_system: null,
     agent: null,
+    token: null,
     at: '2026-10-03T11:30:00Z',
     before: null,
     after: null,
@@ -165,6 +173,8 @@ function interest(person: Interest['person'], weight: Interest['weight'], note =
     person,
     weight,
     note,
+    agent: null,
+    token: null,
     settled: false,
     since: '2026-10-02T09:00:00Z',
     updated_at: '2026-10-02T09:00:00Z',
@@ -553,7 +563,7 @@ describe('TicketDetail', () => {
         'Recommended: Repaint',
       );
       expect(text(page, '[data-testid="question-2"] .meta')).toBe(
-        'asked by Ada Lovelace via claude · of Sam Rivera · 1 hour ago',
+        'asked by Ada Lovelace by the agent claude · of Sam Rivera · 1 hour ago',
       );
       expect(text(page, 'h2 .count')).toBe('1 open');
     });
@@ -606,6 +616,110 @@ describe('TicketDetail', () => {
       expect(text(withdrawn, 'p.small')).toBe('withdrawn');
       expect(text(page, 'h2 .count')).toBe('1 open');
     });
+
+    it('says who answered, and marks an answer an agent recorded in their name', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        questions: list(
+          question({
+            id: 'q-1',
+            number: 1,
+            status: 'answered',
+            answer: 'Reflow.',
+            answered_by: sam,
+            answered_at: '2026-10-03T11:00:00Z',
+            recorded_by_agent: true,
+          }),
+          question({
+            id: 'q-2',
+            number: 2,
+            status: 'answered',
+            answer: 'Repaint.',
+            answered_by: ada,
+            answered_at: '2026-10-03T11:00:00Z',
+          }),
+        ),
+      });
+
+      const [recorded, own] = [...page.querySelectorAll('.question.settled')] as HTMLElement[];
+      expect(text(recorded, '.meta')).toBe(
+        'answered by Sam Rivera · recorded by an agent · 1 hour ago',
+      );
+      expect(recorded.querySelector('[data-testid="agent-mark"]')?.getAttribute('data-agent')).toBe(
+        'agent',
+      );
+      expect(text(own, '.meta')).toBe('answered by Ada Lovelace · 1 hour ago');
+      expect(own.querySelector('[data-testid="agent-mark"]')).toBeNull();
+    });
+
+    it('marks a question asked through a token, by the token, and one an agent asked through it, by the agent', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        questions: list(
+          question({ id: 'q-1', number: 1, asked_by_token: script }),
+          question({
+            id: 'q-2',
+            number: 2,
+            asked_by_agent: 'claude-code/opus/s-1',
+            asked_by_token: laptop,
+          }),
+        ),
+      });
+
+      expect(text(page, '[data-testid="question-1"] .meta')).toBe(
+        'asked by Ada Lovelace through the token ci-script · 1 hour ago',
+      );
+      const plain = page.querySelector('[data-testid="question-1"] [data-testid="agent-mark"]');
+      expect(plain?.getAttribute('data-token')).toBe('tok-1');
+      expect(plain?.hasAttribute('data-agent')).toBe(false);
+      expect(text(page, '[data-testid="question-2"] .meta')).toBe(
+        'asked by Ada Lovelace by the agent claude-code (claude-code/opus/s-1), through the token claude-laptop · 1 hour ago',
+      );
+    });
+
+    it("marks an answer recorded through a token, the person's own or an agent's", async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        questions: list(
+          question({
+            id: 'q-1',
+            number: 1,
+            status: 'answered',
+            answer: 'Reflow.',
+            answered_by: sam,
+            answered_at: '2026-10-03T11:00:00Z',
+            answered_by_token: script,
+          }),
+          question({
+            id: 'q-2',
+            number: 2,
+            status: 'answered',
+            answer: 'Repaint.',
+            answered_by: sam,
+            answered_at: '2026-10-03T11:00:00Z',
+            recorded_by_agent: true,
+            answered_by_token: laptop,
+          }),
+        ),
+      });
+
+      const [byToken, byAgent] = [...page.querySelectorAll('.question.settled')] as HTMLElement[];
+      expect(text(byToken, '.meta')).toBe(
+        'answered by Sam Rivera · recorded through the token ci-script · 1 hour ago',
+      );
+      expect(byToken.querySelector('[data-testid="agent-mark"]')?.hasAttribute('data-agent')).toBe(
+        false,
+      );
+      expect(text(byAgent, '.meta')).toBe(
+        'answered by Sam Rivera · recorded by an agent, through the token claude-laptop · 1 hour ago',
+      );
+      expect(byAgent.querySelector('[data-testid="agent-mark"]')?.getAttribute('data-token')).toBe(
+        'tok-2',
+      );
+    });
   });
 
   describe('the comments', () => {
@@ -628,8 +742,23 @@ describe('TicketDetail', () => {
       });
 
       expect(text(page, '[data-testid="comment-c-7"] .meta')).toBe(
-        'Ada Lovelace via claude · 2 hours ago · edited',
+        'Ada Lovelace by the agent claude · 2 hours ago · edited',
       );
+    });
+
+    it('marks a comment written through a token with the token, beside its author', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        comments: list(comment({ id: 'c-7', token: script }), comment({ id: 'c-8' })),
+      });
+
+      expect(text(page, '[data-testid="comment-c-7"] .meta')).toBe(
+        'Ada Lovelace through the token ci-script · 2 hours ago',
+      );
+      expect(
+        page.querySelector('[data-testid="comment-c-8"] [data-testid="agent-mark"]'),
+      ).toBeNull();
     });
 
     it('shows a withdrawn comment as withdrawn instead of its text', async () => {
@@ -710,8 +839,34 @@ describe('TicketDetail', () => {
       });
 
       const [first, second] = [...page.querySelectorAll('.activity li')] as HTMLElement[];
-      expect(text(first, '.agent')).toBe('claude');
-      expect(second.querySelector('.agent')).toBeNull();
+      const mark = first.querySelector('[data-testid="agent-mark"]');
+      expect(mark?.getAttribute('data-agent')).toBe('claude');
+      expect(mark?.querySelector('.pi-microchip-ai')).not.toBeNull();
+      expect(second.querySelector('[data-testid="agent-mark"]')).toBeNull();
+    });
+
+    it("marks an act made through a token, and an agent's act with its token as well", async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        activity: list(
+          activity({ id: 'a-1', token: script }),
+          activity({ id: 'a-2', agent: 'claude', token: laptop }),
+          activity({ id: 'a-3' }),
+        ),
+      });
+
+      const [byToken, byAgent, own] = [...page.querySelectorAll('.activity li')] as HTMLElement[];
+      const plain = byToken.querySelector('[data-testid="agent-mark"]');
+      expect(plain?.getAttribute('data-token')).toBe('tok-1');
+      expect(plain?.hasAttribute('data-agent')).toBe(false);
+      expect(plain?.querySelector('.pi-microchip-ai')).not.toBeNull();
+      expect(text(byToken, '.what')).toBe('Ada Lovelace transitioned');
+      expect(text(byToken, '[data-testid="agent-mark"]')).toBe('through the token ci-script');
+      const agent = byAgent.querySelector('[data-testid="agent-mark"]');
+      expect(agent?.getAttribute('data-agent')).toBe('claude');
+      expect(agent?.getAttribute('data-token')).toBe('tok-2');
+      expect(own.querySelector('[data-testid="agent-mark"]')).toBeNull();
     });
 
     it('shows a skeleton until the activity is loaded', async () => {
@@ -1116,6 +1271,104 @@ describe('TicketDetail', () => {
 
       expect(update).toHaveBeenCalledTimes(2);
       expect(update).toHaveBeenLastCalledWith('acme/COW-12', { severity: 'low' });
+    });
+
+    it('quotes what changed as text, never as markup', async () => {
+      update.mockRejectedValueOnce(
+        new StaleWrite(
+          {
+            status: 412,
+            code: 'precondition_failed',
+            title: 'The ticket changed',
+            detail: 'The ticket changed since you read it.',
+            fields: {},
+            current: {},
+          },
+          ticket({ assignee: { id: 'p9', display_name: '<a href="x">y</a>' } }),
+        ),
+      );
+      show();
+      const { fixture } = await render();
+
+      fixture.debugElement
+        .query(By.css('[data-testid="field-assignee"]'))
+        .triggerEventHandler('ngModelChange', 'p1');
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      const dialog = document.body.querySelector('.p-confirmdialog');
+      expect(dialog?.querySelector('.p-confirmdialog-message')?.textContent).toContain(
+        'assignee: now {"id":"p9","display_name":"<a href=\\"x\\">y</a>"}, yours p1.',
+      );
+      expect(dialog?.querySelector('a')).toBeNull();
+    });
+
+    // The page is reused when the path names another ticket or another tenant. Answered then,
+    // the question would write the change onto the ticket shown now, where the fields stay, or
+    // onto the ticket the page no longer shows.
+    describe('when the page turns elsewhere before it is answered', () => {
+      async function asked() {
+        update.mockRejectedValueOnce(
+          new StaleWrite(
+            {
+              status: 412,
+              code: 'precondition_failed',
+              title: 'The ticket changed',
+              detail: 'The ticket changed since you read it.',
+              fields: {},
+              current: {},
+            },
+            ticket({ severity: 'critical' }),
+          ),
+        );
+        show();
+        const { fixture } = await render();
+        fixture.debugElement
+          .query(By.css('[data-testid="field-severity"]'))
+          .triggerEventHandler('ngModelChange', 'low');
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+        expect(document.body.querySelector('.p-confirmdialog')?.textContent).toContain(
+          'Changed meanwhile',
+        );
+        return fixture;
+      }
+
+      /** Answers the question, if it is still there, by writing over the newer version. */
+      async function writeMine(fixture: ComponentFixture<TicketDetail>) {
+        [...(document.body.querySelector('.p-confirmdialog')?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent?.trim() === 'Write mine')
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+      }
+
+      it('drops the question for another ticket, which would take the change', async () => {
+        cache.put('acme/COW-13', ticket({ id: 't-13', key: 'acme/COW-13', number: 13 }));
+        const fixture = await asked();
+
+        fixture.componentRef.setInput('key', 'COW-13');
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+        await writeMine(fixture);
+        expect(update).toHaveBeenCalledOnce();
+      });
+
+      it('drops the question for another tenant', async () => {
+        const fixture = await asked();
+
+        tenant.set('globex');
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+        await writeMine(fixture);
+        expect(update).toHaveBeenCalledOnce();
+      });
     });
   });
 

@@ -13,21 +13,29 @@ import (
 )
 
 const getSessionByHash = `-- name: GetSessionByHash :one
-SELECT id, user_id, created_at, last_seen_at, expires_at
+SELECT id, user_id, created_at, last_seen_at, expires_at, method, groups_refreshed_at,
+       (refresh_token_sealed IS NOT NULL)::boolean AS refreshable, refresh_retry_at
 FROM sessions
 WHERE token_hash = $1
 `
 
 type GetSessionByHashRow struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	CreatedAt  time.Time
-	LastSeenAt time.Time
-	ExpiresAt  time.Time
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	CreatedAt         time.Time
+	LastSeenAt        time.Time
+	ExpiresAt         time.Time
+	Method            string
+	GroupsRefreshedAt *time.Time
+	Refreshable       bool
+	RefreshRetryAt    *time.Time
 }
 
 // The resolver's lookup: the policy admits the row whose hash the transaction
 // set in app.session_hash, and no other (docs/adr/0031 D1, D6).
+// A session of the identity provider's login comes with what its groups
+// refresh needs to know (docs/adr/0030 D5): when the groups were last read,
+// whether a refresh token is kept, and the earliest next attempt.
 func (q *Queries) GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSessionByHashRow, error) {
 	row := q.db.QueryRow(ctx, getSessionByHash, tokenHash)
 	var i GetSessionByHashRow
@@ -37,6 +45,10 @@ func (q *Queries) GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSe
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.Method,
+		&i.GroupsRefreshedAt,
+		&i.Refreshable,
+		&i.RefreshRetryAt,
 	)
 	return i, err
 }

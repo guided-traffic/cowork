@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,8 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
+	"github.com/guided-traffic/cowork/backend/internal/llm"
+	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
@@ -119,29 +122,46 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 
+	// The identity provider is discovered before anything else is kept: a
+	// configured issuer that cannot be discovered refuses the start, like an
+	// invalid configuration value (docs/adr/0029 D4).
+	identity, err := discoverIssuer(ctx, cfg, logger)
+	if err != nil {
+		logger.Error("identity provider discovery failed", "error", err)
+		return 1
+	}
+
 	// The configured administrator and bootstrap tenant, after the migrations and
 	// before the first request (docs/adr/0032 D2, D8).
-	if err := bootstrap.Sync(ctx, db, bootstrap.Params{
+	params := bootstrap.Params{
 		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
 		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
-	}, logger); err != nil {
+	}
+	if cfg.OIDC != nil {
+		params.AdminGroup = cfg.OIDC.AdminGroup
+	}
+	if err := bootstrap.Sync(ctx, db, params, logger); err != nil {
 		logger.Error("bootstrap failed", "error", err)
 		return 1
 	}
 
 	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson)
 	go db.Listen(ctx, hub.Publish, hub.SetUp)
-	var objects *storage.Client
-	if cfg.Storage != nil {
-		if objects, err = storage.New(*cfg.Storage); err != nil {
-			logger.Error("object storage setup failed", "error", err)
-			return 1
-		}
-	} else {
-		logger.Warn("no object storage configured; attachments cannot be uploaded", "variable", config.EnvS3Endpoint)
+	objects, err := objectStorage(cfg, logger)
+	if err != nil {
+		logger.Error("object storage setup failed", "error", err)
+		return 1
 	}
 	if len(cfg.TrustedProxies) > 0 {
 		logger.Info("client addresses are read through trusted proxies", "variable", config.EnvTrustedProxies, "networks", cfg.TrustedProxies)
+	}
+	// The chat's tool calls go through the whole server, which is built
+	// after the API it serves: the loop reads it at the first turn.
+	var root http.Handler
+	chatOptions, err := chatOf(ctx, cfg, func() http.Handler { return root }, logger)
+	if err != nil {
+		logger.Error("chat setup failed", "error", err)
+		return 1
 	}
 	apiHandler, err := api.New(api.Options{
 		DB:                     db,
@@ -169,21 +189,84 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		TokenDefaultLifetime: cfg.TokenDefaultLifetime,
 		TokenMaxLifetime:     cfg.TokenMaxLifetime,
 		TrustedProxies:       cfg.TrustedProxies,
+		OIDC:                 identity,
+		Chat:                 chatOptions,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
 		return 1
 	}
-	handler := httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
+	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
 	go runJobs(ctx, db, logger, cfg.SessionIdle)
 
 	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
-	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, handler, cfg.ShutdownTimeout, hub.Close); err != nil {
+	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, root, cfg.ShutdownTimeout, hub.Close); err != nil {
 		logger.Error("server stopped with error", "error", err)
 		return 1
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// objectStorage is the configuration's object storage, or nil without one,
+// which the start says (docs/adr/0016 D1).
+func objectStorage(cfg config.Config, logger *slog.Logger) (*storage.Client, error) {
+	if cfg.Storage == nil {
+		logger.Warn("no object storage configured; attachments cannot be uploaded", "variable", config.EnvS3Endpoint)
+		return nil, nil
+	}
+	return storage.New(*cfg.Storage)
+}
+
+// chatOf is the chat of the configuration (docs/adr/0076), or nil without a
+// provider. The start says which providers and models the chat talks to —
+// never a URL or a key. The signal that ends the server ends the turns that
+// run (docs/adr/0054 D9).
+func chatOf(ctx context.Context, cfg config.Config, root func() http.Handler, logger *slog.Logger) (*api.ChatOptions, error) {
+	c := cfg.Chat
+	if c == nil {
+		return nil, nil
+	}
+	opts := &api.ChatOptions{TurnTimeout: c.TurnTimeout, MaxSteps: c.MaxSteps, TurnsPerPerson: c.Turns, Shutdown: ctx, Loopback: root}
+	for _, p := range c.Providers {
+		provider, err := llm.New(llm.Config{Format: p.Kind, URL: p.URL, APIKey: p.APIKey, Model: p.Model})
+		if err != nil {
+			return nil, err
+		}
+		opts.Providers = append(opts.Providers, api.ChatProvider{ID: p.ID, Name: p.Name, Kind: p.Kind, Model: p.Model, Provider: provider})
+		logger.Info("the chat talks to a model", "variable", config.EnvChatProviders, "provider", p.ID, "kind", p.Kind, "model", p.Model)
+	}
+	logger.Info("the chat's limits", "turn_timeout", c.TurnTimeout, "max_steps", c.MaxSteps, "turns_per_person", c.Turns)
+	return opts, nil
+}
+
+// discoverIssuer discovers the configured identity provider (docs/adr/0029 D1,
+// D4), or returns the zero options when none is configured. A gate that admits
+// nobody is said once at the start: the login page then offers no button
+// (docs/adr/0030 D8).
+func discoverIssuer(ctx context.Context, cfg config.Config, logger *slog.Logger) (api.OIDCOptions, error) {
+	o := cfg.OIDC
+	if o == nil {
+		return api.OIDCOptions{}, nil
+	}
+	discoverCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	provider, err := oidc.Discover(discoverCtx, oidc.Config{
+		Issuer: o.Issuer, ClientID: o.ClientID, ClientSecret: o.ClientSecret, RedirectURL: cfg.BaseOrigin + "/auth/callback",
+		Scopes: o.Scopes, GroupsClaim: o.GroupsClaim, Logger: logger,
+	})
+	if err != nil {
+		return api.OIDCOptions{}, err
+	}
+	if !o.Admits() {
+		logger.Warn("the identity provider's gate admits nobody: name a group in COWORK_OIDC_ALLOWED_GROUPS or COWORK_ADMIN_GROUP")
+	}
+	logger.Info("identity provider discovered", "issuer", o.Issuer, "allowed_groups", len(o.AllowedGroups),
+		"administrator_group", o.AdminGroup != "", "groups_refresh", o.GroupsRefresh, "groups_max_age", o.GroupsMaxAge,
+		"email_trusted", o.EmailTrusted)
+	return api.OIDCOptions{Provider: provider, AllowedGroups: o.AllowedGroups, AdminGroup: o.AdminGroup,
+		GroupsRefresh: o.GroupsRefresh, GroupsMaxAge: o.GroupsMaxAge, EmailTrusted: o.EmailTrusted,
+		DisplayName: o.DisplayName}, nil
 }
 
 // requireForServe checks what only `cowork serve` needs: the server key, and

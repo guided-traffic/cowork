@@ -6,9 +6,11 @@ FROM questions
 WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id = sqlc.arg(ticket_id);
 
 -- name: InsertQuestion :one
-INSERT INTO questions (tenant_id, ticket_id, number, question, options, recommendation, asked_by, asked_by_agent, asked_of)
+INSERT INTO questions (tenant_id, ticket_id, number, question, options, recommendation, asked_by, asked_by_agent,
+                       asked_by_token_id, asked_by_token_name, asked_of)
 VALUES (sqlc.arg(tenant_id), sqlc.arg(ticket_id), sqlc.arg(number), sqlc.arg(question), sqlc.arg(options),
-        sqlc.arg(recommendation), sqlc.arg(asked_by), sqlc.narg(asked_by_agent), sqlc.narg(asked_of))
+        sqlc.arg(recommendation), sqlc.arg(asked_by), sqlc.narg(asked_by_agent), sqlc.narg(asked_by_token_id),
+        sqlc.narg(asked_by_token_name), sqlc.narg(asked_of))
 RETURNING id;
 
 -- name: UpdateQuestion :one
@@ -21,9 +23,12 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND version = sqlc.a
 RETURNING version;
 
 -- name: AnswerQuestion :one
+-- Every answer records how it came, replacing what an earlier one recorded:
+-- the agent's, and the token's or none (docs/adr/0066 D8, docs/adr/0036 D6).
 UPDATE questions
 SET answer = sqlc.arg(answer), status = 'answered', answered_by = sqlc.arg(answered_by), answered_at = now(),
-    recorded_by_agent = sqlc.arg(recorded_by_agent), version = version + 1, updated_at = now()
+    recorded_by_agent = sqlc.arg(recorded_by_agent), answered_by_token_id = sqlc.narg(answered_by_token_id),
+    answered_by_token_name = sqlc.narg(answered_by_token_name), version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND version = sqlc.arg(version) AND status <> 'withdrawn'
 RETURNING version;
 

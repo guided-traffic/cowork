@@ -17,7 +17,9 @@ database (the nginx proxy path included). **Not built:** the end-to-end tier (D2
 Amended 2026-10-02 (D2's integration row and D3: the integration tier needs an S3-compatible
 server since attachments exist). Re-verified on 2026-10-02 for the backend tiers, the chart and
 the images after phase 2. Amended 2026-10-03 (this Status, D2's unit row and the residual
-risks: the runners and secrets are verified, the backend has no SPA fallback).
+risks: the runners and secrets are verified, the backend has no SPA fallback). Amended 2026-10-04
+(D2's integration row and D3: the integration tier needs an OpenID Connect issuer, the Dex of
+`make dex-up`, since the login through the identity provider exists).
 ~~**Not verified:** that the `self-hosted` runner pool of the sibling project serves this
 repository, and that the repository secrets the workflows name exist (D9); both are open
 questions in the planning catalog.~~ *(Amended 2026-10-03: verified for this repository in
@@ -45,7 +47,7 @@ a bump is a missing file and installs itself.
 | Tier | Target | Build tag | Needs | Proves |
 |---|---|---|---|---|
 | Backend unit | `make test-unit` | none | nothing running | Configuration parsing, the handler, ~~the SPA fallback~~ *(amended 2026-10-03: the backend serves no UI since the two containers of [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md))*, the server lifecycle, the migration set's well-formedness — against `httptest`, `fstest.MapFS` and injected lookups |
-| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`; *(added 2026-10-02)* an S3-compatible server at `COWORK_TEST_S3_*` (`make minio-up`) | What only the database decides: the migrations apply and are idempotent, the schema relies on 18, the recorded version matches; *(added 2026-10-02)* the store and the whole API against both servers, every response checked against the document |
+| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`; *(added 2026-10-02)* an S3-compatible server at `COWORK_TEST_S3_*` (`make minio-up`); *(added 2026-10-04)* an OpenID Connect issuer at `COWORK_TEST_OIDC_ISSUER` (`make dex-up`; `make dev-up` starts all three) | What only the database decides: the migrations apply and are idempotent, the schema relies on 18, the recorded version matches; *(added 2026-10-02)* the store and the whole API against both servers, every response checked against the document |
 | Frontend unit | `make frontend-test` | — (vitest, jsdom) | Node.js | Components and services against `HttpTestingController`; no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | The chart lints strictly and renders with each `ci/*-values.yaml` |
 | Container | the `container-malware-scan` job, one leg per image | — | Docker | Each `Containerfile` builds from its own directory on a clean checkout; each image passes Trivy at CRITICAL/HIGH |
@@ -54,8 +56,9 @@ a bump is a missing file and installs itself.
 
 **D3 — No `-short`, no `testing.Short()`, no skip on a missing dependency.** The integration
 tier fails when `COWORK_TEST_DATABASE_URL` is unset and says how to set it *(amended
-2026-10-02: and when the `COWORK_TEST_S3_*` variables of the attachment tests are)*. A test CI
-never runs is not a test.
+2026-10-02: and when the `COWORK_TEST_S3_*` variables of the attachment tests are)* *(amended
+2026-10-04: and when `COWORK_TEST_OIDC_ISSUER` is unset or its discovery does not answer)*. A test
+CI never runs is not a test.
 
 **D4 — A gate that is not required is not a gate.** The `semantic-release` job lists every
 verification job in `needs:`; a new job is added to that list in the change that adds it.

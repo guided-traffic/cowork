@@ -30,6 +30,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
+	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
@@ -102,6 +103,37 @@ type Options struct {
 	// right through them. Empty: the TCP peer is the client and the header is
 	// never read (docs/adr/0035 D2, docs/adr/0033 D6).
 	TrustedProxies []netip.Prefix
+	// OIDC is the identity provider and its gate; the zero value is none
+	// (docs/adr/0029, docs/adr/0030).
+	OIDC OIDCOptions
+	// Chat is the chat in the UI; nil configures none, and every tenant
+	// answers that it has no chat (docs/adr/0076).
+	Chat *ChatOptions
+}
+
+// OIDCOptions is the identity provider the browser logs in through, and the
+// groups that decide who may (docs/adr/0029 D4, docs/adr/0030 D1, D5, D8).
+type OIDCOptions struct {
+	// Provider is the discovered issuer; nil without one, and then the gate
+	// admits nobody: a person of a provider that is no longer configured is
+	// refused (docs/adr/0030 D8).
+	Provider *oidc.Provider
+	// AllowedGroups and AdminGroup are the gate; a member of AdminGroup is a
+	// global administrator.
+	AllowedGroups []string
+	AdminGroup    string
+	// GroupsRefresh is how often a session's groups are read again and a
+	// token's person is checked against the gate; zero means the default.
+	GroupsRefresh time.Duration
+	// GroupsMaxAge is how old a person's stored groups may be for their tokens
+	// to work (docs/adr/0035 D8); zero means the default.
+	GroupsMaxAge time.Duration
+	// EmailTrusted lets a grant by e-mail address match a person about whose
+	// address the issuer said nothing (docs/adr/0030 D3); false matches only
+	// an address the issuer marked verified.
+	EmailTrusted bool
+	// DisplayName is the provider's name on the login page's button.
+	DisplayName string
 }
 
 // handler is the API: the router over the document, the generated mux and
@@ -124,6 +156,23 @@ type handler struct {
 	fingerprintKey []byte
 	// trusted are the proxies the client address is walked through.
 	trusted trustedProxies
+	// sourceKey keys the hash of the client address an audit row carries
+	// (docs/adr/0035 D2).
+	sourceKey []byte
+	// loginSealer seals the state of a login through the identity provider
+	// into its cookie, refreshSealer a session's refresh token
+	// (docs/adr/0031 D1).
+	loginSealer, refreshSealer auth.Sealer
+	// noRefreshToken and noGroups warn once per process: an issuer that gives
+	// no refresh token leaves a session on its login's groups, and one whose
+	// refresh carries no groups claim makes the refresh read nothing
+	// (docs/adr/0030 D5).
+	noRefreshToken, noGroups sync.Once
+	// turns are the turns of the chat each person runs on this replica: the
+	// count COWORK_CHAT_TURNS_PER_PERSON bounds, and what DELETE …/chat/turns
+	// stops.
+	turnsMu sync.Mutex
+	turns   map[uuid.UUID]map[*runningTurn]struct{}
 }
 
 // New builds the API handler. It fails only when the embedded document does
@@ -156,11 +205,15 @@ func New(opts Options) (http.Handler, error) {
 		mux:     http.NewServeMux(),
 		logger:  opts.Logger,
 		touched: map[uuid.UUID]string{},
+		turns:   map[uuid.UUID]map[*runningTurn]struct{}{},
 
 		addressKey:     newAddressKey(opts.SessionKey),
 		dummyHash:      dummy,
 		fingerprintKey: newFingerprintKey(opts.SessionKey),
 		trusted:        newTrustedProxies(opts.TrustedProxies),
+		sourceKey:      newSourceKey(opts.SessionKey),
+		loginSealer:    auth.NewSealer(opts.SessionKey, auth.LabelOIDCLogin),
+		refreshSealer:  auth.NewSealer(opts.SessionKey, auth.LabelRefreshToken),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
 		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes))}
@@ -198,6 +251,12 @@ func withDefaults(o *Options) {
 	}
 	if o.TokenMaxLifetime <= 0 {
 		o.TokenMaxLifetime = config.DefaultTokenMaxLifetime
+	}
+	if o.OIDC.GroupsRefresh <= 0 {
+		o.OIDC.GroupsRefresh = config.DefaultOIDCGroupsRefresh
+	}
+	if o.OIDC.GroupsMaxAge <= 0 {
+		o.OIDC.GroupsMaxAge = config.DefaultOIDCGroupsMaxAge
 	}
 }
 
@@ -238,17 +297,17 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := withClient(withAccept(r.Context(), r.Header.Get("Accept")), r, h.trusted)
 	opID := route.Operation.OperationID
 	if accepts := credentialsOf(h.doc, route.Operation); accepts.any() {
-		p, perr := h.authenticate(r, accepts)
+		p, perr := h.authenticate(r.WithContext(ctx), accepts)
 		if perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
-		if perr := h.sessionRules(r, p, opID); perr != nil {
+		if perr := h.sessionRules(r, p, opID, accepts); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
 		ctx = auth.WithPrincipal(ctx, p)
-		ctx = store.WithCaller(ctx, callerOf(p, requestid.UUID(ctx)))
+		ctx = store.WithCaller(ctx, callerOf(p, requestid.UUID(ctx), h.sourceHash(clientFrom(ctx).Client)))
 	} else if originChecked(route.Operation) {
 		if perr := h.checkOrigin(r); perr != nil {
 			problem.Write(w, r, perr)
@@ -273,6 +332,15 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveEvents(w, r)
 		return
 	}
+	h.serveOperation(w, r.WithContext(ctx), route, pathParams)
+}
+
+// serveOperation holds an admitted request to the request timeout, the body
+// limit and the document, and serves it: a turn of the chat by serveChat,
+// every other operation by the generated server.
+func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *routers.Route, pathParams map[string]string) {
+	ctx := r.Context()
+	unlimited := ctx
 	if h.opts.RequestTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, h.opts.RequestTimeout)
@@ -288,11 +356,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, perr)
 		return
 	}
-	if h.opts.ValidateResponses {
+	switch {
+	case route.Operation.OperationID == opRunChatTurn:
+		// The request timeout bounded reading the body; a turn has a limit
+		// of its own and streams (docs/adr/0039 D2).
+		h.serveChat(w, r.WithContext(unlimited))
+	case h.opts.ValidateResponses:
 		h.serveValidated(w, r, route, pathParams)
-		return
+	default:
+		h.mux.ServeHTTP(w, r)
 	}
-	h.mux.ServeHTTP(w, r)
 }
 
 // writeRouteError answers a request no operation of the document matches:
@@ -328,16 +401,32 @@ func originChecked(op *openapi3.Operation) bool {
 	return v
 }
 
+// openQuery reports whether an operation takes query parameters the document
+// does not name: the identity provider's callback, to which the issuer may add
+// its own, such as iss or session_state, without cowork assuming any of them
+// (docs/adr/0029 D1).
+func openQuery(op *openapi3.Operation) bool {
+	v, _ := op.Extensions["x-cowork-open-query"].(bool)
+	return v
+}
+
 // sessionRules are what holds a request authenticated by a session and no
-// other: the CSRF check on its writes (docs/adr/0037 D1), and the temporary
-// password that has to be changed before anything else (docs/adr/0033 D4). A
-// token's request has no cookie, and neither applies (docs/adr/0035 D7).
-func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string) *problem.Error {
+// other: the CSRF check on its writes (docs/adr/0037 D1); what only a session
+// does, which is a person's and never an agent's — a session marked as an
+// agent's by its header is refused it, so the mark cannot make a token, change
+// a password or give access (docs/adr/0035 D5, docs/adr/0043 D3); and the
+// temporary password that has to be changed before anything else
+// (docs/adr/0033 D4). A token's request has no cookie, and none of them
+// applies (docs/adr/0035 D7).
+func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string, accepts credentials) *problem.Error {
 	if !p.Session {
 		return nil
 	}
 	if perr := h.csrf(r); perr != nil {
 		return perr
+	}
+	if p.IsAgent() && !accepts.bearer {
+		return problem.New(problem.AgentForbidden, "hard-off: what only a browser session does is a person's act, never an agent's")
 	}
 	if p.PasswordChangeRequired && !whileChangingPassword[opID] {
 		return problem.New(problem.PasswordChangeRequired, "the password of this account is temporary: change it with PUT /api/v1/me/password first")
@@ -347,16 +436,19 @@ func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string) *
 
 // callerOf turns the principal into what the store records on its acts. The
 // session's hash is what finds its row again; the audit rows never carry it
-// (docs/adr/0031 D7).
-func callerOf(p auth.Principal, requestID uuid.UUID) store.Caller {
+// (docs/adr/0031 D7). They carry the hash of the client address instead
+// (docs/adr/0035 D2).
+func callerOf(p auth.Principal, requestID uuid.UUID, sourceHash []byte) store.Caller {
 	return store.Caller{
 		UserID:              p.PersonID,
 		TokenID:             p.TokenID,
+		TokenName:           p.TokenName,
 		SessionHash:         p.SessionHash,
 		RestrictedProjectID: p.RestrictedProjectID,
 		Agent:               p.Agent,
 		Capabilities:        p.Capabilities,
 		RequestID:           requestID,
+		SourceHash:          sourceHash,
 	}
 }
 

@@ -242,7 +242,7 @@ func TestMutateWritesTheActWithItsCallersFacts(t *testing.T) {
 	require.NoError(t, err)
 	requestID := uuid.Must(uuid.NewV7())
 	ctx := store.WithCaller(context.Background(), store.Caller{
-		UserID: w.AdminA, TokenID: tokenID, Agent: "claude-code/opus/s1",
+		UserID: w.AdminA, TokenID: tokenID, TokenName: "laptop", Agent: "claude-code/opus/s1",
 		Capabilities: []string{"decide", "close"}, RequestID: requestID,
 	})
 
@@ -258,26 +258,34 @@ func TestMutateWritesTheActWithItsCallersFacts(t *testing.T) {
 		}
 		wr.Record(store.Event{EntityType: "tenant", EntityID: w.A, Action: "updated",
 			Before: map[string]string{"name": got.Name}, After: map[string]string{"name": "Renamed"}})
+		wr.Record(store.Event{EntityType: "tenant", EntityID: w.A, Action: "refused", System: "system:identity-provider"})
 		return nil
 	})
 	require.NoError(t, err)
 
 	var (
 		actor, token, request uuid.UUID
-		agent                 string
+		agent, name           string
 		caps                  []string
 		after                 []byte
 	)
 	require.NoError(t, fixtures(t).QueryRow(context.Background(),
-		`SELECT actor_user_id, token_id, request_id, agent, agent_capabilities, after
+		`SELECT actor_user_id, token_id, token_name, request_id, agent, agent_capabilities, after
 		 FROM audit_events WHERE tenant_id = $1 AND action = 'updated' AND entity_id = $1`, w.A).
-		Scan(&actor, &token, &request, &agent, &caps, &after))
+		Scan(&actor, &token, &name, &request, &agent, &caps, &after))
 	assert.Equal(t, w.AdminA, actor)
 	assert.Equal(t, tokenID, token)
+	assert.Equal(t, "laptop", name, "the token's name beside its id (docs/adr/0036 D6)")
 	assert.Equal(t, requestID, request)
 	assert.Equal(t, "claude-code/opus/s1", agent)
 	assert.Equal(t, []string{"decide", "close"}, caps)
 	assert.JSONEq(t, `{"name":"Renamed"}`, string(after))
+
+	n, err := fixtures(t).QueryCount(context.Background(), `SELECT count(*) FROM audit_events
+		WHERE tenant_id = $1 AND action = 'refused' AND actor_system = 'system:identity-provider' AND request_id = $2
+		  AND actor_user_id IS NULL AND agent IS NULL AND token_id IS NULL AND token_name IS NULL`, w.A, requestID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "a system actor's act in the request carries the request, never the caller's token")
 }
 
 func TestMutateCommitsNothingWithoutAnActOrOnError(t *testing.T) {
@@ -502,12 +510,15 @@ func TestTokenRefusalsAreBounded(t *testing.T) {
 	require.NoError(t, err)
 
 	for range 5 {
-		require.NoError(t, db.RecordTokenRefusal(ctx, rec, "revoked", uuid.Must(uuid.NewV7())))
+		require.NoError(t, db.RecordTokenRefusal(ctx, rec, "revoked", uuid.Must(uuid.NewV7()), nil))
 	}
-	require.NoError(t, db.RecordTokenRefusal(ctx, rec, "expired", uuid.Must(uuid.NewV7())))
+	require.NoError(t, db.RecordTokenRefusal(ctx, rec, "expired", uuid.Must(uuid.NewV7()), nil))
 	n, err := f.QueryCount(ctx, `SELECT count(*) FROM audit_events WHERE token_id = $1 AND action = 'refused'`, id)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, n, "one row per reason within the hour")
+	n, err = f.QueryCount(ctx, `SELECT count(*) FROM audit_events WHERE token_id = $1 AND token_name = 'fixture'`, id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, n, "a refusal names the token as every act does (docs/adr/0036 D6)")
 }
 
 func TestTouchTokenLastUsedOncePerDay(t *testing.T) {

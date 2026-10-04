@@ -52,7 +52,9 @@ export function summarise(
 
 /**
  * The tenant's front page: each project with its open tickets by state, and what changed last.
- * One list request feeds both, and the event stream keeps it current.
+ * One list request feeds both, and the event stream keeps it current. A global administrator
+ * without a role in the tenant sees its name only, under the offer to grant themselves a role: its
+ * work is its members' (docs/adr/0034 D2).
  */
 @Component({
   selector: 'app-tenant-overview',
@@ -70,7 +72,7 @@ export class TenantOverview {
 
   /** The newest open tickets, numbered so the answer carries the total (docs/adr/0048 D2). */
   private readonly open = this.tickets.tenantTickets(() => {
-    const tenant = this.session.tenant();
+    const tenant = this.session.workTenant();
     return tenant ? { tenant, page: 1, per_page: pageSize } : undefined;
   });
 

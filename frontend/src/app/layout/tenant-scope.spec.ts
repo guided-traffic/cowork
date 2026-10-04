@@ -1,20 +1,38 @@
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { MessageService } from 'primeng/api';
 import { EventStreamService } from '../core/event-stream.service';
+import { MembersService } from '../core/members.service';
 import { SessionService } from '../core/session.service';
 import { TenantScope } from './tenant-scope';
 
 describe('TenantScope', () => {
-  let session: { enter: ReturnType<typeof vi.fn<(tenant: string | null) => void>> };
+  let session: {
+    enter: ReturnType<typeof vi.fn<(tenant: string | null) => void>>;
+    oversight: WritableSignal<boolean>;
+  };
   let stream: { connect: ReturnType<typeof vi.fn<(tenant: string | null) => void>> };
 
   beforeEach(() => {
-    session = { enter: vi.fn() };
+    session = { enter: vi.fn(), oversight: signal(false) };
     stream = { connect: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: SessionService, useValue: session },
+        MessageService,
+        {
+          provide: SessionService,
+          // What the offer of the grant reads besides; its own spec tests it.
+          useValue: {
+            ...session,
+            tenant: signal('acme'),
+            shown: signal(undefined),
+            person: signal(undefined),
+            membership: signal(undefined),
+          },
+        },
+        { provide: MembersService, useValue: { setGrant: vi.fn() } },
         { provide: EventStreamService, useValue: stream },
       ],
     });
@@ -53,6 +71,39 @@ describe('TenantScope', () => {
 
     expect(session.enter).toHaveBeenLastCalledWith(null);
     expect(stream.connect).toHaveBeenLastCalledWith(null);
+  });
+
+  it('offers no grant and opens the stream in a tenant the person works in', async () => {
+    const fixture = await mount('acme');
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-self-grant')).toBeNull();
+    expect(stream.connect).toHaveBeenLastCalledWith('acme');
+  });
+
+  describe('a global administrator without a role in the tenant (docs/adr/0034 D2)', () => {
+    it('is offered the grant above the page, and the stream of the tenant stays closed', async () => {
+      session.oversight.set(true);
+
+      const fixture = await mount('acme');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('app-self-grant')).not.toBeNull();
+      expect(host.querySelector('.offer app-self-grant')).not.toBeNull();
+      expect(host.querySelector('.offer + router-outlet')).not.toBeNull();
+      expect(session.enter).toHaveBeenLastCalledWith('acme');
+      expect(stream.connect).toHaveBeenCalledExactlyOnceWith(null);
+    });
+
+    it('opens the stream, and the offer goes, once the grant made them a member', async () => {
+      session.oversight.set(true);
+      const fixture = await mount('acme');
+
+      session.oversight.set(false);
+      await fixture.whenStable();
+
+      expect(stream.connect).toHaveBeenLastCalledWith('acme');
+      expect((fixture.nativeElement as HTMLElement).querySelector('app-self-grant')).toBeNull();
+    });
   });
 
   it('hands the page to the child routes through a router outlet', async () => {

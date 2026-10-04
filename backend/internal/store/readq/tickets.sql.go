@@ -53,6 +53,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
+       t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
@@ -117,6 +118,9 @@ type GetTicketByNumberRow struct {
 	ReporterID                uuid.UUID
 	ReporterUsername          *string
 	ReporterName              *string
+	ReporterAgent             *string
+	ReporterTokenID           *uuid.UUID
+	ReporterTokenName         *string
 	AssigneeID                *uuid.UUID
 	AssigneeUsername          *string
 	AssigneeName              *string
@@ -178,6 +182,9 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 		&i.ReporterID,
 		&i.ReporterUsername,
 		&i.ReporterName,
+		&i.ReporterAgent,
+		&i.ReporterTokenID,
+		&i.ReporterTokenName,
 		&i.AssigneeID,
 		&i.AssigneeUsername,
 		&i.AssigneeName,

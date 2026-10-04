@@ -40,11 +40,15 @@ const (
 )
 
 // Params is what the configuration says. Username and Password come together or
-// not at all, as do TenantSlug and TenantName, and a tenant needs the
-// administrator (internal/config checks all three).
+// not at all, as do TenantSlug and TenantName, and a tenant needs somebody to
+// administer it — the local administrator or the administrator group of the
+// identity provider (internal/config checks all three).
 type Params struct {
 	Username, Password     string
 	TenantSlug, TenantName string
+	// AdminGroup is COWORK_ADMIN_GROUP: the bootstrap tenant gets a mapping
+	// that makes its members administrators (docs/adr/0032 D6).
+	AdminGroup string
 }
 
 // Sync makes the database say what Params says, once the advisory lock is its.
@@ -93,12 +97,11 @@ func (s syncer) run(ctx context.Context, w *store.Writer) error {
 			}
 		}
 	}
-	if s.p.Username == "" {
-		return nil
-	}
-	adminID, err := s.keepAdministrator(ctx, w)
-	if err != nil {
-		return err
+	adminID := uuid.Nil
+	if s.p.Username != "" {
+		if adminID, err = s.keepAdministrator(ctx, w); err != nil {
+			return err
+		}
 	}
 	return s.keepTenant(ctx, w, adminID)
 }
@@ -258,9 +261,12 @@ func (s syncer) setPassword(ctx context.Context, w *store.Writer, id uuid.UUID, 
 	return nil
 }
 
-// keepTenant creates the bootstrap tenant when none exists and gives the local
-// administrator a marked grant as its administrator (docs/adr/0032 D6, D7). When
-// a tenant exists the variables do nothing, whatever they say.
+// keepTenant creates the bootstrap tenant when none exists, gives the local
+// administrator — when one is configured — a marked grant as its
+// administrator, and maps the administrator group — when one is configured —
+// to its admin role (docs/adr/0032 D6, D7, docs/adr/0030 D2). When a tenant
+// exists the variables do nothing, whatever they say. The members of the
+// group get their membership at their next login or groups refresh.
 func (s syncer) keepTenant(ctx context.Context, w *store.Writer, adminID uuid.UUID) error {
 	if s.p.TenantSlug == "" {
 		return nil
@@ -283,14 +289,28 @@ func (s syncer) keepTenant(ctx context.Context, w *store.Writer, adminID uuid.UU
 	if err := w.InsertTenant(ctx, writeq.InsertTenantParams{ID: id, Slug: s.p.TenantSlug, Name: s.p.TenantName}); err != nil {
 		return fmt.Errorf("create the bootstrap tenant: %w", err)
 	}
-	if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: grantID, TenantID: id, UserID: adminID, Role: domain.RoleAdmin}); err != nil {
-		return fmt.Errorf("grant the administrator the bootstrap tenant: %w", err)
-	}
 	w.Record(store.Event{EntityType: entityTenant, EntityID: id, Action: actionCreated,
 		After: map[string]any{"slug": s.p.TenantSlug, "name": s.p.TenantName}})
-	w.Record(store.Event{EntityType: entityMembership, EntityID: grantID, Action: actionCreated,
-		After: map[string]any{"tenant": s.p.TenantSlug, "user": adminID, "role": domain.RoleAdmin, "source": "grant"}})
-	s.logger.Info("the bootstrap tenant is created", "slug", s.p.TenantSlug)
+	if adminID != uuid.Nil {
+		if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: grantID, TenantID: id, UserID: adminID, Role: domain.RoleAdmin}); err != nil {
+			return fmt.Errorf("grant the administrator the bootstrap tenant: %w", err)
+		}
+		w.Record(store.Event{EntityType: entityMembership, EntityID: grantID, Action: actionCreated,
+			After: map[string]any{"tenant": s.p.TenantSlug, "user": adminID, "role": domain.RoleAdmin, "source": "grant"}})
+	}
+	if s.p.AdminGroup != "" {
+		mappingID, err := uuid.NewV7()
+		if err != nil {
+			return err
+		}
+		if err := w.InsertGroupMapping(ctx, writeq.InsertGroupMappingParams{ID: mappingID, TenantID: id, GroupName: s.p.AdminGroup,
+			Role: domain.RoleAdmin}); err != nil {
+			return fmt.Errorf("map the administrator group to the bootstrap tenant: %w", err)
+		}
+		w.Record(store.Event{EntityType: "group_mapping", EntityID: mappingID, Action: actionCreated,
+			After: map[string]any{"tenant": s.p.TenantSlug, "group": s.p.AdminGroup, "role": domain.RoleAdmin}})
+	}
+	s.logger.Info("the bootstrap tenant is created", "slug", s.p.TenantSlug, "administrator_group", s.p.AdminGroup != "")
 	return nil
 }
 

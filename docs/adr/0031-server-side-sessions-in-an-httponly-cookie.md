@@ -4,7 +4,20 @@
 
 Accepted, amended 2026-10-03 (D1–D4, D6, D7 made concrete by the first implementation, which
 has no identity provider yet; D2's claim that development needs no exception measured false for
-Safari, so development serves HTTPS). Date: 2026-10-01. Decided by the owner as the answer to the
+Safari, so development serves HTTPS) and 2026-10-04 (D1, D3: the groups snapshot, its refresh and
+the sealed refresh token built; D4: the issuer's logout is handed to the browser, not called; D6:
+twelve routes take a session only; D7: the identity provider's ends), and again on 2026-10-04 after
+the security review (D3: the refresh claims a lease and holds nothing while it asks the issuer; D4:
+the sessions of a person of another issuer end at once), and for the chat in the UI (D6: thirteen
+routes and the consent field take a session only; the agent header marks a session's request), and
+on 2026-10-04 by the owner's answer to "does a change of the server key end the sessions of the
+identity provider?" (D1: there is one server key and no rotation that keeps the old one; a change
+fails closed, and its consequences are named), and for the global administrator's view of the
+installation's tenants (D6: fourteen routes, [ADR 0035](0035-personal-access-tokens.md) D5), and
+on 2026-10-04 by the owner's answers on the chat
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md); D6:
+sixteen routes, no consent field; a session's request the agent header marks holds the person's
+chat capabilities; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -15,11 +28,24 @@ to the owner with the question and explicitly confirmed.
 job, revocation by delete and the audit rows
 ([`api/session.go`](../../backend/internal/api/session.go),
 [`store/sessions.go`](../../backend/internal/store/sessions.go),
-[docs/security/sessions.md](../security/sessions.md)). Not built, because they belong to the
+[docs/security/sessions.md](../security/sessions.md)). ~~Not built, because they belong to the
 identity provider that does not exist yet: D1's groups snapshot, its refresh time and the
 encrypted refresh token, D3's refresh, and D4's ends by leaving the allow-list and through the
-issuer's `end_session_endpoint`. D7's list of one's own sessions has no route: a person ends
+issuer's `end_session_endpoint`.~~ D7's list of one's own sessions has no route: a person ends
 their other sessions by changing their password.
+
+**Built** (phase 4, 2026-10-04): D1's groups snapshot, its time and the sealed refresh token, D3's
+refresh, and D4's ends by leaving the allow-list, by the issuer's refusal and through the issuer's
+`end_session_endpoint` — the columns of
+[migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql), the
+refresh in [`api/identity.go`](../../backend/internal/api/identity.go) and
+[`store/identity.go`](../../backend/internal/store/identity.go), the sealing in
+[`auth/seal.go`](../../backend/internal/auth/seal.go)
+([docs/security/identity-provider.md](../security/identity-provider.md)). A person of the identity
+provider has no password, so no way to end their own other sessions. ~~Not built: D1's rotation that
+keeps the old key for decryption — a changed `COWORK_SESSION_KEY` ends every provider session that
+holds a refresh token at its next refresh.~~ *(Amended 2026-10-04 by the owner: D1 no longer decides a
+rotation that keeps the old key; what a change of the key does is D1's rule, and built.)*
 
 ## Context
 
@@ -38,14 +64,56 @@ person, the groups snapshot and the time of the last refresh (ADR 0030 D5), crea
 last-seen times, and a hash of the user agent. The cookie value is 256 random bits; only its
 hash is stored. The identity provider's ID and access tokens are verified and discarded; a
 refresh token is stored only if the groups refresh needs it, encrypted at rest with a server
-key (`COWORK_SESSION_KEY`, a Secret in the chart, rotated by issuing a new key and keeping
-the old for decryption until every session that used it is gone). *(Amended 2026-10-03: the row
+key (`COWORK_SESSION_KEY`, a Secret in the chart, ~~rotated by issuing a new key and keeping
+the old for decryption until every session that used it is gone~~ *(not built, 2026-10-04: below)*
+*(amended 2026-10-04 by the owner, below: one key, no old one kept)*).
+*(Amended 2026-10-03: the row
 holds the person, `token_hash`, `user_agent_hash` — which nothing compares yet —, and
 `created_at`, `last_seen_at` and `expires_at`, three times the backend writes from its own
-clock; the groups snapshot arrives with the identity provider. No refresh token exists to
-encrypt, so `COWORK_SESSION_KEY` is not used for sessions: it signs the list cursors and,
+clock; the groups snapshot arrives with the identity provider. ~~No refresh token exists to
+encrypt, so `COWORK_SESSION_KEY` is not used for sessions:~~ it signs the list cursors and,
 derived by HKDF with a label of its own, keys the hash of a login's source address
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D6).)*
+*(Amended 2026-10-04: a session of the identity provider's login has the `method` `oidc` — a local
+login's is `local` — the groups of its login or last refresh with their time (`groups`,
+`groups_refreshed_at`), and the earliest next refresh after the issuer could not be reached
+(`refresh_retry_at`). The refresh token is kept whenever the issuer gives one — the default scopes
+ask for `offline_access` ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D4) — in `refresh_token_sealed`: AES-256-GCM under a key derived from `COWORK_SESSION_KEY` by
+HKDF-SHA256 with the label `cowork oidc refresh token v1`, a random nonce, and the session's cookie
+hash as additional data, so it opens for its own session only. **Not built: the rotation that keeps
+the old key for decryption.** There is one key and no old one is kept, so a new server key leaves
+the stored tokens unopenable, and each such session ends at its next refresh, its person logging in
+again — the change fails closed. The ID and access tokens are verified, used and discarded.)*
+*(Amended 2026-10-04, the owner's answer to "does a change of the server key end the sessions of the
+identity provider?", over building a `COWORK_SESSION_KEY_PREVIOUS` that opens what the old key
+sealed until the sessions holding it have ended: **there is one server key and no previous one is
+kept.** A session lives twelve hours at most, a change of the key is rare and deliberate, and a
+second key would be one more Secret to handle. Every key cowork derives from `COWORK_SESSION_KEY` by
+HKDF-SHA256 under a label of its own changes with it
+([`api/api.go`](../../backend/internal/api/api.go) `New`), and a change of the key does this, each
+verified in the code:*
+- *every sealed refresh token becomes unreadable (`cowork oidc refresh token v1`,
+  [`auth/seal.go`](../../backend/internal/auth/seal.go)), so every session of the identity provider
+  that holds one ends at its next groups refresh — `revoked`, cause `identity-provider` — and its
+  person signs in again: the change fails closed. A provider session without a refresh token is not
+  affected;*
+- *a login through the provider under way at the moment fails with `oidc_failed`: its state cookie
+  was sealed under the old key (`cowork oidc login v1`);*
+- *the list cursors clients hold stop working, `400 invalid_cursor` (the cursor codec's keys);*
+- *the login throttle's count of an address starts over, because the address is hashed under a key
+  derived from it (`cowork login address v1`); the lockout of a username, which is kept by the
+  username, stays;*
+- *the audit rows' source hashes before and after the change cannot be compared: one address gets
+  another hash (`cowork audit address v1`);*
+- *a retry of an idempotent request whose key was stored before the change, within the key's
+  twenty-four hours, no longer matches its stored fingerprint — an HMAC under a key derived from it
+  (`cowork idempotency fingerprint v1`) — and is refused as `422 idempotency_mismatch`: neither
+  replayed nor run a second time;*
+- *the sessions of the local login survive: a session row is found by the SHA-256 of its cookie,
+  which no key enters, and so is a personal access token.*
+*The operations page names the same list for the operator
+([installation.md](../operations/installation.md#the-secrets)).)*
 
 **D2 — Cookie attributes:** `HttpOnly; Secure; SameSite=Lax; Path=/`, no `Domain`. The
 cookie's name is fixed. `Secure` is set in every environment; ~~browsers treat `localhost` as
@@ -68,10 +136,25 @@ D5). *(Amended 2026-10-03: a request moves the idle clock at most once a minute,
 absolute limit, and the backend's clock decides both limits. The job is `session-expiry`, at
 start and hourly; it keeps the table small and enforces nothing — a session past a limit is
 refused at its next request whether or not the job has run. An open event stream checks its
-session at every heartbeat and ends with it, and does not extend the idle limit.)*
+session at every heartbeat and ends with it, and does not extend the idle limit.)* *(Amended
+2026-10-04: a session of the identity provider refreshes its groups on its first request after
+`COWORK_OIDC_GROUPS_REFRESH`, inside the resolver and before the request is served, ~~under a lock of
+its row so that concurrent requests and replicas refresh once~~, and at an open stream's heartbeat
+without moving the idle clock; what the refresh decides is
+[ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D5.)* *(Amended after the security review, 2026-10-04: the refresh happens once because one request
+claims it by a thirty-second lease on the row, in a short transaction; the issuer is asked with no
+connection and no lock held, and a second short transaction applies the answer under the row's lock
+while the lease is the claimant's. Concurrent requests and replicas find the lease taken and are
+served on the session's groups without waiting.)*
 
-**D4 — Revocation is a delete, and it is immediate.** Logout deletes the row (and calls the
-issuer's `end_session_endpoint` when discovery names one). Leaving the allow-list,
+**D4 — Revocation is a delete, and it is immediate.** Logout deletes the row ~~(and calls the
+issuer's `end_session_endpoint` when discovery names one)~~ *(amended 2026-10-04: and, for a
+session of the identity provider whose issuer's discovery names an `end_session_endpoint`, answers
+`200` with `end_session_url` — that endpoint with `client_id` and `post_logout_redirect_uri` =
+`COWORK_BASE_URL` + `/login`, without `id_token_hint`, since no ID token is kept — for the browser to
+go to: an RP-initiated logout the browser carries out; cowork does not call the issuer. Every other
+logout answers `204`)*. Leaving the allow-list,
 deactivation of the person ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D5), and an administrator's "end all sessions of this person" delete rows; the next request
 with a deleted session's cookie is unauthenticated. *(Amended 2026-10-03: the rows are deleted
@@ -82,6 +165,12 @@ deactivation of it, every session of the account; and by the start-up synchronis
 local administrator's configured password changed or the account is deactivated. "An
 administrator" is the administrator of the tenant that manages the account
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1).)*
+*(Amended 2026-10-04: and by the identity provider — every session of a person whom a groups
+refresh, or a login refused at the gate, finds outside the allow-list; the one session whose refresh
+token the issuer refuses, or which no longer opens after the server key changed; ~~each session of a
+provider that is no longer configured, at its next refresh~~ *(amended after the security review:
+every session of a person who is not the configured issuer's — of another issuer, or of a provider
+no longer configured — at the first request of any of them)*.)*
 
 **D5 — Session fixation and binding.** The session id is created at login, never before, and
 never re-used; a login while a session exists replaces it. The cookie is bound to no path
@@ -98,11 +187,29 @@ credentials never combine, a token's request is never held to the CSRF check of
 a cookie never rides on a token's authority; otherwise the cookie decides, on an operation whose
 security requirement in the API document names it. A session has no scope of its own — the
 pipeline writes `admin`, which leaves every decision to the person's role — and the principal
-carries the cookie's hash, to find the row again, never the row's id. Six routes take a session
+carries the cookie's hash, to find the row again, never the row's id. ~~Six~~ routes take a session
 only and answer a token `403 session_required`: creating a token, a tenant or a local account,
 resetting a password, changing one's own password and logging out
 ([ADR 0035](0035-personal-access-tokens.md) D5,
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1, D5).)*
+*(Amended 2026-10-04: ~~twelve~~ routes — the six above and the administration acts that can give
+access: adding a member, setting a grant, making or changing a group mapping, restricting or opening
+a project, putting a person on its access list (ADR 0035 D5).)* *(Amended 2026-10-04 for the chat in
+the UI, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
+thirteen routes, a turn of the chat the thirteenth ~~and one field — switching the tenant's
+`chat_external_allowed` on — that a token is refused~~ (ADR 0035 D5). A session cookie still yields
+the person with no agent flag, but an `X-Cowork-Agent` header on the session's request marks that
+request as an agent's, ~~every capability~~ the capabilities the person chose for the chat
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5, amended again 2026-10-04) and the hard-off list
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3): the chat's tool calls are such requests, and such a request is refused the ~~thirteen~~ routes.)*
+*(Amended 2026-10-04: ~~thirteen~~ fourteen routes, the list of every tenant of the installation
+the fourteenth ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2, ADR 0035 D5); an agent-marked request is refused all ~~fourteen~~.)* *(Amended 2026-10-04 by the
+owner's answers on the chat, ADR 0076: ~~fourteen~~ sixteen routes — stopping the person's running
+turns of the chat and choosing the chat's capabilities the fifteenth and sixteenth (ADR 0035 D5);
+the consent field is gone with the consent; an agent-marked request is refused all sixteen.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))
@@ -116,7 +223,12 @@ session is marked ([ADR 0026](0026-one-append-only-audit-table-written-by-the-re
 D1), except an administrator's act on a managed account, which is a row of the tenant. The
 policies admit a person's own rows, the one row of the cookie presented, the administrators of a
 managed account, a global administrator for reading, and the two jobs that end sessions by
-name.)*
+name.)* *(Amended 2026-10-04: the identity provider's ends are `revoked` rows of
+`system:identity-provider` with the cause `gate` or `identity-provider` and the count; a login
+through it is the person's `logged_in` with the note `oidc`; every row written for a request
+carries the keyed hash of the client's address ([ADR 0035](0035-personal-access-tokens.md) D2). A
+refresh's outcome that ends nothing is recorded only where it changed the person's groups,
+administrator flag or memberships.)*
 
 ## Consequences
 
@@ -127,7 +239,10 @@ name.)*
 - `SameSite=Lax` alone is not CSRF protection for the API; the CSRF record adds the origin
   check and the custom header on unsafe methods.
 - The groups refresh of ADR 0030 D5 is a column update on the row and a UserInfo call every
-  fifteen minutes per active session.
+  fifteen minutes per active session. *(Amended 2026-10-04: a refresh grant at the issuer's token
+  endpoint — and UserInfo where the refreshed ID token lacks the groups — inside the session's
+  request, ~~under a lock of its row~~ *(amended after the security review: holding no connection and
+  no lock while the issuer is asked)*.)*
 
 ## Alternatives Considered
 
@@ -142,6 +257,10 @@ name.)*
 
 - D1's refresh-token storage exists only for issuers whose UserInfo needs it; the encryption
   key is a Secret the operator must rotate deliberately, and the operations page says how.
+  *(Amended 2026-10-04: a refresh token is stored whenever the issuer gives one; whoever holds the
+  database and the server key opens them, and cowork never revokes one at the issuer
+  ([docs/security/identity-provider.md](../security/identity-provider.md) H-27). Rotating the key
+  ends those sessions at their next refresh, which the operations page says.)*
 - D3's defaults (twelve hours, two hours) are the owner's working day; a tenant with a
   stricter policy configures shorter and cannot configure per tenant in the first release.
 - *(Added 2026-10-03.)* The cookie is the whole credential: nothing binds a session to the

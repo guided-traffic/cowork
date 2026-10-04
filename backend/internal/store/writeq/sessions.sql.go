@@ -12,6 +12,60 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimSessionRefresh = `-- name: ClaimSessionRefresh :one
+UPDATE sessions
+SET refresh_retry_at = $1
+WHERE token_hash = $2 AND method = 'oidc'
+  AND (groups_refreshed_at IS NULL OR groups_refreshed_at <= $3)
+  AND (refresh_retry_at IS NULL OR refresh_retry_at <= $4)
+RETURNING refresh_token_sealed
+`
+
+type ClaimSessionRefreshParams struct {
+	LeaseUntil *time.Time
+	TokenHash  []byte
+	DueBefore  *time.Time
+	Now        *time.Time
+}
+
+// A request claims a session's groups refresh by a lease (docs/adr/0030 D5, the
+// security review of 2026-10-04, M1): the one statement that moves
+// refresh_retry_at ahead wins, and every other request — of this replica or
+// another — finds the refresh not due and is served on the groups the session
+// holds, without waiting. The issuer is asked with no connection held.
+func (q *Queries) ClaimSessionRefresh(ctx context.Context, arg ClaimSessionRefreshParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, claimSessionRefresh,
+		arg.LeaseUntil,
+		arg.TokenHash,
+		arg.DueBefore,
+		arg.Now,
+	)
+	var refresh_token_sealed []byte
+	err := row.Scan(&refresh_token_sealed)
+	return refresh_token_sealed, err
+}
+
+const deferSessionRefresh = `-- name: DeferSessionRefresh :exec
+UPDATE sessions
+SET refresh_retry_at = $1,
+    refresh_token_sealed = COALESCE($2, refresh_token_sealed)
+WHERE id = $3
+`
+
+type DeferSessionRefreshParams struct {
+	RetryAt            *time.Time
+	RefreshTokenSealed []byte
+	SessionID          uuid.UUID
+}
+
+// The issuer could not be reached: the session is served, and the next attempt
+// waits (docs/adr/0030 D5). A refresh token the issuer rotated before the
+// failure is kept all the same, since the old one is spent.
+func (q *Queries) DeferSessionRefresh(ctx context.Context, arg DeferSessionRefreshParams) error {
+	_, err := q.db.Exec(ctx, deferSessionRefresh, arg.RetryAt, arg.RefreshTokenSealed, arg.SessionID)
+	return err
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= $1 OR last_seen_at <= $2
 `
@@ -77,19 +131,27 @@ func (q *Queries) DeleteSessionsOfUser(ctx context.Context, userID uuid.UUID) (i
 }
 
 const insertSession = `-- name: InsertSession :exec
-INSERT INTO sessions (user_id, token_hash, user_agent_hash, created_at, last_seen_at, expires_at)
+INSERT INTO sessions (user_id, token_hash, user_agent_hash, created_at, last_seen_at, expires_at, method,
+                      groups, groups_refreshed_at, refresh_token_sealed)
 VALUES ($1, $2, $3, $4,
-        $4, $5)
+        $4, $5, $6, $7,
+        $8, $9)
 `
 
 type InsertSessionParams struct {
-	UserID        uuid.UUID
-	TokenHash     []byte
-	UserAgentHash []byte
-	CreatedAt     time.Time
-	ExpiresAt     time.Time
+	UserID             uuid.UUID
+	TokenHash          []byte
+	UserAgentHash      []byte
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
+	Method             string
+	Groups             []string
+	GroupsRefreshedAt  *time.Time
+	RefreshTokenSealed []byte
 }
 
+// A session of the identity provider's login holds the groups of the login and
+// the sealed refresh token, if the issuer gave one (docs/adr/0031 D1).
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) error {
 	_, err := q.db.Exec(ctx, insertSession,
 		arg.UserID,
@@ -97,6 +159,59 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.UserAgentHash,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.Method,
+		arg.Groups,
+		arg.GroupsRefreshedAt,
+		arg.RefreshTokenSealed,
+	)
+	return err
+}
+
+const lockSessionForRefresh = `-- name: LockSessionForRefresh :one
+SELECT id, groups, refresh_retry_at
+FROM sessions
+WHERE token_hash = $1
+FOR UPDATE
+`
+
+type LockSessionForRefreshRow struct {
+	ID             uuid.UUID
+	Groups         []string
+	RefreshRetryAt *time.Time
+}
+
+// The refresh's answer is applied under a lock of the session's row, while the
+// lease is still the claimant's.
+func (q *Queries) LockSessionForRefresh(ctx context.Context, tokenHash []byte) (LockSessionForRefreshRow, error) {
+	row := q.db.QueryRow(ctx, lockSessionForRefresh, tokenHash)
+	var i LockSessionForRefreshRow
+	err := row.Scan(&i.ID, &i.Groups, &i.RefreshRetryAt)
+	return i, err
+}
+
+const setSessionGroups = `-- name: SetSessionGroups :exec
+UPDATE sessions
+SET groups = $1, groups_refreshed_at = $2,
+    refresh_token_sealed = COALESCE($3, refresh_token_sealed),
+    refresh_retry_at = NULL
+WHERE id = $4
+`
+
+type SetSessionGroupsParams struct {
+	Groups             []string
+	RefreshedAt        *time.Time
+	RefreshTokenSealed []byte
+	SessionID          uuid.UUID
+}
+
+// A refresh that read the groups: the snapshot, its time, and the refresh token
+// the issuer rotated, if it did.
+func (q *Queries) SetSessionGroups(ctx context.Context, arg SetSessionGroupsParams) error {
+	_, err := q.db.Exec(ctx, setSessionGroups,
+		arg.Groups,
+		arg.RefreshedAt,
+		arg.RefreshTokenSealed,
+		arg.SessionID,
 	)
 	return err
 }

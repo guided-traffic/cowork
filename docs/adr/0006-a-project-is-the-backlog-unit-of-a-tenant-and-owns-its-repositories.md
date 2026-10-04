@@ -9,10 +9,16 @@ Date: 2026-09-29. Decided by the owner as the answer to the catalog question "wh
 project?": a project is a piece of work with its own backlog inside a tenant, not a git
 repository, and it owns zero or more repositories.
 
-**Partly built** (phase 2, 2026-10-02): D1, D2 and D4 — `projects` (migration 3) with key,
-name, description and WIP limits, created, listed, edited and archived through the API; the
-repositories of D3 arrive with the repository binding of
-[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md).
+**Built** (phase 2, 2026-10-02; D3 since 2026-10-04): D1, D2 and D4 — `projects` (migration 3)
+with key, name, description and WIP limits, created, listed, edited and archived through the
+API. D3 as amended — `project_repositories` (migration 23): a project's repositories by
+identity and sub-directory, unique in the tenant, so "at most one project" holds per tenant;
+bound, listed and unbound through the API, bound with the project's creation, and found by the
+lookup of [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+D2. The disagreement between `.cowork.yaml` and the server's binding is reported by the session
+start of `cowork-mcp`. Across tenants nothing holds a repository to one project: the lookup
+reports several bindings as the data error of ADR 0066 D6, and the UI has no page for a
+project's repositories yet — they are resolved through the API.
 
 ## Context
 
@@ -85,4 +91,4 @@ do not vanish with it.
 
 - [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) — the tenant a project belongs to
 - [ADR 0004](0004-cowork-is-a-team-product.md) — the people who work in a project
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the repository binding
+- [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md), [docs/operations/claude-code.md](../operations/claude-code.md) — the repository binding as built (the workflow plan once linked here is consumed, ADR 0074 D3)

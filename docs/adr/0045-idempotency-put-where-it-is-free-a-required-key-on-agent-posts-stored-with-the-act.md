@@ -4,7 +4,8 @@
 
 Accepted, amended 2026-10-03 (D3: a session's key is scoped to the person; D6: a stored
 response never holds a secret; D4: the fingerprint is an HMAC under a key derived from the
-server key). Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+server key) and 2026-10-04 (D5: the chat in the UI derives its keys from the conversation and the
+call). Date: 2026-10-01. Decided by the owner as the answer to the catalog question
 "idempotency for agent writes?": idempotency by semantics where it is free and by a stored
 key where `POST` is unavoidable — over a stored key on every unsafe request, over natural
 idempotency alone with client-generated ids, and over nothing. The rules of D5–D7 were put
@@ -15,7 +16,9 @@ flags; the `from` precondition on transitions; keys on the other `POST`s, requir
 agents; the stored response and the replay in [`store.Mutate`](../../backend/internal/store/tx.go)
 with a `422` on a different request under the same key, expired by an hourly job; an upload's
 fingerprint over the file's hash, name and comment instead of the raw multipart body; an
-unsolicited key on a transition recorded on the act. D5 arrives with the MCP server. D3 holds
+unsolicited key on a transition recorded on the act. D5 is built (2026-10-04) in `cowork-mcp`: every `POST` of a tool — the `api` tool's included —
+carries a key of its own, and the integration tier holds that every ticket, comment and
+question the working day creates carries one on its act. D3 holds
 for a browser session since phase 3 (2026-10-03), and for the creation of a token, a tenant and
 a local account.
 
@@ -67,7 +70,17 @@ Because the row is written by the same `Mutate` as the act ([ADR 0027](0027-data
 D3), "act committed, key lost" cannot happen. Expired rows are removed by a job.
 
 **D5 — The MCP server generates and reuses keys itself;** one UUIDv7 per tool call, the
-same one on every retry of that call. The model never sees or supplies a key.
+same one on every retry of that call. The model never sees or supplies a key. *(Made concrete
+2026-10-04: one per `POST` a tool call sends — `finish_work` sends two, and one key on two
+requests is D3's `422`; a retry is the transport's, of the same request. A model that calls a
+tool again after a failure makes a new call with new keys.)* *(Amended 2026-10-04 for the chat in
+the UI, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
+the chat, the catalogue's second host, derives a tool call's keys instead of drawing them — the
+n-th `POST` of a call gets a name-based UUID of the conversation's id, the call's id and n — so a
+call the conversation holds, run again — ~~a decision the browser sends twice~~ *(amended again
+2026-10-04: the decisions are gone with the proposals, ADR 0076; a turn the browser sends twice)* —
+carries the same keys and replays instead of acting twice. A new answer of the model has new call ids and new keys.
+The keys are scoped to the person, whose session the chat's requests carry (D3).)*
 
 **D6 — A stored response contains no attachment bytes** and is bounded by the JSON body
 limit of [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)

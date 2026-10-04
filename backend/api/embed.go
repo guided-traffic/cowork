@@ -8,3 +8,9 @@ import _ "embed"
 //
 //go:embed openapi.gen.json
 var Document []byte
+
+// CoworkYAMLSchema is the JSON Schema of a repository's .cowork.yaml, served
+// at /api/v1/schemas/cowork-yaml.json (docs/adr/0066 D4).
+//
+//go:embed cowork-yaml.schema.json
+var CoworkYAMLSchema []byte

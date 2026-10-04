@@ -248,6 +248,99 @@ func (e Capability) Valid() bool {
 	}
 }
 
+// Defines values for ChatProviderKind.
+const (
+	ChatProviderKindAnthropic ChatProviderKind = "anthropic"
+	ChatProviderKindOpenai    ChatProviderKind = "openai"
+)
+
+// Valid indicates whether the value is a known member of the ChatProviderKind enum.
+func (e ChatProviderKind) Valid() bool {
+	switch e {
+	case ChatProviderKindAnthropic:
+		return true
+	case ChatProviderKindOpenai:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatRole.
+const (
+	ChatRoleAssistant ChatRole = "assistant"
+	ChatRoleTool      ChatRole = "tool"
+	ChatRoleUser      ChatRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the ChatRole enum.
+func (e ChatRole) Valid() bool {
+	switch e {
+	case ChatRoleAssistant:
+		return true
+	case ChatRoleTool:
+		return true
+	case ChatRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatTurnEnd.
+const (
+	ChatTurnEndAnswered  ChatTurnEnd = "answered"
+	ChatTurnEndError     ChatTurnEnd = "error"
+	ChatTurnEndStepLimit ChatTurnEnd = "step_limit"
+	ChatTurnEndStopped   ChatTurnEnd = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the ChatTurnEnd enum.
+func (e ChatTurnEnd) Valid() bool {
+	switch e {
+	case ChatTurnEndAnswered:
+		return true
+	case ChatTurnEndError:
+		return true
+	case ChatTurnEndStepLimit:
+		return true
+	case ChatTurnEndStopped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatUiAction.
+const (
+	ChatUiActionNavigate ChatUiAction = "navigate"
+)
+
+// Valid indicates whether the value is a known member of the ChatUiAction enum.
+func (e ChatUiAction) Valid() bool {
+	switch e {
+	case ChatUiActionNavigate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatUnavailableReason.
+const (
+	ChatUnavailableReasonNotConfigured ChatUnavailableReason = "not_configured"
+)
+
+// Valid indicates whether the value is a known member of the ChatUnavailableReason enum.
+func (e ChatUnavailableReason) Valid() bool {
+	switch e {
+	case ChatUnavailableReasonNotConfigured:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Effort.
 const (
 	EffortL  Effort = "L"
@@ -335,21 +428,46 @@ func (e LinkType) Valid() bool {
 	}
 }
 
+// Defines values for MembershipSource.
+const (
+	MembershipSourceGrant   MembershipSource = "grant"
+	MembershipSourceMapping MembershipSource = "mapping"
+)
+
+// Valid indicates whether the value is a known member of the MembershipSource enum.
+func (e MembershipSource) Valid() bool {
+	switch e {
+	case MembershipSourceGrant:
+		return true
+	case MembershipSourceMapping:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProblemCode.
 const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
 	ProblemCodeBackendUnreachable     ProblemCode = "backend_unreachable"
+	ProblemCodeChatBusy               ProblemCode = "chat_busy"
+	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
+	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
 	ProblemCodeCsrf                   ProblemCode = "csrf"
 	ProblemCodeForbidden              ProblemCode = "forbidden"
+	ProblemCodeGrantExists            ProblemCode = "grant_exists"
 	ProblemCodeIdempotencyKeyRequired ProblemCode = "idempotency_key_required"
 	ProblemCodeIdempotencyMismatch    ProblemCode = "idempotency_mismatch"
 	ProblemCodeInsufficientScope      ProblemCode = "insufficient_scope"
 	ProblemCodeInternal               ProblemCode = "internal"
 	ProblemCodeInvalidCredentials     ProblemCode = "invalid_credentials"
 	ProblemCodeInvalidCursor          ProblemCode = "invalid_cursor"
+	ProblemCodeLastAdmin              ProblemCode = "last_admin"
 	ProblemCodeLinkCycle              ProblemCode = "link_cycle"
+	ProblemCodeMappingExists          ProblemCode = "mapping_exists"
 	ProblemCodeMethodNotAllowed       ProblemCode = "method_not_allowed"
+	ProblemCodeNotAllowed             ProblemCode = "not_allowed"
 	ProblemCodeNotFound               ProblemCode = "not_found"
 	ProblemCodeNotInitialised         ProblemCode = "not_initialised"
 	ProblemCodeNotReady               ProblemCode = "not_ready"
@@ -359,10 +477,13 @@ const (
 	ProblemCodePasswordChangeRequired ProblemCode = "password_change_required"
 	ProblemCodePayloadTooLarge        ProblemCode = "payload_too_large"
 	ProblemCodePeriodLocked           ProblemCode = "period_locked"
+	ProblemCodePersonAmbiguous        ProblemCode = "person_ambiguous"
+	ProblemCodePersonNotFound         ProblemCode = "person_not_found"
 	ProblemCodePreconditionFailed     ProblemCode = "precondition_failed"
 	ProblemCodePreconditionRequired   ProblemCode = "precondition_required"
 	ProblemCodeProjectArchived        ProblemCode = "project_archived"
 	ProblemCodeProjectKeyTaken        ProblemCode = "project_key_taken"
+	ProblemCodeRepositoryBound        ProblemCode = "repository_bound"
 	ProblemCodeSessionRequired        ProblemCode = "session_required"
 	ProblemCodeStateConflict          ProblemCode = "state_conflict"
 	ProblemCodeTenantSlugTaken        ProblemCode = "tenant_slug_taken"
@@ -386,9 +507,17 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeBackendUnreachable:
 		return true
+	case ProblemCodeChatBusy:
+		return true
+	case ProblemCodeChatProviderFailed:
+		return true
+	case ProblemCodeChatUnavailable:
+		return true
 	case ProblemCodeCsrf:
 		return true
 	case ProblemCodeForbidden:
+		return true
+	case ProblemCodeGrantExists:
 		return true
 	case ProblemCodeIdempotencyKeyRequired:
 		return true
@@ -402,9 +531,15 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeInvalidCursor:
 		return true
+	case ProblemCodeLastAdmin:
+		return true
 	case ProblemCodeLinkCycle:
 		return true
+	case ProblemCodeMappingExists:
+		return true
 	case ProblemCodeMethodNotAllowed:
+		return true
+	case ProblemCodeNotAllowed:
 		return true
 	case ProblemCodeNotFound:
 		return true
@@ -424,6 +559,10 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodePeriodLocked:
 		return true
+	case ProblemCodePersonAmbiguous:
+		return true
+	case ProblemCodePersonNotFound:
+		return true
 	case ProblemCodePreconditionFailed:
 		return true
 	case ProblemCodePreconditionRequired:
@@ -431,6 +570,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeProjectArchived:
 		return true
 	case ProblemCodeProjectKeyTaken:
+		return true
+	case ProblemCodeRepositoryBound:
 		return true
 	case ProblemCodeSessionRequired:
 		return true
@@ -461,6 +602,24 @@ func (e ProblemCode) Valid() bool {
 	}
 }
 
+// Defines values for ProjectAccessRole.
+const (
+	ProjectAccessRoleMember ProjectAccessRole = "member"
+	ProjectAccessRoleViewer ProjectAccessRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the ProjectAccessRole enum.
+func (e ProjectAccessRole) Valid() bool {
+	switch e {
+	case ProjectAccessRoleMember:
+		return true
+	case ProjectAccessRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QuestionStatus.
 const (
 	QuestionStatusAnswered  QuestionStatus = "answered"
@@ -476,6 +635,48 @@ func (e QuestionStatus) Valid() bool {
 	case QuestionStatusOpen:
 		return true
 	case QuestionStatusWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RepositoryLookupStatus.
+const (
+	RepositoryLookupStatusAmbiguous RepositoryLookupStatus = "ambiguous"
+	RepositoryLookupStatusBound     RepositoryLookupStatus = "bound"
+	RepositoryLookupStatusUnbound   RepositoryLookupStatus = "unbound"
+)
+
+// Valid indicates whether the value is a known member of the RepositoryLookupStatus enum.
+func (e RepositoryLookupStatus) Valid() bool {
+	switch e {
+	case RepositoryLookupStatusAmbiguous:
+		return true
+	case RepositoryLookupStatusBound:
+		return true
+	case RepositoryLookupStatusUnbound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RepositoryProposalReason.
+const (
+	RepositoryProposalReasonChoose      RepositoryProposalReason = "choose"
+	RepositoryProposalReasonOnlyTenant  RepositoryProposalReason = "only-tenant"
+	RepositoryProposalReasonRemoteOwner RepositoryProposalReason = "remote-owner"
+)
+
+// Valid indicates whether the value is a known member of the RepositoryProposalReason enum.
+func (e RepositoryProposalReason) Valid() bool {
+	switch e {
+	case RepositoryProposalReasonChoose:
+		return true
+	case RepositoryProposalReasonOnlyTenant:
+		return true
+	case RepositoryProposalReasonRemoteOwner:
 		return true
 	default:
 		return false
@@ -961,6 +1162,9 @@ type Activity struct {
 
 	// Redacted The act names a ticket the caller cannot see; its payload, reason and note are withheld
 	Redacted bool `json:"redacted"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // ActivityList defines model for ActivityList.
@@ -993,9 +1197,12 @@ type Attachment struct {
 	Id       openapi_types.UUID `json:"id"`
 
 	// Sha256 The hex SHA-256 of the bytes, also the download's ETag
-	Sha256     string `json:"sha256"`
-	Size       int64  `json:"size"`
-	UploadedBy Person `json:"uploaded_by"`
+	Sha256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token      nullable.Nullable[TokenMark] `json:"token"`
+	UploadedBy Person                       `json:"uploaded_by"`
 }
 
 // AttachmentContentType Detected from the bytes (docs/adr/0016 D3)
@@ -1039,6 +1246,10 @@ type AuditEvent struct {
 	RequestId      nullable.Nullable[openapi_types.UUID] `json:"request_id,omitempty"`
 	TicketKey      nullable.Nullable[string]             `json:"ticket_key,omitempty"`
 	TokenId        nullable.Nullable[openapi_types.UUID] `json:"token_id,omitempty"`
+
+	// TokenName The token's name as the act recorded it (docs/adr/0036 D6); null without a token, and on an act
+	// recorded before cowork kept the name
+	TokenName nullable.Nullable[string] `json:"token_name,omitempty"`
 }
 
 // AuditList defines model for AuditList.
@@ -1052,8 +1263,13 @@ type AuthOptions struct {
 	// Local An active local account exists, so the login page shows the local form (docs/adr/0033 D8)
 	Local bool `json:"local"`
 
-	// Oidc An identity provider is configured; none is built yet, so false
+	// Oidc The login page shows the identity provider's button: one is configured,
+	// and `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group —
+	// without either nobody may log in through it (docs/adr/0030 D1, D8)
 	Oidc bool `json:"oidc"`
+
+	// OidcName The provider's name on the button, "Sign in with <oidc_name>", `COWORK_OIDC_DISPLAY_NAME`; null without a provider
+	OidcName nullable.Nullable[string] `json:"oidc_name"`
 
 	// PasswordMinLength The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
 	PasswordMinLength int `json:"password_min_length"`
@@ -1091,6 +1307,175 @@ type BlockSet struct {
 // Capability An agent capability (docs/adr/0043 D4)
 type Capability string
 
+// ChatAvailability defines model for ChatAvailability.
+type ChatAvailability struct {
+	// Available The members of the tenant may hold a conversation (POST …/chat)
+	Available bool `json:"available"`
+
+	// Providers The configured providers in the configured order, the first the default of a turn; empty without one
+	Providers []ChatProvider `json:"providers"`
+
+	// Reason Why the chat is not available; null when it is
+	Reason nullable.Nullable[ChatUnavailableReason] `json:"reason"`
+}
+
+// ChatCapabilities The capabilities the chat's requests hold (docs/adr/0043 D5): what the chat may do beyond the
+// baseline, as the person chose it
+type ChatCapabilities struct {
+	Capabilities []Capability `json:"capabilities"`
+
+	// Chosen The person chose the set; false is the default, every capability but decide, close, drop and
+	// record-answer
+	Chosen bool `json:"chosen"`
+}
+
+// ChatCapabilitiesUpdate defines model for ChatCapabilitiesUpdate.
+type ChatCapabilitiesUpdate struct {
+	// Capabilities The whole set; an empty one leaves the chat the baseline
+	Capabilities []Capability `json:"capabilities"`
+}
+
+// ChatDoneEvent The data of a chat turn's event `done`, the last of every turn
+type ChatDoneEvent struct {
+	// Messages The messages the turn added, to be appended to the conversation as they are
+	Messages []ChatMessage `json:"messages"`
+
+	// Reason Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+	// and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
+	// before
+	Reason ChatTurnEnd `json:"reason"`
+}
+
+// ChatMessage One message of a conversation, in the neutral model the backend translates for its provider. A
+// `user` message carries `text`, what the person wrote; an `assistant` message `text`, what the model
+// said, and `tool_calls`, the calls it made — at least one of the two; a `tool` message
+// `tool_call_id`, the call it answers, `ok`, and `text`, the answer the model read. There is no
+// system message: the backend writes the model's instructions on every turn (docs/adr/0076).
+type ChatMessage struct {
+	// Ok On a tool message, whether the call succeeded; a refusal of the API is a failure the model reads
+	Ok *bool `json:"ok,omitempty"`
+
+	// Role Whom a message of the chat is from — the person, the model, or a tool answering the model
+	Role       ChatRole        `json:"role"`
+	Text       *string         `json:"text,omitempty"`
+	ToolCallId *string         `json:"tool_call_id,omitempty"`
+	ToolCalls  *[]ChatToolCall `json:"tool_calls,omitempty"`
+}
+
+// ChatPageContext The page the person is on as they send the turn: the model's instructions name it, and a short
+// key the model uses resolves against its project
+type ChatPageContext struct {
+	// Path The page's path in this UI, without query or fragment, such as /t/acme/p/COW/board
+	Path *string `json:"path,omitempty"`
+
+	// Project The key of the project the page shows
+	Project *string `json:"project,omitempty"`
+
+	// Ticket The short key of the ticket the page shows, <PROJECT>-<number>
+	Ticket *string `json:"ticket,omitempty"`
+}
+
+// ChatProvider A provider the operator configured (COWORK_CHAT_PROVIDERS): what the person picks in the panel.
+// Its address and key are never shown
+type ChatProvider struct {
+	// Id A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+	Id ChatProviderId `json:"id"`
+
+	// Kind The wire format a configured provider speaks (COWORK_CHAT_<ID>_KIND): OpenAI Chat Completions,
+	// which OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+	Kind ChatProviderKind `json:"kind"`
+
+	// Model The model by the name its provider knows it (COWORK_CHAT_<ID>_MODEL)
+	Model string `json:"model"`
+
+	// Name The provider's name for the person (COWORK_CHAT_<ID>_NAME)
+	Name string `json:"name"`
+}
+
+// ChatProviderId A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+type ChatProviderId = string
+
+// ChatProviderKind The wire format a configured provider speaks (COWORK_CHAT_<ID>_KIND): OpenAI Chat Completions,
+// which OpenAI, LM Studio, Ollama and vLLM speak, or the Anthropic Messages API (docs/adr/0076)
+type ChatProviderKind string
+
+// ChatRole Whom a message of the chat is from — the person, the model, or a tool answering the model
+type ChatRole string
+
+// ChatTextEvent The data of a chat turn's event `text`
+type ChatTextEvent struct {
+	// Delta The next piece of the assistant's text, to be appended to the pieces before it
+	Delta string `json:"delta"`
+}
+
+// ChatToolArguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+type ChatToolArguments = json.RawMessage
+
+// ChatToolCall A call of a tool the model made
+type ChatToolCall struct {
+	// Arguments A tool call's arguments as the model gave them, a JSON object; the tool's schema decides what they mean
+	Arguments ChatToolArguments `json:"arguments"`
+
+	// Id The call's id, which the tool message answering it names
+	Id string `json:"id"`
+
+	// Name The tool's name
+	Name string `json:"name"`
+}
+
+// ChatToolResultEvent The data of a chat turn's event `tool_result`
+type ChatToolResultEvent struct {
+	// Id The id of the call it answers
+	Id string `json:"id"`
+
+	// Ok The call succeeded; false for a refusal of the API, which the model reads like any answer
+	Ok bool `json:"ok"`
+
+	// Summary The start of what the tool answered, Markdown as the tool wrote it, at most 2000 characters;
+	// the whole answer is the text of the tool message in `done`
+	Summary string `json:"summary"`
+}
+
+// ChatTurn defines model for ChatTurn.
+type ChatTurn struct {
+	// Context The page the person is on as they send the turn: the model's instructions name it, and a short
+	// key the model uses resolves against its project
+	Context *ChatPageContext `json:"context,omitempty"`
+
+	// Conversation The conversation's id, made by the client when the conversation begins and sent with each of
+	// its turns; the agent mark of the tool calls carries it, so the activity tells one
+	// conversation's acts from another's (docs/adr/0036 D3)
+	Conversation openapi_types.UUID `json:"conversation"`
+
+	// Messages The conversation so far, oldest first: the person's messages and what the `done` events
+	// added. It ends with the person's new message
+	Messages []ChatMessage `json:"messages"`
+
+	// Provider A configured provider's id, as COWORK_CHAT_PROVIDERS names it
+	Provider *ChatProviderId `json:"provider,omitempty"`
+}
+
+// ChatTurnEnd Why a turn ended: the model answered; the turn reached COWORK_CHAT_MAX_STEPS calls of the model,
+// and a new message goes on; the person stopped it (DELETE …/chat/turns); or an `error` event came
+// before
+type ChatTurnEnd string
+
+// ChatUiAction What a UI tool of the chat asks the client to do
+type ChatUiAction string
+
+// ChatUiEvent The data of a chat turn's event `ui`
+type ChatUiEvent struct {
+	// Action What a UI tool of the chat asks the client to do
+	Action ChatUiAction `json:"action"`
+
+	// Path The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
+	// /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
+	Path string `json:"path"`
+}
+
+// ChatUnavailableReason Why the chat is not available — the installation configures no provider
+type ChatUnavailableReason string
+
 // Comment defines model for Comment.
 type Comment struct {
 	// Agent The agent mark when an agent wrote it in the author's name
@@ -1105,8 +1490,11 @@ type Comment struct {
 	Edited bool `json:"edited"`
 
 	// Explains The acts this comment explains (docs/adr/0015 D2)
-	Explains    []AuditAction                `json:"explains"`
-	Id          openapi_types.UUID           `json:"id"`
+	Explains []AuditAction      `json:"explains"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
+	Token       nullable.Nullable[TokenMark] `json:"token"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
 	Version     int                          `json:"version"`
 	Withdrawn   bool                         `json:"withdrawn"`
@@ -1121,12 +1509,16 @@ type CommentList struct {
 
 // CommentRevision defines model for CommentRevision.
 type CommentRevision struct {
+	// Agent The agent mark of the edit
 	Agent nullable.Nullable[string] `json:"agent"`
 	At    time.Time                 `json:"at"`
 
 	// Body The text before the edit
 	Body     string `json:"body"`
 	EditedBy Person `json:"edited_by"`
+
+	// Token The token the edit came through; null for a browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // CommentRevisionList defines model for CommentRevisionList.
@@ -1148,6 +1540,33 @@ type ConfidentialSet struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// CurrentToken The token a request presents, and what it makes of the request (docs/adr/0043 D6)
+type CurrentToken struct {
+	// Agent The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+	Agent        bool                                  `json:"agent"`
+	Capabilities []Capability                          `json:"capabilities"`
+	CreatedAt    time.Time                             `json:"created_at"`
+	ExpiresAt    time.Time                             `json:"expires_at"`
+	Id           openapi_types.UUID                    `json:"id"`
+	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
+	Name         string                                `json:"name"`
+	Request      RequestMark                           `json:"request"`
+
+	// RestrictedProject The key of the project the token is restricted to
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to
+	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
+
+	// RestrictedTenant The slug of the tenant the token is restricted to
+	RestrictedTenant nullable.Nullable[string]    `json:"restricted_tenant,omitempty"`
+	RevokedAt        nullable.Nullable[time.Time] `json:"revoked_at,omitempty"`
+
+	// Scope A token's scope (docs/adr/0035 D3)
+	Scope Scope      `json:"scope"`
+	State TokenState `json:"state"`
+}
+
 // Effort defines model for Effort.
 type Effort string
 
@@ -1161,15 +1580,60 @@ type FieldError struct {
 	Pointer string `json:"pointer"`
 }
 
+// GroupMapping defines model for GroupMapping.
+type GroupMapping struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Group The group's name, matched exactly and case-sensitively against the groups claim (docs/adr/0029 D2)
+	Group string             `json:"group"`
+	Id    openapi_types.UUID `json:"id"`
+
+	// IncludesCaller The calling person's groups, as of their last login or groups refresh,
+	// include the group: changing or removing the mapping changes their own
+	// role (docs/adr/0030 D2)
+	IncludesCaller bool `json:"includes_caller"`
+
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role      Role      `json:"role"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int       `json:"version"`
+}
+
+// GroupMappingCreate defines model for GroupMappingCreate.
+type GroupMappingCreate struct {
+	// Group The group's name as the identity provider's claim carries it, case and all, with no white space at either end
+	Group string `json:"group"`
+
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+}
+
+// GroupMappingList defines model for GroupMappingList.
+type GroupMappingList struct {
+	Items      []GroupMapping            `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// GroupMappingPatch defines model for GroupMappingPatch.
+type GroupMappingPatch struct {
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+}
+
 // Interest defines model for Interest.
 type Interest struct {
-	Note   string `json:"note"`
-	Person Person `json:"person"`
+	// Agent The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)
+	Agent  nullable.Nullable[string] `json:"agent"`
+	Note   string                    `json:"note"`
+	Person Person                    `json:"person"`
 
 	// Settled The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)
-	Settled   bool      `json:"settled"`
-	Since     time.Time `json:"since"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Settled bool      `json:"settled"`
+	Since   time.Time `json:"since"`
+
+	// Token The token that write came through; null for the person's own browser session (docs/adr/0036 D6)
+	Token     nullable.Nullable[TokenMark] `json:"token"`
+	UpdatedAt time.Time                    `json:"updated_at"`
 
 	// Weight docs/adr/0013 D1
 	Weight InterestWeight `json:"weight"`
@@ -1236,6 +1700,23 @@ type LocalLoginResult struct {
 	PasswordChangeRequired bool `json:"password_change_required"`
 }
 
+// LogoutResult defines model for LogoutResult.
+type LogoutResult struct {
+	// EndSessionUrl The issuer's `end_session_endpoint` with `client_id` and
+	// `post_logout_redirect_uri`; the browser navigates there to end its
+	// session at the identity provider too (docs/adr/0031 D4)
+	EndSessionUrl string `json:"end_session_url"`
+}
+
+// LookupRemote defines model for LookupRemote.
+type LookupRemote struct {
+	// Identity Its normalised identity; null for a remote that names no host (docs/adr/0066 D1)
+	Identity nullable.Nullable[string] `json:"identity"`
+
+	// Remote The remote as it was given, without credentials
+	Remote string `json:"remote"`
+}
+
 // Me defines model for Me.
 type Me struct {
 	DisplayName string `json:"display_name"`
@@ -1256,10 +1737,38 @@ type Me struct {
 	Username               nullable.Nullable[string] `json:"username,omitempty"`
 }
 
-// Member defines model for Member.
+// Member A member with the effective role, the higher of the mapped and the granted one (docs/adr/0030 D4)
 type Member struct {
-	Person Person `json:"person"`
+	// Email The address the identity provider asserted at the person's last login, which tells two
+	// persons of one name apart: for the tenant's administrators; null for anyone else, and for a
+	// person without one, such as a local account
+	Email nullable.Nullable[string] `json:"email"`
 
+	// Local The person has a local account — a username and a password of their own — rather than an identity of the identity provider (docs/adr/0033)
+	Local bool `json:"local"`
+
+	// Origins Every source of the membership with its own role, the mapping before the grant (docs/adr/0034 D7)
+	Origins []MembershipOrigin `json:"origins"`
+	Person  Person             `json:"person"`
+
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+}
+
+// MemberAdd defines model for MemberAdd.
+type MemberAdd struct {
+	// Person An e-mail address — a value with `@`, compared without regard to case
+	// with the address the identity provider asserted at the person's last
+	// login — or a local account's username, with or without `local:`;
+	// trimmed, and a username lower-cased (docs/adr/0030 D3, docs/adr/0033 D2)
+	Person string `json:"person"`
+
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+}
+
+// MemberGrantSet defines model for MemberGrantSet.
+type MemberGrantSet struct {
 	// Role A tenant role, lowest first (docs/adr/0034 D1)
 	Role Role `json:"role"`
 }
@@ -1272,10 +1781,28 @@ type MemberList struct {
 
 // Membership defines model for Membership.
 type Membership struct {
+	// Origins Where the role comes from, each source with its own role; `role` is the
+	// higher of them (docs/adr/0030 D4)
+	Origins []MembershipOrigin `json:"origins"`
+
 	// Role A tenant role, lowest first (docs/adr/0034 D1)
 	Role   Role      `json:"role"`
 	Tenant TenantRef `json:"tenant"`
 }
+
+// MembershipOrigin defines model for MembershipOrigin.
+type MembershipOrigin struct {
+	// Role A tenant role, lowest first (docs/adr/0034 D1)
+	Role Role `json:"role"`
+
+	// Source How a membership came to be: derived from the person's groups by a group
+	// mapping, or granted by an administrator (docs/adr/0030 D2, D3)
+	Source MembershipSource `json:"source"`
+}
+
+// MembershipSource How a membership came to be: derived from the person's groups by a group
+// mapping, or granted by an administrator (docs/adr/0030 D2, D3)
+type MembershipSource string
 
 // PasswordChange defines model for PasswordChange.
 type PasswordChange struct {
@@ -1290,7 +1817,8 @@ type Person struct {
 	DisplayName string             `json:"display_name"`
 	Id          openapi_types.UUID `json:"id"`
 
-	// Username The local identity's username, `local:<username>` (docs/adr/0033 D2)
+	// Username A local account's username as it is stored, without the `local:` that names the identity
+	// (docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider
 	Username nullable.Nullable[string] `json:"username,omitempty"`
 }
 
@@ -1329,11 +1857,43 @@ type Project struct {
 	WipLimits WipLimits `json:"wip_limits"`
 }
 
+// ProjectAccessEntry A person on a project's access list; their role in the project is the lower of their tenant role and the entry's (docs/adr/0034 D3)
+type ProjectAccessEntry struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email The address the identity provider asserted at the person's last login, which tells two
+	// persons of one name apart; null for a person without one, such as a local account. The
+	// access list is the tenant's administrators' to read.
+	Email  nullable.Nullable[string] `json:"email"`
+	Person Person                    `json:"person"`
+
+	// Role The most a person on a restricted project's access list may do in it (docs/adr/0034 D3)
+	Role ProjectAccessRole `json:"role"`
+}
+
+// ProjectAccessList defines model for ProjectAccessList.
+type ProjectAccessList struct {
+	Items      []ProjectAccessEntry      `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// ProjectAccessRole The most a person on a restricted project's access list may do in it (docs/adr/0034 D3)
+type ProjectAccessRole string
+
+// ProjectAccessSet defines model for ProjectAccessSet.
+type ProjectAccessSet struct {
+	// Role The most a person on a restricted project's access list may do in it (docs/adr/0034 D3)
+	Role ProjectAccessRole `json:"role"`
+}
+
 // ProjectCreate defines model for ProjectCreate.
 type ProjectCreate struct {
 	Description *string `json:"description,omitempty"`
 	Key         string  `json:"key"`
 	Name        string  `json:"name"`
+
+	// Repository A repository to bind, by a remote URL that cowork normalises (docs/adr/0066 D1)
+	Repository *RepositoryBind `json:"repository,omitempty"`
 
 	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
 	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
@@ -1356,6 +1916,26 @@ type ProjectPatch struct {
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
 }
 
+// ProjectRef defines model for ProjectRef.
+type ProjectRef struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
+// ProjectRestrictionSet defines model for ProjectRestrictionSet.
+type ProjectRestrictionSet struct {
+	// Restricted True restricts the project to the administrators and its access list, false opens it to every member (docs/adr/0034 D3)
+	Restricted bool `json:"restricted"`
+}
+
+// ProposalTenant defines model for ProposalTenant.
+type ProposalTenant struct {
+	// Key The project key proposed for this tenant, free there (docs/adr/0066 D2)
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
 // Question defines model for Question.
 type Question struct {
 	// Answer Markdown
@@ -1364,10 +1944,17 @@ type Question struct {
 
 	// AnsweredBy The person whose answer it is, also when an agent wrote it down
 	AnsweredBy nullable.Nullable[Person] `json:"answered_by"`
-	AskedBy    Person                    `json:"asked_by"`
+
+	// AnsweredByToken The token the answer was recorded through, an agent's or the person's own; null for a browser
+	// session and while there is no answer (docs/adr/0036 D6)
+	AnsweredByToken nullable.Nullable[TokenMark] `json:"answered_by_token"`
+	AskedBy         Person                       `json:"asked_by"`
 
 	// AskedByAgent The agent mark of the request that asked
 	AskedByAgent nullable.Nullable[string] `json:"asked_by_agent"`
+
+	// AskedByToken The token the question was asked through; null for a browser session (docs/adr/0036 D6)
+	AskedByToken nullable.Nullable[TokenMark] `json:"asked_by_token"`
 
 	// AskedOf The person asked; null for a question open in the tenant
 	AskedOf   nullable.Nullable[Person] `json:"asked_of"`
@@ -1417,6 +2004,104 @@ type QuestionPatch struct {
 
 // QuestionStatus docs/adr/0011 D2
 type QuestionStatus string
+
+// Repository defines model for Repository.
+type Repository struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Identity The normalised remote, host/path (docs/adr/0066 D1)
+	Identity string `json:"identity"`
+
+	// Path The sub-directory of a monorepo the binding covers; empty for the whole repository (docs/adr/0006 D3)
+	Path string `json:"path"`
+
+	// Remote The remote as it was last given, without credentials
+	Remote    string    `json:"remote"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RepositoryBind A repository to bind, by a remote URL that cowork normalises (docs/adr/0066 D1)
+type RepositoryBind struct {
+	// Path A sub-directory of a monorepo, relative to its root; omitted, the whole repository
+	Path *string `json:"path,omitempty"`
+
+	// Remote A git remote URL — SSH, scp-style, git or HTTP(S); its credentials are never stored
+	Remote string `json:"remote"`
+}
+
+// RepositoryBindingRef A project that binds the repository
+type RepositoryBindingRef struct {
+	// Archived The project is archived and refuses new tickets (docs/adr/0006 D4)
+	Archived bool       `json:"archived"`
+	Identity string     `json:"identity"`
+	Path     string     `json:"path"`
+	Project  ProjectRef `json:"project"`
+	Remote   string     `json:"remote"`
+	Tenant   TenantRef  `json:"tenant"`
+}
+
+// RepositoryList defines model for RepositoryList.
+type RepositoryList struct {
+	Items      []Repository              `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// RepositoryLookup defines model for RepositoryLookup.
+type RepositoryLookup struct {
+	Bindings []RepositoryBindingRef                `json:"bindings"`
+	Proposal nullable.Nullable[RepositoryProposal] `json:"proposal"`
+
+	// ProposalUnavailable Why an unbound repository has no proposal, when it has none
+	ProposalUnavailable nullable.Nullable[string] `json:"proposal_unavailable"`
+	Remotes             []LookupRemote            `json:"remotes"`
+
+	// Status One binding, several (a data error the person resolves, docs/adr/0066 D6), or none
+	Status RepositoryLookupStatus `json:"status"`
+}
+
+// RepositoryLookupStatus One binding, several (a data error the person resolves, docs/adr/0066 D6), or none
+type RepositoryLookupStatus string
+
+// RepositoryProposal The project the agent proposes to create for an unbound repository (docs/adr/0066 D2, D3)
+type RepositoryProposal struct {
+	Identity string `json:"identity"`
+
+	// Name The proposed project name, the repository's name
+	Name string `json:"name"`
+
+	// Reason Why the tenant: the only one the caller may create projects in; the one that binds
+	// repositories under the same remote owner; or none chosen, the list to choose from
+	Reason RepositoryProposalReason `json:"reason"`
+
+	// Remote The remote to bind, as given, without credentials
+	Remote string `json:"remote"`
+
+	// Tenant The proposed tenant's slug; null when the person chooses from `tenants`
+	Tenant nullable.Nullable[string] `json:"tenant"`
+
+	// Tenants The tenant proposed, or the tenants to choose from, each with the key that is free there
+	Tenants []ProposalTenant `json:"tenants"`
+}
+
+// RepositoryProposalReason Why the tenant: the only one the caller may create projects in; the one that binds
+// repositories under the same remote owner; or none chosen, the list to choose from
+type RepositoryProposalReason string
+
+// RequestMark defines model for RequestMark.
+type RequestMark struct {
+	// Agent The request is an agent's, by the token's flag or by the X-Cowork-Agent header (docs/adr/0036 D2, D3)
+	Agent bool `json:"agent"`
+
+	// AgentMark The agent its acts record — the header's value, or unknown-agent; null for a person's request
+	AgentMark nullable.Nullable[string] `json:"agent_mark"`
+
+	// Capabilities What an agent's request may do beyond the baseline: the token's set for a flagged token,
+	// every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
+	// capabilities for a session the header marks (D5); empty for a person's request, which the
+	// capabilities do not bound
+	Capabilities []Capability `json:"capabilities"`
+}
 
 // Role A tenant role, lowest first (docs/adr/0034 D1)
 type Role string
@@ -1470,6 +2155,22 @@ type TenantRef struct {
 	Slug string `json:"slug"`
 }
 
+// TenantSummary defines model for TenantSummary.
+type TenantSummary struct {
+	Name string `json:"name"`
+
+	// Role The role the caller holds in the tenant, the higher of their mapping and
+	// their grant; null where they hold none (docs/adr/0034 D2)
+	Role nullable.Nullable[Role] `json:"role"`
+	Slug string                  `json:"slug"`
+}
+
+// TenantSummaryList defines model for TenantSummaryList.
+type TenantSummaryList struct {
+	Items      []TenantSummary           `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
 // Ticket defines model for Ticket.
 type Ticket struct {
 	Assignee nullable.Nullable[Person] `json:"assignee"`
@@ -1519,10 +2220,16 @@ type Ticket struct {
 	ProgressReview int `json:"progress_review"`
 
 	// Project The project's key
-	Project  string        `json:"project"`
-	Reporter Person        `json:"reporter"`
-	Security SecurityClass `json:"security"`
-	Severity Severity      `json:"severity"`
+	Project  string `json:"project"`
+	Reporter Person `json:"reporter"`
+
+	// ReporterAgent The agent mark of the request that filed the ticket in the reporter's name (docs/adr/0036 D6)
+	ReporterAgent nullable.Nullable[string] `json:"reporter_agent"`
+
+	// ReporterToken The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
+	ReporterToken nullable.Nullable[TokenMark] `json:"reporter_token"`
+	Security      SecurityClass                `json:"security"`
+	Severity      Severity                     `json:"severity"`
 
 	// State docs/adr/0009 D1
 	State  TicketState               `json:"state"`
@@ -1654,9 +2361,12 @@ type TimeEntry struct {
 	Person  Person             `json:"person"`
 
 	// Ticket The ticket's key
-	Ticket    string    `json:"ticket"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   int       `json:"version"`
+	Ticket string `json:"ticket"`
+
+	// Token The token the booking came through; null for a browser session (docs/adr/0036 D6)
+	Token     nullable.Nullable[TokenMark] `json:"token"`
+	UpdatedAt time.Time                    `json:"updated_at"`
+	Version   int                          `json:"version"`
 
 	// Voided Kept and excluded from every sum (docs/adr/0017 D7)
 	Voided   bool                         `json:"voided"`
@@ -1698,6 +2408,9 @@ type TimeEntryRevision struct {
 	EditedBy Person             `json:"edited_by"`
 	Minutes  int                `json:"minutes"`
 	Note     string             `json:"note"`
+
+	// Token The token the correction came through; null for a browser session (docs/adr/0036 D6)
+	Token nullable.Nullable[TokenMark] `json:"token"`
 }
 
 // TimeEntryRevisionList defines model for TimeEntryRevisionList.
@@ -1754,8 +2467,12 @@ type TokenCreate struct {
 
 	// LifetimeDays Days until the token expires; by default `COWORK_TOKEN_DEFAULT_LIFETIME`,
 	// shortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)
-	LifetimeDays *int   `json:"lifetime_days,omitempty"`
-	Name         string `json:"name"`
+	LifetimeDays *int `json:"lifetime_days,omitempty"`
+
+	// Name Shown beside every act made through the token — in a ticket's activity, on its comments,
+	// questions, answers, files and time — to whoever reads the act, and kept there after the token is
+	// revoked (docs/adr/0036 D6)
+	Name string `json:"name"`
 
 	// Project The key of the project of that tenant the token is restricted to; needs `tenant`
 	Project *string `json:"project,omitempty"`
@@ -1799,6 +2516,17 @@ type TokenCreated struct {
 type TokenList struct {
 	Items      []Token                   `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// TokenMark The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act
+// recorded it, readable by whoever reads the act — never the token's secret, hash or prefix. A
+// revoked or expired token's acts keep its name.
+type TokenMark struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The token's name; null only on an act of the activity recorded before cowork kept the name,
+	// which says that a token was used, not which one
+	Name nullable.Nullable[string] `json:"name"`
 }
 
 // TokenState defines model for TokenState.
@@ -1923,6 +2651,9 @@ type FromDay = openapi_types.Date
 // GroupBy defines model for GroupBy.
 type GroupBy string
 
+// GroupMappingID defines model for GroupMappingID.
+type GroupMappingID = openapi_types.UUID
+
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = openapi_types.UUID
 
@@ -1962,6 +2693,9 @@ type PathLinkType = LinkType
 // PerPage defines model for PerPage.
 type PerPage int
 
+// PersonID defines model for PersonID.
+type PersonID = openapi_types.UUID
+
 // ProgressMax defines model for ProgressMax.
 type ProgressMax = int
 
@@ -1976,6 +2710,9 @@ type Query = string
 
 // QuestionNumber defines model for QuestionNumber.
 type QuestionNumber = int
+
+// RepositoryID defines model for RepositoryID.
+type RepositoryID = openapi_types.UUID
 
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
@@ -2007,6 +2744,15 @@ type UpdatedBefore = time.Time
 // Username defines model for Username.
 type Username = string
 
+// LookupRepositoryParams defines parameters for LookupRepository.
+type LookupRepositoryParams struct {
+	// Remote A git remote URL — SSH, scp-style, git or HTTP(S); repeatable, in order of preference
+	Remote []string `form:"remote" json:"remote"`
+
+	// Path The working directory relative to the repository root, for a monorepo's sub-directory bindings
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // ListMyTokensParams defines parameters for ListMyTokens.
 type ListMyTokensParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -2021,6 +2767,15 @@ type CreateMyTokenParams struct {
 	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
 	// agent's POST requires one (docs/adr/0045 D3, D4).
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ListTenantsParams defines parameters for ListTenants.
+type ListTenantsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateTenantParams defines parameters for CreateTenant.
@@ -2076,6 +2831,29 @@ type ListAuditParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListGroupMappingsParams defines parameters for ListGroupMappings.
+type ListGroupMappingsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateGroupMappingParams defines parameters for CreateGroupMapping.
+type CreateGroupMappingParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// UpdateGroupMappingParams defines parameters for UpdateGroupMapping.
+type UpdateGroupMappingParams struct {
+	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
+	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // ListMembersParams defines parameters for ListMembers.
 type ListMembersParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -2083,6 +2861,13 @@ type ListMembersParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AddMemberParams defines parameters for AddMember.
+type AddMemberParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // ListProjectsParams defines parameters for ListProjects.
@@ -2105,6 +2890,38 @@ type CreateProjectParams struct {
 
 // UpdateProjectParams defines parameters for UpdateProject.
 type UpdateProjectParams struct {
+	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
+	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// ListProjectAccessParams defines parameters for ListProjectAccess.
+type ListProjectAccessParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListRepositoriesParams defines parameters for ListRepositories.
+type ListRepositoriesParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// BindRepositoryParams defines parameters for BindRepository.
+type BindRepositoryParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// SetProjectRestrictionParams defines parameters for SetProjectRestriction.
+type SetProjectRestrictionParams struct {
 	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
 	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
@@ -2277,6 +3094,15 @@ type SetConfidentialParams struct {
 	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
 	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
+// ExportTicketContextParams defines parameters for ExportTicketContext.
+type ExportTicketContextParams struct {
+	// Comments How many of the last comments to show
+	Comments *int `form:"comments,omitempty" json:"comments,omitempty"`
+
+	// Activity How many of the last acts to show
+	Activity *int `form:"activity,omitempty" json:"activity,omitempty"`
 }
 
 // ListInterestParams defines parameters for ListInterest.
@@ -2494,6 +3320,28 @@ type TimeReportParams struct {
 // TimeReportParamsGroupBy defines parameters for TimeReport.
 type TimeReportParamsGroupBy string
 
+// OidcCallbackParams defines parameters for OidcCallback.
+type OidcCallbackParams struct {
+	// Code The authorization code
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// State The `state` of the login, as the issuer returns it
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Error The issuer's error, sent instead of `code` (RFC 6749 4.1.2.1)
+	Error            *string `form:"error,omitempty" json:"error,omitempty"`
+	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
+}
+
+// LoginOidcParams defines parameters for LoginOidc.
+type LoginOidcParams struct {
+	// ReturnTo The path to land on after the login, and the `return` of a refusal's redirect to the login page; anything that is not a path of this installation is `/`
+	ReturnTo *string `form:"return_to,omitempty" json:"return_to,omitempty"`
+}
+
+// SetMyChatJSONRequestBody defines body for SetMyChat for application/json ContentType.
+type SetMyChatJSONRequestBody = ChatCapabilitiesUpdate
+
 // ChangeMyPasswordJSONRequestBody defines body for ChangeMyPassword for application/json ContentType.
 type ChangeMyPasswordJSONRequestBody = PasswordChange
 
@@ -2512,11 +3360,32 @@ type CreateAccountJSONRequestBody = AccountCreate
 // ResetAccountPasswordJSONRequestBody defines body for ResetAccountPassword for application/json ContentType.
 type ResetAccountPasswordJSONRequestBody = AccountPasswordReset
 
+// CreateGroupMappingJSONRequestBody defines body for CreateGroupMapping for application/json ContentType.
+type CreateGroupMappingJSONRequestBody = GroupMappingCreate
+
+// UpdateGroupMappingJSONRequestBody defines body for UpdateGroupMapping for application/json ContentType.
+type UpdateGroupMappingJSONRequestBody = GroupMappingPatch
+
+// AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
+type AddMemberJSONRequestBody = MemberAdd
+
+// SetMemberGrantJSONRequestBody defines body for SetMemberGrant for application/json ContentType.
+type SetMemberGrantJSONRequestBody = MemberGrantSet
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectCreate
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = ProjectPatch
+
+// SetProjectAccessJSONRequestBody defines body for SetProjectAccess for application/json ContentType.
+type SetProjectAccessJSONRequestBody = ProjectAccessSet
+
+// BindRepositoryJSONRequestBody defines body for BindRepository for application/json ContentType.
+type BindRepositoryJSONRequestBody = RepositoryBind
+
+// SetProjectRestrictionJSONRequestBody defines body for SetProjectRestriction for application/json ContentType.
+type SetProjectRestrictionJSONRequestBody = ProjectRestrictionSet
 
 // CreateTicketJSONRequestBody defines body for CreateTicket for application/json ContentType.
 type CreateTicketJSONRequestBody = TicketCreate
@@ -2648,6 +3517,47 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetMyChat The capabilities the person gives the chat in the UI
+	//
+	// The chat acts as the person's agent, and its requests hold exactly this set
+	// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+	// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+	// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+	// and `chosen` is false.
+	//
+	// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+	GetMyChat(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyChatWithBody Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChat(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ChangeMyPasswordWithBody Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
@@ -2675,6 +3585,40 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	//
+	// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+	// searches the projects the caller sees in every tenant of the person — a
+	// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+	// remotes are tried in the order given, `origin` first by convention; the
+	// first one with a binding decides, and of its bindings those whose
+	// sub-directory covers `path`, the most specific first. One binding is
+	// `bound`; several are `ambiguous`, a data error the person resolves
+	// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+	// from the first remote that has an identity (D2): the tenant — the only one
+	// the caller may create projects in, else the one that binds repositories
+	// under the same owner, else the list to choose from — a key from the
+	// repository's name, free in each tenant offered, and the name itself. A
+	// caller who may create a project nowhere gets no proposal and the reason.
+	// A remote that names no host is reported with a null identity. Send no
+	// credentials: cowork stores none, and a proxy's log may carry the query.
+	//
+	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+	LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMyToken The token this request presents, and what it makes of the request
+	//
+	// The token's metadata as the list shows it, the key of the project it is
+	// restricted to, and the request's mark: whether it is an agent's — by the
+	// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+	// agent recorded on its acts, and the capabilities it holds
+	// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+	// it may do (D6), and `cowork-mcp token check` to tell a person
+	// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+	//
+	// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+	GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	//
@@ -2757,6 +3701,33 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	//
+	// The optional binding file of a repository without a remote or of a fork
+	// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+	// sub-directory of a monorepo it binds — and `url`, the installation it
+	// belongs to. Unauthenticated, so an editor can load it.
+	//
+	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+	GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTenants Every tenant of the installation, for a global administrator
+	//
+	// Every tenant by slug, with the role the caller holds in it — the highest
+	// of their mapping and their grant — or `null` where they hold none
+	// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+	// which they have no role: there they see its administration — the
+	// tenant and its settings, its members, its group mappings — and grant
+	// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+	// and nothing of its work until they have. A person who is not a global
+	// administrator is `403 forbidden`; the tenants they belong to are in
+	// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+	// token is `403 session_required`, so a leaked token of a global
+	// administrator lists no tenant beyond the person's own.
+	//
+	// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+	ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateTenantWithBody Create a tenant
 	//
 	// A global administrator, in a browser session: no token creates a tenant
@@ -2786,6 +3757,10 @@ type ClientInterface interface {
 	CreateTenant(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTenant The tenant and its settings
+	//
+	// Every member reads it; a global administrator who holds no role in the
+	// tenant too, in a browser session, as part of its administration
+	// (docs/adr/0034 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant} (the `GetTenant` operationId).
 	GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2860,7 +3835,11 @@ type ClientInterface interface {
 	// The person can no longer log in, their tokens are revoked and their
 	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
 	// Not for the administrator's own account (`403 forbidden`). Deactivating a
-	// deactivated account changes nothing.
+	// deactivated account changes nothing. A deactivation that would leave the
+	// tenant without an administrator who can log in is `409 last_admin` and
+	// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+	// administrators who deactivate each other at once are decided one after
+	// the other.
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
 	DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2924,10 +3903,227 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
+	//
+	// For every member of the tenant. The chat is available when the installation configures at
+	// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+	// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+	// provider's address and key are never shown, and nothing here asks a provider whether it
+	// answers: a turn that cannot reach it ends with an `error` event.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+	GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StopChatTurns Stop every running turn of the person in the tenant
+	//
+	// A person in a browser session, any member: a token is `403 session_required`, a session the
+	// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+	// session's person in the tenant that runs on the replica answering this request ends at once:
+	// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+	// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+	// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+	// stopped turns' tool calls did before has happened.
+	//
+	// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+	// another replica runs is not reached — the client's abort of the turn's own request still is.
+	// With no turn running, nothing happens, and the answer is the same.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+	StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListGroupMappings The tenant's group mappings, by group
+	//
+	// Each mapping gives its role to every person whose groups include its
+	// group; several matches yield the highest role (docs/adr/0030 D2).
+	// `includes_caller` says the calling person is one of them, so the editor
+	// can warn before a change takes the editor's own role away. The tenant's
+	// administrators read them, and a global administrator who holds no role
+	// in the tenant, in a browser session (docs/adr/0034 D2).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
+	ListGroupMappings(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupMappingWithBody Map a group of the identity provider to a role
+	//
+	// The group is matched exactly, case and all, against the groups the
+	// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+	// at once to every person whose groups, as of their last login or groups
+	// refresh, include it: their memberships are derived in the same
+	// transaction, recorded with the cause `mapping`. Everyone else is caught
+	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+	// tenant maps already is `409 mapping_exists`.
+	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+	CreateGroupMappingWithBody(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupMapping Map a group of the identity provider to a role
+	//
+	// The group is matched exactly, case and all, against the groups the
+	// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+	// at once to every person whose groups, as of their last login or groups
+	// refresh, include it: their memberships are derived in the same
+	// transaction, recorded with the cause `mapping`. Everyone else is caught
+	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+	// tenant maps already is `409 mapping_exists`.
+	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+	CreateGroupMapping(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, body CreateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteGroupMapping Remove a mapping
+	//
+	// The memberships it derived go at once, or fall to the highest of the
+	// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+	// administrator of the tenant may remove one, with an `admin`-scope token
+	// too: it only takes access away (docs/adr/0030 D7).
+	// Idempotent: removing a mapping that does not exist answers 204 as well.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
+	DeleteGroupMapping(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGroupMappingWithBody Change a mapping's role
+	//
+	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+	UpdateGroupMappingWithBody(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGroupMapping Change a mapping's role
+	//
+	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+	UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
+	//
+	// Each member with the effective role — the higher of the mapped and the
+	// granted one (docs/adr/0030 D4) — and `origins`, every source with its
+	// own role; `local` marks a person with a local account rather than an
+	// identity of the identity provider (docs/adr/0033). `email` is the
+	// address that tells two persons of one name apart, for the tenant's
+	// administrators; everyone else reads null — a global administrator who
+	// holds no role in the tenant and reads the list as part of its
+	// administration too (docs/adr/0034 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 	ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddMemberWithBody Grant a role to a person, by e-mail address or username
+	//
+	// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+	// exists: who has logged in through the identity provider once, or has a
+	// local account. Nobody active by that address or name is
+	// `404 person_not_found`; an address several persons share is
+	// `409 person_ambiguous`, since an e-mail address is a display attribute
+	// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+	// already is `409 grant_exists` — change it with
+	// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+	// the grant beside it, and the higher role of the two applies (D4).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+	AddMemberWithBody(ctx context.Context, tenant TenantSlug, params *AddMemberParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddMember Grant a role to a person, by e-mail address or username
+	//
+	// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+	// exists: who has logged in through the identity provider once, or has a
+	// local account. Nobody active by that address or name is
+	// `404 person_not_found`; an address several persons share is
+	// `409 person_ambiguous`, since an e-mail address is a display attribute
+	// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+	// already is `409 grant_exists` — change it with
+	// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+	// the grant beside it, and the higher role of the two applies (D4).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+	AddMember(ctx context.Context, tenant TenantSlug, params *AddMemberParams, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveMemberGrant Remove a member's grant
+	//
+	// The mapped membership, if any, stays; without one the person is no
+	// longer a member (docs/adr/0030 D3). Idempotent: removing a grant that
+	// does not exist answers 204 as well.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant (the `RemoveMemberGrant` operationId).
+	RemoveMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMemberGrantWithBody Give a member a grant, or change its role
+	//
+	// Creates the member's manual grant with the role, or changes the role of
+	// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+	// mapped membership is never touched: it holds until the mapping or the
+	// groups change (docs/adr/0030 D3). The person must be a member of the
+	// tenant, else `404 person_not_found` — a person who is not one yet is
+	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+	SetMemberGrantWithBody(ctx context.Context, tenant TenantSlug, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMemberGrant Give a member a grant, or change its role
+	//
+	// Creates the member's manual grant with the role, or changes the role of
+	// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+	// mapped membership is never touched: it holds until the mapping or the
+	// groups change (docs/adr/0030 D3). The person must be a member of the
+	// tenant, else `404 person_not_found` — a person who is not one yet is
+	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+	SetMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjects The projects the caller can see
 	//
@@ -2940,6 +4136,12 @@ type ClientInterface interface {
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
 	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -2950,6 +4152,12 @@ type ClientInterface interface {
 	// `write` scope. A member creates projects while the tenant allows it,
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
+	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2983,6 +4191,45 @@ type ClientInterface interface {
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project} (the `UpdateProject` operationId).
 	UpdateProject(ctx context.Context, tenant TenantSlug, project ProjectKey, params *UpdateProjectParams, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListProjectAccess The project's access list
+	//
+	// The people a restricted project admits besides the tenant's
+	// administrators, each with the most they may do in it, `member` or
+	// `viewer`; a person's role in the project is the lower of their tenant
+	// role and their entry (docs/adr/0034 D3).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/access (the `ListProjectAccess` operationId).
+	ListProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveProjectAccess Take a person off the access list
+	//
+	// On a restricted project the person no longer sees it, unless they
+	// administer the tenant. Idempotent: removing an entry that does not exist
+	// answers 204 as well.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `RemoveProjectAccess` operationId).
+	RemoveProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectAccessWithBody Put a member on the access list, or change their entry
+	//
+	// The person must be a member of the tenant, else `404 person_not_found`.
+	// Repeating it changes nothing (docs/adr/0045 D1).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+	SetProjectAccessWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectAccess Put a member on the access list, or change their entry
+	//
+	// The person must be a member of the tenant, else `404 person_not_found`.
+	// Repeating it changes nothing (docs/adr/0045 D1).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+	SetProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, body SetProjectAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ArchiveProject Archive a project
 	//
 	// An administrator's act with `admin` scope, never an agent's
@@ -2992,6 +4239,84 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRepositories The repositories a project owns
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+	ListRepositories(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BindRepositoryWithBody Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BindRepository Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnbindRepository Unbind a repository from the project
+	//
+	// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+	// so a binding that is gone answers 204 as well. The project and its tickets
+	// stay; the next session in the repository finds no binding.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+	UnbindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectRestrictionWithBody Restrict a project to its access list, or open it
+	//
+	// A restricted project is visible to the tenant's administrators and the
+	// people on its access list only, each with at most the role of their
+	// entry; anyone else does not see it, its tickets, its board or its search
+	// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+	// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+	// access list may be written before the project is restricted, so nobody
+	// on it loses the project in between; its entries count while the project
+	// is restricted.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+	SetProjectRestrictionWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectRestriction Restrict a project to its access list, or open it
+	//
+	// A restricted project is visible to the tenant's administrators and the
+	// people on its access list only, each with at most the role of their
+	// entry; anyone else does not see it, its tickets, its board or its search
+	// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+	// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+	// access list may be written before the project is restricted, so nobody
+	// on it loses the project in between; its entries count while the project
+	// is restricted.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+	SetProjectRestriction(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, body SetProjectRestrictionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjectTickets The project's tickets, in the project's rank
 	//
@@ -3226,6 +4551,27 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 	SetConfidential(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	//
+	// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+	// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+	// <agent>) — not an import format -->`, followed by read-only sections in a
+	// fixed order (D2): `## Links` (typed, read from this ticket, each other
+	// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+	// tickets that block it, to a depth of eight, with state, assignee and the
+	// implementation stage, and the count of open ones), `## Recent comments`
+	// (the last `comments`, oldest of them first, each quoted under its author,
+	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+	// the caller cannot see is absent. The document carries no `ETag`: it is not
+	// one entity. Every call is recorded: data left the system (D5). It is no
+	// import format (D3): there is no importer yet, and the one ADR 0044
+	// decides refuses a file that carries these sections.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+	ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RemoveInterest Remove the caller's own stake
 	//
@@ -3602,7 +4948,46 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// LoginLocalWithBody Log in with a local account
+	// OidcCallback The identity provider's return
+	//
+	// Where the issuer sends the browser back: `COWORK_BASE_URL` +
+	// `/auth/callback`, the redirect URI registered with the identity
+	// provider (docs/adr/0029 D4). The UI never calls it.
+	//
+	// The state cookie of `GET /auth/oidc/login` must be present, younger than
+	// ten minutes, and hold the `state` the issuer returned. The code is
+	// exchanged with the PKCE verifier; the ID token's signature, issuer,
+	// audience, expiry and nonce are verified (D1); the groups are read from
+	// `COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —
+	// and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
+	// is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
+	// issuer and subject, or made (docs/adr/0029 D5), and their memberships
+	// are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+	// session is made as the local login makes it — a new cookie, and the
+	// session the request presented ended (docs/adr/0031 D5) — the state
+	// cookie is cleared, and the answer is `303` to `return_to`.
+	//
+	// Every failure is `303` to `/login?error=<code>&return=<return_to>`, the
+	// state cookie cleared and no session made. `return` is the path the login
+	// began with, for the page's next attempt: it is there when the state
+	// cookie still opens, stale or not, and the path is not `/`, the page's
+	// default. The codes: `oidc_failed` — the state cookie is missing, stale
+	// or does not match, the exchange or the verification failed, or the
+	// issuer answered with `error`; `not_allowed` — the person is outside the
+	// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+	// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
+	// `oidc_unavailable` — no identity provider is configured. A refused
+	// login is recorded (docs/adr/0026); the reason reaches the log, never the
+	// page, and neither ever holds a code or a token.
+	//
+	// The issuer may add parameters this document does not name, such as `iss`
+	// (RFC 9207) or `session_state`: the route takes them and reads none of
+	// them (`x-cowork-open-query`).
+	//
+	// Corresponds with GET /auth/callback (the `OidcCallback` operationId).
+	OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LoginLocalWithBody Sign in with a local account
 	//
 	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 	// SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -3632,7 +5017,7 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
 	LoginLocalWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// LoginLocal Log in with a local account
+	// LoginLocal Sign in with a local account
 	//
 	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 	// SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -3668,15 +5053,50 @@ type ClientInterface interface {
 	// write of a session, so the CSRF check applies: a page of another site
 	// cannot log a person out (docs/adr/0037 D5).
 	//
+	// A session the identity provider made, whose issuer names an
+	// `end_session_endpoint` in its discovery, answers `200` with
+	// `end_session_url`: the issuer's logout with `client_id` and
+	// `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the
+	// browser goes next to end its session at the issuer as well (D4). The
+	// ID token was not kept (D1), so the URL carries no `id_token_hint`. Every
+	// other logout answers `204`.
+	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// LoginOidc Start a login through the identity provider
+	//
+	// A navigation of the browser — the login page's button sets
+	// `window.location` here — and never a call: the answer is a redirect
+	// (docs/adr/0029 D1). With an identity provider configured it is `302` to
+	// the issuer's authorization endpoint, for the authorization code flow
+	// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
+	// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+	// Without one, or while its gate admits nobody — the cases in which
+	// `GET /auth/options` answers `oidc: false` — it is `303` to
+	// `/login?error=oidc_unavailable&return=<return_to>`.
+	//
+	// `return_to` is where the browser lands after the login: a path of this
+	// installation that starts with `/`, not with `//` or `/\`, holds no
+	// control character and is at most 2048 characters long. Anything else,
+	// or none, is `/`; it is never refused, so a bad link still leads to a
+	// login.
+	//
+	// No credential: whoever comes here has none yet. Nothing is decided here
+	// that a forged link could abuse — the session is made by the callback,
+	// and only for the browser that holds the state cookie this answer set.
+	//
+	// Corresponds with GET /auth/oidc/login (the `LoginOidc` operationId).
+	LoginOidc(ctx context.Context, params *LoginOidcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAuthOptions What the login page offers
 	//
-	// The local form is offered when at least one active local account exists,
-	// the identity provider's button when one is configured (docs/adr/0033 D8).
-	// No identity provider exists yet, so `oidc` is always false. The minimum
-	// password length is the policy every password form follows (D3).
+	// The local form is offered when at least one active local account exists
+	// (docs/adr/0033 D8); the identity provider's button, "Sign in with
+	// `oidc_name`", when one is configured and its gate admits somebody —
+	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
+	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
+	// password form follows (docs/adr/0033 D3).
 	//
 	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 	GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3687,6 +5107,77 @@ type ClientInterface interface {
 // Corresponds with GET /api/v1/me (the `GetMe` operationId).
 func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMyChat The capabilities the person gives the chat in the UI
+//
+// The chat acts as the person's agent, and its requests hold exactly this set
+// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+// and `chosen` is false.
+//
+// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+func (c *Client) GetMyChat(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyChatRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyChatWithBody Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *Client) SetMyChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyChatRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyChat Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *Client) SetMyChat(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyChatRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3735,6 +5226,60 @@ func (c *Client) ChangeMyPasswordWithBody(ctx context.Context, contentType strin
 // Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 func (c *Client) ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewChangeMyPasswordRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LookupRepository The project a repository is bound to, across the person's tenants
+//
+// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+// searches the projects the caller sees in every tenant of the person — a
+// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+// remotes are tried in the order given, `origin` first by convention; the
+// first one with a binding decides, and of its bindings those whose
+// sub-directory covers `path`, the most specific first. One binding is
+// `bound`; several are `ambiguous`, a data error the person resolves
+// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+// from the first remote that has an identity (D2): the tenant — the only one
+// the caller may create projects in, else the one that binds repositories
+// under the same owner, else the list to choose from — a key from the
+// repository's name, free in each tenant offered, and the name itself. A
+// caller who may create a project nowhere gets no proposal and the reason.
+// A remote that names no host is reported with a null identity. Send no
+// credentials: cowork stores none, and a proxy's log may carry the query.
+//
+// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+func (c *Client) LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLookupRepositoryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMyToken The token this request presents, and what it makes of the request
+//
+// The token's metadata as the list shows it, the key of the project it is
+// restricted to, and the request's mark: whether it is an agent's — by the
+// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+// agent recorded on its acts, and the capabilities it holds
+// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+// it may do (D6), and `cowork-mcp token check` to tell a person
+// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+//
+// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+func (c *Client) GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyTokenRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -3876,6 +5421,53 @@ func (c *Client) GetOpenAPI(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+//
+// The optional binding file of a repository without a remote or of a fork
+// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+// sub-directory of a monorepo it binds — and `url`, the installation it
+// belongs to. Unauthenticated, so an editor can load it.
+//
+// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+func (c *Client) GetCoworkYamlSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCoworkYamlSchemaRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTenants Every tenant of the installation, for a global administrator
+//
+// Every tenant by slug, with the role the caller holds in it — the highest
+// of their mapping and their grant — or `null` where they hold none
+// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+// which they have no role: there they see its administration — the
+// tenant and its settings, its members, its group mappings — and grant
+// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+// and nothing of its work until they have. A person who is not a global
+// administrator is `403 forbidden`; the tenants they belong to are in
+// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+// token is `403 session_required`, so a leaked token of a global
+// administrator lists no tenant beyond the person's own.
+//
+// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+func (c *Client) ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTenantsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateTenantWithBody Create a tenant
 //
 // A global administrator, in a browser session: no token creates a tenant
@@ -3925,6 +5517,10 @@ func (c *Client) CreateTenant(ctx context.Context, params *CreateTenantParams, b
 }
 
 // GetTenant The tenant and its settings
+//
+// Every member reads it; a global administrator who holds no role in the
+// tenant too, in a browser session, as part of its administration
+// (docs/adr/0034 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant} (the `GetTenant` operationId).
 func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4059,7 +5655,11 @@ func (c *Client) CreateAccount(ctx context.Context, tenant TenantSlug, params *C
 // The person can no longer log in, their tokens are revoked and their
 // sessions end (docs/adr/0024 D5); the person and every act they made stay.
 // Not for the administrator's own account (`403 forbidden`). Deactivating a
-// deactivated account changes nothing.
+// deactivated account changes nothing. A deactivation that would leave the
+// tenant without an administrator who can log in is `409 last_admin` and
+// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+// administrators who deactivate each other at once are decided one after
+// the other.
 //
 // Corresponds with PUT /api/v1/tenants/{tenant}/accounts/{username}/deactivation (the `DeactivateAccount` operationId).
 func (c *Client) DeactivateAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4183,11 +5783,358 @@ func (c *Client) ListAudit(ctx context.Context, tenant TenantSlug, params *ListA
 	return c.Client.Do(req)
 }
 
+// GetChatAvailability Whether the chat is available in the tenant, and with which providers
+//
+// For every member of the tenant. The chat is available when the installation configures at
+// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+// provider's address and key are never shown, and nothing here asks a provider whether it
+// answers: a turn that cannot reach it ends with an `error` event.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetChatAvailabilityRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StopChatTurns Stop every running turn of the person in the tenant
+//
+// A person in a browser session, any member: a token is `403 session_required`, a session the
+// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+// session's person in the tenant that runs on the replica answering this request ends at once:
+// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+// stopped turns' tool calls did before has happened.
+//
+// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+// another replica runs is not reached — the client's abort of the turn's own request still is.
+// With no turn running, nothing happens, and the answer is the same.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+func (c *Client) StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStopChatTurnsRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListGroupMappings The tenant's group mappings, by group
+//
+// Each mapping gives its role to every person whose groups include its
+// group; several matches yield the highest role (docs/adr/0030 D2).
+// `includes_caller` says the calling person is one of them, so the editor
+// can warn before a change takes the editor's own role away. The tenant's
+// administrators read them, and a global administrator who holds no role
+// in the tenant, in a browser session (docs/adr/0034 D2).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
+func (c *Client) ListGroupMappings(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListGroupMappingsRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupMappingWithBody Map a group of the identity provider to a role
+//
+// The group is matched exactly, case and all, against the groups the
+// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+// at once to every person whose groups, as of their last login or groups
+// refresh, include it: their memberships are derived in the same
+// transaction, recorded with the cause `mapping`. Everyone else is caught
+// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+// tenant maps already is `409 mapping_exists`.
+//
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+func (c *Client) CreateGroupMappingWithBody(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupMappingRequestWithBody(c.Server, tenant, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupMapping Map a group of the identity provider to a role
+//
+// The group is matched exactly, case and all, against the groups the
+// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+// at once to every person whose groups, as of their last login or groups
+// refresh, include it: their memberships are derived in the same
+// transaction, recorded with the cause `mapping`. Everyone else is caught
+// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+// tenant maps already is `409 mapping_exists`.
+//
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+func (c *Client) CreateGroupMapping(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, body CreateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupMappingRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteGroupMapping Remove a mapping
+//
+// The memberships it derived go at once, or fall to the highest of the
+// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+// administrator of the tenant may remove one, with an `admin`-scope token
+// too: it only takes access away (docs/adr/0030 D7).
+// Idempotent: removing a mapping that does not exist answers 204 as well.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
+func (c *Client) DeleteGroupMapping(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGroupMappingRequest(c.Server, tenant, mappingId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGroupMappingWithBody Change a mapping's role
+//
+// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+func (c *Client) UpdateGroupMappingWithBody(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGroupMappingRequestWithBody(c.Server, tenant, mappingId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGroupMapping Change a mapping's role
+//
+// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+func (c *Client) UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGroupMappingRequest(c.Server, tenant, mappingId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListMembers The tenant's members and their roles (docs/adr/0034 D7)
+//
+// Each member with the effective role — the higher of the mapped and the
+// granted one (docs/adr/0030 D4) — and `origins`, every source with its
+// own role; `local` marks a person with a local account rather than an
+// identity of the identity provider (docs/adr/0033). `email` is the
+// address that tells two persons of one name apart, for the tenant's
+// administrators; everyone else reads null — a global administrator who
+// holds no role in the tenant and reads the list as part of its
+// administration too (docs/adr/0034 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 func (c *Client) ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMembersRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AddMemberWithBody Grant a role to a person, by e-mail address or username
+//
+// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+// exists: who has logged in through the identity provider once, or has a
+// local account. Nobody active by that address or name is
+// `404 person_not_found`; an address several persons share is
+// `409 person_ambiguous`, since an e-mail address is a display attribute
+// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+// already is `409 grant_exists` — change it with
+// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+// the grant beside it, and the higher role of the two applies (D4).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+func (c *Client) AddMemberWithBody(ctx context.Context, tenant TenantSlug, params *AddMemberParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMemberRequestWithBody(c.Server, tenant, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AddMember Grant a role to a person, by e-mail address or username
+//
+// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+// exists: who has logged in through the identity provider once, or has a
+// local account. Nobody active by that address or name is
+// `404 person_not_found`; an address several persons share is
+// `409 person_ambiguous`, since an e-mail address is a display attribute
+// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+// already is `409 grant_exists` — change it with
+// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+// the grant beside it, and the higher role of the two applies (D4).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+func (c *Client) AddMember(ctx context.Context, tenant TenantSlug, params *AddMemberParams, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMemberRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveMemberGrant Remove a member's grant
+//
+// The mapped membership, if any, stays; without one the person is no
+// longer a member (docs/adr/0030 D3). Idempotent: removing a grant that
+// does not exist answers 204 as well.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant (the `RemoveMemberGrant` operationId).
+func (c *Client) RemoveMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveMemberGrantRequest(c.Server, tenant, personId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMemberGrantWithBody Give a member a grant, or change its role
+//
+// Creates the member's manual grant with the role, or changes the role of
+// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+// mapped membership is never touched: it holds until the mapping or the
+// groups change (docs/adr/0030 D3). The person must be a member of the
+// tenant, else `404 person_not_found` — a person who is not one yet is
+// added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+func (c *Client) SetMemberGrantWithBody(ctx context.Context, tenant TenantSlug, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMemberGrantRequestWithBody(c.Server, tenant, personId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMemberGrant Give a member a grant, or change its role
+//
+// Creates the member's manual grant with the role, or changes the role of
+// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+// mapped membership is never touched: it holds until the mapping or the
+// groups change (docs/adr/0030 D3). The person must be a member of the
+// tenant, else `404 person_not_found` — a person who is not one yet is
+// added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+func (c *Client) SetMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMemberGrantRequest(c.Server, tenant, personId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4219,6 +6166,12 @@ func (c *Client) ListProjects(ctx context.Context, tenant TenantSlug, params *Li
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
 //
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -4239,6 +6192,12 @@ func (c *Client) CreateProjectWithBody(ctx context.Context, tenant TenantSlug, p
 // `write` scope. A member creates projects while the tenant allows it,
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
+//
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4312,6 +6271,85 @@ func (c *Client) UpdateProject(ctx context.Context, tenant TenantSlug, project P
 	return c.Client.Do(req)
 }
 
+// ListProjectAccess The project's access list
+//
+// The people a restricted project admits besides the tenant's
+// administrators, each with the most they may do in it, `member` or
+// `viewer`; a person's role in the project is the lower of their tenant
+// role and their entry (docs/adr/0034 D3).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/access (the `ListProjectAccess` operationId).
+func (c *Client) ListProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListProjectAccessRequest(c.Server, tenant, project, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveProjectAccess Take a person off the access list
+//
+// On a restricted project the person no longer sees it, unless they
+// administer the tenant. Idempotent: removing an entry that does not exist
+// answers 204 as well.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `RemoveProjectAccess` operationId).
+func (c *Client) RemoveProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveProjectAccessRequest(c.Server, tenant, project, personId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectAccessWithBody Put a member on the access list, or change their entry
+//
+// The person must be a member of the tenant, else `404 person_not_found`.
+// Repeating it changes nothing (docs/adr/0045 D1).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+func (c *Client) SetProjectAccessWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectAccessRequestWithBody(c.Server, tenant, project, personId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectAccess Put a member on the access list, or change their entry
+//
+// The person must be a member of the tenant, else `404 person_not_found`.
+// Repeating it changes nothing (docs/adr/0045 D1).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+func (c *Client) SetProjectAccess(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, body SetProjectAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectAccessRequest(c.Server, tenant, project, personId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ArchiveProject Archive a project
 //
 // An administrator's act with `admin` scope, never an agent's
@@ -4322,6 +6360,144 @@ func (c *Client) UpdateProject(ctx context.Context, tenant TenantSlug, project P
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveProjectRequest(c.Server, tenant, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRepositories The repositories a project owns
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+func (c *Client) ListRepositories(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRepositoriesRequest(c.Server, tenant, project, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BindRepositoryWithBody Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *Client) BindRepositoryWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBindRepositoryRequestWithBody(c.Server, tenant, project, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BindRepository Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *Client) BindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBindRepositoryRequest(c.Server, tenant, project, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnbindRepository Unbind a repository from the project
+//
+// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+// so a binding that is gone answers 204 as well. The project and its tickets
+// stay; the next session in the repository finds no binding.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+func (c *Client) UnbindRepository(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnbindRepositoryRequest(c.Server, tenant, project, repository)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectRestrictionWithBody Restrict a project to its access list, or open it
+//
+// A restricted project is visible to the tenant's administrators and the
+// people on its access list only, each with at most the role of their
+// entry; anyone else does not see it, its tickets, its board or its search
+// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+// access list may be written before the project is restricted, so nobody
+// on it loses the project in between; its entries count while the project
+// is restricted.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+func (c *Client) SetProjectRestrictionWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectRestrictionRequestWithBody(c.Server, tenant, project, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectRestriction Restrict a project to its access list, or open it
+//
+// A restricted project is visible to the tenant's administrators and the
+// people on its access list only, each with at most the role of their
+// entry; anyone else does not see it, its tickets, its board or its search
+// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+// access list may be written before the project is restricted, so nobody
+// on it loses the project in between; its entries count while the project
+// is restricted.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+func (c *Client) SetProjectRestriction(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, body SetProjectRestrictionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectRestrictionRequest(c.Server, tenant, project, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4786,6 +6962,37 @@ func (c *Client) SetConfidentialWithBody(ctx context.Context, tenant TenantSlug,
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 func (c *Client) SetConfidential(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetConfidentialRequest(c.Server, tenant, project, number, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportTicketContext The ticket for reading, with what surrounds it
+//
+// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+// <agent>) — not an import format -->`, followed by read-only sections in a
+// fixed order (D2): `## Links` (typed, read from this ticket, each other
+// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+// tickets that block it, to a depth of eight, with state, assignee and the
+// implementation stage, and the count of open ones), `## Recent comments`
+// (the last `comments`, oldest of them first, each quoted under its author,
+// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+// (name, type, size and URL, never content) and `## Recent activity` (the
+// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+// the caller cannot see is absent. The document carries no `ETag`: it is not
+// one entity. Every call is recorded: data left the system (D5). It is no
+// import format (D3): there is no importer yet, and the one ADR 0044
+// decides refuses a file that carries these sections.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+func (c *Client) ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportTicketContextRequest(c.Server, tenant, project, number, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5541,7 +7748,56 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
-// LoginLocalWithBody Log in with a local account
+// OidcCallback The identity provider's return
+//
+// Where the issuer sends the browser back: `COWORK_BASE_URL` +
+// `/auth/callback`, the redirect URI registered with the identity
+// provider (docs/adr/0029 D4). The UI never calls it.
+//
+// The state cookie of `GET /auth/oidc/login` must be present, younger than
+// ten minutes, and hold the `state` the issuer returned. The code is
+// exchanged with the PKCE verifier; the ID token's signature, issuer,
+// audience, expiry and nonce are verified (D1); the groups are read from
+// `COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —
+// and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
+// is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
+// issuer and subject, or made (docs/adr/0029 D5), and their memberships
+// are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+// session is made as the local login makes it — a new cookie, and the
+// session the request presented ended (docs/adr/0031 D5) — the state
+// cookie is cleared, and the answer is `303` to `return_to`.
+//
+// Every failure is `303` to `/login?error=<code>&return=<return_to>`, the
+// state cookie cleared and no session made. `return` is the path the login
+// began with, for the page's next attempt: it is there when the state
+// cookie still opens, stale or not, and the path is not `/`, the page's
+// default. The codes: `oidc_failed` — the state cookie is missing, stale
+// or does not match, the exchange or the verification failed, or the
+// issuer answered with `error`; `not_allowed` — the person is outside the
+// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
+// `oidc_unavailable` — no identity provider is configured. A refused
+// login is recorded (docs/adr/0026); the reason reaches the log, never the
+// page, and neither ever holds a code or a token.
+//
+// The issuer may add parameters this document does not name, such as `iss`
+// (RFC 9207) or `session_state`: the route takes them and reads none of
+// them (`x-cowork-open-query`).
+//
+// Corresponds with GET /auth/callback (the `OidcCallback` operationId).
+func (c *Client) OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LoginLocalWithBody Sign in with a local account
 //
 // Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 // SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -5581,7 +7837,7 @@ func (c *Client) LoginLocalWithBody(ctx context.Context, contentType string, bod
 	return c.Client.Do(req)
 }
 
-// LoginLocal Log in with a local account
+// LoginLocal Sign in with a local account
 //
 // Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 // SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -5627,6 +7883,14 @@ func (c *Client) LoginLocal(ctx context.Context, body LoginLocalJSONRequestBody,
 // write of a session, so the CSRF check applies: a page of another site
 // cannot log a person out (docs/adr/0037 D5).
 //
+// A session the identity provider made, whose issuer names an
+// `end_session_endpoint` in its discovery, answers `200` with
+// `end_session_url`: the issuer's logout with `client_id` and
+// `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the
+// browser goes next to end its session at the issuer as well (D4). The
+// ID token was not kept (D1), so the URL carries no `id_token_hint`. Every
+// other logout answers `204`.
+//
 // Corresponds with POST /auth/logout (the `Logout` operationId).
 func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLogoutRequest(c.Server)
@@ -5640,12 +7904,49 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 	return c.Client.Do(req)
 }
 
+// LoginOidc Start a login through the identity provider
+//
+// A navigation of the browser — the login page's button sets
+// `window.location` here — and never a call: the answer is a redirect
+// (docs/adr/0029 D1). With an identity provider configured it is `302` to
+// the issuer's authorization endpoint, for the authorization code flow
+// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
+// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+// Without one, or while its gate admits nobody — the cases in which
+// `GET /auth/options` answers `oidc: false` — it is `303` to
+// `/login?error=oidc_unavailable&return=<return_to>`.
+//
+// `return_to` is where the browser lands after the login: a path of this
+// installation that starts with `/`, not with `//` or `/\`, holds no
+// control character and is at most 2048 characters long. Anything else,
+// or none, is `/`; it is never refused, so a bad link still leads to a
+// login.
+//
+// No credential: whoever comes here has none yet. Nothing is decided here
+// that a forged link could abuse — the session is made by the callback,
+// and only for the browser that holds the state cookie this answer set.
+//
+// Corresponds with GET /auth/oidc/login (the `LoginOidc` operationId).
+func (c *Client) LoginOidc(ctx context.Context, params *LoginOidcParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginOidcRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetAuthOptions What the login page offers
 //
-// The local form is offered when at least one active local account exists,
-// the identity provider's button when one is configured (docs/adr/0033 D8).
-// No identity provider exists yet, so `oidc` is always false. The minimum
-// password length is the policy every password form follows (D3).
+// The local form is offered when at least one active local account exists
+// (docs/adr/0033 D8); the identity provider's button, "Sign in with
+// `oidc_name`", when one is configured and its gate admits somebody —
+// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
+// (docs/adr/0030 D1, D8). The minimum password length is the policy every
+// password form follows (docs/adr/0033 D3).
 //
 // Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 func (c *Client) GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5687,6 +7988,73 @@ func NewGetMeRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetMyChatRequest constructs an http.Request for the GetMyChat method
+func NewGetMyChatRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetMyChatRequest calls the generic SetMyChat builder with application/json body
+func NewSetMyChatRequest(server string, body SetMyChatJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetMyChatRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetMyChatRequestWithBody constructs an http.Request for the SetMyChat method, with any body, and a specified content type
+func NewSetMyChatRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewChangeMyPasswordRequest calls the generic ChangeMyPassword builder with application/json body
 func NewChangeMyPasswordRequest(server string, body ChangeMyPasswordJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5723,6 +8091,99 @@ func NewChangeMyPasswordRequestWithBody(server string, contentType string, body 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLookupRepositoryRequest constructs an http.Request for the LookupRepository method
+func NewLookupRepositoryRequest(server string, params *LookupRepositoryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/repositories/lookup")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Remote != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "remote", params.Remote, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMyTokenRequest constructs an http.Request for the GetMyToken method
+func NewGetMyTokenRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -5899,6 +8360,99 @@ func NewGetOpenAPIRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCoworkYamlSchemaRequest constructs an http.Request for the GetCoworkYamlSchema method
+func NewGetCoworkYamlSchemaRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/schemas/cowork-yaml.json")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTenantsRequest constructs an http.Request for the ListTenants method
+func NewListTenantsRequest(server string, params *ListTenantsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -6517,6 +9071,319 @@ func NewListAuditRequest(server string, tenant TenantSlug, params *ListAuditPara
 	return req, nil
 }
 
+// NewGetChatAvailabilityRequest constructs an http.Request for the GetChatAvailability method
+func NewGetChatAvailabilityRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/chat", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStopChatTurnsRequest constructs an http.Request for the StopChatTurns method
+func NewStopChatTurnsRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/chat/turns", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListGroupMappingsRequest constructs an http.Request for the ListGroupMappings method
+func NewListGroupMappingsRequest(server string, tenant TenantSlug, params *ListGroupMappingsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/group-mappings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGroupMappingRequest calls the generic CreateGroupMapping builder with application/json body
+func NewCreateGroupMappingRequest(server string, tenant TenantSlug, params *CreateGroupMappingParams, body CreateGroupMappingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateGroupMappingRequestWithBody(server, tenant, params, "application/json", bodyReader)
+}
+
+// NewCreateGroupMappingRequestWithBody constructs an http.Request for the CreateGroupMapping method, with any body, and a specified content type
+func NewCreateGroupMappingRequestWithBody(server string, tenant TenantSlug, params *CreateGroupMappingParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/group-mappings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteGroupMappingRequest constructs an http.Request for the DeleteGroupMapping method
+func NewDeleteGroupMappingRequest(server string, tenant TenantSlug, mappingId GroupMappingID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "mapping_id", mappingId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/group-mappings/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateGroupMappingRequest calls the generic UpdateGroupMapping builder with application/json body
+func NewUpdateGroupMappingRequest(server string, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateGroupMappingRequestWithBody(server, tenant, mappingId, params, "application/json", bodyReader)
+}
+
+// NewUpdateGroupMappingRequestWithBody constructs an http.Request for the UpdateGroupMapping method, with any body, and a specified content type
+func NewUpdateGroupMappingRequestWithBody(server string, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "mapping_id", mappingId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/group-mappings/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListMembersRequest constructs an http.Request for the ListMembers method
 func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembersParams) (*http.Request, error) {
 	var err error
@@ -6586,6 +9453,163 @@ func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembers
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewAddMemberRequest calls the generic AddMember builder with application/json body
+func NewAddMemberRequest(server string, tenant TenantSlug, params *AddMemberParams, body AddMemberJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddMemberRequestWithBody(server, tenant, params, "application/json", bodyReader)
+}
+
+// NewAddMemberRequestWithBody constructs an http.Request for the AddMember method, with any body, and a specified content type
+func NewAddMemberRequestWithBody(server string, tenant TenantSlug, params *AddMemberParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/members", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewRemoveMemberGrantRequest constructs an http.Request for the RemoveMemberGrant method
+func NewRemoveMemberGrantRequest(server string, tenant TenantSlug, personId PersonID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "person_id", personId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/members/%s/grant", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetMemberGrantRequest calls the generic SetMemberGrant builder with application/json body
+func NewSetMemberGrantRequest(server string, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetMemberGrantRequestWithBody(server, tenant, personId, "application/json", bodyReader)
+}
+
+// NewSetMemberGrantRequestWithBody constructs an http.Request for the SetMemberGrant method, with any body, and a specified content type
+func NewSetMemberGrantRequestWithBody(server string, tenant TenantSlug, personId PersonID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "person_id", personId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/members/%s/grant", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6847,6 +9871,195 @@ func NewUpdateProjectRequestWithBody(server string, tenant TenantSlug, project P
 	return req, nil
 }
 
+// NewListProjectAccessRequest constructs an http.Request for the ListProjectAccess method
+func NewListProjectAccessRequest(server string, tenant TenantSlug, project ProjectKey, params *ListProjectAccessParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveProjectAccessRequest constructs an http.Request for the RemoveProjectAccess method
+func NewRemoveProjectAccessRequest(server string, tenant TenantSlug, project ProjectKey, personId PersonID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "person_id", personId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/access/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetProjectAccessRequest calls the generic SetProjectAccess builder with application/json body
+func NewSetProjectAccessRequest(server string, tenant TenantSlug, project ProjectKey, personId PersonID, body SetProjectAccessJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProjectAccessRequestWithBody(server, tenant, project, personId, "application/json", bodyReader)
+}
+
+// NewSetProjectAccessRequestWithBody constructs an http.Request for the SetProjectAccess method, with any body, and a specified content type
+func NewSetProjectAccessRequestWithBody(server string, tenant TenantSlug, project ProjectKey, personId PersonID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "person_id", personId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/access/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewArchiveProjectRequest constructs an http.Request for the ArchiveProject method
 func NewArchiveProjectRequest(server string, tenant TenantSlug, project ProjectKey) (*http.Request, error) {
 	var err error
@@ -6883,6 +10096,272 @@ func NewArchiveProjectRequest(server string, tenant TenantSlug, project ProjectK
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListRepositoriesRequest constructs an http.Request for the ListRepositories method
+func NewListRepositoriesRequest(server string, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewBindRepositoryRequest calls the generic BindRepository builder with application/json body
+func NewBindRepositoryRequest(server string, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBindRepositoryRequestWithBody(server, tenant, project, params, "application/json", bodyReader)
+}
+
+// NewBindRepositoryRequestWithBody constructs an http.Request for the BindRepository method, with any body, and a specified content type
+func NewBindRepositoryRequestWithBody(server string, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUnbindRepositoryRequest constructs an http.Request for the UnbindRepository method
+func NewUnbindRepositoryRequest(server string, tenant TenantSlug, project ProjectKey, repository RepositoryID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "repository", repository, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/repositories/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetProjectRestrictionRequest calls the generic SetProjectRestriction builder with application/json body
+func NewSetProjectRestrictionRequest(server string, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, body SetProjectRestrictionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProjectRestrictionRequestWithBody(server, tenant, project, params, "application/json", bodyReader)
+}
+
+// NewSetProjectRestrictionRequestWithBody constructs an http.Request for the SetProjectRestriction method, with any body, and a specified content type
+func NewSetProjectRestrictionRequestWithBody(server string, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/restriction", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -8437,6 +11916,93 @@ func NewSetConfidentialRequestWithBody(server string, tenant TenantSlug, project
 			req.Header.Set("If-Match", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewExportTicketContextRequest constructs an http.Request for the ExportTicketContext method
+func NewExportTicketContextRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/context", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Comments != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "comments", *params.Comments, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Activity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "activity", *params.Activity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -10784,6 +14350,96 @@ func NewGetVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewOidcCallbackRequest constructs an http.Request for the OidcCallback method
+func NewOidcCallbackRequest(server string, params *OidcCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Code != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "code", *params.Code, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Error != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "error", *params.Error, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ErrorDescription != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "error_description", *params.ErrorDescription, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewLoginLocalRequest calls the generic LoginLocal builder with application/json body
 func NewLoginLocalRequest(server string, body LoginLocalJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -10844,6 +14500,60 @@ func NewLogoutRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewLoginOidcRequest constructs an http.Request for the LoginOidc method
+func NewLoginOidcRequest(server string, params *LoginOidcParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/oidc/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.ReturnTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "return_to", *params.ReturnTo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10929,6 +14639,49 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/me (the `GetMe` operationId).
 	GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error)
 
+	// GetMyChatWithResponse The capabilities the person gives the chat in the UI
+	//
+	// The chat acts as the person's agent, and its requests hold exactly this set
+	// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+	// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+	// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+	// and `chosen` is false.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+	GetMyChatWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyChatResponse, error)
+
+	// SetMyChatWithBodyWithResponse Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error)
+
+	// SetMyChatWithResponse Choose the capabilities the person gives the chat in the UI
+	//
+	// Only the person, in a browser session: what the chat may do is access to the person's
+	// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+	// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+	// replaces the one before, from the chat's next request on, a running turn's included; an empty
+	// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+	// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+	// as the person's act.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+	SetMyChatWithResponse(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error)
+
 	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
@@ -10956,6 +14709,44 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPasswordWithResponse(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error)
+
+	// LookupRepositoryWithResponse The project a repository is bound to, across the person's tenants
+	//
+	// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+	// searches the projects the caller sees in every tenant of the person — a
+	// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+	// remotes are tried in the order given, `origin` first by convention; the
+	// first one with a binding decides, and of its bindings those whose
+	// sub-directory covers `path`, the most specific first. One binding is
+	// `bound`; several are `ambiguous`, a data error the person resolves
+	// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+	// from the first remote that has an identity (D2): the tenant — the only one
+	// the caller may create projects in, else the one that binds repositories
+	// under the same owner, else the list to choose from — a key from the
+	// repository's name, free in each tenant offered, and the name itself. A
+	// caller who may create a project nowhere gets no proposal and the reason.
+	// A remote that names no host is reported with a null identity. Send no
+	// credentials: cowork stores none, and a proxy's log may carry the query.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+	LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error)
+
+	// GetMyTokenWithResponse The token this request presents, and what it makes of the request
+	//
+	// The token's metadata as the list shows it, the key of the project it is
+	// restricted to, and the request's mark: whether it is an agent's — by the
+	// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+	// agent recorded on its acts, and the capabilities it holds
+	// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+	// it may do (D6), and `cowork-mcp token check` to tell a person
+	// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+	GetMyTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyTokenResponse, error)
 
 	// ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 	//
@@ -11044,6 +14835,37 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/openapi.json (the `GetOpenAPI` operationId).
 	GetOpenAPIWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOpenAPIResponse, error)
 
+	// GetCoworkYamlSchemaWithResponse The JSON Schema of a repository's `.cowork.yaml`
+	//
+	// The optional binding file of a repository without a remote or of a fork
+	// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+	// sub-directory of a monorepo it binds — and `url`, the installation it
+	// belongs to. Unauthenticated, so an editor can load it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+	GetCoworkYamlSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCoworkYamlSchemaResponse, error)
+
+	// ListTenantsWithResponse Every tenant of the installation, for a global administrator
+	//
+	// Every tenant by slug, with the role the caller holds in it — the highest
+	// of their mapping and their grant — or `null` where they hold none
+	// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+	// which they have no role: there they see its administration — the
+	// tenant and its settings, its members, its group mappings — and grant
+	// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+	// and nothing of its work until they have. A person who is not a global
+	// administrator is `403 forbidden`; the tenants they belong to are in
+	// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+	// token is `403 session_required`, so a leaked token of a global
+	// administrator lists no tenant beyond the person's own.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+	ListTenantsWithResponse(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error)
+
 	// CreateTenantWithBodyWithResponse Create a tenant
 	//
 	// A global administrator, in a browser session: no token creates a tenant
@@ -11073,6 +14895,10 @@ type ClientWithResponsesInterface interface {
 	CreateTenantWithResponse(ctx context.Context, params *CreateTenantParams, body CreateTenantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantResponse, error)
 
 	// GetTenantWithResponse The tenant and its settings
+	//
+	// Every member reads it; a global administrator who holds no role in the
+	// tenant too, in a browser session, as part of its administration
+	// (docs/adr/0034 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11151,7 +14977,11 @@ type ClientWithResponsesInterface interface {
 	// The person can no longer log in, their tokens are revoked and their
 	// sessions end (docs/adr/0024 D5); the person and every act they made stay.
 	// Not for the administrator's own account (`403 forbidden`). Deactivating a
-	// deactivated account changes nothing.
+	// deactivated account changes nothing. A deactivation that would leave the
+	// tenant without an administrator who can log in is `409 last_admin` and
+	// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+	// administrators who deactivate each other at once are decided one after
+	// the other.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11223,12 +15053,239 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAuditWithResponse(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*ListAuditResponse, error)
 
+	// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which providers
+	//
+	// For every member of the tenant. The chat is available when the installation configures at
+	// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+	// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+	// provider's address and key are never shown, and nothing here asks a provider whether it
+	// answers: a turn that cannot reach it ends with an `error` event.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+	GetChatAvailabilityWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetChatAvailabilityResponse, error)
+
+	// StopChatTurnsWithResponse Stop every running turn of the person in the tenant
+	//
+	// A person in a browser session, any member: a token is `403 session_required`, a session the
+	// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+	// session's person in the tenant that runs on the replica answering this request ends at once:
+	// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+	// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+	// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+	// stopped turns' tool calls did before has happened.
+	//
+	// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+	// another replica runs is not reached — the client's abort of the turn's own request still is.
+	// With no turn running, nothing happens, and the answer is the same.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+	StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error)
+
+	// ListGroupMappingsWithResponse The tenant's group mappings, by group
+	//
+	// Each mapping gives its role to every person whose groups include its
+	// group; several matches yield the highest role (docs/adr/0030 D2).
+	// `includes_caller` says the calling person is one of them, so the editor
+	// can warn before a change takes the editor's own role away. The tenant's
+	// administrators read them, and a global administrator who holds no role
+	// in the tenant, in a browser session (docs/adr/0034 D2).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
+	ListGroupMappingsWithResponse(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*ListGroupMappingsResponse, error)
+
+	// CreateGroupMappingWithBodyWithResponse Map a group of the identity provider to a role
+	//
+	// The group is matched exactly, case and all, against the groups the
+	// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+	// at once to every person whose groups, as of their last login or groups
+	// refresh, include it: their memberships are derived in the same
+	// transaction, recorded with the cause `mapping`. Everyone else is caught
+	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+	// tenant maps already is `409 mapping_exists`.
+	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+	CreateGroupMappingWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupMappingResponse, error)
+
+	// CreateGroupMappingWithResponse Map a group of the identity provider to a role
+	//
+	// The group is matched exactly, case and all, against the groups the
+	// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+	// at once to every person whose groups, as of their last login or groups
+	// refresh, include it: their memberships are derived in the same
+	// transaction, recorded with the cause `mapping`. Everyone else is caught
+	// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+	// tenant maps already is `409 mapping_exists`.
+	//
+	// Only a global administrator who administers the tenant maps a group, in
+	// a browser session; any other administrator of the tenant is
+	// `403 forbidden`, and nothing is written. Every tenant shares the identity
+	// provider's one namespace of groups, and a mapping admits everyone in its
+	// group at once (docs/adr/0030 D7).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+	CreateGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, body CreateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupMappingResponse, error)
+
+	// DeleteGroupMappingWithResponse Remove a mapping
+	//
+	// The memberships it derived go at once, or fall to the highest of the
+	// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+	// administrator of the tenant may remove one, with an `admin`-scope token
+	// too: it only takes access away (docs/adr/0030 D7).
+	// Idempotent: removing a mapping that does not exist answers 204 as well.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
+	DeleteGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, reqEditors ...RequestEditorFn) (*DeleteGroupMappingResponse, error)
+
+	// UpdateGroupMappingWithBodyWithResponse Change a mapping's role
+	//
+	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+	UpdateGroupMappingWithBodyWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGroupMappingResponse, error)
+
+	// UpdateGroupMappingWithResponse Change a mapping's role
+	//
+	// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+	// derives change at once, as at its creation. Like its creation, a global
+	// administrator's who administers the tenant: any other administrator is
+	// `403 forbidden` (docs/adr/0030 D7).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+	UpdateGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupMappingResponse, error)
+
 	// ListMembersWithResponse The tenant's members and their roles (docs/adr/0034 D7)
+	//
+	// Each member with the effective role — the higher of the mapped and the
+	// granted one (docs/adr/0030 D4) — and `origins`, every source with its
+	// own role; `local` marks a person with a local account rather than an
+	// identity of the identity provider (docs/adr/0033). `email` is the
+	// address that tells two persons of one name apart, for the tenant's
+	// administrators; everyone else reads null — a global administrator who
+	// holds no role in the tenant and reads the list as part of its
+	// administration too (docs/adr/0034 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 	ListMembersWithResponse(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*ListMembersResponse, error)
+
+	// AddMemberWithBodyWithResponse Grant a role to a person, by e-mail address or username
+	//
+	// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+	// exists: who has logged in through the identity provider once, or has a
+	// local account. Nobody active by that address or name is
+	// `404 person_not_found`; an address several persons share is
+	// `409 person_ambiguous`, since an e-mail address is a display attribute
+	// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+	// already is `409 grant_exists` — change it with
+	// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+	// the grant beside it, and the higher role of the two applies (D4).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+	AddMemberWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *AddMemberParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMemberResponse, error)
+
+	// AddMemberWithResponse Grant a role to a person, by e-mail address or username
+	//
+	// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+	// exists: who has logged in through the identity provider once, or has a
+	// local account. Nobody active by that address or name is
+	// `404 person_not_found`; an address several persons share is
+	// `409 person_ambiguous`, since an e-mail address is a display attribute
+	// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+	// already is `409 grant_exists` — change it with
+	// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+	// the grant beside it, and the higher role of the two applies (D4).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+	AddMemberWithResponse(ctx context.Context, tenant TenantSlug, params *AddMemberParams, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMemberResponse, error)
+
+	// RemoveMemberGrantWithResponse Remove a member's grant
+	//
+	// The mapped membership, if any, stays; without one the person is no
+	// longer a member (docs/adr/0030 D3). Idempotent: removing a grant that
+	// does not exist answers 204 as well.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant (the `RemoveMemberGrant` operationId).
+	RemoveMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, reqEditors ...RequestEditorFn) (*RemoveMemberGrantResponse, error)
+
+	// SetMemberGrantWithBodyWithResponse Give a member a grant, or change its role
+	//
+	// Creates the member's manual grant with the role, or changes the role of
+	// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+	// mapped membership is never touched: it holds until the mapping or the
+	// groups change (docs/adr/0030 D3). The person must be a member of the
+	// tenant, else `404 person_not_found` — a person who is not one yet is
+	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+	SetMemberGrantWithBodyWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error)
+
+	// SetMemberGrantWithResponse Give a member a grant, or change its role
+	//
+	// Creates the member's manual grant with the role, or changes the role of
+	// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+	// mapped membership is never touched: it holds until the mapping or the
+	// groups change (docs/adr/0030 D3). The person must be a member of the
+	// tenant, else `404 person_not_found` — a person who is not one yet is
+	// added by e-mail address or username.
+	//
+	// A global administrator who does not hold `admin` in the tenant — who
+	// holds no role there, or a lower one — sets their own grant here, their
+	// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+	// any other, made or its role changed under the tenant's lock, recorded in
+	// the tenant's audit with the administrator as its actor and announced to
+	// its members as `membership.changed`. It takes no administrator away, so
+	// it is never `409 last_admin`; it is how a tenant left without an
+	// administrator who can log in gets one again. A grant to anybody else
+	// stays an administrator's act: `403 forbidden`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+	SetMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error)
 
 	// ListProjectsWithResponse The projects the caller can see
 	//
@@ -11243,6 +15300,12 @@ type ClientWithResponsesInterface interface {
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
 	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -11253,6 +15316,12 @@ type ClientWithResponsesInterface interface {
 	// `write` scope. A member creates projects while the tenant allows it,
 	// an administrator always (docs/adr/0034 D9); an agent needs the
 	// `create-project` capability (docs/adr/0043 D4).
+	//
+	// With `repository`, the project is created and the repository bound in one
+	// recorded act, and the creation is idempotent over the remote
+	// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+	// and path already, the answer is 200 with that project and nothing is
+	// created or bound — 409 `repository_bound` when the caller cannot see it.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11288,6 +15357,49 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/projects/{project} (the `UpdateProject` operationId).
 	UpdateProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *UpdateProjectParams, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProjectResponse, error)
 
+	// ListProjectAccessWithResponse The project's access list
+	//
+	// The people a restricted project admits besides the tenant's
+	// administrators, each with the most they may do in it, `member` or
+	// `viewer`; a person's role in the project is the lower of their tenant
+	// role and their entry (docs/adr/0034 D3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/access (the `ListProjectAccess` operationId).
+	ListProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectAccessParams, reqEditors ...RequestEditorFn) (*ListProjectAccessResponse, error)
+
+	// RemoveProjectAccessWithResponse Take a person off the access list
+	//
+	// On a restricted project the person no longer sees it, unless they
+	// administer the tenant. Idempotent: removing an entry that does not exist
+	// answers 204 as well.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `RemoveProjectAccess` operationId).
+	RemoveProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, reqEditors ...RequestEditorFn) (*RemoveProjectAccessResponse, error)
+
+	// SetProjectAccessWithBodyWithResponse Put a member on the access list, or change their entry
+	//
+	// The person must be a member of the tenant, else `404 person_not_found`.
+	// Repeating it changes nothing (docs/adr/0045 D1).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+	SetProjectAccessWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectAccessResponse, error)
+
+	// SetProjectAccessWithResponse Put a member on the access list, or change their entry
+	//
+	// The person must be a member of the tenant, else `404 person_not_found`.
+	// Repeating it changes nothing (docs/adr/0045 D1).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+	SetProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, body SetProjectAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectAccessResponse, error)
+
 	// ArchiveProjectWithResponse Archive a project
 	//
 	// An administrator's act with `admin` scope, never an agent's
@@ -11299,6 +15411,88 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ArchiveProjectResponse, error)
+
+	// ListRepositoriesWithResponse The repositories a project owns
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+	ListRepositoriesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*ListRepositoriesResponse, error)
+
+	// BindRepositoryWithBodyWithResponse Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error)
+
+	// BindRepositoryWithResponse Bind a repository to the project
+	//
+	// Idempotent over the identity and the path: a repository the project binds
+	// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+	// D5); one another project of the tenant binds is 409 `repository_bound`, and
+	// names that project only to a caller who sees it. Binding is the act of
+	// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+	// a member while the tenant lets members create projects
+	// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+	// credentials are never stored.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+	BindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error)
+
+	// UnbindRepositoryWithResponse Unbind a repository from the project
+	//
+	// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+	// so a binding that is gone answers 204 as well. The project and its tickets
+	// stay; the next session in the repository finds no binding.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+	UnbindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*UnbindRepositoryResponse, error)
+
+	// SetProjectRestrictionWithBodyWithResponse Restrict a project to its access list, or open it
+	//
+	// A restricted project is visible to the tenant's administrators and the
+	// people on its access list only, each with at most the role of their
+	// entry; anyone else does not see it, its tickets, its board or its search
+	// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+	// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+	// access list may be written before the project is restricted, so nobody
+	// on it loses the project in between; its entries count while the project
+	// is restricted.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+	SetProjectRestrictionWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectRestrictionResponse, error)
+
+	// SetProjectRestrictionWithResponse Restrict a project to its access list, or open it
+	//
+	// A restricted project is visible to the tenant's administrators and the
+	// people on its access list only, each with at most the role of their
+	// entry; anyone else does not see it, its tickets, its board or its search
+	// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+	// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+	// access list may be written before the project is restricted, so nobody
+	// on it loses the project in between; its entries count while the project
+	// is restricted.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+	SetProjectRestrictionWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, body SetProjectRestrictionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectRestrictionResponse, error)
 
 	// ListProjectTicketsWithResponse The project's tickets, in the project's rank
 	//
@@ -11553,6 +15747,29 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential (the `SetConfidential` operationId).
 	SetConfidentialWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *SetConfidentialParams, body SetConfidentialJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConfidentialResponse, error)
+
+	// ExportTicketContextWithResponse The ticket for reading, with what surrounds it
+	//
+	// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+	// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+	// <agent>) — not an import format -->`, followed by read-only sections in a
+	// fixed order (D2): `## Links` (typed, read from this ticket, each other
+	// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+	// tickets that block it, to a depth of eight, with state, assignee and the
+	// implementation stage, and the count of open ones), `## Recent comments`
+	// (the last `comments`, oldest of them first, each quoted under its author,
+	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+	// the caller cannot see is absent. The document carries no `ETag`: it is not
+	// one entity. Every call is recorded: data left the system (D5). It is no
+	// import format (D3): there is no importer yet, and the one ADR 0044
+	// decides refuses a file that carries these sections.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+	ExportTicketContextWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*ExportTicketContextResponse, error)
 
 	// RemoveInterestWithResponse Remove the caller's own stake
 	//
@@ -11967,7 +16184,48 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
 
-	// LoginLocalWithBodyWithResponse Log in with a local account
+	// OidcCallbackWithResponse The identity provider's return
+	//
+	// Where the issuer sends the browser back: `COWORK_BASE_URL` +
+	// `/auth/callback`, the redirect URI registered with the identity
+	// provider (docs/adr/0029 D4). The UI never calls it.
+	//
+	// The state cookie of `GET /auth/oidc/login` must be present, younger than
+	// ten minutes, and hold the `state` the issuer returned. The code is
+	// exchanged with the PKCE verifier; the ID token's signature, issuer,
+	// audience, expiry and nonce are verified (D1); the groups are read from
+	// `COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —
+	// and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
+	// is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
+	// issuer and subject, or made (docs/adr/0029 D5), and their memberships
+	// are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+	// session is made as the local login makes it — a new cookie, and the
+	// session the request presented ended (docs/adr/0031 D5) — the state
+	// cookie is cleared, and the answer is `303` to `return_to`.
+	//
+	// Every failure is `303` to `/login?error=<code>&return=<return_to>`, the
+	// state cookie cleared and no session made. `return` is the path the login
+	// began with, for the page's next attempt: it is there when the state
+	// cookie still opens, stale or not, and the path is not `/`, the page's
+	// default. The codes: `oidc_failed` — the state cookie is missing, stale
+	// or does not match, the exchange or the verification failed, or the
+	// issuer answered with `error`; `not_allowed` — the person is outside the
+	// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+	// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
+	// `oidc_unavailable` — no identity provider is configured. A refused
+	// login is recorded (docs/adr/0026); the reason reaches the log, never the
+	// page, and neither ever holds a code or a token.
+	//
+	// The issuer may add parameters this document does not name, such as `iss`
+	// (RFC 9207) or `session_state`: the route takes them and reads none of
+	// them (`x-cowork-open-query`).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/callback (the `OidcCallback` operationId).
+	OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackResponse, error)
+
+	// LoginLocalWithBodyWithResponse Sign in with a local account
 	//
 	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 	// SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -11997,7 +16255,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/local (the `LoginLocal` operationId).
 	LoginLocalWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginLocalResponse, error)
 
-	// LoginLocalWithResponse Log in with a local account
+	// LoginLocalWithResponse Sign in with a local account
 	//
 	// Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 	// SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -12033,17 +16291,54 @@ type ClientWithResponsesInterface interface {
 	// write of a session, so the CSRF check applies: a page of another site
 	// cannot log a person out (docs/adr/0037 D5).
 	//
+	// A session the identity provider made, whose issuer names an
+	// `end_session_endpoint` in its discovery, answers `200` with
+	// `end_session_url`: the issuer's logout with `client_id` and
+	// `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the
+	// browser goes next to end its session at the issuer as well (D4). The
+	// ID token was not kept (D1), so the URL carries no `id_token_hint`. Every
+	// other logout answers `204`.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /auth/logout (the `Logout` operationId).
 	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
+	// LoginOidcWithResponse Start a login through the identity provider
+	//
+	// A navigation of the browser — the login page's button sets
+	// `window.location` here — and never a call: the answer is a redirect
+	// (docs/adr/0029 D1). With an identity provider configured it is `302` to
+	// the issuer's authorization endpoint, for the authorization code flow
+	// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
+	// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+	// Without one, or while its gate admits nobody — the cases in which
+	// `GET /auth/options` answers `oidc: false` — it is `303` to
+	// `/login?error=oidc_unavailable&return=<return_to>`.
+	//
+	// `return_to` is where the browser lands after the login: a path of this
+	// installation that starts with `/`, not with `//` or `/\`, holds no
+	// control character and is at most 2048 characters long. Anything else,
+	// or none, is `/`; it is never refused, so a bad link still leads to a
+	// login.
+	//
+	// No credential: whoever comes here has none yet. Nothing is decided here
+	// that a forged link could abuse — the session is made by the callback,
+	// and only for the browser that holds the state cookie this answer set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/oidc/login (the `LoginOidc` operationId).
+	LoginOidcWithResponse(ctx context.Context, params *LoginOidcParams, reqEditors ...RequestEditorFn) (*LoginOidcResponse, error)
+
 	// GetAuthOptionsWithResponse What the login page offers
 	//
-	// The local form is offered when at least one active local account exists,
-	// the identity provider's button when one is configured (docs/adr/0033 D8).
-	// No identity provider exists yet, so `oidc` is always false. The minimum
-	// password length is the policy every password form follows (D3).
+	// The local form is offered when at least one active local account exists
+	// (docs/adr/0033 D8); the identity provider's button, "Sign in with
+	// `oidc_name`", when one is configured and its gate admits somebody —
+	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
+	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
+	// password form follows (docs/adr/0033 D3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -12106,6 +16401,116 @@ func (r GetMeResponse) ContentType() string {
 	return ""
 }
 
+// GetMyChatResponseDefaultHeaders the declared response headers of an HTTP default response for GetMyChat
+type GetMyChatResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetMyChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatCapabilities
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetMyChatResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyChatResponse) GetJSON200() *ChatCapabilities {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetMyChatResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyChatResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyChatResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetMyChatResponseDefaultHeaders the declared response headers of an HTTP default response for SetMyChat
+type SetMyChatResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SetMyChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatCapabilities
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SetMyChatResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetMyChatResponse) GetJSON200() *ChatCapabilities {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetMyChatResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetMyChatResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetMyChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetMyChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetMyChatResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ChangeMyPasswordResponseDefaultHeaders the declared response headers of an HTTP default response for ChangeMyPassword
 type ChangeMyPasswordResponseDefaultHeaders struct {
 	XRequestId *string
@@ -12148,6 +16553,116 @@ func (r ChangeMyPasswordResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ChangeMyPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// LookupRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for LookupRepository
+type LookupRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LookupRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RepositoryLookup
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LookupRepositoryResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LookupRepositoryResponse) GetJSON200() *RepositoryLookup {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LookupRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LookupRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LookupRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LookupRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LookupRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetMyTokenResponseDefaultHeaders the declared response headers of an HTTP default response for GetMyToken
+type GetMyTokenResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetMyTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CurrentToken
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetMyTokenResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyTokenResponse) GetJSON200() *CurrentToken {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetMyTokenResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyTokenResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12361,6 +16876,116 @@ func (r GetOpenAPIResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetOpenAPIResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetCoworkYamlSchemaResponseDefaultHeaders the declared response headers of an HTTP default response for GetCoworkYamlSchema
+type GetCoworkYamlSchemaResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetCoworkYamlSchemaResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *map[string]interface{}
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetCoworkYamlSchemaResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCoworkYamlSchemaResponse) GetJSON200() *map[string]interface{} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetCoworkYamlSchemaResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCoworkYamlSchemaResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCoworkYamlSchemaResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCoworkYamlSchemaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCoworkYamlSchemaResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListTenantsResponseDefaultHeaders the declared response headers of an HTTP default response for ListTenants
+type ListTenantsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListTenantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TenantSummaryList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListTenantsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTenantsResponse) GetJSON200() *TenantSummaryList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTenantsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTenantsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTenantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTenantsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12911,6 +17536,337 @@ func (r ListAuditResponse) ContentType() string {
 	return ""
 }
 
+// GetChatAvailabilityResponseDefaultHeaders the declared response headers of an HTTP default response for GetChatAvailability
+type GetChatAvailabilityResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetChatAvailabilityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatAvailability
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetChatAvailabilityResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetChatAvailabilityResponse) GetJSON200() *ChatAvailability {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetChatAvailabilityResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetChatAvailabilityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetChatAvailabilityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetChatAvailabilityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetChatAvailabilityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// StopChatTurnsResponseDefaultHeaders the declared response headers of an HTTP default response for StopChatTurns
+type StopChatTurnsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type StopChatTurnsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *StopChatTurnsResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StopChatTurnsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StopChatTurnsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StopChatTurnsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StopChatTurnsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StopChatTurnsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListGroupMappingsResponseDefaultHeaders the declared response headers of an HTTP default response for ListGroupMappings
+type ListGroupMappingsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListGroupMappingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GroupMappingList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListGroupMappingsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListGroupMappingsResponse) GetJSON200() *GroupMappingList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListGroupMappingsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListGroupMappingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListGroupMappingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListGroupMappingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListGroupMappingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateGroupMappingResponse201Headers the declared response headers of an HTTP 201 response for CreateGroupMapping
+type CreateGroupMappingResponse201Headers struct {
+	ETag     *string
+	Location *string
+}
+
+// CreateGroupMappingResponseDefaultHeaders the declared response headers of an HTTP default response for CreateGroupMapping
+type CreateGroupMappingResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateGroupMappingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *GroupMapping
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateGroupMappingResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateGroupMappingResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateGroupMappingResponse) GetJSON201() *GroupMapping {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateGroupMappingResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGroupMappingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGroupMappingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGroupMappingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGroupMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteGroupMappingResponseDefaultHeaders the declared response headers of an HTTP default response for DeleteGroupMapping
+type DeleteGroupMappingResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeleteGroupMappingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeleteGroupMappingResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteGroupMappingResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteGroupMappingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGroupMappingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGroupMappingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteGroupMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateGroupMappingResponse200Headers the declared response headers of an HTTP 200 response for UpdateGroupMapping
+type UpdateGroupMappingResponse200Headers struct {
+	ETag *string
+}
+
+// UpdateGroupMappingResponseDefaultHeaders the declared response headers of an HTTP default response for UpdateGroupMapping
+type UpdateGroupMappingResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UpdateGroupMappingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GroupMapping
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateGroupMappingResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UpdateGroupMappingResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateGroupMappingResponse) GetJSON200() *GroupMapping {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateGroupMappingResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateGroupMappingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateGroupMappingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateGroupMappingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateGroupMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListMembersResponseDefaultHeaders the declared response headers of an HTTP default response for ListMembers
 type ListMembersResponseDefaultHeaders struct {
 	XRequestId *string
@@ -12960,6 +17916,164 @@ func (r ListMembersResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListMembersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// AddMemberResponseDefaultHeaders the declared response headers of an HTTP default response for AddMember
+type AddMemberResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type AddMemberResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Member
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *AddMemberResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r AddMemberResponse) GetJSON201() *Member {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r AddMemberResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AddMemberResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AddMemberResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddMemberResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AddMemberResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RemoveMemberGrantResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveMemberGrant
+type RemoveMemberGrantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveMemberGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveMemberGrantResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveMemberGrantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveMemberGrantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveMemberGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveMemberGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveMemberGrantResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetMemberGrantResponseDefaultHeaders the declared response headers of an HTTP default response for SetMemberGrant
+type SetMemberGrantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SetMemberGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Member
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SetMemberGrantResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetMemberGrantResponse) GetJSON200() *Member {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetMemberGrantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetMemberGrantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetMemberGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetMemberGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetMemberGrantResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -13021,6 +18135,12 @@ func (r ListProjectsResponse) ContentType() string {
 	return ""
 }
 
+// CreateProjectResponse200Headers the declared response headers of an HTTP 200 response for CreateProject
+type CreateProjectResponse200Headers struct {
+	ETag     *string
+	Location *string
+}
+
 // CreateProjectResponse201Headers the declared response headers of an HTTP 201 response for CreateProject
 type CreateProjectResponse201Headers struct {
 	ETag     *string
@@ -13035,14 +18155,23 @@ type CreateProjectResponseDefaultHeaders struct {
 type CreateProjectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Project
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *Project
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *CreateProjectResponse200Headers
 	// Headers201 the parsed response headers for an HTTP 201 response
 	Headers201 *CreateProjectResponse201Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *CreateProjectResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateProjectResponse) GetJSON200() *Project {
+	return r.JSON200
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -13208,6 +18337,164 @@ func (r UpdateProjectResponse) ContentType() string {
 	return ""
 }
 
+// ListProjectAccessResponseDefaultHeaders the declared response headers of an HTTP default response for ListProjectAccess
+type ListProjectAccessResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListProjectAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectAccessList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListProjectAccessResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListProjectAccessResponse) GetJSON200() *ProjectAccessList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListProjectAccessResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListProjectAccessResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListProjectAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListProjectAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListProjectAccessResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RemoveProjectAccessResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveProjectAccess
+type RemoveProjectAccessResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveProjectAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveProjectAccessResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveProjectAccessResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveProjectAccessResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveProjectAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveProjectAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveProjectAccessResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetProjectAccessResponseDefaultHeaders the declared response headers of an HTTP default response for SetProjectAccess
+type SetProjectAccessResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SetProjectAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectAccessEntry
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SetProjectAccessResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProjectAccessResponse) GetJSON200() *ProjectAccessEntry {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetProjectAccessResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProjectAccessResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProjectAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProjectAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProjectAccessResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ArchiveProjectResponse200Headers the declared response headers of an HTTP 200 response for ArchiveProject
 type ArchiveProjectResponse200Headers struct {
 	ETag *string
@@ -13264,6 +18551,240 @@ func (r ArchiveProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListRepositoriesResponseDefaultHeaders the declared response headers of an HTTP default response for ListRepositories
+type ListRepositoriesResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListRepositoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RepositoryList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListRepositoriesResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRepositoriesResponse) GetJSON200() *RepositoryList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListRepositoriesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRepositoriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRepositoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRepositoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRepositoriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// BindRepositoryResponse201Headers the declared response headers of an HTTP 201 response for BindRepository
+type BindRepositoryResponse201Headers struct {
+	Location *string
+}
+
+// BindRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for BindRepository
+type BindRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type BindRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Repository
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Repository
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *BindRepositoryResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *BindRepositoryResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BindRepositoryResponse) GetJSON200() *Repository {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r BindRepositoryResponse) GetJSON201() *Repository {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r BindRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r BindRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BindRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BindRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BindRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UnbindRepositoryResponseDefaultHeaders the declared response headers of an HTTP default response for UnbindRepository
+type UnbindRepositoryResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UnbindRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UnbindRepositoryResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnbindRepositoryResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UnbindRepositoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnbindRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnbindRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnbindRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetProjectRestrictionResponse200Headers the declared response headers of an HTTP 200 response for SetProjectRestriction
+type SetProjectRestrictionResponse200Headers struct {
+	ETag *string
+}
+
+// SetProjectRestrictionResponseDefaultHeaders the declared response headers of an HTTP default response for SetProjectRestriction
+type SetProjectRestrictionResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SetProjectRestrictionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Project
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SetProjectRestrictionResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SetProjectRestrictionResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProjectRestrictionResponse) GetJSON200() *Project {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SetProjectRestrictionResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProjectRestrictionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProjectRestrictionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProjectRestrictionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProjectRestrictionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14295,6 +19816,54 @@ func (r SetConfidentialResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetConfidentialResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExportTicketContextResponseDefaultHeaders the declared response headers of an HTTP default response for ExportTicketContext
+type ExportTicketContextResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ExportTicketContextResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ExportTicketContextResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExportTicketContextResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportTicketContextResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportTicketContextResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportTicketContextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportTicketContextResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15955,6 +21524,62 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
+// OidcCallbackResponse303Headers the declared response headers of an HTTP 303 response for OidcCallback
+type OidcCallbackResponse303Headers struct {
+	Location  string
+	SetCookie *string
+}
+
+// OidcCallbackResponseDefaultHeaders the declared response headers of an HTTP default response for OidcCallback
+type OidcCallbackResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type OidcCallbackResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers303 the parsed response headers for an HTTP 303 response
+	Headers303 *OidcCallbackResponse303Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *OidcCallbackResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r OidcCallbackResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcCallbackResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcCallbackResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcCallbackResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // LoginLocalResponse200Headers the declared response headers of an HTTP 200 response for LoginLocal
 type LoginLocalResponse200Headers struct {
 	SetCookie *string
@@ -16017,6 +21642,11 @@ func (r LoginLocalResponse) ContentType() string {
 	return ""
 }
 
+// LogoutResponse200Headers the declared response headers of an HTTP 200 response for Logout
+type LogoutResponse200Headers struct {
+	SetCookie *string
+}
+
 // LogoutResponse204Headers the declared response headers of an HTTP 204 response for Logout
 type LogoutResponse204Headers struct {
 	SetCookie *string
@@ -16030,12 +21660,21 @@ type LogoutResponseDefaultHeaders struct {
 type LogoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LogoutResult
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *LogoutResponse200Headers
 	// Headers204 the parsed response headers for an HTTP 204 response
 	Headers204 *LogoutResponse204Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *LogoutResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LogoutResponse) GetJSON200() *LogoutResult {
+	return r.JSON200
 }
 
 // GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
@@ -16066,6 +21705,69 @@ func (r LogoutResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r LogoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// LoginOidcResponse302Headers the declared response headers of an HTTP 302 response for LoginOidc
+type LoginOidcResponse302Headers struct {
+	Location  string
+	SetCookie *string
+}
+
+// LoginOidcResponse303Headers the declared response headers of an HTTP 303 response for LoginOidc
+type LoginOidcResponse303Headers struct {
+	Location string
+}
+
+// LoginOidcResponseDefaultHeaders the declared response headers of an HTTP default response for LoginOidc
+type LoginOidcResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LoginOidcResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers302 the parsed response headers for an HTTP 302 response
+	Headers302 *LoginOidcResponse302Headers
+	// Headers303 the parsed response headers for an HTTP 303 response
+	Headers303 *LoginOidcResponse303Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LoginOidcResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LoginOidcResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LoginOidcResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LoginOidcResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LoginOidcResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LoginOidcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16140,6 +21842,67 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 	return ParseGetMeResponse(rsp)
 }
 
+// GetMyChatWithResponse The capabilities the person gives the chat in the UI
+//
+// The chat acts as the person's agent, and its requests hold exactly this set
+// (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+// to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+// holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+// and `chosen` is false.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/chat (the `GetMyChat` operationId).
+func (c *ClientWithResponses) GetMyChatWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyChatResponse, error) {
+	rsp, err := c.GetMyChat(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyChatResponse(rsp)
+}
+
+// SetMyChatWithBodyWithResponse Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *ClientWithResponses) SetMyChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error) {
+	rsp, err := c.SetMyChatWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyChatResponse(rsp)
+}
+
+// SetMyChatWithResponse Choose the capabilities the person gives the chat in the UI
+//
+// Only the person, in a browser session: what the chat may do is access to the person's
+// tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+// the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+// replaces the one before, from the chat's next request on, a running turn's included; an empty
+// set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+// writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+// as the person's act.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/me/chat (the `SetMyChat` operationId).
+func (c *ClientWithResponses) SetMyChatWithResponse(ctx context.Context, body SetMyChatJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyChatResponse, error) {
+	rsp, err := c.SetMyChat(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyChatResponse(rsp)
+}
+
 // ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
@@ -16178,6 +21941,56 @@ func (c *ClientWithResponses) ChangeMyPasswordWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseChangeMyPasswordResponse(rsp)
+}
+
+// LookupRepositoryWithResponse The project a repository is bound to, across the person's tenants
+//
+// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
+// searches the projects the caller sees in every tenant of the person — a
+// restricted token in its own tenant and project only (docs/adr/0035 D3). The
+// remotes are tried in the order given, `origin` first by convention; the
+// first one with a binding decides, and of its bindings those whose
+// sub-directory covers `path`, the most specific first. One binding is
+// `bound`; several are `ambiguous`, a data error the person resolves
+// (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
+// from the first remote that has an identity (D2): the tenant — the only one
+// the caller may create projects in, else the one that binds repositories
+// under the same owner, else the list to choose from — a key from the
+// repository's name, free in each tenant offered, and the name itself. A
+// caller who may create a project nowhere gets no proposal and the reason.
+// A remote that names no host is reported with a null identity. Send no
+// credentials: cowork stores none, and a proxy's log may carry the query.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
+func (c *ClientWithResponses) LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error) {
+	rsp, err := c.LookupRepository(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLookupRepositoryResponse(rsp)
+}
+
+// GetMyTokenWithResponse The token this request presents, and what it makes of the request
+//
+// The token's metadata as the list shows it, the key of the project it is
+// restricted to, and the request's mark: whether it is an agent's — by the
+// token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+// agent recorded on its acts, and the capabilities it holds
+// (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+// it may do (D6), and `cowork-mcp token check` to tell a person
+// (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/token (the `GetMyToken` operationId).
+func (c *ClientWithResponses) GetMyTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyTokenResponse, error) {
+	rsp, err := c.GetMyToken(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyTokenResponse(rsp)
 }
 
 // ListMyTokensWithResponse The person's tokens, revoked and expired ones included
@@ -16297,6 +22110,49 @@ func (c *ClientWithResponses) GetOpenAPIWithResponse(ctx context.Context, reqEdi
 	return ParseGetOpenAPIResponse(rsp)
 }
 
+// GetCoworkYamlSchemaWithResponse The JSON Schema of a repository's `.cowork.yaml`
+//
+// The optional binding file of a repository without a remote or of a fork
+// (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+// sub-directory of a monorepo it binds — and `url`, the installation it
+// belongs to. Unauthenticated, so an editor can load it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/schemas/cowork-yaml.json (the `GetCoworkYamlSchema` operationId).
+func (c *ClientWithResponses) GetCoworkYamlSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCoworkYamlSchemaResponse, error) {
+	rsp, err := c.GetCoworkYamlSchema(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCoworkYamlSchemaResponse(rsp)
+}
+
+// ListTenantsWithResponse Every tenant of the installation, for a global administrator
+//
+// Every tenant by slug, with the role the caller holds in it — the highest
+// of their mapping and their grant — or `null` where they hold none
+// (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+// which they have no role: there they see its administration — the
+// tenant and its settings, its members, its group mappings — and grant
+// themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+// and nothing of its work until they have. A person who is not a global
+// administrator is `403 forbidden`; the tenants they belong to are in
+// `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+// token is `403 session_required`, so a leaked token of a global
+// administrator lists no tenant beyond the person's own.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants (the `ListTenants` operationId).
+func (c *ClientWithResponses) ListTenantsWithResponse(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error) {
+	rsp, err := c.ListTenants(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTenantsResponse(rsp)
+}
+
 // CreateTenantWithBodyWithResponse Create a tenant
 //
 // A global administrator, in a browser session: no token creates a tenant
@@ -16338,6 +22194,10 @@ func (c *ClientWithResponses) CreateTenantWithResponse(ctx context.Context, para
 }
 
 // GetTenantWithResponse The tenant and its settings
+//
+// Every member reads it; a global administrator who holds no role in the
+// tenant too, in a browser session, as part of its administration
+// (docs/adr/0034 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16452,7 +22312,11 @@ func (c *ClientWithResponses) CreateAccountWithResponse(ctx context.Context, ten
 // The person can no longer log in, their tokens are revoked and their
 // sessions end (docs/adr/0024 D5); the person and every act they made stay.
 // Not for the administrator's own account (`403 forbidden`). Deactivating a
-// deactivated account changes nothing.
+// deactivated account changes nothing. A deactivation that would leave the
+// tenant without an administrator who can log in is `409 last_admin` and
+// changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+// administrators who deactivate each other at once are decided one after
+// the other.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16560,7 +22424,189 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, tenant 
 	return ParseListAuditResponse(rsp)
 }
 
+// GetChatAvailabilityWithResponse Whether the chat is available in the tenant, and with which providers
+//
+// For every member of the tenant. The chat is available when the installation configures at
+// least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
+// the first being the one a turn uses when it names none. Otherwise `reason` says why. A
+// provider's address and key are never shown, and nothing here asks a provider whether it
+// answers: a turn that cannot reach it ends with an `error` event.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/chat (the `GetChatAvailability` operationId).
+func (c *ClientWithResponses) GetChatAvailabilityWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetChatAvailabilityResponse, error) {
+	rsp, err := c.GetChatAvailability(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetChatAvailabilityResponse(rsp)
+}
+
+// StopChatTurnsWithResponse Stop every running turn of the person in the tenant
+//
+// A person in a browser session, any member: a token is `403 session_required`, a session the
+// agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
+// session's person in the tenant that runs on the replica answering this request ends at once:
+// its call of the model is cancelled, so is a tool call in flight, and its stream ends with
+// `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
+// seconds; a turn of another person, or of the person in another tenant, runs on. What the
+// stopped turns' tool calls did before has happened.
+//
+// The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
+// another replica runs is not reached — the client's abort of the turn's own request still is.
+// With no turn running, nothing happens, and the answer is the same.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
+func (c *ClientWithResponses) StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error) {
+	rsp, err := c.StopChatTurns(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStopChatTurnsResponse(rsp)
+}
+
+// ListGroupMappingsWithResponse The tenant's group mappings, by group
+//
+// Each mapping gives its role to every person whose groups include its
+// group; several matches yield the highest role (docs/adr/0030 D2).
+// `includes_caller` says the calling person is one of them, so the editor
+// can warn before a change takes the editor's own role away. The tenant's
+// administrators read them, and a global administrator who holds no role
+// in the tenant, in a browser session (docs/adr/0034 D2).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/group-mappings (the `ListGroupMappings` operationId).
+func (c *ClientWithResponses) ListGroupMappingsWithResponse(ctx context.Context, tenant TenantSlug, params *ListGroupMappingsParams, reqEditors ...RequestEditorFn) (*ListGroupMappingsResponse, error) {
+	rsp, err := c.ListGroupMappings(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListGroupMappingsResponse(rsp)
+}
+
+// CreateGroupMappingWithBodyWithResponse Map a group of the identity provider to a role
+//
+// The group is matched exactly, case and all, against the groups the
+// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+// at once to every person whose groups, as of their last login or groups
+// refresh, include it: their memberships are derived in the same
+// transaction, recorded with the cause `mapping`. Everyone else is caught
+// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+// tenant maps already is `409 mapping_exists`.
+//
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+func (c *ClientWithResponses) CreateGroupMappingWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupMappingResponse, error) {
+	rsp, err := c.CreateGroupMappingWithBody(ctx, tenant, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupMappingResponse(rsp)
+}
+
+// CreateGroupMappingWithResponse Map a group of the identity provider to a role
+//
+// The group is matched exactly, case and all, against the groups the
+// identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+// at once to every person whose groups, as of their last login or groups
+// refresh, include it: their memberships are derived in the same
+// transaction, recorded with the cause `mapping`. Everyone else is caught
+// up at their next login or groups refresh (docs/adr/0030 D5). A group the
+// tenant maps already is `409 mapping_exists`.
+//
+// Only a global administrator who administers the tenant maps a group, in
+// a browser session; any other administrator of the tenant is
+// `403 forbidden`, and nothing is written. Every tenant shares the identity
+// provider's one namespace of groups, and a mapping admits everyone in its
+// group at once (docs/adr/0030 D7).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/group-mappings (the `CreateGroupMapping` operationId).
+func (c *ClientWithResponses) CreateGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, params *CreateGroupMappingParams, body CreateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupMappingResponse, error) {
+	rsp, err := c.CreateGroupMapping(ctx, tenant, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupMappingResponse(rsp)
+}
+
+// DeleteGroupMappingWithResponse Remove a mapping
+//
+// The memberships it derived go at once, or fall to the highest of the
+// person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+// administrator of the tenant may remove one, with an `admin`-scope token
+// too: it only takes access away (docs/adr/0030 D7).
+// Idempotent: removing a mapping that does not exist answers 204 as well.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `DeleteGroupMapping` operationId).
+func (c *ClientWithResponses) DeleteGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, reqEditors ...RequestEditorFn) (*DeleteGroupMappingResponse, error) {
+	rsp, err := c.DeleteGroupMapping(ctx, tenant, mappingId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGroupMappingResponse(rsp)
+}
+
+// UpdateGroupMappingWithBodyWithResponse Change a mapping's role
+//
+// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+func (c *ClientWithResponses) UpdateGroupMappingWithBodyWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGroupMappingResponse, error) {
+	rsp, err := c.UpdateGroupMappingWithBody(ctx, tenant, mappingId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGroupMappingResponse(rsp)
+}
+
+// UpdateGroupMappingWithResponse Change a mapping's role
+//
+// `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+// derives change at once, as at its creation. Like its creation, a global
+// administrator's who administers the tenant: any other administrator is
+// `403 forbidden` (docs/adr/0030 D7).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
+func (c *ClientWithResponses) UpdateGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupMappingResponse, error) {
+	rsp, err := c.UpdateGroupMapping(ctx, tenant, mappingId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGroupMappingResponse(rsp)
+}
+
 // ListMembersWithResponse The tenant's members and their roles (docs/adr/0034 D7)
+//
+// Each member with the effective role — the higher of the mapped and the
+// granted one (docs/adr/0030 D4) — and `origins`, every source with its
+// own role; `local` marks a person with a local account rather than an
+// identity of the identity provider (docs/adr/0033). `email` is the
+// address that tells two persons of one name apart, for the tenant's
+// administrators; everyone else reads null — a global administrator who
+// holds no role in the tenant and reads the list as part of its
+// administration too (docs/adr/0034 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16571,6 +22617,129 @@ func (c *ClientWithResponses) ListMembersWithResponse(ctx context.Context, tenan
 		return nil, err
 	}
 	return ParseListMembersResponse(rsp)
+}
+
+// AddMemberWithBodyWithResponse Grant a role to a person, by e-mail address or username
+//
+// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+// exists: who has logged in through the identity provider once, or has a
+// local account. Nobody active by that address or name is
+// `404 person_not_found`; an address several persons share is
+// `409 person_ambiguous`, since an e-mail address is a display attribute
+// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+// already is `409 grant_exists` — change it with
+// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+// the grant beside it, and the higher role of the two applies (D4).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+func (c *ClientWithResponses) AddMemberWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *AddMemberParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMemberResponse, error) {
+	rsp, err := c.AddMemberWithBody(ctx, tenant, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMemberResponse(rsp)
+}
+
+// AddMemberWithResponse Grant a role to a person, by e-mail address or username
+//
+// A manual grant, marked as such (docs/adr/0030 D3), for a person who
+// exists: who has logged in through the identity provider once, or has a
+// local account. Nobody active by that address or name is
+// `404 person_not_found`; an address several persons share is
+// `409 person_ambiguous`, since an e-mail address is a display attribute
+// and not an identity (docs/adr/0029 D5); a person who holds a grant here
+// already is `409 grant_exists` — change it with
+// `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+// the grant beside it, and the higher role of the two applies (D4).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/members (the `AddMember` operationId).
+func (c *ClientWithResponses) AddMemberWithResponse(ctx context.Context, tenant TenantSlug, params *AddMemberParams, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMemberResponse, error) {
+	rsp, err := c.AddMember(ctx, tenant, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMemberResponse(rsp)
+}
+
+// RemoveMemberGrantWithResponse Remove a member's grant
+//
+// The mapped membership, if any, stays; without one the person is no
+// longer a member (docs/adr/0030 D3). Idempotent: removing a grant that
+// does not exist answers 204 as well.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant (the `RemoveMemberGrant` operationId).
+func (c *ClientWithResponses) RemoveMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, reqEditors ...RequestEditorFn) (*RemoveMemberGrantResponse, error) {
+	rsp, err := c.RemoveMemberGrant(ctx, tenant, personId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveMemberGrantResponse(rsp)
+}
+
+// SetMemberGrantWithBodyWithResponse Give a member a grant, or change its role
+//
+// Creates the member's manual grant with the role, or changes the role of
+// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+// mapped membership is never touched: it holds until the mapping or the
+// groups change (docs/adr/0030 D3). The person must be a member of the
+// tenant, else `404 person_not_found` — a person who is not one yet is
+// added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+func (c *ClientWithResponses) SetMemberGrantWithBodyWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error) {
+	rsp, err := c.SetMemberGrantWithBody(ctx, tenant, personId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMemberGrantResponse(rsp)
+}
+
+// SetMemberGrantWithResponse Give a member a grant, or change its role
+//
+// Creates the member's manual grant with the role, or changes the role of
+// the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+// mapped membership is never touched: it holds until the mapping or the
+// groups change (docs/adr/0030 D3). The person must be a member of the
+// tenant, else `404 person_not_found` — a person who is not one yet is
+// added by e-mail address or username.
+//
+// A global administrator who does not hold `admin` in the tenant — who
+// holds no role there, or a lower one — sets their own grant here, their
+// own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+// any other, made or its role changed under the tenant's lock, recorded in
+// the tenant's audit with the administrator as its actor and announced to
+// its members as `membership.changed`. It takes no administrator away, so
+// it is never `409 last_admin`; it is how a tenant left without an
+// administrator who can log in gets one again. A grant to anybody else
+// stays an administrator's act: `403 forbidden`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/members/{person_id}/grant (the `SetMemberGrant` operationId).
+func (c *ClientWithResponses) SetMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error) {
+	rsp, err := c.SetMemberGrant(ctx, tenant, personId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMemberGrantResponse(rsp)
 }
 
 // ListProjectsWithResponse The projects the caller can see
@@ -16592,6 +22761,12 @@ func (c *ClientWithResponses) ListProjectsWithResponse(ctx context.Context, tena
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
 //
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/tenants/{tenant}/projects (the `CreateProject` operationId).
@@ -16608,6 +22783,12 @@ func (c *ClientWithResponses) CreateProjectWithBodyWithResponse(ctx context.Cont
 // `write` scope. A member creates projects while the tenant allows it,
 // an administrator always (docs/adr/0034 D9); an agent needs the
 // `create-project` capability (docs/adr/0043 D4).
+//
+// With `repository`, the project is created and the repository bound in one
+// recorded act, and the creation is idempotent over the remote
+// (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+// and path already, the answer is 200 with that project and nothing is
+// created or bound — 409 `repository_bound` when the caller cannot see it.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16667,6 +22848,73 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, ten
 	return ParseUpdateProjectResponse(rsp)
 }
 
+// ListProjectAccessWithResponse The project's access list
+//
+// The people a restricted project admits besides the tenant's
+// administrators, each with the most they may do in it, `member` or
+// `viewer`; a person's role in the project is the lower of their tenant
+// role and their entry (docs/adr/0034 D3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/access (the `ListProjectAccess` operationId).
+func (c *ClientWithResponses) ListProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectAccessParams, reqEditors ...RequestEditorFn) (*ListProjectAccessResponse, error) {
+	rsp, err := c.ListProjectAccess(ctx, tenant, project, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListProjectAccessResponse(rsp)
+}
+
+// RemoveProjectAccessWithResponse Take a person off the access list
+//
+// On a restricted project the person no longer sees it, unless they
+// administer the tenant. Idempotent: removing an entry that does not exist
+// answers 204 as well.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `RemoveProjectAccess` operationId).
+func (c *ClientWithResponses) RemoveProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, reqEditors ...RequestEditorFn) (*RemoveProjectAccessResponse, error) {
+	rsp, err := c.RemoveProjectAccess(ctx, tenant, project, personId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveProjectAccessResponse(rsp)
+}
+
+// SetProjectAccessWithBodyWithResponse Put a member on the access list, or change their entry
+//
+// The person must be a member of the tenant, else `404 person_not_found`.
+// Repeating it changes nothing (docs/adr/0045 D1).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+func (c *ClientWithResponses) SetProjectAccessWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectAccessResponse, error) {
+	rsp, err := c.SetProjectAccessWithBody(ctx, tenant, project, personId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectAccessResponse(rsp)
+}
+
+// SetProjectAccessWithResponse Put a member on the access list, or change their entry
+//
+// The person must be a member of the tenant, else `404 person_not_found`.
+// Repeating it changes nothing (docs/adr/0045 D1).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id} (the `SetProjectAccess` operationId).
+func (c *ClientWithResponses) SetProjectAccessWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, personId PersonID, body SetProjectAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectAccessResponse, error) {
+	rsp, err := c.SetProjectAccess(ctx, tenant, project, personId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectAccessResponse(rsp)
+}
+
 // ArchiveProjectWithResponse Archive a project
 //
 // An administrator's act with `admin` scope, never an agent's
@@ -16683,6 +22931,124 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseArchiveProjectResponse(rsp)
+}
+
+// ListRepositoriesWithResponse The repositories a project owns
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/repositories (the `ListRepositories` operationId).
+func (c *ClientWithResponses) ListRepositoriesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListRepositoriesParams, reqEditors ...RequestEditorFn) (*ListRepositoriesResponse, error) {
+	rsp, err := c.ListRepositories(ctx, tenant, project, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRepositoriesResponse(rsp)
+}
+
+// BindRepositoryWithBodyWithResponse Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *ClientWithResponses) BindRepositoryWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error) {
+	rsp, err := c.BindRepositoryWithBody(ctx, tenant, project, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBindRepositoryResponse(rsp)
+}
+
+// BindRepositoryWithResponse Bind a repository to the project
+//
+// Idempotent over the identity and the path: a repository the project binds
+// already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
+// D5); one another project of the tenant binds is 409 `repository_bound`, and
+// names that project only to a caller who sees it. Binding is the act of
+// creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
+// a member while the tenant lets members create projects
+// (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
+// credentials are never stored.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/repositories (the `BindRepository` operationId).
+func (c *ClientWithResponses) BindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *BindRepositoryParams, body BindRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BindRepositoryResponse, error) {
+	rsp, err := c.BindRepository(ctx, tenant, project, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBindRepositoryResponse(rsp)
+}
+
+// UnbindRepositoryWithResponse Unbind a repository from the project
+//
+// The same act as binding, by the same people (docs/adr/0043 D4); idempotent,
+// so a binding that is gone answers 204 as well. The project and its tickets
+// stay; the next session in the repository finds no binding.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository} (the `UnbindRepository` operationId).
+func (c *ClientWithResponses) UnbindRepositoryWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, repository RepositoryID, reqEditors ...RequestEditorFn) (*UnbindRepositoryResponse, error) {
+	rsp, err := c.UnbindRepository(ctx, tenant, project, repository, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnbindRepositoryResponse(rsp)
+}
+
+// SetProjectRestrictionWithBodyWithResponse Restrict a project to its access list, or open it
+//
+// A restricted project is visible to the tenant's administrators and the
+// people on its access list only, each with at most the role of their
+// entry; anyone else does not see it, its tickets, its board or its search
+// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+// access list may be written before the project is restricted, so nobody
+// on it loses the project in between; its entries count while the project
+// is restricted.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+func (c *ClientWithResponses) SetProjectRestrictionWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectRestrictionResponse, error) {
+	rsp, err := c.SetProjectRestrictionWithBody(ctx, tenant, project, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectRestrictionResponse(rsp)
+}
+
+// SetProjectRestrictionWithResponse Restrict a project to its access list, or open it
+//
+// A restricted project is visible to the tenant's administrators and the
+// people on its access list only, each with at most the role of their
+// entry; anyone else does not see it, its tickets, its board or its search
+// hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+// `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+// access list may be written before the project is restricted, so nobody
+// on it loses the project in between; its entries count while the project
+// is restricted.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/restriction (the `SetProjectRestriction` operationId).
+func (c *ClientWithResponses) SetProjectRestrictionWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *SetProjectRestrictionParams, body SetProjectRestrictionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectRestrictionResponse, error) {
+	rsp, err := c.SetProjectRestriction(ctx, tenant, project, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectRestrictionResponse(rsp)
 }
 
 // ListProjectTicketsWithResponse The project's tickets, in the project's rank
@@ -17075,6 +23441,35 @@ func (c *ClientWithResponses) SetConfidentialWithResponse(ctx context.Context, t
 		return nil, err
 	}
 	return ParseSetConfidentialResponse(rsp)
+}
+
+// ExportTicketContextWithResponse The ticket for reading, with what surrounds it
+//
+// The canonical document of `…/markdown` (docs/adr/0044 D1) under one first
+// line, `<!-- cowork: context of <key>, exported <time> by <person> (via
+// <agent>) — not an import format -->`, followed by read-only sections in a
+// fixed order (D2): `## Links` (typed, read from this ticket, each other
+// end's key, title, state and assignee), `## Prerequisites` (the tree of the
+// tickets that block it, to a depth of eight, with state, assignee and the
+// implementation stage, and the count of open ones), `## Recent comments`
+// (the last `comments`, oldest of them first, each quoted under its author,
+// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
+// (name, type, size and URL, never content) and `## Recent activity` (the
+// last `activity`). `comments=0` or `activity=0` leaves its section out. What
+// the caller cannot see is absent. The document carries no `ETag`: it is not
+// one entity. Every call is recorded: data left the system (D5). It is no
+// import format (D3): there is no importer yet, and the one ADR 0044
+// decides refuses a file that carries these sections.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
+func (c *ClientWithResponses) ExportTicketContextWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*ExportTicketContextResponse, error) {
+	rsp, err := c.ExportTicketContext(ctx, tenant, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportTicketContextResponse(rsp)
 }
 
 // RemoveInterestWithResponse Remove the caller's own stake
@@ -17712,7 +24107,54 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	return ParseGetVersionResponse(rsp)
 }
 
-// LoginLocalWithBodyWithResponse Log in with a local account
+// OidcCallbackWithResponse The identity provider's return
+//
+// Where the issuer sends the browser back: `COWORK_BASE_URL` +
+// `/auth/callback`, the redirect URI registered with the identity
+// provider (docs/adr/0029 D4). The UI never calls it.
+//
+// The state cookie of `GET /auth/oidc/login` must be present, younger than
+// ten minutes, and hold the `state` the issuer returned. The code is
+// exchanged with the PKCE verifier; the ID token's signature, issuer,
+// audience, expiry and nonce are verified (D1); the groups are read from
+// `COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —
+// and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
+// is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
+// issuer and subject, or made (docs/adr/0029 D5), and their memberships
+// are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+// session is made as the local login makes it — a new cookie, and the
+// session the request presented ended (docs/adr/0031 D5) — the state
+// cookie is cleared, and the answer is `303` to `return_to`.
+//
+// Every failure is `303` to `/login?error=<code>&return=<return_to>`, the
+// state cookie cleared and no session made. `return` is the path the login
+// began with, for the page's next attempt: it is there when the state
+// cookie still opens, stale or not, and the path is not `/`, the page's
+// default. The codes: `oidc_failed` — the state cookie is missing, stale
+// or does not match, the exchange or the verification failed, or the
+// issuer answered with `error`; `not_allowed` — the person is outside the
+// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
+// `oidc_unavailable` — no identity provider is configured. A refused
+// login is recorded (docs/adr/0026); the reason reaches the log, never the
+// page, and neither ever holds a code or a token.
+//
+// The issuer may add parameters this document does not name, such as `iss`
+// (RFC 9207) or `session_state`: the route takes them and reads none of
+// them (`x-cowork-open-query`).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/callback (the `OidcCallback` operationId).
+func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackResponse, error) {
+	rsp, err := c.OidcCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcCallbackResponse(rsp)
+}
+
+// LoginLocalWithBodyWithResponse Sign in with a local account
 //
 // Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 // SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -17748,7 +24190,7 @@ func (c *ClientWithResponses) LoginLocalWithBodyWithResponse(ctx context.Context
 	return ParseLoginLocalResponse(rsp)
 }
 
-// LoginLocalWithResponse Log in with a local account
+// LoginLocalWithResponse Sign in with a local account
 //
 // Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
 // SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -17790,6 +24232,14 @@ func (c *ClientWithResponses) LoginLocalWithResponse(ctx context.Context, body L
 // write of a session, so the CSRF check applies: a page of another site
 // cannot log a person out (docs/adr/0037 D5).
 //
+// A session the identity provider made, whose issuer names an
+// `end_session_endpoint` in its discovery, answers `200` with
+// `end_session_url`: the issuer's logout with `client_id` and
+// `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the
+// browser goes next to end its session at the issuer as well (D4). The
+// ID token was not kept (D1), so the URL carries no `id_token_hint`. Every
+// other logout answers `204`.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /auth/logout (the `Logout` operationId).
@@ -17801,12 +24251,47 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 	return ParseLogoutResponse(rsp)
 }
 
+// LoginOidcWithResponse Start a login through the identity provider
+//
+// A navigation of the browser — the login page's button sets
+// `window.location` here — and never a call: the answer is a redirect
+// (docs/adr/0029 D1). With an identity provider configured it is `302` to
+// the issuer's authorization endpoint, for the authorization code flow
+// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
+// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+// Without one, or while its gate admits nobody — the cases in which
+// `GET /auth/options` answers `oidc: false` — it is `303` to
+// `/login?error=oidc_unavailable&return=<return_to>`.
+//
+// `return_to` is where the browser lands after the login: a path of this
+// installation that starts with `/`, not with `//` or `/\`, holds no
+// control character and is at most 2048 characters long. Anything else,
+// or none, is `/`; it is never refused, so a bad link still leads to a
+// login.
+//
+// No credential: whoever comes here has none yet. Nothing is decided here
+// that a forged link could abuse — the session is made by the callback,
+// and only for the browser that holds the state cookie this answer set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/oidc/login (the `LoginOidc` operationId).
+func (c *ClientWithResponses) LoginOidcWithResponse(ctx context.Context, params *LoginOidcParams, reqEditors ...RequestEditorFn) (*LoginOidcResponse, error) {
+	rsp, err := c.LoginOidc(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginOidcResponse(rsp)
+}
+
 // GetAuthOptionsWithResponse What the login page offers
 //
-// The local form is offered when at least one active local account exists,
-// the identity provider's button when one is configured (docs/adr/0033 D8).
-// No identity provider exists yet, so `oidc` is always false. The minimum
-// password length is the policy every password form follows (D3).
+// The local form is offered when at least one active local account exists
+// (docs/adr/0033 D8); the identity provider's button, "Sign in with
+// `oidc_name`", when one is configured and its gate admits somebody —
+// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
+// (docs/adr/0030 D1, D8). The minimum password length is the policy every
+// password form follows (docs/adr/0033 D3).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -17865,6 +24350,98 @@ func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 	return response, nil
 }
 
+// ParseGetMyChatResponse parses an HTTP response from a GetMyChatWithResponse call
+func ParseGetMyChatResponse(rsp *http.Response) (*GetMyChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatCapabilities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetMyChatResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetMyChatResponse parses an HTTP response from a SetMyChatWithResponse call
+func ParseSetMyChatResponse(rsp *http.Response) (*SetMyChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetMyChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatCapabilities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SetMyChatResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseChangeMyPasswordResponse parses an HTTP response from a ChangeMyPasswordWithResponse call
 func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -17894,6 +24471,98 @@ func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordRespons
 	switch {
 	case true:
 		var headers ChangeMyPasswordResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseLookupRepositoryResponse parses an HTTP response from a LookupRepositoryWithResponse call
+func ParseLookupRepositoryResponse(rsp *http.Response) (*LookupRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LookupRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RepositoryLookup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers LookupRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetMyTokenResponse parses an HTTP response from a GetMyTokenWithResponse call
+func ParseGetMyTokenResponse(rsp *http.Response) (*GetMyTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CurrentToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetMyTokenResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -18074,6 +24743,98 @@ func ParseGetOpenAPIResponse(rsp *http.Response) (*GetOpenAPIResponse, error) {
 	switch {
 	case true:
 		var headers GetOpenAPIResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetCoworkYamlSchemaResponse parses an HTTP response from a GetCoworkYamlSchemaWithResponse call
+func ParseGetCoworkYamlSchemaResponse(rsp *http.Response) (*GetCoworkYamlSchemaResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCoworkYamlSchemaResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetCoworkYamlSchemaResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListTenantsResponse parses an HTTP response from a ListTenantsWithResponse call
+func ParseListTenantsResponse(rsp *http.Response) (*ListTenantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTenantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TenantSummaryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListTenantsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -18571,6 +25332,301 @@ func ParseListAuditResponse(rsp *http.Response) (*ListAuditResponse, error) {
 	return response, nil
 }
 
+// ParseGetChatAvailabilityResponse parses an HTTP response from a GetChatAvailabilityWithResponse call
+func ParseGetChatAvailabilityResponse(rsp *http.Response) (*GetChatAvailabilityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetChatAvailabilityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatAvailability
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetChatAvailabilityResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseStopChatTurnsResponse parses an HTTP response from a StopChatTurnsWithResponse call
+func ParseStopChatTurnsResponse(rsp *http.Response) (*StopChatTurnsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StopChatTurnsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers StopChatTurnsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListGroupMappingsResponse parses an HTTP response from a ListGroupMappingsWithResponse call
+func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListGroupMappingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GroupMappingList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListGroupMappingsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateGroupMappingResponse parses an HTTP response from a CreateGroupMappingWithResponse call
+func ParseCreateGroupMappingResponse(rsp *http.Response) (*CreateGroupMappingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGroupMappingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GroupMapping
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateGroupMappingResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers CreateGroupMappingResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGroupMappingResponse parses an HTTP response from a DeleteGroupMappingWithResponse call
+func ParseDeleteGroupMappingResponse(rsp *http.Response) (*DeleteGroupMappingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGroupMappingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeleteGroupMappingResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateGroupMappingResponse parses an HTTP response from a UpdateGroupMappingWithResponse call
+func ParseUpdateGroupMappingResponse(rsp *http.Response) (*UpdateGroupMappingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateGroupMappingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GroupMapping
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateGroupMappingResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers UpdateGroupMappingResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListMembersResponse parses an HTTP response from a ListMembersWithResponse call
 func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -18604,6 +25660,140 @@ func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) 
 	switch {
 	case true:
 		var headers ListMembersResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseAddMemberResponse parses an HTTP response from a AddMemberWithResponse call
+func ParseAddMemberResponse(rsp *http.Response) (*AddMemberResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddMemberResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Member
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers AddMemberResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRemoveMemberGrantResponse parses an HTTP response from a RemoveMemberGrantWithResponse call
+func ParseRemoveMemberGrantResponse(rsp *http.Response) (*RemoveMemberGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveMemberGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveMemberGrantResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetMemberGrantResponse parses an HTTP response from a SetMemberGrantWithResponse call
+func ParseSetMemberGrantResponse(rsp *http.Response) (*SetMemberGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetMemberGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Member
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SetMemberGrantResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -18677,6 +25867,13 @@ func ParseCreateProjectResponse(rsp *http.Response) (*CreateProjectResponse, err
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Project
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Project
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -18694,6 +25891,23 @@ func ParseCreateProjectResponse(rsp *http.Response) (*CreateProjectResponse, err
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers CreateProjectResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers200 = &headers
 	case rsp.StatusCode == 201:
 		var headers CreateProjectResponse201Headers
 		if values := rsp.Header.Values("ETag"); len(values) > 0 {
@@ -18838,6 +26052,140 @@ func ParseUpdateProjectResponse(rsp *http.Response) (*UpdateProjectResponse, err
 	return response, nil
 }
 
+// ParseListProjectAccessResponse parses an HTTP response from a ListProjectAccessWithResponse call
+func ParseListProjectAccessResponse(rsp *http.Response) (*ListProjectAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListProjectAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectAccessList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListProjectAccessResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRemoveProjectAccessResponse parses an HTTP response from a RemoveProjectAccessWithResponse call
+func ParseRemoveProjectAccessResponse(rsp *http.Response) (*RemoveProjectAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveProjectAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveProjectAccessResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetProjectAccessResponse parses an HTTP response from a SetProjectAccessWithResponse call
+func ParseSetProjectAccessResponse(rsp *http.Response) (*SetProjectAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProjectAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectAccessEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SetProjectAccessResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseArchiveProjectResponse parses an HTTP response from a ArchiveProjectWithResponse call
 func ParseArchiveProjectResponse(rsp *http.Response) (*ArchiveProjectResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -18881,6 +26229,213 @@ func ParseArchiveProjectResponse(rsp *http.Response) (*ArchiveProjectResponse, e
 		response.Headers200 = &headers
 	case true:
 		var headers ArchiveProjectResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListRepositoriesResponse parses an HTTP response from a ListRepositoriesWithResponse call
+func ParseListRepositoriesResponse(rsp *http.Response) (*ListRepositoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRepositoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RepositoryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListRepositoriesResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseBindRepositoryResponse parses an HTTP response from a BindRepositoryWithResponse call
+func ParseBindRepositoryResponse(rsp *http.Response) (*BindRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BindRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Repository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Repository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers BindRepositoryResponse201Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers BindRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUnbindRepositoryResponse parses an HTTP response from a UnbindRepositoryWithResponse call
+func ParseUnbindRepositoryResponse(rsp *http.Response) (*UnbindRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnbindRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers UnbindRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetProjectRestrictionResponse parses an HTTP response from a SetProjectRestrictionWithResponse call
+func ParseSetProjectRestrictionResponse(rsp *http.Response) (*SetProjectRestrictionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProjectRestrictionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Project
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SetProjectRestrictionResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers SetProjectRestrictionResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -19837,6 +27392,45 @@ func ParseSetConfidentialResponse(rsp *http.Response) (*SetConfidentialResponse,
 		response.Headers200 = &headers
 	case true:
 		var headers SetConfidentialResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExportTicketContextResponse parses an HTTP response from a ExportTicketContextWithResponse call
+func ParseExportTicketContextResponse(rsp *http.Response) (*ExportTicketContextResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportTicketContextResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ExportTicketContextResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -21330,6 +28924,65 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	return response, nil
 }
 
+// ParseOidcCallbackResponse parses an HTTP response from a OidcCallbackWithResponse call
+func ParseOidcCallbackResponse(rsp *http.Response) (*OidcCallbackResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcCallbackResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 303:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 303:
+		var headers OidcCallbackResponse303Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers303 = &headers
+	case true:
+		var headers OidcCallbackResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseLoginLocalResponse parses an HTTP response from a LoginLocalWithResponse call
 func ParseLoginLocalResponse(rsp *http.Response) (*LoginLocalResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21400,6 +29053,13 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LogoutResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case rsp.StatusCode == 204:
 		break // No content-type
 
@@ -21413,6 +29073,16 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers LogoutResponse200Headers
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers200 = &headers
 	case rsp.StatusCode == 204:
 		var headers LogoutResponse204Headers
 		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
@@ -21425,6 +29095,78 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 		response.Headers204 = &headers
 	case true:
 		var headers LogoutResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseLoginOidcResponse parses an HTTP response from a LoginOidcWithResponse call
+func ParseLoginOidcResponse(rsp *http.Response) (*LoginOidcResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LoginOidcResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		break // No content-type
+
+	case rsp.StatusCode == 303:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		var headers LoginOidcResponse302Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers302 = &headers
+	case rsp.StatusCode == 303:
+		var headers LoginOidcResponse303Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		response.Headers303 = &headers
+	case true:
+		var headers LoginOidcResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -21489,9 +29231,21 @@ type ServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// GetMyChat The capabilities the person gives the chat in the UI
+	// (GET /api/v1/me/chat)
+	GetMyChat(w http.ResponseWriter, r *http.Request)
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	// (PUT /api/v1/me/chat)
+	SetMyChat(w http.ResponseWriter, r *http.Request)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	// (GET /api/v1/me/repositories/lookup)
+	LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams)
+	// GetMyToken The token this request presents, and what it makes of the request
+	// (GET /api/v1/me/token)
+	GetMyToken(w http.ResponseWriter, r *http.Request)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(w http.ResponseWriter, r *http.Request, params ListMyTokensParams)
@@ -21504,6 +29258,12 @@ type ServerInterface interface {
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(w http.ResponseWriter, r *http.Request)
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	// (GET /api/v1/schemas/cowork-yaml.json)
+	GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request)
+	// ListTenants Every tenant of the installation, for a global administrator
+	// (GET /api/v1/tenants)
+	ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(w http.ResponseWriter, r *http.Request, params CreateTenantParams)
@@ -21534,9 +29294,36 @@ type ServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
+	// (GET /api/v1/tenants/{tenant}/chat)
+	GetChatAvailability(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// StopChatTurns Stop every running turn of the person in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
+	StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListGroupMappings The tenant's group mappings, by group
+	// (GET /api/v1/tenants/{tenant}/group-mappings)
+	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
+	// CreateGroupMapping Map a group of the identity provider to a role
+	// (POST /api/v1/tenants/{tenant}/group-mappings)
+	CreateGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateGroupMappingParams)
+	// DeleteGroupMapping Remove a mapping
+	// (DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
+	DeleteGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, mappingId GroupMappingID)
+	// UpdateGroupMapping Change a mapping's role
+	// (PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
+	UpdateGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, mappingId GroupMappingID, params UpdateGroupMappingParams)
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 	// (GET /api/v1/tenants/{tenant}/members)
 	ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams)
+	// AddMember Grant a role to a person, by e-mail address or username
+	// (POST /api/v1/tenants/{tenant}/members)
+	AddMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params AddMemberParams)
+	// RemoveMemberGrant Remove a member's grant
+	// (DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant)
+	RemoveMemberGrant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, personId PersonID)
+	// SetMemberGrant Give a member a grant, or change its role
+	// (PUT /api/v1/tenants/{tenant}/members/{person_id}/grant)
+	SetMemberGrant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, personId PersonID)
 	// ListProjects The projects the caller can see
 	// (GET /api/v1/tenants/{tenant}/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListProjectsParams)
@@ -21549,9 +29336,30 @@ type ServerInterface interface {
 	// UpdateProject Change a project's name, description or WIP limits
 	// (PATCH /api/v1/tenants/{tenant}/projects/{project})
 	UpdateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params UpdateProjectParams)
+	// ListProjectAccess The project's access list
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/access)
+	ListProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListProjectAccessParams)
+	// RemoveProjectAccess Take a person off the access list
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id})
+	RemoveProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, personId PersonID)
+	// SetProjectAccess Put a member on the access list, or change their entry
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id})
+	SetProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, personId PersonID)
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// ListRepositories The repositories a project owns
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	ListRepositories(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListRepositoriesParams)
+	// BindRepository Bind a repository to the project
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	BindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params BindRepositoryParams)
+	// UnbindRepository Unbind a repository from the project
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository})
+	UnbindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, repository RepositoryID)
+	// SetProjectRestriction Restrict a project to its access list, or open it
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/restriction)
+	SetProjectRestriction(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params SetProjectRestrictionParams)
 	// ListProjectTickets The project's tickets, in the project's rank
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	ListProjectTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListProjectTicketsParams)
@@ -21603,6 +29411,9 @@ type ServerInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential)
 	SetConfidential(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params SetConfidentialParams)
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context)
+	ExportTicketContext(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ExportTicketContextParams)
 	// RemoveInterest Remove the caller's own stake
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest)
 	RemoveInterest(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
@@ -21687,12 +29498,18 @@ type ServerInterface interface {
 	// GetVersion The backend build
 	// (GET /api/v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
-	// LoginLocal Log in with a local account
+	// OidcCallback The identity provider's return
+	// (GET /auth/callback)
+	OidcCallback(w http.ResponseWriter, r *http.Request, params OidcCallbackParams)
+	// LoginLocal Sign in with a local account
 	// (POST /auth/local)
 	LoginLocal(w http.ResponseWriter, r *http.Request)
 	// Logout End the session
 	// (POST /auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// LoginOidc Start a login through the identity provider
+	// (GET /auth/oidc/login)
+	LoginOidc(w http.ResponseWriter, r *http.Request, params LoginOidcParams)
 	// GetAuthOptions What the login page offers
 	// (GET /auth/options)
 	GetAuthOptions(w http.ResponseWriter, r *http.Request)
@@ -21721,11 +29538,99 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyChat operation middleware
+func (siw *ServerInterfaceWrapper) GetMyChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMyChat operation middleware
+func (siw *ServerInterfaceWrapper) SetMyChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMyChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ChangeMyPassword operation middleware
 func (siw *ServerInterfaceWrapper) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ChangeMyPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupRepository operation middleware
+func (siw *ServerInterfaceWrapper) LookupRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupRepositoryParams
+
+	// ------------- Required query parameter "remote" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "remote", r.URL.Query(), &params.Remote, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "remote"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "remote", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupRepository(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyToken operation middleware
+func (siw *ServerInterfaceWrapper) GetMyToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyToken(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21853,6 +29758,66 @@ func (siw *ServerInterfaceWrapper) GetOpenAPI(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOpenAPI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCoworkYamlSchema operation middleware
+func (siw *ServerInterfaceWrapper) GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCoworkYamlSchema(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTenants operation middleware
+func (siw *ServerInterfaceWrapper) ListTenants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenants(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22357,6 +30322,257 @@ func (siw *ServerInterfaceWrapper) ListAudit(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetChatAvailability operation middleware
+func (siw *ServerInterfaceWrapper) GetChatAvailability(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChatAvailability(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopChatTurns operation middleware
+func (siw *ServerInterfaceWrapper) StopChatTurns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopChatTurns(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGroupMappings operation middleware
+func (siw *ServerInterfaceWrapper) ListGroupMappings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGroupMappingsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGroupMappings(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateGroupMapping operation middleware
+func (siw *ServerInterfaceWrapper) CreateGroupMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateGroupMappingParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateGroupMapping(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteGroupMapping operation middleware
+func (siw *ServerInterfaceWrapper) DeleteGroupMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "mapping_id" -------------
+	var mappingId GroupMappingID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "mapping_id", r.PathValue("mapping_id"), &mappingId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mapping_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteGroupMapping(w, r, tenant, mappingId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateGroupMapping operation middleware
+func (siw *ServerInterfaceWrapper) UpdateGroupMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "mapping_id" -------------
+	var mappingId GroupMappingID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "mapping_id", r.PathValue("mapping_id"), &mappingId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mapping_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateGroupMappingParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateGroupMapping(w, r, tenant, mappingId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -22403,6 +30619,126 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddMember operation middleware
+func (siw *ServerInterfaceWrapper) AddMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AddMemberParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddMember(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveMemberGrant operation middleware
+func (siw *ServerInterfaceWrapper) RemoveMemberGrant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "person_id" -------------
+	var personId PersonID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person_id", r.PathValue("person_id"), &personId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveMemberGrant(w, r, tenant, personId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMemberGrant operation middleware
+func (siw *ServerInterfaceWrapper) SetMemberGrant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "person_id" -------------
+	var personId PersonID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person_id", r.PathValue("person_id"), &personId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMemberGrant(w, r, tenant, personId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22624,6 +30960,158 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListProjectAccess operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectAccessParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectAccess(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveProjectAccess operation middleware
+func (siw *ServerInterfaceWrapper) RemoveProjectAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "person_id" -------------
+	var personId PersonID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person_id", r.PathValue("person_id"), &personId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveProjectAccess(w, r, tenant, project, personId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectAccess operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "person_id" -------------
+	var personId PersonID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person_id", r.PathValue("person_id"), &personId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectAccess(w, r, tenant, project, personId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ArchiveProject operation middleware
 func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http.Request) {
 
@@ -22650,6 +31138,232 @@ func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRepositories operation middleware
+func (siw *ServerInterfaceWrapper) ListRepositories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRepositoriesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRepositories(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BindRepository operation middleware
+func (siw *ServerInterfaceWrapper) BindRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BindRepositoryParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BindRepository(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnbindRepository operation middleware
+func (siw *ServerInterfaceWrapper) UnbindRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "repository" -------------
+	var repository RepositoryID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repository", r.PathValue("repository"), &repository, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repository", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnbindRepository(w, r, tenant, project, repository)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectRestriction operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectRestriction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetProjectRestrictionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectRestriction(w, r, tenant, project, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -24117,6 +32831,79 @@ func (siw *ServerInterfaceWrapper) SetConfidential(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetConfidential(w, r, tenant, project, number, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportTicketContext operation middleware
+func (siw *ServerInterfaceWrapper) ExportTicketContext(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportTicketContextParams
+
+	// ------------- Optional query parameter "comments" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "comments", r.URL.Query(), &params.Comments, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "comments"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "comments", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activity", r.URL.Query(), &params.Activity, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activity", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportTicketContext(w, r, tenant, project, number, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -26273,6 +35060,78 @@ func (siw *ServerInterfaceWrapper) GetVersion(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// OidcCallback operation middleware
+func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params OidcCallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error_description" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error_description", r.URL.Query(), &params.ErrorDescription, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error_description"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error_description", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LoginLocal operation middleware
 func (siw *ServerInterfaceWrapper) LoginLocal(w http.ResponseWriter, r *http.Request) {
 
@@ -26292,6 +35151,39 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginOidc operation middleware
+func (siw *ServerInterfaceWrapper) LoginOidc(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LoginOidcParams
+
+	// ------------- Optional query parameter "return_to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "return_to", r.URL.Query(), &params.ReturnTo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "return_to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "return_to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginOidc(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -26436,11 +35328,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/chat", wrapper.GetMyChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/chat", wrapper.SetMyChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.ListMyTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.CreateMyToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/me/tokens/{token_id}", wrapper.RevokeMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/openapi.json", wrapper.GetOpenAPI)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schemas/cowork-yaml.json", wrapper.GetCoworkYamlSchema)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants", wrapper.ListTenants)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants", wrapper.CreateTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.GetTenant)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}", wrapper.UpdateTenant)
@@ -26451,12 +35349,28 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.UpdateGroupMapping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members", wrapper.ListMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members", wrapper.AddMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members/{person_id}/grant", wrapper.RemoveMemberGrant)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members/{person_id}/grant", wrapper.SetMemberGrant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects", wrapper.ListProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}", wrapper.UpdateProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access", wrapper.ListProjectAccess)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.RemoveProjectAccess)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.SetProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/archive", wrapper.ArchiveProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.ListRepositories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.BindRepository)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}", wrapper.UnbindRepository)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/restriction", wrapper.SetProjectRestriction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.ListProjectTickets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.CreateTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.GetTicket)
@@ -26474,6 +35388,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions", wrapper.ListCommentRevisions)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal", wrapper.WithdrawComment)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential", wrapper.SetConfidential)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context", wrapper.ExportTicketContext)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.RemoveInterest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.ListInterest)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest", wrapper.SetInterest)
@@ -26502,8 +35417,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-report", wrapper.TimeReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tickets/{tenant}/{key}", wrapper.ResolveTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/version", wrapper.GetVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/callback", wrapper.OidcCallback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/local", wrapper.LoginLocal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.Logout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/oidc/login", wrapper.LoginOidc)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/options", wrapper.GetAuthOptions)
 
 	return m
@@ -26560,6 +35477,91 @@ func (response GetMedefaultApplicationProblemPlusJSONResponse) VisitGetMeRespons
 	return err
 }
 
+type GetMyChatRequestObject struct {
+}
+
+type GetMyChatResponseObject interface {
+	VisitGetMyChatResponse(w http.ResponseWriter) error
+}
+
+type GetMyChat200JSONResponse ChatCapabilities
+
+func (response GetMyChat200JSONResponse) VisitGetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyChatdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetMyChatdefaultApplicationProblemPlusJSONResponse) VisitGetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyChatRequestObject struct {
+	Body *SetMyChatJSONRequestBody
+}
+
+type SetMyChatResponseObject interface {
+	VisitSetMyChatResponse(w http.ResponseWriter) error
+}
+
+type SetMyChat200JSONResponse ChatCapabilities
+
+func (response SetMyChat200JSONResponse) VisitSetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyChatdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SetMyChatdefaultApplicationProblemPlusJSONResponse) VisitSetMyChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ChangeMyPasswordRequestObject struct {
 	Body *ChangeMyPasswordJSONRequestBody
 }
@@ -26583,6 +35585,91 @@ type ChangeMyPassworddefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ChangeMyPassworddefaultApplicationProblemPlusJSONResponse) VisitChangeMyPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupRepositoryRequestObject struct {
+	Params LookupRepositoryParams
+}
+
+type LookupRepositoryResponseObject interface {
+	VisitLookupRepositoryResponse(w http.ResponseWriter) error
+}
+
+type LookupRepository200JSONResponse RepositoryLookup
+
+func (response LookupRepository200JSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LookupRepositorydefaultApplicationProblemPlusJSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyTokenRequestObject struct {
+}
+
+type GetMyTokenResponseObject interface {
+	VisitGetMyTokenResponse(w http.ResponseWriter) error
+}
+
+type GetMyToken200JSONResponse CurrentToken
+
+func (response GetMyToken200JSONResponse) VisitGetMyTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyTokendefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetMyTokendefaultApplicationProblemPlusJSONResponse) VisitGetMyTokenResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -26749,6 +35836,91 @@ type GetOpenAPIdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetOpenAPIdefaultApplicationProblemPlusJSONResponse) VisitGetOpenAPIResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCoworkYamlSchemaRequestObject struct {
+}
+
+type GetCoworkYamlSchemaResponseObject interface {
+	VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error
+}
+
+type GetCoworkYamlSchema200JSONResponse map[string]interface{}
+
+func (response GetCoworkYamlSchema200JSONResponse) VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetCoworkYamlSchemadefaultApplicationProblemPlusJSONResponse) VisitGetCoworkYamlSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantsRequestObject struct {
+	Params ListTenantsParams
+}
+
+type ListTenantsResponseObject interface {
+	VisitListTenantsResponse(w http.ResponseWriter) error
+}
+
+type ListTenants200JSONResponse TenantSummaryList
+
+func (response ListTenants200JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTenantsdefaultApplicationProblemPlusJSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -27235,6 +36407,283 @@ func (response ListAuditdefaultApplicationProblemPlusJSONResponse) VisitListAudi
 	return err
 }
 
+type GetChatAvailabilityRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetChatAvailabilityResponseObject interface {
+	VisitGetChatAvailabilityResponse(w http.ResponseWriter) error
+}
+
+type GetChatAvailability200JSONResponse ChatAvailability
+
+func (response GetChatAvailability200JSONResponse) VisitGetChatAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetChatAvailabilitydefaultApplicationProblemPlusJSONResponse) VisitGetChatAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopChatTurnsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type StopChatTurnsResponseObject interface {
+	VisitStopChatTurnsResponse(w http.ResponseWriter) error
+}
+
+type StopChatTurns204Response struct {
+}
+
+func (response StopChatTurns204Response) VisitStopChatTurnsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type StopChatTurnsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response StopChatTurnsdefaultApplicationProblemPlusJSONResponse) VisitStopChatTurnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupMappingsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListGroupMappingsParams
+}
+
+type ListGroupMappingsResponseObject interface {
+	VisitListGroupMappingsResponse(w http.ResponseWriter) error
+}
+
+type ListGroupMappings200JSONResponse GroupMappingList
+
+func (response ListGroupMappings200JSONResponse) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupMappingsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListGroupMappingsdefaultApplicationProblemPlusJSONResponse) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroupMappingRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params CreateGroupMappingParams
+	Body   *CreateGroupMappingJSONRequestBody
+}
+
+type CreateGroupMappingResponseObject interface {
+	VisitCreateGroupMappingResponse(w http.ResponseWriter) error
+}
+
+type CreateGroupMapping201ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateGroupMapping201JSONResponse struct {
+	Body    GroupMapping
+	Headers CreateGroupMapping201ResponseHeaders
+}
+
+func (response CreateGroupMapping201JSONResponse) VisitCreateGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroupMappingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateGroupMappingdefaultApplicationProblemPlusJSONResponse) VisitCreateGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteGroupMappingRequestObject struct {
+	Tenant    TenantSlug     `json:"tenant"`
+	MappingId GroupMappingID `json:"mapping_id"`
+}
+
+type DeleteGroupMappingResponseObject interface {
+	VisitDeleteGroupMappingResponse(w http.ResponseWriter) error
+}
+
+type DeleteGroupMapping204Response struct {
+}
+
+func (response DeleteGroupMapping204Response) VisitDeleteGroupMappingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteGroupMappingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteGroupMappingdefaultApplicationProblemPlusJSONResponse) VisitDeleteGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroupMappingRequestObject struct {
+	Tenant    TenantSlug     `json:"tenant"`
+	MappingId GroupMappingID `json:"mapping_id"`
+	Params    UpdateGroupMappingParams
+	Body      *UpdateGroupMappingJSONRequestBody
+}
+
+type UpdateGroupMappingResponseObject interface {
+	VisitUpdateGroupMappingResponse(w http.ResponseWriter) error
+}
+
+type UpdateGroupMapping200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateGroupMapping200JSONResponse struct {
+	Body    GroupMapping
+	Headers UpdateGroupMapping200ResponseHeaders
+}
+
+func (response UpdateGroupMapping200JSONResponse) VisitUpdateGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroupMappingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateGroupMappingdefaultApplicationProblemPlusJSONResponse) VisitUpdateGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMembersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListMembersParams
@@ -27265,6 +36714,134 @@ type ListMembersdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListMembersdefaultApplicationProblemPlusJSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params AddMemberParams
+	Body   *AddMemberJSONRequestBody
+}
+
+type AddMemberResponseObject interface {
+	VisitAddMemberResponse(w http.ResponseWriter) error
+}
+
+type AddMember201JSONResponse Member
+
+func (response AddMember201JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMemberdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response AddMemberdefaultApplicationProblemPlusJSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMemberGrantRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	PersonId PersonID   `json:"person_id"`
+}
+
+type RemoveMemberGrantResponseObject interface {
+	VisitRemoveMemberGrantResponse(w http.ResponseWriter) error
+}
+
+type RemoveMemberGrant204Response struct {
+}
+
+func (response RemoveMemberGrant204Response) VisitRemoveMemberGrantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveMemberGrantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveMemberGrantdefaultApplicationProblemPlusJSONResponse) VisitRemoveMemberGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMemberGrantRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	PersonId PersonID   `json:"person_id"`
+	Body     *SetMemberGrantJSONRequestBody
+}
+
+type SetMemberGrantResponseObject interface {
+	VisitSetMemberGrantResponse(w http.ResponseWriter) error
+}
+
+type SetMemberGrant200JSONResponse Member
+
+func (response SetMemberGrant200JSONResponse) VisitSetMemberGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMemberGrantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SetMemberGrantdefaultApplicationProblemPlusJSONResponse) VisitSetMemberGrantResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -27331,6 +36908,34 @@ type CreateProjectRequestObject struct {
 
 type CreateProjectResponseObject interface {
 	VisitCreateProjectResponse(w http.ResponseWriter) error
+}
+
+type CreateProject200ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateProject200JSONResponse struct {
+	Body    Project
+	Headers CreateProject200ResponseHeaders
+}
+
+func (response CreateProject200JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type CreateProject201ResponseHeaders struct {
@@ -27492,6 +37097,136 @@ func (response UpdateProjectdefaultApplicationProblemPlusJSONResponse) VisitUpda
 	return err
 }
 
+type ListProjectAccessRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  ListProjectAccessParams
+}
+
+type ListProjectAccessResponseObject interface {
+	VisitListProjectAccessResponse(w http.ResponseWriter) error
+}
+
+type ListProjectAccess200JSONResponse ProjectAccessList
+
+func (response ListProjectAccess200JSONResponse) VisitListProjectAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectAccessdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListProjectAccessdefaultApplicationProblemPlusJSONResponse) VisitListProjectAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveProjectAccessRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Project  ProjectKey `json:"project"`
+	PersonId PersonID   `json:"person_id"`
+}
+
+type RemoveProjectAccessResponseObject interface {
+	VisitRemoveProjectAccessResponse(w http.ResponseWriter) error
+}
+
+type RemoveProjectAccess204Response struct {
+}
+
+func (response RemoveProjectAccess204Response) VisitRemoveProjectAccessResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveProjectAccessdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveProjectAccessdefaultApplicationProblemPlusJSONResponse) VisitRemoveProjectAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectAccessRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Project  ProjectKey `json:"project"`
+	PersonId PersonID   `json:"person_id"`
+	Body     *SetProjectAccessJSONRequestBody
+}
+
+type SetProjectAccessResponseObject interface {
+	VisitSetProjectAccessResponse(w http.ResponseWriter) error
+}
+
+type SetProjectAccess200JSONResponse ProjectAccessEntry
+
+func (response SetProjectAccess200JSONResponse) VisitSetProjectAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectAccessdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SetProjectAccessdefaultApplicationProblemPlusJSONResponse) VisitSetProjectAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ArchiveProjectRequestObject struct {
 	Tenant  TenantSlug `json:"tenant"`
 	Project ProjectKey `json:"project"`
@@ -27532,6 +37267,216 @@ type ArchiveProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ArchiveProjectdefaultApplicationProblemPlusJSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositoriesRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  ListRepositoriesParams
+}
+
+type ListRepositoriesResponseObject interface {
+	VisitListRepositoriesResponse(w http.ResponseWriter) error
+}
+
+type ListRepositories200JSONResponse RepositoryList
+
+func (response ListRepositories200JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositoriesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListRepositoriesdefaultApplicationProblemPlusJSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepositoryRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  BindRepositoryParams
+	Body    *BindRepositoryJSONRequestBody
+}
+
+type BindRepositoryResponseObject interface {
+	VisitBindRepositoryResponse(w http.ResponseWriter) error
+}
+
+type BindRepository200JSONResponse Repository
+
+func (response BindRepository200JSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepository201ResponseHeaders struct {
+	Location *string
+}
+
+type BindRepository201JSONResponse struct {
+	Body    Repository
+	Headers BindRepository201ResponseHeaders
+}
+
+func (response BindRepository201JSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response BindRepositorydefaultApplicationProblemPlusJSONResponse) VisitBindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindRepositoryRequestObject struct {
+	Tenant     TenantSlug   `json:"tenant"`
+	Project    ProjectKey   `json:"project"`
+	Repository RepositoryID `json:"repository"`
+}
+
+type UnbindRepositoryResponseObject interface {
+	VisitUnbindRepositoryResponse(w http.ResponseWriter) error
+}
+
+type UnbindRepository204Response struct {
+}
+
+func (response UnbindRepository204Response) VisitUnbindRepositoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnbindRepositorydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UnbindRepositorydefaultApplicationProblemPlusJSONResponse) VisitUnbindRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRestrictionRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Params  SetProjectRestrictionParams
+	Body    *SetProjectRestrictionJSONRequestBody
+}
+
+type SetProjectRestrictionResponseObject interface {
+	VisitSetProjectRestrictionResponse(w http.ResponseWriter) error
+}
+
+type SetProjectRestriction200ResponseHeaders struct {
+	ETag *string
+}
+
+type SetProjectRestriction200JSONResponse struct {
+	Body    Project
+	Headers SetProjectRestriction200ResponseHeaders
+}
+
+func (response SetProjectRestriction200JSONResponse) VisitSetProjectRestrictionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRestrictiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SetProjectRestrictiondefaultApplicationProblemPlusJSONResponse) VisitSetProjectRestrictionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -28498,6 +38443,58 @@ type SetConfidentialdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SetConfidentialdefaultApplicationProblemPlusJSONResponse) VisitSetConfidentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportTicketContextRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ExportTicketContextParams
+}
+
+type ExportTicketContextResponseObject interface {
+	VisitExportTicketContextResponse(w http.ResponseWriter) error
+}
+
+type ExportTicketContext200TextmarkdownResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportTicketContext200TextmarkdownResponse) VisitExportTicketContextResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/markdown")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportTicketContextdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ExportTicketContextdefaultApplicationProblemPlusJSONResponse) VisitExportTicketContextResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -30043,6 +40040,53 @@ func (response GetVersiondefaultApplicationProblemPlusJSONResponse) VisitGetVers
 	return err
 }
 
+type OidcCallbackRequestObject struct {
+	Params OidcCallbackParams
+}
+
+type OidcCallbackResponseObject interface {
+	VisitOidcCallbackResponse(w http.ResponseWriter) error
+}
+
+type OidcCallback303ResponseHeaders struct {
+	Location  string
+	SetCookie *string
+}
+
+type OidcCallback303Response struct {
+	Headers OidcCallback303ResponseHeaders
+}
+
+func (response OidcCallback303Response) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(303)
+	return nil
+}
+
+type OidcCallbackdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response OidcCallbackdefaultApplicationProblemPlusJSONResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LoginLocalRequestObject struct {
 	Body *LoginLocalJSONRequestBody
 }
@@ -30103,6 +40147,30 @@ type LogoutResponseObject interface {
 	VisitLogoutResponse(w http.ResponseWriter) error
 }
 
+type Logout200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type Logout200JSONResponse struct {
+	Body    LogoutResult
+	Headers Logout200ResponseHeaders
+}
+
+func (response Logout200JSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type Logout204ResponseHeaders struct {
 	SetCookie *string
 }
@@ -30126,6 +40194,67 @@ type LogoutdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response LogoutdefaultApplicationProblemPlusJSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginOidcRequestObject struct {
+	Params LoginOidcParams
+}
+
+type LoginOidcResponseObject interface {
+	VisitLoginOidcResponse(w http.ResponseWriter) error
+}
+
+type LoginOidc302ResponseHeaders struct {
+	Location  string
+	SetCookie *string
+}
+
+type LoginOidc302Response struct {
+	Headers LoginOidc302ResponseHeaders
+}
+
+func (response LoginOidc302Response) VisitLoginOidcResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(302)
+	return nil
+}
+
+type LoginOidc303ResponseHeaders struct {
+	Location string
+}
+
+type LoginOidc303Response struct {
+	Headers LoginOidc303ResponseHeaders
+}
+
+func (response LoginOidc303Response) VisitLoginOidcResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(303)
+	return nil
+}
+
+type LoginOidcdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LoginOidcdefaultApplicationProblemPlusJSONResponse) VisitLoginOidcResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -30187,9 +40316,21 @@ type StrictServerInterface interface {
 	// GetMe The calling person and their tenants
 	// (GET /api/v1/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// GetMyChat The capabilities the person gives the chat in the UI
+	// (GET /api/v1/me/chat)
+	GetMyChat(ctx context.Context, request GetMyChatRequestObject) (GetMyChatResponseObject, error)
+	// SetMyChat Choose the capabilities the person gives the chat in the UI
+	// (PUT /api/v1/me/chat)
+	SetMyChat(ctx context.Context, request SetMyChatRequestObject) (SetMyChatResponseObject, error)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
+	// LookupRepository The project a repository is bound to, across the person's tenants
+	// (GET /api/v1/me/repositories/lookup)
+	LookupRepository(ctx context.Context, request LookupRepositoryRequestObject) (LookupRepositoryResponseObject, error)
+	// GetMyToken The token this request presents, and what it makes of the request
+	// (GET /api/v1/me/token)
+	GetMyToken(ctx context.Context, request GetMyTokenRequestObject) (GetMyTokenResponseObject, error)
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	// (GET /api/v1/me/tokens)
 	ListMyTokens(ctx context.Context, request ListMyTokensRequestObject) (ListMyTokensResponseObject, error)
@@ -30202,6 +40343,12 @@ type StrictServerInterface interface {
 	// GetOpenAPI This document
 	// (GET /api/v1/openapi.json)
 	GetOpenAPI(ctx context.Context, request GetOpenAPIRequestObject) (GetOpenAPIResponseObject, error)
+	// GetCoworkYamlSchema The JSON Schema of a repository's `.cowork.yaml`
+	// (GET /api/v1/schemas/cowork-yaml.json)
+	GetCoworkYamlSchema(ctx context.Context, request GetCoworkYamlSchemaRequestObject) (GetCoworkYamlSchemaResponseObject, error)
+	// ListTenants Every tenant of the installation, for a global administrator
+	// (GET /api/v1/tenants)
+	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
 	// CreateTenant Create a tenant
 	// (POST /api/v1/tenants)
 	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
@@ -30232,9 +40379,36 @@ type StrictServerInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
+	// GetChatAvailability Whether the chat is available in the tenant, and with which providers
+	// (GET /api/v1/tenants/{tenant}/chat)
+	GetChatAvailability(ctx context.Context, request GetChatAvailabilityRequestObject) (GetChatAvailabilityResponseObject, error)
+	// StopChatTurns Stop every running turn of the person in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
+	StopChatTurns(ctx context.Context, request StopChatTurnsRequestObject) (StopChatTurnsResponseObject, error)
+	// ListGroupMappings The tenant's group mappings, by group
+	// (GET /api/v1/tenants/{tenant}/group-mappings)
+	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
+	// CreateGroupMapping Map a group of the identity provider to a role
+	// (POST /api/v1/tenants/{tenant}/group-mappings)
+	CreateGroupMapping(ctx context.Context, request CreateGroupMappingRequestObject) (CreateGroupMappingResponseObject, error)
+	// DeleteGroupMapping Remove a mapping
+	// (DELETE /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
+	DeleteGroupMapping(ctx context.Context, request DeleteGroupMappingRequestObject) (DeleteGroupMappingResponseObject, error)
+	// UpdateGroupMapping Change a mapping's role
+	// (PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
+	UpdateGroupMapping(ctx context.Context, request UpdateGroupMappingRequestObject) (UpdateGroupMappingResponseObject, error)
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 	// (GET /api/v1/tenants/{tenant}/members)
 	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
+	// AddMember Grant a role to a person, by e-mail address or username
+	// (POST /api/v1/tenants/{tenant}/members)
+	AddMember(ctx context.Context, request AddMemberRequestObject) (AddMemberResponseObject, error)
+	// RemoveMemberGrant Remove a member's grant
+	// (DELETE /api/v1/tenants/{tenant}/members/{person_id}/grant)
+	RemoveMemberGrant(ctx context.Context, request RemoveMemberGrantRequestObject) (RemoveMemberGrantResponseObject, error)
+	// SetMemberGrant Give a member a grant, or change its role
+	// (PUT /api/v1/tenants/{tenant}/members/{person_id}/grant)
+	SetMemberGrant(ctx context.Context, request SetMemberGrantRequestObject) (SetMemberGrantResponseObject, error)
 	// ListProjects The projects the caller can see
 	// (GET /api/v1/tenants/{tenant}/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -30247,9 +40421,30 @@ type StrictServerInterface interface {
 	// UpdateProject Change a project's name, description or WIP limits
 	// (PATCH /api/v1/tenants/{tenant}/projects/{project})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+	// ListProjectAccess The project's access list
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/access)
+	ListProjectAccess(ctx context.Context, request ListProjectAccessRequestObject) (ListProjectAccessResponseObject, error)
+	// RemoveProjectAccess Take a person off the access list
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/access/{person_id})
+	RemoveProjectAccess(ctx context.Context, request RemoveProjectAccessRequestObject) (RemoveProjectAccessResponseObject, error)
+	// SetProjectAccess Put a member on the access list, or change their entry
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/access/{person_id})
+	SetProjectAccess(ctx context.Context, request SetProjectAccessRequestObject) (SetProjectAccessResponseObject, error)
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
+	// ListRepositories The repositories a project owns
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error)
+	// BindRepository Bind a repository to the project
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/repositories)
+	BindRepository(ctx context.Context, request BindRepositoryRequestObject) (BindRepositoryResponseObject, error)
+	// UnbindRepository Unbind a repository from the project
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository})
+	UnbindRepository(ctx context.Context, request UnbindRepositoryRequestObject) (UnbindRepositoryResponseObject, error)
+	// SetProjectRestriction Restrict a project to its access list, or open it
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/restriction)
+	SetProjectRestriction(ctx context.Context, request SetProjectRestrictionRequestObject) (SetProjectRestrictionResponseObject, error)
 	// ListProjectTickets The project's tickets, in the project's rank
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	ListProjectTickets(ctx context.Context, request ListProjectTicketsRequestObject) (ListProjectTicketsResponseObject, error)
@@ -30301,6 +40496,9 @@ type StrictServerInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential)
 	SetConfidential(ctx context.Context, request SetConfidentialRequestObject) (SetConfidentialResponseObject, error)
+	// ExportTicketContext The ticket for reading, with what surrounds it
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context)
+	ExportTicketContext(ctx context.Context, request ExportTicketContextRequestObject) (ExportTicketContextResponseObject, error)
 	// RemoveInterest Remove the caller's own stake
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest)
 	RemoveInterest(ctx context.Context, request RemoveInterestRequestObject) (RemoveInterestResponseObject, error)
@@ -30385,12 +40583,18 @@ type StrictServerInterface interface {
 	// GetVersion The backend build
 	// (GET /api/v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
-	// LoginLocal Log in with a local account
+	// OidcCallback The identity provider's return
+	// (GET /auth/callback)
+	OidcCallback(ctx context.Context, request OidcCallbackRequestObject) (OidcCallbackResponseObject, error)
+	// LoginLocal Sign in with a local account
 	// (POST /auth/local)
 	LoginLocal(ctx context.Context, request LoginLocalRequestObject) (LoginLocalResponseObject, error)
 	// Logout End the session
 	// (POST /auth/logout)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// LoginOidc Start a login through the identity provider
+	// (GET /auth/oidc/login)
+	LoginOidc(ctx context.Context, request LoginOidcRequestObject) (LoginOidcResponseObject, error)
 	// GetAuthOptions What the login page offers
 	// (GET /auth/options)
 	GetAuthOptions(ctx context.Context, request GetAuthOptionsRequestObject) (GetAuthOptionsResponseObject, error)
@@ -30459,6 +40663,61 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetMyChat operation middleware
+func (sh *strictHandler) GetMyChat(w http.ResponseWriter, r *http.Request) {
+	var request GetMyChatRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyChat(ctx, request.(GetMyChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyChatResponseObject); ok {
+		if err := validResponse.VisitGetMyChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMyChat operation middleware
+func (sh *strictHandler) SetMyChat(w http.ResponseWriter, r *http.Request) {
+	var request SetMyChatRequestObject
+
+	var body SetMyChatJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMyChat(ctx, request.(SetMyChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMyChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMyChatResponseObject); ok {
+		if err := validResponse.VisitSetMyChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ChangeMyPassword operation middleware
 func (sh *strictHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 	var request ChangeMyPasswordRequestObject
@@ -30483,6 +40742,56 @@ func (sh *strictHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangeMyPasswordResponseObject); ok {
 		if err := validResponse.VisitChangeMyPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LookupRepository operation middleware
+func (sh *strictHandler) LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams) {
+	var request LookupRepositoryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupRepository(ctx, request.(LookupRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupRepositoryResponseObject); ok {
+		if err := validResponse.VisitLookupRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyToken operation middleware
+func (sh *strictHandler) GetMyToken(w http.ResponseWriter, r *http.Request) {
+	var request GetMyTokenRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyToken(ctx, request.(GetMyTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyTokenResponseObject); ok {
+		if err := validResponse.VisitGetMyTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -30592,6 +40901,56 @@ func (sh *strictHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOpenAPIResponseObject); ok {
 		if err := validResponse.VisitGetOpenAPIResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCoworkYamlSchema operation middleware
+func (sh *strictHandler) GetCoworkYamlSchema(w http.ResponseWriter, r *http.Request) {
+	var request GetCoworkYamlSchemaRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCoworkYamlSchema(ctx, request.(GetCoworkYamlSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCoworkYamlSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCoworkYamlSchemaResponseObject); ok {
+		if err := validResponse.VisitGetCoworkYamlSchemaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenants operation middleware
+func (sh *strictHandler) ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams) {
+	var request ListTenantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenants(ctx, request.(ListTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantsResponseObject); ok {
+		if err := validResponse.VisitListTenantsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -30895,6 +41254,181 @@ func (sh *strictHandler) ListAudit(w http.ResponseWriter, r *http.Request, tenan
 	}
 }
 
+// GetChatAvailability operation middleware
+func (sh *strictHandler) GetChatAvailability(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetChatAvailabilityRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChatAvailability(ctx, request.(GetChatAvailabilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChatAvailability")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChatAvailabilityResponseObject); ok {
+		if err := validResponse.VisitGetChatAvailabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopChatTurns operation middleware
+func (sh *strictHandler) StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request StopChatTurnsRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopChatTurns(ctx, request.(StopChatTurnsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopChatTurns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopChatTurnsResponseObject); ok {
+		if err := validResponse.VisitStopChatTurnsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGroupMappings operation middleware
+func (sh *strictHandler) ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams) {
+	var request ListGroupMappingsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGroupMappings(ctx, request.(ListGroupMappingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGroupMappings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGroupMappingsResponseObject); ok {
+		if err := validResponse.VisitListGroupMappingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateGroupMapping operation middleware
+func (sh *strictHandler) CreateGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateGroupMappingParams) {
+	var request CreateGroupMappingRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	var body CreateGroupMappingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateGroupMapping(ctx, request.(CreateGroupMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateGroupMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateGroupMappingResponseObject); ok {
+		if err := validResponse.VisitCreateGroupMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteGroupMapping operation middleware
+func (sh *strictHandler) DeleteGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, mappingId GroupMappingID) {
+	var request DeleteGroupMappingRequestObject
+
+	request.Tenant = tenant
+	request.MappingId = mappingId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteGroupMapping(ctx, request.(DeleteGroupMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteGroupMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteGroupMappingResponseObject); ok {
+		if err := validResponse.VisitDeleteGroupMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateGroupMapping operation middleware
+func (sh *strictHandler) UpdateGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, mappingId GroupMappingID, params UpdateGroupMappingParams) {
+	var request UpdateGroupMappingRequestObject
+
+	request.Tenant = tenant
+	request.MappingId = mappingId
+	request.Params = params
+
+	var body UpdateGroupMappingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateGroupMapping(ctx, request.(UpdateGroupMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateGroupMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateGroupMappingResponseObject); ok {
+		if err := validResponse.VisitUpdateGroupMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMembers operation middleware
 func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams) {
 	var request ListMembersRequestObject
@@ -30915,6 +41449,101 @@ func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request, ten
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListMembersResponseObject); ok {
 		if err := validResponse.VisitListMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddMember operation middleware
+func (sh *strictHandler) AddMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params AddMemberParams) {
+	var request AddMemberRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	var body AddMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddMember(ctx, request.(AddMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddMemberResponseObject); ok {
+		if err := validResponse.VisitAddMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveMemberGrant operation middleware
+func (sh *strictHandler) RemoveMemberGrant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, personId PersonID) {
+	var request RemoveMemberGrantRequestObject
+
+	request.Tenant = tenant
+	request.PersonId = personId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveMemberGrant(ctx, request.(RemoveMemberGrantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveMemberGrant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveMemberGrantResponseObject); ok {
+		if err := validResponse.VisitRemoveMemberGrantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMemberGrant operation middleware
+func (sh *strictHandler) SetMemberGrant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, personId PersonID) {
+	var request SetMemberGrantRequestObject
+
+	request.Tenant = tenant
+	request.PersonId = personId
+
+	var body SetMemberGrantJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMemberGrant(ctx, request.(SetMemberGrantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMemberGrant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMemberGrantResponseObject); ok {
+		if err := validResponse.VisitSetMemberGrantResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -31045,6 +41674,97 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, t
 	}
 }
 
+// ListProjectAccess operation middleware
+func (sh *strictHandler) ListProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListProjectAccessParams) {
+	var request ListProjectAccessRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjectAccess(ctx, request.(ListProjectAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjectAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectAccessResponseObject); ok {
+		if err := validResponse.VisitListProjectAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveProjectAccess operation middleware
+func (sh *strictHandler) RemoveProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, personId PersonID) {
+	var request RemoveProjectAccessRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.PersonId = personId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveProjectAccess(ctx, request.(RemoveProjectAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveProjectAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveProjectAccessResponseObject); ok {
+		if err := validResponse.VisitRemoveProjectAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectAccess operation middleware
+func (sh *strictHandler) SetProjectAccess(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, personId PersonID) {
+	var request SetProjectAccessRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.PersonId = personId
+
+	var body SetProjectAccessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectAccess(ctx, request.(SetProjectAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectAccessResponseObject); ok {
+		if err := validResponse.VisitSetProjectAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ArchiveProject operation middleware
 func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey) {
 	var request ArchiveProjectRequestObject
@@ -31065,6 +41785,132 @@ func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ArchiveProjectResponseObject); ok {
 		if err := validResponse.VisitArchiveProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRepositories operation middleware
+func (sh *strictHandler) ListRepositories(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListRepositoriesParams) {
+	var request ListRepositoriesRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRepositories(ctx, request.(ListRepositoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRepositories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRepositoriesResponseObject); ok {
+		if err := validResponse.VisitListRepositoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BindRepository operation middleware
+func (sh *strictHandler) BindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params BindRepositoryParams) {
+	var request BindRepositoryRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	var body BindRepositoryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BindRepository(ctx, request.(BindRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BindRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BindRepositoryResponseObject); ok {
+		if err := validResponse.VisitBindRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnbindRepository operation middleware
+func (sh *strictHandler) UnbindRepository(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, repository RepositoryID) {
+	var request UnbindRepositoryRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Repository = repository
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnbindRepository(ctx, request.(UnbindRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnbindRepository")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnbindRepositoryResponseObject); ok {
+		if err := validResponse.VisitUnbindRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectRestriction operation middleware
+func (sh *strictHandler) SetProjectRestriction(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params SetProjectRestrictionParams) {
+	var request SetProjectRestrictionRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	var body SetProjectRestrictionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectRestriction(ctx, request.(SetProjectRestrictionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectRestriction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectRestrictionResponseObject); ok {
+		if err := validResponse.VisitSetProjectRestrictionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -31607,6 +42453,35 @@ func (sh *strictHandler) SetConfidential(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetConfidentialResponseObject); ok {
 		if err := validResponse.VisitSetConfidentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportTicketContext operation middleware
+func (sh *strictHandler) ExportTicketContext(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ExportTicketContextParams) {
+	var request ExportTicketContextRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportTicketContext(ctx, request.(ExportTicketContextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportTicketContext")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportTicketContextResponseObject); ok {
+		if err := validResponse.VisitExportTicketContextResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -32478,6 +43353,32 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// OidcCallback operation middleware
+func (sh *strictHandler) OidcCallback(w http.ResponseWriter, r *http.Request, params OidcCallbackParams) {
+	var request OidcCallbackRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OidcCallback(ctx, request.(OidcCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OidcCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OidcCallbackResponseObject); ok {
+		if err := validResponse.VisitOidcCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // LoginLocal operation middleware
 func (sh *strictHandler) LoginLocal(w http.ResponseWriter, r *http.Request) {
 	var request LoginLocalRequestObject
@@ -32526,6 +43427,32 @@ func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogoutResponseObject); ok {
 		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginOidc operation middleware
+func (sh *strictHandler) LoginOidc(w http.ResponseWriter, r *http.Request, params LoginOidcParams) {
+	var request LoginOidcRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginOidc(ctx, request.(LoginOidcRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginOidc")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginOidcResponseObject); ok {
+		if err := validResponse.VisitLoginOidcResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

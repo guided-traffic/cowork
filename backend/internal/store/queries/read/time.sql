@@ -4,7 +4,7 @@
 -- name: ListTicketTime :many
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at
 FROM time_entries e
@@ -31,7 +31,7 @@ WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.ticket_id = sqlc.arg(ticket_id) AN
 -- name: GetTimeEntry :one
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at
 FROM time_entries e
@@ -44,7 +44,7 @@ WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.ticket_id = sqlc.arg(ticket_id) AN
 
 -- name: ListTimeEntryRevisions :many
 SELECT r.id, r.minutes, r.day, r.note, r.edited_by, u.username AS edited_by_username,
-       u.display_name AS edited_by_name, r.created_at
+       u.display_name AS edited_by_name, r.token_id, r.token_name, r.created_at
 FROM time_entry_revisions r
 JOIN time_entries e ON e.tenant_id = r.tenant_id AND e.id = r.entry_id
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
@@ -61,7 +61,7 @@ LIMIT sqlc.arg(page_size);
 -- cursor, or a numbered page by offset (docs/adr/0048 D1, D2).
 SELECT e.id, e.person_id, pu.username AS person_username, pu.display_name AS person_name,
        e.author_id, au.username AS author_username, au.display_name AS author_name,
-       e.minutes, e.day, e.note, e.voided_at,
+       e.minutes, e.day, e.note, e.voided_at, e.token_id, e.token_name,
        EXISTS (SELECT 1 FROM time_entry_revisions r WHERE r.tenant_id = e.tenant_id AND r.entry_id = e.id) AS edited,
        e.version, e.created_at, e.updated_at, p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title
 FROM time_entries e

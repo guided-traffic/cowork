@@ -15,6 +15,7 @@ import { Attachment, TimeEntry } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TicketRecords } from '../../core/ticket-records.service';
+import { AgentMark } from '../../shared/agent-mark';
 import { ago, Clock, duration, parseDuration, size, today } from '../../shared/time';
 import { TicketRelations } from './ticket-relations';
 
@@ -33,7 +34,7 @@ export function fileIcon(contentType: string): string {
 @Component({
   selector: 'app-attachments-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, Tooltip],
+  imports: [AgentMark, ButtonDirective, Tooltip],
   template: `
     <h2>Attachments</h2>
     @if (relations.attachments.hasValue()) {
@@ -50,8 +51,11 @@ export function fileIcon(contentType: string): string {
               >{{ file.file_name }}</a
             >
             <span class="muted small"
-              >{{ bytes(file) }} · {{ file.uploaded_by.display_name }} ·
-              {{ when(file.created_at) }}</span
+              >{{ bytes(file) }} · {{ file.uploaded_by.display_name }}
+              @if (file.agent || file.token) {
+                <app-agent-mark [mark]="file.agent" [token]="file.token" />
+              }
+              · {{ when(file.created_at) }}</span
             >
           </li>
         } @empty {
@@ -155,13 +159,14 @@ export class AttachmentsCard {
 }
 
 /**
- * The time booked on the ticket (docs/adr/0017): the sum, each entry, and the person's own
- * booking — a day and a duration as people type it (`1:30`, `1h 30m`, `90`).
+ * The time booked on the ticket (docs/adr/0017): the sum, each entry — marked when a token booked
+ * it (docs/adr/0036 D6) — and the person's own booking, a day and a duration as people type it
+ * (`1:30`, `1h 30m`, `90`).
  */
 @Component({
   selector: 'app-time-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, InputText, Tooltip],
+  imports: [AgentMark, ButtonDirective, FormsModule, InputText, Tooltip],
   template: `
     <h2>
       Time
@@ -174,7 +179,13 @@ export class AttachmentsCard {
         @for (entry of entries(); track entry.id) {
           <li [attr.data-testid]="'time-' + entry.id">
             <span class="tabular">{{ duration(entry.minutes) }}</span>
-            <span class="muted small">{{ entry.person.display_name }} · {{ entry.day }}</span>
+            <span class="muted small"
+              >{{ entry.person.display_name }}
+              @if (entry.token) {
+                <app-agent-mark [token]="entry.token" />
+              }
+              · {{ entry.day }}</span
+            >
             @if (entry.note) {
               <span class="note small">{{ entry.note }}</span>
             }

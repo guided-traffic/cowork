@@ -8,6 +8,7 @@ import { SecurityClass } from '../models/security-class';
 import { Severity } from '../models/severity';
 import { TicketState } from '../models/ticket-state';
 import { TicketType } from '../models/ticket-type';
+import { TokenMark } from '../models/token-mark';
 import { Urgency } from '../models/urgency';
 import { UrgencyOverride } from '../models/urgency-override';
 export interface Ticket {
@@ -84,6 +85,16 @@ export interface Ticket {
    */
   project: string;
   reporter: Person;
+
+  /**
+   * The agent mark of the request that filed the ticket in the reporter's name (docs/adr/0036 D6)
+   */
+  reporter_agent: (string | null);
+
+  /**
+   * The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
+   */
+  reporter_token: (TokenMark | null);
   security: SecurityClass;
   severity: Severity;
   state: TicketState;

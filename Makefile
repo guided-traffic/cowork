@@ -22,6 +22,14 @@ COVERAGE_DIR = $(CURDIR)/coverage
 BIN_DIR = $(CURDIR)/bin
 HELM_CHART = deploy/helm/cowork
 
+# The development and test containers publish their ports on this address only.
+# Their passwords are development values and the PostgreSQL superuser is
+# postgres/postgres, so they are bound to the loopback interface and are not
+# reachable from the network the machine is on (docs/adr/0038 D4). A container
+# created before this rule keeps its binding until it is removed and made
+# again (make postgres-down minio-down dex-down, which drops its data).
+CONTAINER_BIND ?= 127.0.0.1
+
 # Local PostgreSQL (make postgres-up / postgres-down). The container's
 # superuser is the administrative role: the integration tests create their own
 # roles and database through it, and `make dev-seed` writes its fixture rows
@@ -49,6 +57,19 @@ MINIO_PORT ?= 9000
 MINIO_ACCESS_KEY ?= cowork
 MINIO_SECRET_KEY ?= cowork-secret
 TEST_S3_ENDPOINT ?= http://localhost:$(MINIO_PORT)
+
+# Local OpenID Connect issuer (make dex-up / dex-down) for make dev and the
+# login tests: a plain Dex with the static client and users of
+# hack/dex/config.yaml (docs/adr/0029 D3), pinned by digest. The file is
+# copied into the container, not mounted: CI starts it on a self-hosted
+# runner's Docker daemon, which need not see the job's files. Its issuer
+# follows DEX_PORT. Every credential in it is a development value.
+# renovate: datasource=docker depName=ghcr.io/dexidp/dex
+DEX_IMAGE ?= ghcr.io/dexidp/dex:v2.45.1@sha256:8499afd690c437f52301efd2b05b2455da5bd2dfc20332cd697dc9937f808462
+DEX_CONTAINER ?= cowork-dex
+DEX_PORT ?= 5556
+DEX_ISSUER = http://localhost:$(DEX_PORT)/dex
+TEST_OIDC_ISSUER ?= $(DEX_ISSUER)
 
 # Setting SHELL to bash allows bash commands like 'source' to be used
 SHELL = /usr/bin/env bash -o pipefail
@@ -155,17 +176,19 @@ test-unit-coverage: ## Run the backend unit tests with a coverage profile in cov
 	@mkdir -p $(COVERAGE_DIR)
 	cd $(BACKEND_DIR) && $(GOTEST) -v -count=1 -coverprofile=$(COVERAGE_DIR)/unit.out -covermode=atomic ./...
 
-# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL and an
-# S3-compatible server at COWORK_TEST_S3_*; the variables default to the
-# containers `make postgres-up` and `make minio-up` start.
+# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL, an
+# S3-compatible server at COWORK_TEST_S3_* and an OpenID Connect issuer at
+# COWORK_TEST_OIDC_ISSUER; the variables default to the containers
+# `make postgres-up`, `make minio-up` and `make dex-up` start.
 TEST_ENV = COWORK_TEST_DATABASE_URL="$${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}" \
 	COWORK_TEST_S3_ENDPOINT="$${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)}" \
 	COWORK_TEST_S3_ACCESS_KEY_ID="$${COWORK_TEST_S3_ACCESS_KEY_ID:-$(MINIO_ACCESS_KEY)}" \
-	COWORK_TEST_S3_SECRET_ACCESS_KEY="$${COWORK_TEST_S3_SECRET_ACCESS_KEY:-$(MINIO_SECRET_KEY)}"
+	COWORK_TEST_S3_SECRET_ACCESS_KEY="$${COWORK_TEST_S3_SECRET_ACCESS_KEY:-$(MINIO_SECRET_KEY)}" \
+	COWORK_TEST_OIDC_ISSUER="$${COWORK_TEST_OIDC_ISSUER:-$(TEST_OIDC_ISSUER)}"
 
 .PHONY: test-integration
-test-integration: ## Run the backend integration tests against PostgreSQL and S3 (make postgres-up minio-up first).
-	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)} and $${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)}..."
+test-integration: ## Run the backend integration tests against PostgreSQL, S3 and Dex (make dev-up first).
+	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}, $${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)} and $${COWORK_TEST_OIDC_ISSUER:-$(TEST_OIDC_ISSUER)}..."
 	cd $(BACKEND_DIR) && $(TEST_ENV) $(GOTEST) -v -tags=integration -count=1 -timeout=10m ./test/integration/...
 
 .PHONY: test-integration-coverage
@@ -186,6 +209,15 @@ vuln: $(GOVULNCHECK) ## Check the backend dependencies for known vulnerabilities
 build-backend: fmt vet ## Build bin/cowork.
 	cd $(BACKEND_DIR) && CGO_ENABLED=0 $(GOCMD) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/cowork ./cmd/cowork
 
+# The MCP server for Claude Code (docs/adr/0041): a static binary per
+# platform. GOOS= and GOARCH= cross-compile, MCP_OUT= names the file; the
+# release workflow builds every platform with them.
+MCP_OUT ?= $(BIN_DIR)/cowork-mcp$(if $(filter windows,$(GOOS)),.exe,)
+
+.PHONY: build-mcp
+build-mcp: ## Build bin/cowork-mcp, the MCP server and hooks for Claude Code; GOOS= GOARCH= cross-compile, MCP_OUT= names the file.
+	cd $(BACKEND_DIR) && CGO_ENABLED=0 $(if $(GOOS),GOOS=$(GOOS)) $(if $(GOARCH),GOARCH=$(GOARCH)) $(GOCMD) build -trimpath -ldflags="$(LDFLAGS)" -o $(MCP_OUT) ./cmd/cowork-mcp
+
 .PHONY: run
 run: ## Run the backend from source against the development database of make postgres-up; migrates on start as cowork_owner; a throw-away server key unless COWORK_SESSION_KEY is set.
 	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(DEV_DATABASE_URL)}" COWORK_DATABASE_OWNER_URL="$${COWORK_DATABASE_OWNER_URL:-$(DEV_DATABASE_OWNER_URL)}" COWORK_SESSION_KEY="$${COWORK_SESSION_KEY:-$$(openssl rand -base64 32)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run -ldflags="$(LDFLAGS)" ./cmd/cowork serve
@@ -199,7 +231,7 @@ dev-seed: migrate ## Create a development person, tenant, admin membership and t
 	cd $(BACKEND_DIR) && COWORK_DEV_SEED_DATABASE_URL="$${COWORK_DEV_SEED_DATABASE_URL:-$(DEV_ADMIN_URL)}" $(GOCMD) run ./test/devseed
 
 .PHONY: dev
-dev: ## Run the whole development stack in this terminal to watch the UI: PostgreSQL, MinIO, the backend, demo data and the Angular dev server on https://localhost:4200 (hack/dev.sh).
+dev: ## Run the whole development stack in this terminal to watch the UI: PostgreSQL, MinIO, Dex, the backend, demo data and the Angular dev server on https://localhost:4200 (hack/dev.sh).
 	./hack/dev.sh
 
 .PHONY: dev-reset
@@ -266,8 +298,8 @@ test-release-tooling: ## Verify the semantic-release dependency set renders rele
 
 .PHONY: postgres-up
 postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
-	@docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1 && echo "$(POSTGRES_CONTAINER) already exists" || \
-	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(POSTGRES_PORT):5432 $(POSTGRES_IMAGE)
+	@if docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1; then echo "$(POSTGRES_CONTAINER) already exists" && docker start $(POSTGRES_CONTAINER) >/dev/null; else \
+	    docker run -d --name $(POSTGRES_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(CONTAINER_BIND):$(POSTGRES_PORT):5432 $(POSTGRES_IMAGE); fi
 	@echo "Waiting for PostgreSQL..."
 	@for i in $$(seq 1 30); do docker exec $(POSTGRES_CONTAINER) pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; [ $$i -lt 30 ] || { echo "PostgreSQL did not become ready"; exit 1; }; done
 	@docker exec $(POSTGRES_CONTAINER) psql -U postgres -q -v ON_ERROR_STOP=1 -c "DO \$$\$$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_owner') THEN CREATE ROLE cowork_owner LOGIN PASSWORD 'cowork_owner'; END IF; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_app') THEN CREATE ROLE cowork_app LOGIN PASSWORD 'cowork_app'; END IF; END \$$\$$;"
@@ -276,7 +308,7 @@ postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
 
 .PHONY: postgres-down
 postgres-down: ## Remove the local PostgreSQL container and its data.
-	docker rm -f $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
+	docker rm -f -v $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: verify-phase-2
 verify-phase-2: ## Verify phase 2 by hand: both built images against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
@@ -286,8 +318,8 @@ verify-phase-2: ## Verify phase 2 by hand: both built images against make postgr
 
 .PHONY: minio-up
 minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests.
-	@docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1 && echo "$(MINIO_CONTAINER) already exists" || \
-	    docker run -d --name $(MINIO_CONTAINER) -p $(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data
+	@if docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1; then echo "$(MINIO_CONTAINER) already exists" && docker start $(MINIO_CONTAINER) >/dev/null; else \
+	    docker run -d --name $(MINIO_CONTAINER) -p $(CONTAINER_BIND):$(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data; fi
 	@echo "Waiting for MinIO..."
 	@for i in $$(seq 1 30); do curl -sf http://localhost:$(MINIO_PORT)/minio/health/live >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { echo "MinIO did not become ready"; exit 1; }; done
 	@echo "MinIO is ready on port $(MINIO_PORT): access key $(MINIO_ACCESS_KEY); the tests create their own bucket"
@@ -295,6 +327,27 @@ minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests
 .PHONY: minio-down
 minio-down: ## Remove the local MinIO container and its data.
 	docker rm -f $(MINIO_CONTAINER) >/dev/null 2>&1 || true
+
+# The configuration goes in between docker create and docker start, through a
+# copy readable by Dex's own user with the issuer moved to DEX_PORT.
+.PHONY: dex-up
+dex-up: ## Start a local Dex with the static client and users of hack/dex/config.yaml, the identity provider of make dev and the login tests.
+	@if docker inspect $(DEX_CONTAINER) >/dev/null 2>&1; then echo "$(DEX_CONTAINER) already exists; make dex-down dex-up loads a changed hack/dex/config.yaml" && docker start $(DEX_CONTAINER) >/dev/null; else \
+	    config=$$(mktemp) && trap 'rm -f "$$config"' EXIT && \
+	    sed 's#http://localhost:5556/dex#$(DEX_ISSUER)#' hack/dex/config.yaml >"$$config" && chmod 644 "$$config" && \
+	    docker create --name $(DEX_CONTAINER) -p $(CONTAINER_BIND):$(DEX_PORT):5556 $(DEX_IMAGE) dex serve /etc/dex/cowork.yaml >/dev/null && \
+	    docker cp "$$config" $(DEX_CONTAINER):/etc/dex/cowork.yaml && \
+	    docker start $(DEX_CONTAINER) >/dev/null; fi
+	@echo "Waiting for Dex..."
+	@for i in $$(seq 1 30); do curl -sf $(DEX_ISSUER)/.well-known/openid-configuration >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { docker logs --tail 20 $(DEX_CONTAINER); echo "Dex did not become ready"; exit 1; }; done
+	@echo "Dex is ready: issuer $(DEX_ISSUER), client cowork and the users of hack/dex/config.yaml, every credential development-only"
+
+.PHONY: dex-down
+dex-down: ## Remove the local Dex container; it keeps nothing, so the next one starts empty.
+	docker rm -f $(DEX_CONTAINER) >/dev/null 2>&1 || true
+
+.PHONY: dev-up
+dev-up: postgres-up minio-up dex-up ## Start the containers make dev and the integration tests need: PostgreSQL, MinIO and Dex.
 
 .PHONY: coverage-merge
 coverage-merge: ## Merge coverage/unit.out and coverage/integration.out into coverage/combined.out.

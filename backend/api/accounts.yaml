@@ -130,7 +130,11 @@ accountDeactivation:
       The person can no longer log in, their tokens are revoked and their
       sessions end (docs/adr/0024 D5); the person and every act they made stay.
       Not for the administrator's own account (`403 forbidden`). Deactivating a
-      deactivated account changes nothing.
+      deactivated account changes nothing. A deactivation that would leave the
+      tenant without an administrator who can log in is `409 last_admin` and
+      changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+      administrators who deactivate each other at once are decided one after
+      the other.
     responses:
       '204':
         description: Deactivated

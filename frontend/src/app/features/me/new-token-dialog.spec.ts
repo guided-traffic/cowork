@@ -9,16 +9,19 @@ import { Capability, Membership, Problem, Project, TokenCreated } from '../../ap
 import { CAPABILITY } from '../../api/models/capability-array';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
-import {
-  assisted,
-  capabilityMeanings,
-  maxLifetimeDays,
-  NewTokenDialog,
-  scopeMeanings,
-} from './new-token-dialog';
+import { assisted, capabilityMeanings } from '../../shared/capabilities';
+import { maxLifetimeDays, NewTokenDialog, scopeMeanings } from './new-token-dialog';
 
-const acme: Membership = { role: 'admin', tenant: { slug: 'acme', name: 'Acme Corp' } };
-const globex: Membership = { role: 'member', tenant: { slug: 'globex', name: 'Globex' } };
+const acme: Membership = {
+  role: 'admin',
+  tenant: { slug: 'acme', name: 'Acme Corp' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const globex: Membership = {
+  role: 'member',
+  tenant: { slug: 'globex', name: 'Globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
 
 const project = (key: string, name: string): Project => ({
   id: `id-${key}`,
@@ -222,6 +225,18 @@ describe('NewTokenDialog', () => {
       const fixture = await render();
 
       expect(el(fixture, 'token-name')?.getAttribute('maxlength')).toBe('100');
+    });
+
+    it('says that the name shows on what the token does, to everyone who reads the ticket', async () => {
+      const fixture = await render();
+
+      const hint = el(fixture, 'token-name-hint');
+      expect(hint?.id).toBe('token-name-hint');
+      expect(hint?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'The name shows on what the token does: everyone who can read a ticket sees it beside the ' +
+          'acts made through this token — changes, comments, questions, answers, files, time — also ' +
+          'after you revoke it.',
+      );
     });
 
     it('starts at the least it can be: read scope, no agent, no restriction, the default lifetime of the installation', async () => {
@@ -1013,7 +1028,7 @@ describe('NewTokenDialog', () => {
 
       const name = el(fixture, 'token-name') as HTMLInputElement;
       expect(name.getAttribute('aria-invalid')).toBe('true');
-      expect(described(name)).toEqual(['token-name-error']);
+      expect(described(name)).toEqual(['token-name-hint', 'token-name-error']);
       expect(el(fixture, 'token-name-error')?.id).toBe('token-name-error');
       expect(el(fixture, 'token-name-error')?.getAttribute('role')).toBe('alert');
     });
@@ -1082,14 +1097,14 @@ describe('NewTokenDialog', () => {
       expect(combobox(fixture, 'token-project').hasAttribute('aria-invalid')).toBe(false);
     });
 
-    it('claims nothing about a field that was not refused, and describes the selects by their hints only', async () => {
+    it('claims nothing about a field that was not refused, and describes the fields by their hints only', async () => {
       const fixture = await render();
       await choose(fixture, 'token-agent', true);
 
       expect((el(fixture, 'token-name') as HTMLInputElement).getAttribute('aria-invalid')).toBe(
         'false',
       );
-      expect(el(fixture, 'token-name')?.hasAttribute('aria-describedby')).toBe(false);
+      expect(described(el(fixture, 'token-name'))).toEqual(['token-name-hint']);
       for (const field of ['token-scope', 'token-capabilities', 'token-tenant']) {
         expect(combobox(fixture, field).hasAttribute('aria-invalid'), field).toBe(false);
         expect(described(combobox(fixture, field)).join(' '), field).not.toContain('-error');

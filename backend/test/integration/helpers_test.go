@@ -152,6 +152,8 @@ func seedEveryTenantTable(t *testing.T, w world) {
 		require.NoError(t, f.Exec(ctx,
 			`INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')
 			 ON CONFLICT DO NOTHING`, s.tenant, s.project, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO group_mappings (tenant_id, group_name, role) VALUES ($1, 'seed-group', 'member')
+			ON CONFLICT DO NOTHING`, s.tenant))
 		first, _, err := f.Ticket(ctx, s.tenant, s.project, s.person, "seed")
 		require.NoError(t, err)
 		second, _, err := f.Ticket(ctx, s.tenant, s.project, s.person, "seed 2")
@@ -174,6 +176,8 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			VALUES ($1, $2, 15, '2026-01-01', '', $3)`, s.tenant, entry, s.person))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO attachments (tenant_id, ticket_id, file_name, size, sha256, content_type, uploaded_by)
 			VALUES ($1, $2, 'seed.txt', 0, sha256(''::bytea), 'text/plain; charset=utf-8', $3)`, s.tenant, first, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO project_repositories (tenant_id, project_id, identity, remote)
+			VALUES ($1, $2, 'example.org/seed/repo', 'git@example.org:seed/repo.git')`, s.tenant, s.project))
 		_, tokenID, err := f.Token(ctx, fixture.TokenSpec{UserID: s.person})
 		require.NoError(t, err)
 		require.NoError(t, f.Exec(ctx, `INSERT INTO idempotency_keys

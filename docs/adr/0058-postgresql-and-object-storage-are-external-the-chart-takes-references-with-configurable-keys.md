@@ -4,19 +4,28 @@
 
 Accepted, amended 2026-10-01 the same day (D1, D2: example manifests are provided after
 all, syntax-checked, with the tests remaining what is verified), amended 2026-10-02 (D3, D4,
-D5: the owner role of ADR 0021 D2 has its own credential). Decided by the owner as the
+D5: the owner role of ADR 0021 D2 has its own credential), amended 2026-10-04 (D3: the chat's
+key row). Decided by the owner as the
 answer to the catalog questions "how is PostgreSQL provided?" and "how is the object storage
 provided?", taken together: both external, the chart consuming references, over optional
 subcharts and over an umbrella chart; the owner first declined example manifests and then
 allowed them as proposed. The owner's condition: because the Secrets and ConfigMaps come from
 operators an administrator cannot always shape, every key name the chart reads must be
-configurable. D3–D5 are the design for that condition and were not objected to.
+configurable. D3–D5 are the design for that condition and were not objected to. Amended
+2026-10-04 (D3: the OIDC client's row as built), and again on 2026-10-04 by the owner's answers on
+the chat recorded in [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
+(D3: the chat's providers are a list, and each provider's key comes from a Secret of its own; built
+the same day).
 
 **Partly built** (phase 2, 2026-10-02): D1, D3 and D5 in part — the database and owner Secrets
 by URL key (`database.existingSecret`, `database.owner.existingSecret`), the session key
 Secret, the storage credentials Secret with literal endpoint values and the CA ConfigMap, and
 the role and bucket requirements on the operations page. Not built: D3's component keys and
-`existingConfigMap` sources, D4's composed URL, D1's and D2's example manifests.
+`existingConfigMap` sources, D4's composed URL, D1's and D2's example manifests. Since phase 4
+(2026-10-04) the identity provider's client Secret as well (D3, amended); since phase 5
+(2026-10-04) the chat's API key (D3, the row added), checked by the chart's `cowork.chatEnabled`
+helper and rendered in `ci/chat-values.yaml` — since the owner's answers of 2026-10-04 one key per
+provider of `chat.providers`, two providers in that values file.
 
 ## Context
 
@@ -63,9 +72,10 @@ pattern for each of them:
 | database owner *(added 2026-10-02, [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2)* | `database.owner.existingSecret` | the same key set as the database row; read only by the migration run (the init container or the Job of [ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)), never by the serving container |
 | object storage credentials | `storage.existingSecret` | `keys.accessKeyId`, `keys.secretAccessKey` |
 | object storage endpoint | `storage.existingConfigMap` or literal values | `keys.endpoint`, `keys.bucket`, `keys.region`, `keys.pathStyle`; `storage.tls.caConfigMap` + `keys.ca` for a private authority |
-| OIDC client ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)) | `oidc.existingSecret` | `keys.clientId`, `keys.clientSecret`; issuer and scopes as values or `oidc.existingConfigMap` keys |
+| OIDC client ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)) | ~~`oidc.existingSecret`~~ `auth.oidc.existingSecret` *(amended 2026-10-04)* | ~~`keys.clientId`, `keys.clientSecret`; issuer and scopes as values or `oidc.existingConfigMap` keys~~ *(amended 2026-10-04: `auth.oidc.keys.clientSecret`, default `clientSecret`, required with `auth.oidc.issuer` — the client secret has no inline value at all —; `auth.oidc.keys.clientId`, empty by default, reads the client id from the same Secret instead of the value `auth.oidc.clientId`; the issuer, the scopes, the groups claim, the gate, the administrator group, the refresh interval and the display name are values; no `existingConfigMap`)* |
 | local administrator ([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)) | `localAdmin.existingSecret` | `keys.username`, `keys.password` |
 | session key ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md)) | `session.existingSecret` | `keys.key` |
+| the chat's API key *(added 2026-10-04, [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) D3)* | ~~`chat.existingSecret`~~ *(amended again 2026-10-04)* each provider's own `chat.providers[].existingSecret` | ~~`chat.keys.apiKey`, default `apiKey`, read into `COWORK_CHAT_API_KEY`; required with `chat.provider: anthropic`~~ that provider's `keys.apiKey`, default `apiKey`, read into `COWORK_CHAT_<ID>_API_KEY`; required for a provider of kind `anthropic`, optional for `openai` (LM Studio takes none); no inline value at all — an `apiKey` in a provider's entry fails the rendering. ~~The provider, its URL, the model, `inside`,~~ A provider's id, name, kind, URL and model and the turn's timeout and steps are values, rendered only while `chat.providers` lists one |
 
 Where an earlier record allows a value rendered from the values file (`database.url`,
 `localAdmin.password`), that stays as the throw-away path with its warning; the reference

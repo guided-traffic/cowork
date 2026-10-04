@@ -18,13 +18,34 @@
         ariaLabel="Tenant"
         data-testid="tenant-switch"
       />
-    } @else if (session.membership(); as membership) {
-      <span class="tenant-name" data-testid="tenant-name">{{ membership.tenant.name }}</span>
+    } @else if (session.shown(); as shown) {
+      <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
     }
 
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
+    @if (chat.available()) {
+      <button
+        pButton
+        type="button"
+        class="chat-toggle"
+        [class.on]="chat.open()"
+        [text]="true"
+        [rounded]="true"
+        severity="secondary"
+        pTooltip="Assistant"
+        tooltipPosition="bottom"
+        [iconOnly]="true"
+        aria-label="Assistant"
+        aria-controls="chat-panel"
+        [attr.aria-expanded]="chat.open()"
+        (click)="toggleChat()"
+        data-testid="chat-toggle"
+      >
+        <i class="pi pi-sparkles"></i>
+      </button>
+    }
     <button
       pButton
       type="button"
@@ -55,7 +76,7 @@
     }
   </header>
 
-  <nav class="sidebar" aria-label="Main">
+  <nav class="sidebar" aria-label="Main" (focusin)="closeOverPage()">
     @if (session.tenant(); as tenant) {
       <div class="section">
         <a
@@ -82,13 +103,25 @@
             ><i class="pi pi-id-card"></i>Accounts</a
           >
         }
-        <a
-          class="item"
-          [routerLink]="['/t', tenant, 'time']"
-          routerLinkActive="active"
-          data-testid="nav-time"
-          ><i class="pi pi-clock"></i>Time</a
-        >
+        <!-- A global administrator without a role here sees the administration only (docs/adr/0034 D2). -->
+        @if (tenantInfo.isAdmin() || session.oversight()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'group-mappings']"
+            routerLinkActive="active"
+            data-testid="nav-group-mappings"
+            ><i class="pi pi-sitemap"></i>Group mappings</a
+          >
+        }
+        @if (!session.oversight()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'time']"
+            routerLinkActive="active"
+            data-testid="nav-time"
+            ><i class="pi pi-clock"></i>Time</a
+          >
+        }
         <a
           class="item"
           [routerLink]="['/t', tenant, 'settings']"
@@ -98,37 +131,39 @@
         >
       </div>
 
-      <div class="section">
-        <div class="heading">
-          Projects
-          @if (tenantInfo.canCreateProjects()) {
-            <button
-              type="button"
-              class="add"
-              (click)="creatingProject.set(true)"
-              aria-label="New project"
-              title="New project"
-              data-testid="nav-new-project"
+      @if (!session.oversight()) {
+        <div class="section">
+          <div class="heading">
+            Projects
+            @if (tenantInfo.canCreateProjects()) {
+              <button
+                type="button"
+                class="add"
+                (click)="creatingProject.set(true)"
+                aria-label="New project"
+                title="New project"
+                data-testid="nav-new-project"
+              >
+                <i class="pi pi-plus"></i>
+              </button>
+            }
+          </div>
+          @for (project of projects.list(); track project.id) {
+            <a
+              class="item project"
+              [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
+              routerLinkActive="active"
+              [attr.data-testid]="'nav-project-' + project.key"
+              ><span class="key">{{ project.key }}</span
+              ><span class="name">{{ project.name }}</span></a
             >
-              <i class="pi pi-plus"></i>
-            </button>
+          } @empty {
+            @if (!projects.projects.isLoading()) {
+              <span class="item empty">No projects yet</span>
+            }
           }
         </div>
-        @for (project of projects.list(); track project.id) {
-          <a
-            class="item project"
-            [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
-            routerLinkActive="active"
-            [attr.data-testid]="'nav-project-' + project.key"
-            ><span class="key">{{ project.key }}</span
-            ><span class="name">{{ project.name }}</span></a
-          >
-        } @empty {
-          @if (!projects.projects.isLoading()) {
-            <span class="item empty">No projects yet</span>
-          }
-        }
-      </div>
+      }
     }
 
     <div class="section bottom">
@@ -148,7 +183,14 @@
   </nav>
 
   <!-- The page scrolls here, not in the window: a drag scrolls it at its edges and follows its scroll. -->
-  <main class="content" cdkScrollable>
+  <main class="content" cdkScrollable (focusin)="closeOverPage()">
     <router-outlet />
   </main>
+
+  <!-- The panel's code loads once the tenant's chat is available, not with the shell. -->
+  @if (chat.available()) {
+    @defer (on immediate) {
+      <app-chat-panel [hidden]="!chat.open()" (keydown.escape)="closeOnEscape($event)" />
+    }
+  }
 </div>

@@ -12,12 +12,20 @@ D1 named no key for the transition's note or reason, for the block, or for the a
 the first implementation spells them as the tickets page of this repository does, a v1 that
 is reviewed after experience. Amended 2026-10-03 (D1: the keys of the three progress stages of
 [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
-D2, whose amendment says the export carries them; written when the stages were built).
+D2, whose amendment says the export carries them; written when the stages were built). Amended
+2026-10-04 (D2: a person's act through a token is named by the token, by the owner's rule that an
+act an agent or a token makes is always marked, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day,
+`TestRenderContextNamesTheTokenOfAPersonsAct`).
 
 **Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
-call is recorded, and in phase 2 every caller is a token. D2's `/context` and D4 arrive with
-the MCP server, D3 with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
+call is recorded, and in phase 2 every caller is a token. D2, D4, and D5 and D6 for `/context`
+since 2026-10-04 ([`RenderContext`](../../backend/internal/markdown/context.go)): the comments
+quoted as block quotes, so a comment's text never reads as a section of the document; the
+tree to a depth of eight, stopping at what the caller cannot see; the comments and the acts up
+to 100 each; at most 200 links, nodes and attachments, without a note when it stops; the
+activity is the ticket's activity list, which leaves out the exports. D3 arrives with the
+importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
 
 ## Context
 
@@ -59,7 +67,11 @@ default 10, with actor, agent mark and time; a withdrawn comment as `[withdrawn]
 text), `## Attachments` (name, type, size, URL; never content), `## Recent activity` (the
 last `activity`, default 10). `comments=0` or `activity=0` omits a section. The document
 starts with one line `<!-- cowork: context of <key>, exported <time> by <person> (via
-<agent>) — not an import format -->`.
+<agent>) — not an import format -->`. *(Amended 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6: where no agent made an
+act — a comment, an act of the activity, the request for the document itself — and a token did,
+the place of `via <agent>` says `through the token <name>`, or `through a token` where the act did
+not record the name; the first line `(through the token <name>)`. Everything else reads as
+before.)*
 
 **D3 — The importer reads D1's form only.** A file that carries D2's sections is refused
 with the line where the first read-only section starts, so a context export is never

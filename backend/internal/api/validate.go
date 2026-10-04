@@ -69,10 +69,13 @@ func isMultipart(r *http.Request) bool {
 
 // validateRequest holds the request to the API document (docs/adr/0046 D4,
 // docs/adr/0047 D7) and refuses a query parameter the operation does not
-// declare (docs/adr/0049 D4); the validator would let it pass.
+// declare (docs/adr/0049 D4), which the validator would let pass — unless the
+// operation takes such parameters (openQuery).
 func (h *handler) validateRequest(r *http.Request, route *routers.Route, pathParams map[string]string) *problem.Error {
-	if perr := unknownQueryParameters(r, route); perr != nil {
-		return perr
+	if !openQuery(route.Operation) {
+		if perr := unknownQueryParameters(r, route); perr != nil {
+			return perr
+		}
 	}
 	err := openapi3filter.ValidateRequest(r.Context(), requestInput(r, route, pathParams))
 	if err == nil {

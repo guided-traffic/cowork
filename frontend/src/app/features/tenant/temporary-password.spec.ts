@@ -111,6 +111,7 @@ describe('TemporaryPassword', () => {
     options = signal<AuthOptions | undefined>({
       local: true,
       oidc: false,
+      oidc_name: null,
       password_min_length: 12,
     });
     TestBed.configureTestingModule({
@@ -248,7 +249,7 @@ describe('TemporaryPassword', () => {
     });
 
     it('makes a password as long as an installation asks, when its minimum is longer than 24', async () => {
-      options.set({ local: true, oidc: false, password_min_length: 30 });
+      options.set({ local: true, oidc: false, oidc_name: null, password_min_length: 30 });
       const fixture = await render();
 
       const password = await generate(fixture);
@@ -261,7 +262,7 @@ describe('TemporaryPassword', () => {
       const fixture = await render();
       expect(await generate(fixture)).toHaveLength(24);
 
-      options.set({ local: true, oidc: false, password_min_length: 40 });
+      options.set({ local: true, oidc: false, oidc_name: null, password_min_length: 40 });
 
       expect(await generate(fixture)).toHaveLength(40);
     });
@@ -269,7 +270,7 @@ describe('TemporaryPassword', () => {
     it.each([8, 12, 16, 24])(
       'keeps to 24 characters when the minimum is %i, which is no longer',
       async (minimum) => {
-        options.set({ local: true, oidc: false, password_min_length: minimum });
+        options.set({ local: true, oidc: false, oidc_name: null, password_min_length: minimum });
         const fixture = await render();
 
         expect(await generate(fixture)).toHaveLength(24);

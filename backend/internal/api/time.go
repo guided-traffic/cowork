@@ -39,9 +39,10 @@ type timeEntry = readq.GetTimeEntryRow
 func timeView(ticketKey string, e timeEntry) apigen.TimeEntry {
 	return apigen.TimeEntry{
 		Id: e.ID, Ticket: ticketKey, Person: personView(e.PersonID, e.PersonUsername, e.PersonName),
-		Author: personView(e.AuthorID, e.AuthorUsername, e.AuthorName), Minutes: int(e.Minutes),
-		Day: openapi_types.Date{Time: e.Day}, Note: e.Note, Voided: e.VoidedAt != nil, VoidedAt: nullableOf(e.VoidedAt),
-		Edited: e.Edited, Version: int(e.Version), CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		Author: personView(e.AuthorID, e.AuthorUsername, e.AuthorName), Token: tokenMarkView(e.TokenID, e.TokenName),
+		Minutes: int(e.Minutes), Day: openapi_types.Date{Time: e.Day}, Note: e.Note, Voided: e.VoidedAt != nil,
+		VoidedAt: nullableOf(e.VoidedAt), Edited: e.Edited, Version: int(e.Version), CreatedAt: e.CreatedAt,
+		UpdatedAt: e.UpdatedAt,
 	}
 }
 
@@ -164,8 +165,10 @@ func (s *Server) BookTime(ctx context.Context, req apigen.BookTimeRequestObject)
 		if err := checkUnlocked(ctx, w, t, body.Day.Time); err != nil {
 			return err
 		}
-		id, err := w.InsertTimeEntry(ctx, writeq.InsertTimeEntryParams{TenantID: t.ID, TicketID: tc.row.ID, PersonID: p.PersonID,
-			AuthorID: p.PersonID, Minutes: clamp32(body.Minutes), Day: body.Day.Time, Note: deref(body.Note)})
+		ins := writeq.InsertTimeEntryParams{TenantID: t.ID, TicketID: tc.row.ID, PersonID: p.PersonID,
+			AuthorID: p.PersonID, Minutes: clamp32(body.Minutes), Day: body.Day.Time, Note: deref(body.Note)}
+		ins.TokenID, ins.TokenName = actToken(p)
+		id, err := w.InsertTimeEntry(ctx, ins)
 		if err != nil {
 			return fmt.Errorf("book the time: %w", err)
 		}
@@ -247,8 +250,10 @@ func (s *Server) EditTimeEntry(ctx context.Context, req apigen.EditTimeEntryRequ
 		if err := checkUnlocked(ctx, w, t, e.Day, up.Day); err != nil {
 			return err
 		}
-		if err := w.InsertTimeEntryRevision(ctx, writeq.InsertTimeEntryRevisionParams{TenantID: t.ID, EntryID: e.ID, Minutes: e.Minutes,
-			Day: e.Day, Note: e.Note, EditedBy: p.PersonID}); err != nil {
+		rev := writeq.InsertTimeEntryRevisionParams{TenantID: t.ID, EntryID: e.ID, Minutes: e.Minutes,
+			Day: e.Day, Note: e.Note, EditedBy: p.PersonID}
+		rev.TokenID, rev.TokenName = actToken(p)
+		if err := w.InsertTimeEntryRevision(ctx, rev); err != nil {
 			return fmt.Errorf("keep the previous values: %w", err)
 		}
 		if _, err := w.UpdateTimeEntry(ctx, up); errors.Is(err, pgx.ErrNoRows) {
@@ -346,7 +351,8 @@ func (s *Server) ListTimeEntryRevisions(ctx context.Context, req apigen.ListTime
 	out := apigen.ListTimeEntryRevisions200JSONResponse{Items: make([]apigen.TimeEntryRevision, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, r := range rows {
 		out.Items = append(out.Items, apigen.TimeEntryRevision{Minutes: int(r.Minutes), Day: openapi_types.Date{Time: r.Day}, Note: r.Note,
-			EditedBy: personView(r.EditedBy, r.EditedByUsername, r.EditedByName), At: r.CreatedAt})
+			EditedBy: personView(r.EditedBy, r.EditedByUsername, r.EditedByName), Token: tokenMarkView(r.TokenID, r.TokenName),
+			At: r.CreatedAt})
 	}
 	return out, nil
 }
@@ -495,7 +501,8 @@ func clamp32(n int) int32 {
 func tenantTimeEntry(e readq.ListTenantTimeRow) timeEntry {
 	return timeEntry{ID: e.ID, PersonID: e.PersonID, PersonUsername: e.PersonUsername, PersonName: e.PersonName,
 		AuthorID: e.AuthorID, AuthorUsername: e.AuthorUsername, AuthorName: e.AuthorName, Minutes: e.Minutes, Day: e.Day,
-		Note: e.Note, VoidedAt: e.VoidedAt, Edited: e.Edited, Version: e.Version, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+		Note: e.Note, VoidedAt: e.VoidedAt, TokenID: e.TokenID, TokenName: e.TokenName, Edited: e.Edited, Version: e.Version,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
 }
 
 // timeCSV writes entries as CSV: days as YYYY-MM-DD, times as RFC 3339,

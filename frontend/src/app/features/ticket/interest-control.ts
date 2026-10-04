@@ -7,6 +7,7 @@ import { Tooltip } from 'primeng/tooltip';
 import { Interest, InterestWeight } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { ProblemService } from '../../core/problem.service';
+import { AgentMark } from '../../shared/agent-mark';
 
 const weights: { value: InterestWeight; meaning: string }[] = [
   { value: 'watch', meaning: 'I want to see where it goes' },
@@ -16,12 +17,13 @@ const weights: { value: InterestWeight; meaning: string }[] = [
 
 /**
  * Who holds a stake in the ticket, and the person's own (docs/adr/0013): a weight, and a reason
- * for `need` and `urgent`, which the score weighs (docs/adr/0014 D3).
+ * for `need` and `urgent`, which the score weighs (docs/adr/0014 D3). A stake an agent or a token
+ * set in its holder's name carries the mark (docs/adr/0036 D6).
  */
 @Component({
   selector: 'app-interest-control',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, SelectButton, Textarea, Tooltip],
+  imports: [AgentMark, ButtonDirective, FormsModule, SelectButton, Textarea, Tooltip],
   template: `
     <div class="mine">
       <p-selectbutton
@@ -75,8 +77,11 @@ const weights: { value: InterestWeight; meaning: string }[] = [
     }
     <ul class="holders">
       @for (interest of interests(); track interest.person.id) {
-        <li>
+        <li [attr.data-testid]="'stake-' + interest.person.id">
           <span class="who">{{ interest.person.display_name }}</span>
+          @if (interest.agent || interest.token) {
+            <app-agent-mark [mark]="interest.agent" [token]="interest.token" />
+          }
           <span class="weight" [attr.data-weight]="interest.weight">{{ interest.weight }}</span>
           @if (interest.note) {
             <span class="muted note">{{ interest.note }}</span>

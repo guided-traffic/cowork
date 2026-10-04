@@ -10,8 +10,12 @@ different branch; the rules of D4–D6 were put to the owner with the question a
 to. The convention binds every repository bound to cowork; cowork validates nothing of it in
 the first release.
 
-**Not built.** The conventions apply to repositories; the MCP tools that return the trailer
-block do not exist.
+**D4 built** (phase 5, 2026-10-04): `get_ticket`, `comment` and `finish_work` — and
+`file_ticket` and the active ticket of the session block — end with the subject suffix, the
+trailer line and the default branch for the ticket. The branch's type follows the ticket's:
+`fix` for a bug, `docs` for a decision or a question, `feat` otherwise; the slug is up to five
+ASCII words of the title without articles, about forty characters. The rest of the record binds
+the repositories and is not checked by cowork (D6).
 
 ## Context
 

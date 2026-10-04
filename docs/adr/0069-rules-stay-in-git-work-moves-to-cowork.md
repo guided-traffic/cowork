@@ -8,8 +8,9 @@ keeping plans in the repository, and over a per-repository `docs/COWORK.md` page
 recommendation's addition, not taken). The rules of D4–D6 were put to the owner with the
 question and not objected to.
 
-**Not built.** The CLAUDE.md template and the `finish_work` reminder do not exist; this
-repository's own cut-over is phase 6.
+**D4 and D5 built** (phase 5, 2026-10-04): the three-line template is in
+[docs/operations/claude-code.md](../operations/claude-code.md), and `finish_work`'s answer
+carries the extraction question. D6, this repository's own cut-over, is phase 6.
 
 ## Context
 

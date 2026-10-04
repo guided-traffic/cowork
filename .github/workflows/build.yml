@@ -126,6 +126,59 @@ jobs:
           dockerhub-user: guidedtraffic
           dockerhub-password: ${{ secrets.DOCKERHUB_PAT }}
 
+  # The MCP server for Claude Code, a static binary per platform with a
+  # SHA-256 file each and a build provenance attestation, attached to the
+  # release (docs/adr/0041 D2).
+  release-mcp:
+    name: Release cowork-mcp Binaries
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build the binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_TIME="$(date +%s)"
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            ext=""
+            if [ "$os" = windows ]; then ext=".exe"; fi
+            name="cowork-mcp-${VERSION}-${os}-${arch}${ext}"
+            make build-mcp GOOS="$os" GOARCH="$arch" VERSION="$VERSION" GIT_COMMIT="${GITHUB_SHA::7}" \
+              BUILD_TIME="$BUILD_TIME" MCP_OUT="$PWD/dist/$name"
+            (cd dist && sha256sum "$name" > "$name.sha256")
+          done
+          # The binaries, not their checksum files, are the subjects of the attestation.
+          cat dist/*.sha256 > subjects.sha256
+          ls -l dist
+
+      - name: Attest the provenance of the binaries
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: subjects.sha256
+
+      - name: Upload the binaries to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/cowork-mcp-*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release-helm-gh:
     name: Release Helm Chart to GitHub Pages
     needs: build

@@ -7,8 +7,10 @@ import { FirstTenant } from './first-tenant';
 
 /**
  * The start page: a person with one membership goes straight to its tenant (docs/adr/0023 D4);
- * with several, they choose. A global administrator with none makes the first one
- * (docs/adr/0032 D5). The person-level lists of docs/adr/0018 D3 replace it when they exist.
+ * with several, they choose. A global administrator chooses among every tenant of the
+ * installation, the ones they hold no role in marked so (docs/adr/0034 D2), and makes the first one
+ * while there is none (docs/adr/0032 D5). The person-level lists of docs/adr/0018 D3 replace it
+ * when they exist.
  */
 @Component({
   selector: 'app-home',
@@ -16,7 +18,7 @@ import { FirstTenant } from './first-tenant';
   imports: [FirstTenant, RouterLink, Skeleton],
   template: `
     <section class="page">
-      @if (session.me.isLoading()) {
+      @if (session.me.isLoading() || listing()) {
         <p-skeleton width="16rem" height="2rem" />
       } @else if (session.me.error(); as error) {
         <div class="notice" data-testid="signed-out">
@@ -31,14 +33,14 @@ import { FirstTenant } from './first-tenant';
       } @else {
         <h1>Your tenants</h1>
         <div class="tenants">
-          @for (membership of session.memberships(); track membership.tenant.slug) {
+          @for (tenant of session.tenants(); track tenant.slug) {
             <a
               class="tenant"
-              [routerLink]="['/t', membership.tenant.slug]"
-              [attr.data-testid]="'tenant-' + membership.tenant.slug"
+              [routerLink]="['/t', tenant.slug]"
+              [attr.data-testid]="'tenant-' + tenant.slug"
             >
-              <span class="name">{{ membership.tenant.name }}</span>
-              <span class="muted">{{ membership.tenant.slug }} · {{ membership.role }}</span>
+              <span class="name">{{ tenant.name }}</span>
+              <span class="muted">{{ tenant.slug }} · {{ tenant.role ?? 'no role' }}</span>
             </a>
           } @empty {
             <p class="muted">You are not a member of any tenant yet.</p>
@@ -88,9 +90,16 @@ export class Home {
   protected readonly session = inject(SessionService);
   private readonly problems = inject(ProblemService);
 
-  /** A global administrator who is in no tenant yet: nothing to choose from, but one to make. */
+  /** A global administrator's tenants are still being listed. */
+  protected readonly listing = computed(
+    () => this.session.person()?.global_admin === true && this.session.installation.isLoading(),
+  );
+  /** A global administrator in an installation without a tenant: nothing to choose, one to make. */
   protected readonly firstTenant = computed(
-    () => this.session.person()?.global_admin === true && this.session.memberships().length === 0,
+    () =>
+      this.session.person()?.global_admin === true &&
+      this.session.installation.hasValue() &&
+      this.session.tenants().length === 0,
   );
 
   constructor() {

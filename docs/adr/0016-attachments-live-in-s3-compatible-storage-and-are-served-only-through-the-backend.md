@@ -19,6 +19,10 @@ default, the maximum switchable off; the client). The first implementation made 
 plain text or XML, so an SVG is recognised by its root element; and the client was chosen by
 a suite against a MinIO test server.
 
+Amended 2026-10-04 by the owner's decision that every act made through a token is shown as such
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): D1, a file's metadata names the token it was uploaded through. Built the same day
+([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
+
 **Partly built** (phase 2, 2026-10-02): D1–D6 and D8 — [`internal/storage`](../../backend/internal/storage/)
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
 under the ticket's path. D6's per-tenant quota is neither enforced nor reported; D7 arrives
@@ -41,7 +45,9 @@ server decides what a file is and how it is delivered.
 **D1 — Attachments belong to a ticket or a comment, inside a tenant, and their bytes live in
 S3-compatible object storage.** The object key is `<tenant-id>/<attachment-id>`; the bucket
 is private; metadata — id, tenant, ticket or comment, original file name (sanitised), size,
-SHA-256, detected content type, uploader, agent mark, timestamp — lives in PostgreSQL. Bytes
+SHA-256, detected content type, uploader, agent mark, *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* the token
+it was uploaded through — its id and name, none for a browser session —, timestamp — lives in
+PostgreSQL. Bytes
 never enter PostgreSQL. *(Amended 2026-10-02: the sanitised name is the last path component in
 NFC, without control characters, bidirectional controls, double quotes or invalid UTF-8, at
 most 255 bytes; a right-to-left override would otherwise let `txt.exe` read as `exe.txt`.)* Storage is configured through `COWORK_S3_*` variables; an

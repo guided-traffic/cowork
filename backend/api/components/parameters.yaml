@@ -10,6 +10,18 @@ Username:
   required: true
   description: A local account's username (docs/adr/0033 D2)
   schema: {type: string, pattern: '^[a-z0-9][a-z0-9._-]{0,62}$'}
+PersonID:
+  name: person_id
+  in: path
+  required: true
+  description: A person's id
+  schema: {type: string, format: uuid}
+GroupMappingID:
+  name: mapping_id
+  in: path
+  required: true
+  description: The group mapping's id
+  schema: {type: string, format: uuid}
 ProjectKey:
   name: project
   in: path
@@ -255,4 +267,10 @@ AttachmentID:
   in: path
   required: true
   description: The attachment's id
+  schema: {type: string, format: uuid}
+RepositoryID:
+  name: repository
+  in: path
+  required: true
+  description: The binding's id
   schema: {type: string, format: uuid}

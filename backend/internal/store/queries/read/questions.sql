@@ -3,9 +3,11 @@
 -- name: ListQuestions :many
 SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
        q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
+       q.asked_by_token_id, q.asked_by_token_name,
        q.asked_of, ao.username AS asked_of_username, ao.display_name AS asked_of_name,
        q.answered_by, an.username AS answered_by_username, an.display_name AS answered_by_name,
-       q.answered_at, q.recorded_by_agent, q.withdrawn_at, q.version, q.created_at, q.updated_at
+       q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
+       q.withdrawn_at, q.version, q.created_at, q.updated_at
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 LEFT JOIN users ab ON ab.id = q.asked_by
@@ -20,9 +22,11 @@ LIMIT sqlc.arg(page_size);
 -- name: GetQuestion :one
 SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
        q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
+       q.asked_by_token_id, q.asked_by_token_name,
        q.asked_of, ao.username AS asked_of_username, ao.display_name AS asked_of_name,
        q.answered_by, an.username AS answered_by_username, an.display_name AS answered_by_name,
-       q.answered_at, q.recorded_by_agent, q.withdrawn_at, q.version, q.created_at, q.updated_at
+       q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
+       q.withdrawn_at, q.version, q.created_at, q.updated_at
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 LEFT JOIN users ab ON ab.id = q.asked_by

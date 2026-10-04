@@ -14,10 +14,16 @@ import { NewTicketDialog } from './new-ticket-dialog';
 const ada: Member = {
   role: 'admin',
   person: { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' },
+  origins: [{ source: 'grant', role: 'admin' }],
+  local: true,
+  email: null,
 };
 const sam: Member = {
   role: 'member',
   person: { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' },
+  origins: [{ source: 'grant', role: 'member' }],
+  local: true,
+  email: null,
 };
 
 const filedTicket = {

@@ -1,0 +1,15 @@
+{
+  "name": "cowork",
+  "description": "The Claude Code plugin of cowork, the backlog a session works from",
+  "owner": {
+    "name": "Guided Traffic",
+    "url": "https://github.com/guided-traffic"
+  },
+  "plugins": [
+    {
+      "name": "cowork",
+      "source": "./claude/cowork",
+      "description": "The cowork MCP server, the hooks that start and end a session with its ticket, and the skills /next, /ticket, /question and /done"
+    }
+  ]
+}

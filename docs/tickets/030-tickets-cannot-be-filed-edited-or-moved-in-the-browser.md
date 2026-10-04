@@ -39,4 +39,7 @@ confidential flag.
 2. The urgency override and its withdrawal on the detail page, with `If-Match` and the optional
    reason; the confidential flag
    ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)).
-3. Unit tests per form; the e2e path of T29 files, assigns, moves and closes.
+3. The ticket page's open editors — the threat editor, the stage dialog and the move dialog —
+   close when the page turns to another ticket, as the edit-conflict confirmation does since
+   2026-10-04; today one opened on a ticket stays open over the next.
+4. Unit tests per form; the e2e path of T29 files, assigns, moves and closes.

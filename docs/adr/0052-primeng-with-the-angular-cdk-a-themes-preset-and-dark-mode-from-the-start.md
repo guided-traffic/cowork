@@ -26,6 +26,16 @@ arrives with the boards), D2, D3, D4, D5, D6 (the budget raised), D7 (the Renova
 and D9 (the key's paths; the key itself is the owner's to register) — [`frontend/src/app/theme/`](../../frontend/src/app/theme/),
 [`frontend/src/app/brand/`](../../frontend/src/app/brand/).
 
+Amended 2026-10-04 with the chat in the UI
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
+D6): D4, the shell's content-security policy exists, and the production build inlines no critical
+CSS for it; D6, the budget as measured against it. **The bundle budget's warning is open:**
+`make frontend-build` on 2026-10-04 measured the initial bundle at 1,016.52 kB raw (223.53 kB
+estimated transfer) and warns `bundle initial exceeded maximum budget` — `angular.json`'s
+`"maximumWarning": "1mb"` warns at 1,000,000 bytes, as the warning's own numbers show, while D6
+names 1 MiB (1,048,576 bytes), under which the bundle stays. Neither was changed; which number
+holds is open.
+
 ## Context
 
 The views of [ADR 0018](0018-the-views-of-the-first-release.md) need two drag-and-drop
@@ -67,7 +77,14 @@ through the preset's tokens; a style that only works in one scheme is a defect.
 
 **D4 — Icons are PrimeIcons, self-hosted,** installed from the package; the UI makes no
 request to an external CDN, which keeps the content-security policy of the security pages
-tight.
+tight. *(Amended 2026-10-04: the policy exists — nginx sends it with the shell, the bundles and
+the icons ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
+D6): every source `'self'`, and `style-src 'self' 'unsafe-inline'`, because PrimeNG and Angular
+write `<style>` elements at run time. For it the production build inlines no critical CSS
+(`"inlineCritical": false` in [`angular.json`](../../frontend/angular.json)): the inliner loads
+the rest of the stylesheet through an inline `onload` handler, which `script-src 'self'` refuses.
+The stylesheet is then a render-blocking file of its own. The PrimeUI license of D9 is checked in
+the page, offline, and needs no other source.)*
 
 **D5 — Standalone imports per component;** no library-wide module. Component styles live in
 SCSS beside the component and use PrimeNG's CSS variables (`var(--p-…)`), never literal
@@ -76,7 +93,9 @@ colours.
 **D6 — Density and chrome.** PrimeNG's compact variants where they exist; a work tool, not
 a landing page. The bundle budget in `angular.json` is raised to 1 MiB warning, 1.5 MiB
 error for the initial bundle once the library is in, and measured against the production
-build in CI.
+build in CI. *(Amended 2026-10-04: `angular.json` writes `"1mb"` and `"1.5mb"`, which the
+builder reads in thousands, not as MiB — the warning fires at 1,000,000 bytes, as its own numbers
+show; the initial bundle measured 1,016.52 kB on 2026-10-04 and the warning stands — Status.)*
 
 **D7 — Renovate moves PrimeNG, `@primeuix/themes` and PrimeIcons in the "Angular" group**
 ([`renovate.json`](../../renovate.json)), so the library's major rises with Angular's in one

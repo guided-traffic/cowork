@@ -12,6 +12,10 @@ Amended 2026-10-02 (D3: a comment's text never enters the audit record; D6: what
 withholds). A withdrawal has to hide the text from every route, and an append-only row cannot
 forget it.
 
+Amended 2026-10-04 by the owner's decision that every act made through a token is shown as such
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): D3, a comment and each edit of it record the token they came through. Built the
+same day ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
+
 **Partly built** (phase 2, 2026-10-02): D1–D4 and D6 — `comments` and `comment_revisions`
 (migration 11), the thread oldest first or reversed, edits with their history, withdrawal by the
 author, by the person for their agents' comments, by an agent for an agent's of the same person
@@ -50,7 +54,10 @@ reads "… — explained in a comment" and links into the thread, and the commen
 it explains. This is how the two views stay one story.
 
 **D3 — A comment is Markdown, sanitised like the body** (ADR 0011 D6), written by a person or
-by an agent in a person's name with the agent mark. Its author may edit it; every edit keeps
+by an agent in a person's name with the agent mark. *(Amended 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6: a comment
+written through a token records the token, its id and name, beside the agent mark, and so does each
+edit of it in the history; the thread shows the mark of the comment, the history that of each
+edit.)* Its author may edit it; every edit keeps
 the previous text in an edit history readable from the comment. A comment is never deleted:
 its author or a tenant administrator may **withdraw** it, which hides the text, keeps the
 entry, and writes an act into the activity list. *(Added 2026-10-02: the text lives in the comment and its

@@ -13,7 +13,8 @@ import (
 )
 
 const getInterest = `-- name: GetInterest :one
-SELECT i.user_id, u.username, u.display_name, i.weight, i.note, i.since, i.updated_at
+SELECT i.user_id, u.username, u.display_name, i.weight, i.note, i.agent, i.token_id, i.token_name, i.since,
+       i.updated_at
 FROM ticket_interest i
 LEFT JOIN users u ON u.id = i.user_id
 WHERE i.tenant_id = $1 AND i.ticket_id = $2 AND i.user_id = $3
@@ -31,6 +32,9 @@ type GetInterestRow struct {
 	DisplayName *string
 	Weight      string
 	Note        string
+	Agent       *string
+	TokenID     *uuid.UUID
+	TokenName   *string
 	Since       time.Time
 	UpdatedAt   time.Time
 }
@@ -45,6 +49,9 @@ func (q *Queries) GetInterest(ctx context.Context, arg GetInterestParams) (GetIn
 		&i.DisplayName,
 		&i.Weight,
 		&i.Note,
+		&i.Agent,
+		&i.TokenID,
+		&i.TokenName,
 		&i.Since,
 		&i.UpdatedAt,
 	)
@@ -52,8 +59,8 @@ func (q *Queries) GetInterest(ctx context.Context, arg GetInterestParams) (GetIn
 }
 
 const listInterest = `-- name: ListInterest :many
-SELECT i.user_id, u.username, u.display_name, i.weight, i.note, i.since, i.updated_at,
-       (t.state IN ('done', 'dropped'))::boolean AS settled
+SELECT i.user_id, u.username, u.display_name, i.weight, i.note, i.agent, i.token_id, i.token_name, i.since,
+       i.updated_at, (t.state IN ('done', 'dropped'))::boolean AS settled
 FROM ticket_interest i
 JOIN tickets t ON t.tenant_id = i.tenant_id AND t.id = i.ticket_id
 LEFT JOIN users u ON u.id = i.user_id
@@ -77,6 +84,9 @@ type ListInterestRow struct {
 	DisplayName *string
 	Weight      string
 	Note        string
+	Agent       *string
+	TokenID     *uuid.UUID
+	TokenName   *string
 	Since       time.Time
 	UpdatedAt   time.Time
 	Settled     bool
@@ -104,6 +114,9 @@ func (q *Queries) ListInterest(ctx context.Context, arg ListInterestParams) ([]L
 			&i.DisplayName,
 			&i.Weight,
 			&i.Note,
+			&i.Agent,
+			&i.TokenID,
+			&i.TokenName,
 			&i.Since,
 			&i.UpdatedAt,
 			&i.Settled,

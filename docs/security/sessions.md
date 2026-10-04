@@ -1,10 +1,12 @@
 # Browser sessions
 
-What a browser session is, how a request is resolved to one, what it may do, how it ends and
-what is recorded, as built on 2026-10-03. How a password becomes a session — the login, the
-lockout, the accounts — is [local-accounts.md](local-accounts.md); what keeps another site from
-writing with a session is [csrf.md](csrf.md); what a personal access token may do is
-[tokens.md](tokens.md).
+What a browser session is, how a request is resolved to one, how a session of the identity
+provider keeps up with the person's groups, what a session may do, how it ends and what is
+recorded, as built on 2026-10-04. How a password becomes a session — the login, the lockout, the
+accounts — is [local-accounts.md](local-accounts.md); how a login through the identity provider
+does, and what its groups decide, is [identity-provider.md](identity-provider.md); what keeps
+another site from writing with a session is [csrf.md](csrf.md); what a personal access token may do
+is [tokens.md](tokens.md).
 
 ## A session is a cookie and a row
 
@@ -29,7 +31,14 @@ random value of 256 bits, stores its SHA-256 and sends the value once, as the co
   `http://` page that is not `localhost`: an installation without TLS in front cannot log in.
 - **A session is made at login and never before, and its value is never reused.** A login
   that presents a session cookie ends that session in the transaction that makes the new one,
-  whoever's it was (D5).
+  whoever's it was (D5) — the local login and the identity provider's alike.
+- **A session of the identity provider holds more** (`method` `oidc`, where the local login's is
+  `local`; [migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)):
+  the groups of its login or last refresh and when they were read (`groups`,
+  `groups_refreshed_at`), the issuer's refresh token sealed for this session alone
+  (`refresh_token_sealed`, [identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)),
+  and the earliest next refresh after the issuer could not be reached (`refresh_retry_at`). No
+  token of the issuer reaches the browser.
 
 ## One resolver for a cookie and a token
 
@@ -62,25 +71,76 @@ predicates — is the code a token's request runs.
   any. It keeps the table small; it enforces nothing, because a session past a limit is refused
   at its next request whether or not the job has run.
 
+## A session of the identity provider keeps up with the groups
+
+A session the identity provider's login made reads the person's groups again every
+`COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes)
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D5, [ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1, D3): on its first
+request after the interval, inside the resolver, before the request is served — the resolver then
+reads the session and its person again, because the refresh may have changed the person's
+administrator flag — and at an open event stream's heartbeat, which does not move the idle clock
+([`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`,
+[`api/identity.go`](../../backend/internal/api/identity.go) `checkProviderSession`,
+`refreshSession`, `streamStillAdmitted`). One request claims the refresh with a thirty-second lease
+on the session's row and asks the issuer, with the session's refresh token, holding no database
+connection and no lock; the session's other requests meanwhile are served at once on the groups it
+holds. What the issuer answers decides:
+
+- the groups, judged by the gate: inside, the session goes on with them; outside, **every** session
+  of the person ends at once;
+- a refusal of the refresh token — an OAuth error answer about the person — a refreshed ID token that
+  does not verify, or a token that no longer opens because the server key changed — no previous key
+  is kept to open it ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; what
+  else a change of the key does: [installation.md](../operations/installation.md#the-secrets)):
+  **this** session ends, and the request is `401` like any ended session's;
+- no answer, a timeout, a `5xx`, a `429`, a temporary OAuth error, or the issuer refusing cowork's
+  own client: the session is served on the groups it holds, and asks again a minute later.
+
+A session without a refresh token, or whose issuer sends no groups at a refresh, is judged on the
+person's groups as they stand, and nothing of the person changes. A person who is not the configured
+issuer's — another issuer's, or anyone's of a provider no longer configured — loses every session at
+the first request of any. What the refresh writes, records and leaves open is
+[identity-provider.md](identity-provider.md#the-groups-refresh) and its H-24, H-25 and H-27. A
+session of the local login has no groups and no refresh.
+
 ## What a session may do
 
 A session acts as its person with no agent flag and with the person's whole role: it has no
 scope of its own, which the pipeline writes as the scope `admin`, the one that leaves every
 decision to the person's role in the tenant ([ADR 0035](../adr/0035-personal-access-tokens.md)
-D3, [tokens.md](tokens.md)). No agent rule applies to it: the session path does not read
-`X-Cowork-Agent`, so nothing in a session's request marks an agent
-([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D6).
+D3, [tokens.md](tokens.md)). No agent rule applies to it — unless its request carries
+`X-Cowork-Agent`: the header marks that request as an agent's, with every capability and every
+agent rule, and only narrows it; a malformed one is `400`
+([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/internal/api/session.go)).
+The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
+person's.
 
-- **Six routes take a session only** and answer a token `403 session_required`
+- **Sixteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
   password (`PUT …/accounts/{username}/password`), changing one's own password
-  (`PUT /api/v1/me/password`) and logging out (`POST /auth/logout`). The first four make
-  something that would outlive the revocation of a leaked token. The API document declares them
-  with `sessionCookie` alone, and a unit test over the document holds the set to exactly these
-  six ([`backend/api/document_test.go`](../../backend/api/document_test.go)). Every other
-  operation that names a person takes either credential.
+  (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
+  that can give access — adding a member, setting a grant, making or changing a group mapping,
+  restricting or opening a project, putting a person on a project's access list —, a turn of the
+  chat (`POST …/chat`) and stopping the person's turns (`DELETE …/chat/turns`), choosing the chat's
+  capabilities (`PUT /api/v1/me/chat`), and a global administrator's list of every tenant
+  (`GET /api/v1/tenants`). What the first twelve and the chat's capabilities make would outlive the
+  revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
+  person's turns, and the list shows a global administrator's view across the installation's
+  clients, which a token of theirs does not get; the table and the rule are
+  [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these sixteen
+  ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
+  agent header marks is refused all sixteen with `403 agent_forbidden`. Every other operation
+  that names a person takes either credential.
+- **A turn of the chat presents the session again with every tool call.** Each call is a request of
+  its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is
+  authenticated anew, moves the idle clock like any request and may run the groups refresh, and a
+  session that ends while a turn runs refuses the turn's next call, which the model reads as a
+  failed call.
 - **A temporary password gates the session.** While the account's password is one an
   administrator set, the session may read `GET /api/v1/me`, change the password and log out;
   every other route is `403 password_change_required`
@@ -104,22 +164,28 @@ a tenant's accounts, cached tickets — stays in memory for the next person in t
 
 | What | Which sessions | Where |
 |---|---|---|
-| `POST /auth/logout` | the request's own | [`api/login.go`](../../backend/internal/api/login.go) `Logout` |
-| a login that presents a cookie | that cookie's | `store.CreateSession` |
+| `POST /auth/logout` — for a session of the identity provider, with the issuer's logout handed to the browser where the issuer names one ([identity-provider.md](identity-provider.md#logout)) | the request's own | [`api/login.go`](../../backend/internal/api/login.go) `Logout` |
+| a login that presents a cookie | that cookie's | `store.CreateSession`, `store.CompleteOIDCLogin` |
 | `PUT /api/v1/me/password` | every other session of the person | `ChangeMyPassword` |
 | an administrator's reset of a managed account's password, `DELETE …/accounts/{username}/sessions`, `PUT …/deactivation` | every session of the account | [`api/accounts.go`](../../backend/internal/api/accounts.go) |
 | the start-up synchronisation, when the configured password changed or the account is deactivated | every session of the local administrator | [`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) |
+| a groups refresh, or a login refused at the gate, that finds the person outside the identity provider's gate | every session of the person | [`store/identity.go`](../../backend/internal/store/identity.go) `ApplySessionRefresh`, `CompleteOIDCLogin` |
+| a request of a session whose person is not the configured issuer's — another issuer's, or a provider no longer configured | every session of the person, at once | `EndProviderSessions` |
+| the issuer refuses the session's refresh token, a refreshed ID token does not verify, or the token no longer opens because the server key changed | that session, at its refresh | `ApplySessionRefresh` |
 | the idle or the absolute limit | the one past it, refused at its next request; the job removes the row | `sessionLive`, `ExpireSessions` |
 
 ## What is recorded
 
 Login, logout and each of the ends above are audit rows with the person and the cause —
-`logged_in`, `logged_out`, `password_changed`, `password_reset`, `revoked` with the count of
-sessions ended, `deactivated`, and the job's `expired`
-([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D7). They are
+`logged_in` (with the note `oidc` for the identity provider's), `logged_out`, `password_changed`,
+`password_reset`, `revoked` with the count of sessions ended — by `system:identity-provider` with
+the cause `gate` or `identity-provider` for the ends it decides —, `deactivated`, and the job's
+`expired` ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D7). They are
 installation-level rows with no `token_id`, the mark of a browser session
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D1); a
-tenant administrator's act on a managed account is a row of the tenant. **The cookie, its hash
+tenant administrator's act on a managed account is a row of the tenant. Each row written for a
+request carries the keyed hash of the client's address ([tokens.md](tokens.md#what-is-recorded)).
+**The cookie, its hash
 and the row's id are in no audit row and no log line**: the request log carries method, path,
 status, duration and the request id, and `TestNoPasswordCookieOrTokenIsLoggedOrRecorded`
 records every log level through a login, a password change, an administrator's reset and a
@@ -129,7 +195,12 @@ session table is not tenant-bound
 its policies admit a person's own rows, the one row of the cookie presented, the
 administrators of a managed account, a global administrator for reading (no route reads them
 for a global administrator yet), and the two jobs that end sessions by name
-(`TestPoliciesOfTheSessions`).
+(`TestPoliciesOfTheSessions`). The identity provider's transactions, and the refresh's claim, which
+runs as the person, reach a session through the first two: they name the person and the session's
+hash. The runtime role may update the idle clock
+and, for the groups refresh, the groups, their time, the sealed refresh token and the retry time —
+nothing else of a row (migrations [16](../../backend/internal/store/migrations/000016_sessions.up.sql)
+and [20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)).
 
 ## What this does not cover
 
@@ -146,11 +217,15 @@ SHA-256 of the `User-Agent` it was made with (`sessions.user_agent_hash`) and no
 it. A person cannot list their sessions, and ends the others only by changing their password;
 an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions`, and
 no one but the operator ends the local administrator's — by rotating its Secret and
-restarting. Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
+restarting. A person of the identity provider has no password to change (`403 forbidden`) and no
+account an administrator manages: their other sessions end only at their limits, or at a refresh,
+when the issuer refuses the refresh token or the gate no longer admits them — at the issuer,
+disabling the person or taking them out of the allowed groups is the way. Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
 window; a TLS-terminating proxy that does not log headers keeps the cookie off its disk.
 
-Not built, and not a gap of its own: the groups snapshot, the groups refresh and the issuer's
-`end_session_endpoint` of ADR 0031 D1, D4 belong to the identity provider; the lifetimes are
-the installation's, not a tenant's. Not verified: that Safari stores a `Secure` cookie from
-`http://localhost` — Chromium and Firefox do; the integration tier tests the rule and sets the
-cookie by hand, it runs no browser.
+The gaps of the identity provider's sessions — stale groups while the issuer cannot be reached, a
+session that never learns the groups anew without a refresh token, the stored refresh tokens and the
+issuer's own session after a logout — are [identity-provider.md](identity-provider.md) H-24, H-25,
+H-27 and H-28. Not a gap of its own: the lifetimes are the installation's, not a tenant's. Not
+verified: that Safari stores a `Secure` cookie from `http://localhost` — Chromium and Firefox do;
+the integration tier tests the rule and sets the cookie by hand, it runs no browser.

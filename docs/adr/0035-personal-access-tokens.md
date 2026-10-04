@@ -7,7 +7,20 @@ addresses; D3: creating a project is a `write` act, and what a restricted token 
 person's own routes and on the tenant-level reads; D6: a revocation is final; D9: refused uses
 are recorded at most once per token, reason and hour) and 2026-10-03 (D2: the trust rule for
 forwarded addresses is decided; D4, D5: how creation is built, and what else only a session
-makes). Date: 2026-10-01. Decided by the owner as the answer to the
+makes) and 2026-10-04 (D2: the address hash in the audit row built; D5: twelve operations take a
+session only, by one rule; D8: the gate built; D9: its refusal recorded), and again on 2026-10-04
+after the security review (D8: a person of another issuer is outside at once), and for the chat
+in the UI (D5: thirteen operations, and the tenant's consent to an outside provider of the chat
+switched on in a session only), and on 2026-10-04 by the owner's answer to "how old may the groups
+be that judge a token?" (D8: groups older than `COWORK_OIDC_GROUPS_MAX_AGE`, a week by default,
+refuse the person's tokens until they sign in to the browser once — built the same day), and for
+the global administrator's view of the installation's tenants (D5: fourteen operations, the list of
+every tenant among them,
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2), and on 2026-10-04 by the owner's answers on the chat recorded in
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) (D5:
+sixteen operations — stopping the person's turns of the chat and choosing the chat's capabilities
+among them —, and the tenant's consent field gone with the consent; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -44,9 +57,17 @@ which the login throttle counts under
 [docs/security/local-accounts.md](../security/local-accounts.md)); in the UI, the person's tokens
 page lists, creates — the plaintext shown once, in a dialog that forgets it when it closes — and
 revokes ([`features/me/tokens.ts`](../../frontend/src/app/features/me/tokens.ts)). Not built: D5's administrator
-view of the tokens of their tenant's members and their revocation of them; D2's address hash in
+view of the tokens of their tenant's members and their revocation of them; ~~D2's address hash in
 the audit row, which waits for the phase that builds the identity provider; D8 (the gate), which
-belongs to the identity provider.
+belongs to the identity provider.~~
+
+**Built** (phase 4, 2026-10-04): D2's address hash in every audit row of a request
+([`api/login.go`](../../backend/internal/api/login.go) `sourceHash`,
+[migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)); D8, the
+gate on the tokens of the identity provider's persons
+([`api/identity.go`](../../backend/internal/api/identity.go) `tokenGate`); D5's rule extended to
+the administration acts that give access ([docs/security/tokens.md](../security/tokens.md#what-only-a-session-does)).
+Still not built: D5's administrator view and revocation of the members' tokens.
 
 ## Context
 
@@ -80,8 +101,14 @@ are never read, an entry that is no address stops the walk at the hop before it,
 list empty the peer is the client. The chart's NetworkPolicy admits only the frontend pods to the
 backend, so no other pod can write the header to it. The login throttle of
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D6 counts
-that address — an IPv6 address by its /64 — keyed-hashed, in its own table; the hash in the audit row stays for the phase that
-builds the identity provider, and no audit row carries an address yet)*), revoked at and by whom.
+that address — an IPv6 address by its /64 — keyed-hashed, in its own table; ~~the hash in the audit row stays for the phase that
+builds the identity provider, and no audit row carries an address yet~~)* *(amended 2026-10-04:
+every audit row written for a request carries `source_hash`, the HMAC-SHA-256 of the client's
+address under a key derived from `COWORK_SESSION_KEY` by HKDF-SHA256 with the label
+`cowork audit address v1` — the whole address, an IPv6 address too, found by the rule above. The
+rows of the jobs and of the start-up carry none, and neither do the rows written before. No route
+shows it. Whoever holds the server key can test addresses against it, and so reverse every IPv4
+hash ([docs/security/tokens.md](../security/tokens.md) H-30))*), revoked at and by whom.
 
 **D3 — Scopes are `read`, `write`, `admin`, hierarchical, and never exceed the person.**
 `read` reads what the person may read; `write` additionally does what a `member` may;
@@ -118,7 +145,45 @@ resetting its password
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1, D5:
 what they make would outlive the revocation of a leaked token), changing one's own password and
 logging out; the API document declares them with the session cookie alone and a unit test holds
-the set to those six. The administrator's view of their tenant's members' tokens is not built.)*
+the set to those ~~six~~. The administrator's view of their tenant's members' tokens is not built.)*
+*(Amended 2026-10-04: the rule is that an act that can give access, or make something that outlives
+a leaked token's revocation, takes a session, and an act that only takes access away does not. It
+adds the administration of [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+and [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D3: adding a member, setting a grant, making or changing a group mapping, restricting or opening a
+project, putting a person on its access list — ~~twelve~~ operations in all *(thirteen since the
+chat, below)*, which the unit test over the document holds. Removing a grant, a mapping or an access entry stays open to an administrator's
+`admin`-scope token, as listing, unlocking, deactivating a local account and ending its sessions
+do. A route that does both — a grant or a mapping raised or lowered, a project restricted or opened
+— takes a session for both.)* *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
+~~twelve~~ thirteen operations — a turn of the chat, `runChatTurn`, takes a session too, for a
+reason of its own: its tool calls act with the person's session, and an agent that holds a token
+has the MCP server ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)).
+~~Beside the thirteen, one field follows the rule: switching the tenant's `chat_external_allowed` on
+in `PATCH /api/v1/tenants/{tenant}` takes a session — the consent lets the tenant's data leave the
+installation, which outlives a leaked token's revocation — and a token that tries is
+`403 session_required`; switching it off only takes something away and stays open to an
+administrator's `admin`-scope token ([`api/tenants.go`](../../backend/internal/api/tenants.go)
+`UpdateTenant`).~~ *(The field is gone with the tenant's consent, 2026-10-04, ADR 0076.)* A session
+the agent header marks is refused all ~~thirteen~~
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D7).)* *(Amended 2026-10-04 for the global administrator's view,
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2: ~~thirteen~~ fourteen operations — listing every tenant of the installation, `listTenants`,
+takes a session as well, for a reason of its own: it shows a global administrator the
+installation's clients beyond the person's memberships, and a token of theirs keeps the reach of
+those memberships, so a leaked one lists no other client. The same holds, in the request layer and
+not in the document, for the reach into a tenant in which the global administrator holds no role:
+a token's request there answers like an unknown tenant. A session the agent header marks is refused
+all ~~fourteen~~.)* *(Amended 2026-10-04 by the owner's answers on the chat, ADR 0076, and built the
+same day: ~~fourteen~~ sixteen operations. Stopping the person's running turns of the chat,
+`stopChatTurns`, takes a session as a turn does — the turns are the session's person's, and a token
+starts none. Choosing the chat's capabilities, `setMyChat` (`PUT /api/v1/me/chat`), takes a session
+by the rule itself: the set is what the person's agent in the browser may do in every tenant of the
+person, access that would outlive a leaked token's revocation; reading it, `getMyChat`, takes either
+credential. A session the agent header marks is refused all sixteen — the chat cannot stop turns or
+widen its own capabilities.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a
@@ -138,14 +203,41 @@ belong to cookie requests
 **D8 — The gate applies to tokens too.** A token's person is checked against the allow-list
 and the mappings ([ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md))
 on the first request after the refresh interval, with the person's stored groups snapshot;
-a person who left the allow-list has no working token from that moment.
+a person who left the allow-list has no working token from that moment. *(Built 2026-10-04: for a
+token of a person of the identity provider, on its first request after the person's last check plus
+`COWORK_OIDC_GROUPS_REFRESH`, under the person's lock. The snapshot is the person's groups as of
+their last login or session refresh, judged against the gate as configured at the check. Admitted,
+the check is stamped and the memberships are derived from the snapshot; outside, the request is
+`401 not_allowed` and nothing is written but the refusal of D9 — the token is refused, not revoked, and works again once
+the person is admitted. A refresh or a login refused at the gate clears the stamp, so the person's
+next token request meets the gate at once. A local account meets no gate. The snapshot is only as
+fresh as the person's last browser login or refresh: a person who uses tokens only is judged on old
+groups ~~until the token expires~~ *(amended 2026-10-04, below: until they are older than the
+maximum age)* — [docs/security/identity-provider.md](../security/identity-provider.md) H-23.)* *(Amended after the
+security review, 2026-10-04: a person who is not the configured issuer's — of another issuer, or of
+a provider no longer configured — is outside the gate at every request, whatever their last check;
+and the snapshot is the groups of the person's last login or of the last refresh that read them.)*
+*(Amended 2026-10-04, the owner's answer to "how old may the groups be that judge a token?", over
+any age as built and over a refresh token of the person's own that the gate would use to ask the
+issuer: the snapshot judges a token only while it is no older than `COWORK_OIDC_GROUPS_MAX_AGE` — a
+duration, seven days (`168h`) by default, which the configuration refuses unless it is longer than
+`COWORK_OIDC_GROUPS_REFRESH`. Groups older than that — `users.oidc_groups_at` is when the person's
+last sign-in, or the last session refresh that read them, read them — refuse every token of the
+person at every request with `401 not_allowed`, whose detail says to sign in to the browser once, and
+end an open event stream of such a token at its heartbeat; the refusal is recorded as D9 says. A
+sign-in, or a refresh that reads the groups, makes the tokens work again. It is one comparison and no
+further stored credential, and a weekly sign-in in the browser is part of the working day. A local
+account has no groups and is not affected. Built in
+[`api/identity.go`](../../backend/internal/api/identity.go) `tokenGate`, `streamStillAdmitted`,
+`groupsTooOld`; `TestGroupsOlderThanTheMaximumAgeRefuseTheTokens`.)*
 
 **D9 — Creation, use after expiry or revocation, and revocation are recorded acts;** use
 itself is recorded through the audit rows of the acts the token performs (`token_id` in
 each), not as a separate row per request. *(Amended 2026-10-02: a refused use is recorded at
 most once per token, reason — expired or revoked — and hour; every refusal stays in the
 request log. A forgotten configuration that retries with a dead token cannot grow the
-append-only table without bound.)*
+append-only table without bound.)* *(Amended 2026-10-04: the gate's refusal of D8 is recorded the
+same way, with the reason `not_allowed`.)*
 
 ## Consequences
 
@@ -175,7 +267,10 @@ append-only table without bound.)*
 - A token is a bearer credential: whoever holds it is the person, within scope and lifetime.
   The mitigations are D1 (scannable), D3 (bounded reach), D4 (bounded time), D6 (revocable).
 - D8's refresh means a token keeps working for up to the refresh interval after its person
-  left the allow-list; the interval is the session record's fifteen minutes.
+  left the allow-list; the interval is the session record's fifteen minutes. *(Amended 2026-10-04:
+  that holds for a change of the allow-list in the configuration. A change at the issuer reaches the
+  tokens at the person's next browser login or session refresh — and never while the person uses
+  tokens only ([docs/security/identity-provider.md](../security/identity-provider.md) H-23).)*
 
 ## References
 

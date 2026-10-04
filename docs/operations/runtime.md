@@ -29,20 +29,40 @@ logs. The variables named here are explained one by one in
    `pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`. Each
    ends the process with `database check failed` and exit code 1. A schema newer than the
    binary is served, with the warning `database schema is ahead of this binary; serving it`.
-5. **The bootstrap**: the local administrator the variables name is created or brought in step,
-   and the bootstrap tenant is created while no tenant exists — as `system:bootstrap`, under an
+5. **The identity provider**, when `COWORK_OIDC_ISSUER` is set: the backend fetches
+   `<issuer>/.well-known/openid-configuration` — thirty seconds at most, ten per call, no redirect
+   followed, at most 1 MiB read. The `issuer` the document names must be the configured string
+   exactly; its authorization, token, keys and UserInfo endpoints must be `https`, or `http` on a
+   loopback host; and it must name a signature algorithm cowork verifies — an asymmetric one, or
+   none, which means `RS256`. A provider that fails any of this ends the process with
+   `identity provider discovery failed` and exit code 1, the error naming the issuer and the rule
+   and never the client secret or the answer; in the chart the pod restarts with back-off and tries
+   again. An end-session endpoint that fails the rule is dropped with the warning `the issuer's
+   end_session_endpoint is dropped: a logout ends no session at the issuer`. Discovered, the log
+   says `identity provider discovered` with the issuer, the number of allowed groups, whether an
+   administrator group is set, the refresh interval, the groups' maximum age for a token and whether
+   an address without the issuer's word on it is trusted; a gate that names no group warns `the
+   identity provider's gate admits nobody …`, and the login page then offers no button
+   ([installation.md](installation.md#the-identity-provider)).
+6. **The bootstrap**: the local administrator the variables name is created or brought in step,
+   and the bootstrap tenant is created while no tenant exists — with the administrator group
+   mapped to its `admin` role when `COWORK_ADMIN_GROUP` is set — as `system:bootstrap`, under an
    advisory lock that makes replicas wait for each other
    ([installation.md](installation.md#the-local-administrator)). With neither variable set it
    deactivates an account it kept before and otherwise does nothing; a failure ends the process
    with `bootstrap failed` and exit code 1.
-6. **The event listener** starts: one connection of its own, outside the pool, listening on
+7. **The event listener** starts: one connection of its own, outside the pool, listening on
    the channel `cowork_events`; it reconnects by itself when the connection drops
    ([the event stream](#the-event-stream)).
-7. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
+8. **The object storage** client is set up when the `COWORK_S3_*` variables are set; it does
    not contact the storage. Without them the log warns `no object storage configured;
    attachments cannot be uploaded` ([attachments](#attachments)).
-8. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
-   address, the version and the commit.
+9. **The chat's providers**, when `COWORK_CHAT_PROVIDERS` is set: a gateway per provider is set up,
+   the log says `the chat talks to a model` once per provider with its id, kind and model, and
+   `the chat's limits`; it does not contact a provider, so a wrong URL or key shows at the first turn
+   that picks it ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
+10. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
+    address, the version and the commit.
 
 From then on each replica, at start and once an hour, removes the idempotency records older
 than a day, the sessions past their absolute or their idle limit, and the login's failed
@@ -109,7 +129,9 @@ is not an error: the run applies nothing and logs
 A pod whose database goes away stays alive and leaves the Service endpoints until the
 database is back; it is not restarted for it. While no backend endpoint is ready, the
 frontend still serves the UI and answers `/api/` requests with its own `502`
-([what nginx answers itself](#what-nginx-answers-itself)). The object storage is not probed.
+([what nginx answers itself](#what-nginx-answers-itself)). The object storage and the identity
+provider are not probed: the provider is asked at start and at a login or a refresh, never by a
+probe.
 
 ### Shutdown
 
@@ -137,11 +159,13 @@ an alert or a look:
 | `not ready` | warn | `/readyz` failed its ping; the line carries the error |
 | `the event listener lost its connection` | warn | event streams are refused until it reconnects ([the event stream](#the-event-stream)) |
 | `slow query` | warn | a query took longer than 500 ms; the line names the query, never its arguments |
-| `token refused` | info | a presented token was expired or revoked; the line names the token id and the reason |
+| `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate, of another issuer than the configured one, or judged by groups older than `COWORK_OIDC_GROUPS_MAX_AGE` (`not_allowed`); the line names the token id and the reason |
+| the identity provider's lines | info, warn, error | discovery at start, failed logins, the groups refresh, the token gate ([below](#the-login-through-the-identity-provider)) |
 | `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
 
@@ -161,7 +185,7 @@ and of the login with it, and the `detail` of the problem says which half failed
 or the `X-Requested-With` header the UI sets. Common causes: the URL was changed in the
 Ingress and not in `backend.config.baseURL`; `http` where the browser shows `https`; a
 `www.` host. Without a `COWORK_BASE_URL` no write of a cookie passes at all; the backend
-refuses to start without one while the local administrator is configured
+refuses to start without one while the local administrator or an identity provider is configured
 ([CSRF](../security/csrf.md)). Tokens are not affected: a script's token request carries no
 cookie and no check.
 
@@ -170,11 +194,17 @@ cookie is `Secure` and has the `__Host-` prefix, so a browser stores it only ove
 `localhost`). A page reached over plain `http://` on another host cannot log in; terminate TLS
 in front of the frontend.
 
-**Sessions** live in the database: a restart of every pod ends none of them, and a changed
-server key neither. The absolute lifetime is `COWORK_SESSION_LIFETIME` (12 hours), the idle
-limit `COWORK_SESSION_IDLE` (2 hours); a request moves the idle clock at most once a minute.
-An administrator ends an account's sessions with `DELETE …/accounts/{username}/sessions`;
-a person's other sessions end when they change their password.
+**Sessions** live in the database: a restart of every pod ends none of them. A changed server key
+ends none of the local login's, and each session of the identity provider that holds a refresh
+token at its next refresh, whose sealed token no longer opens — no previous key is kept to open it,
+so each such person logs in again once their session's refresh is due; what else a change of the key
+does is in [installation.md](installation.md#the-secrets). The absolute lifetime is
+`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours); a request
+moves the idle clock at most once a minute. An administrator ends a local account's sessions with
+`DELETE …/accounts/{username}/sessions`; a person's other sessions end when they change their
+password. A person of the identity provider has neither: their sessions end at the limits, or at a
+refresh when the issuer refuses the refresh token or the gate no longer admits them
+([below](#the-login-through-the-identity-provider)).
 
 **Failed logins.** Every refusal is `401 invalid_credentials`, and a username nobody has is
 counted and locked like one somebody has, so the answer does not help a guesser. Five failures
@@ -198,6 +228,76 @@ lockout off. The failures, the locks and the unlocks are audit rows of the syste
 **The request log** carries the login like any request — method, path, status, duration, the
 request id — and never the username, the password or the cookie.
 
+## The login through the identity provider
+
+Behaviour an operator meets with `COWORK_OIDC_ISSUER` set. The mechanism and what it leaves open
+are [identity-provider.md](../security/identity-provider.md); setting it up is
+[installation.md](installation.md#the-identity-provider).
+
+**A login that fails lands on the login page**, `/login?error=<code>`, which says why in a sentence
+of its own; the reason is in the backend's log, never on the page:
+
+| Code | Means | Where to look |
+|---|---|---|
+| `oidc_unavailable` | no provider is configured, or its gate names no group | `COWORK_OIDC_ALLOWED_GROUPS`, `COWORK_ADMIN_GROUP`; the start's warning |
+| `oidc_failed` | the login could not complete: the state cookie was missing or older than ten minutes, the issuer answered with an error, the code was refused, an answer of the issuer redirected or exceeded 1 MiB, the ID token did not verify, the groups claim had a shape that is no list of names, or the login could not be stored | `a login through the identity provider did not succeed` (info) with the request id, the code, the reason and the error — for the token endpoint its status and OAuth error code, never the answer's body; `a login through the identity provider failed` (error) when storing it failed |
+| `not_allowed` | the person is outside the gate — none of their groups is allowed or the administrator group — or deactivated | the person's groups at the issuer, the claim's name (`COWORK_OIDC_GROUPS_CLAIM`), the installation-level `login_refused` row, whose note says which |
+| `not_initialised` | no tenant exists, and the person is not in the administrator group | the first tenant: a global administrator creates it, or `bootstrap.tenant` with `auth.oidc.adminGroup` |
+
+Common causes of `oidc_failed`: the browser spent more than ten minutes at the issuer; a second
+login started in the same browser replaced the first one's state cookie; the browser dropped the
+state cookie, which is `Secure` like the session cookie, so a page reached over plain `http://` that
+is not `localhost` loses it; the replicas hold different server keys, so one cannot open what
+another sealed. A redirect URI the issuer has not registered stops the login at the issuer, on its
+own error page, before cowork sees anything.
+
+**A person who belongs nowhere.** A login that passes the gate makes the person, but gives them a
+membership only where a tenant maps one of their groups; a person in no mapped group logs in to an
+empty start page until an administrator adds them by the address the issuer sends
+(`POST …/members`).
+
+**The groups refresh.** Every `COWORK_OIDC_GROUPS_REFRESH` (15 minutes) one request of a provider
+session claims the refresh and asks the issuer for the person's groups again with the session's
+refresh token — that request waits, twenty seconds at most for all the calls, while the session's
+other requests are served on the groups it holds — and an open event stream does the same at its
+heartbeat. No database connection is held while the issuer is asked. What shows:
+
+| Log line | Level | Means |
+|---|---|---|
+| `session groups refresh`, with `ended` and `reason` | info | a refresh ended the session — the gate no longer admits the person (`gate`), or the issuer refused (`identity-provider`) — or could not reach the issuer (`the issuer could not be reached`), or found another request holding the refresh or the session gone; the line names the person's id, never a token |
+| `the issuer refused a session's refresh` | info | an OAuth error answer about the person — a spent, revoked or expired refresh token, a refused grant — or a refreshed ID token that did not verify or named another subject; that session ended, and its person logs in again |
+| `the issuer refuses cowork's client; check COWORK_OIDC_CLIENT_ID and COWORK_OIDC_CLIENT_SECRET` | error | `invalid_client` or `unauthorized_client`: the client is not what the issuer has — a secret rotated at the issuer and not in the Secret, say. Sessions are served on the groups they hold and retried every minute, and no refresh reads groups until it is fixed ([H-24](../security/identity-provider.md#h-24)) |
+| `the issuer could not refresh a session's groups; serving it and trying again later` | warn | no answer, a timeout, a `5xx`, a `429`, a temporary OAuth error, keys the issuer could not serve: the session is served on the groups it holds and tries again a minute later ([H-24](../security/identity-provider.md#h-24)) |
+| `a session's refresh token does not open; the session ends` | warn | the server key changed since the session's login |
+| `a session of a person the configured issuer does not name ended` | info | a person of another issuer, or of a provider no longer configured, used a session: every session of theirs ended |
+| `the issuer gave no refresh token: …` | warn, once per process | the scopes lack `offline_access`, or the issuer gives none: sessions never read the groups anew ([H-25](../security/identity-provider.md#h-25)) |
+| `the issuer's refresh carries no groups claim, …` | warn, once per process | a refresh reads no groups: the same ([H-25](../security/identity-provider.md#h-25)) |
+| `the session's groups refresh failed`, `the token gate failed` | error | the database failed during a refresh or a token's gate check; the request answered `500 internal` |
+
+**Tokens of the provider's persons.** A token whose person the gate no longer admits — judged on the
+person's groups as of their last login or refresh, every 15 minutes, and at once when the person is
+not the configured issuer's — answers `401 not_allowed` and is logged as `token refused` with that
+reason; it is not revoked and works again once the person is admitted. So does a token whose
+person's groups were last read longer ago than `COWORK_OIDC_GROUPS_MAX_AGE` (a week by default), with
+a detail that says to sign in to the browser once: a person who uses tokens only must sign in that
+often, and is judged on groups up to that old meanwhile
+([H-23](../security/identity-provider.md#h-23)).
+
+**While the issuer is down**, running pods go on: a session whose refresh is due is served on its
+groups and retried every minute — the one request that asks waits up to twenty seconds, the others
+are served at once — and a new login through the provider fails (`oidc_failed`). A pod that starts
+during the outage does not start at all, its discovery failing. The local administrator and the
+local accounts log in meanwhile, on the pods that run.
+
+**Logout** sends the browser on to the issuer's end-session endpoint where its discovery names one
+that passed the endpoint rule. Dex names none, so a person who logs out of cowork stays logged in at
+Dex ([H-28](../security/identity-provider.md#h-28)).
+
+**The record.** A refused login is an installation-level `login_refused` row of
+`system:identity-provider`; so are the persons it makes and changes and the sessions it ends. The
+memberships it derives are rows of their tenants, in the tenant's audit view; the installation-level
+rows are readable in the database only.
+
 ## Limits
 
 What a single request may cost is bounded by configuration
@@ -210,11 +310,14 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413 payload_too_large` — before reading when the declared length is larger, while reading otherwise | no limit |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` | `413` before anything is stored; the upload's body may be 64 KiB larger, for the multipart framing | no limit: one upload at a time is buffered whole, so a single upload can exhaust the container's memory ([attachments.md H-12](../security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
-| `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt | no limit |
+| `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
 | `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10`, per replica | the next stream closes the person's oldest with `event: unavailable` | no limit |
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` | a reconnect beyond the window starts with `event: resync` | no replay: a reconnect that missed anything starts with `resync` |
+| `COWORK_CHAT_TURN_TIMEOUT` | `5m` | a turn of the chat ends with the `error` event `timeout` | no limit |
+| `COWORK_CHAT_MAX_STEPS` | `8` | the turn ends after that many calls of the model; a new message goes on | no limit |
+| `COWORK_CHAT_TURNS_PER_PERSON` | `2`, per replica | one more turn of the same person is `429 chat_busy` | no limit |
 
 Two bounds are fixed: a numbered page that would end past row 10 000 (`page` × `per_page`)
 is `400 page_too_deep`, and the uploads the backend holds in memory at once are bounded by a
@@ -261,6 +364,11 @@ event: ticket.changed
 data: {"key":"dev/COW-1","version":2,"kind":"transitioned"}
 ```
 
+A change of who belongs to the tenant or who sees a project is `membership.changed`, with the ids of
+what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
+administrators only, or the administrators and the person it names, by what it is
+([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
+
 How it behaves, as somebody running it sees it:
 
 - **Every replica hears every change.** Each backend replica holds one database connection
@@ -287,9 +395,10 @@ How it behaves, as somebody running it sees it:
 ### Behind an Ingress
 
 Whatever stands in front of the frontend Service has to pass the stream through unbuffered
-and keep it open, and has to let uploads through. The frontend's nginx does not forward the
-backend's `X-Accel-Buffering` header to it — nginx keeps `X-Accel-*` headers to itself — so
-the Ingress needs its own settings. For ingress-nginx:
+and keep it open — the event stream, and the stream of a turn of the chat
+([below](#the-chats-stream)) — and has to let uploads through. The frontend's nginx does not
+forward the backend's `X-Accel-Buffering` header to it — nginx keeps `X-Accel-*` headers to
+itself — so the Ingress needs its own settings. For ingress-nginx:
 
 ```yaml
 ingress:
@@ -306,6 +415,35 @@ front that buffers the response or cuts it at a read timeout: set the two stream
 above, or their equivalent on another controller or load balancer. Not verified against an
 ingress-nginx in this repository; the annotations and the default are from that project's
 documentation.
+
+## The chat's stream
+
+`POST /api/v1/tenants/{tenant}/chat` runs one turn of the chat in the UI and answers it as
+server-sent events ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md);
+setting the chat up is [chat.md](chat.md)). What an operator meets:
+
+- **Refusals before the stream** are problem answers like any: `409 chat_unavailable` where the
+  installation configures no provider, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON`,
+  `403 session_required` for a token, `403 csrf`, `400 validation_failed` for a conversation the
+  model could not read in its place, one past its bounds or a provider the installation does not
+  list, `413` past `COWORK_MAX_JSON_BODY`.
+- **Once the stream has begun** the answer is `200` with `Content-Type: text/event-stream` and
+  `X-Accel-Buffering: no`, every event flushed as it is written; a failure is the `error` event, a
+  problem body with the request id — `chat_provider_failed`, `timeout`, `not_ready`, `internal` —
+  and the turn ends with `done` in every case it ends by itself; a turn the person stopped
+  (`DELETE …/chat/turns`, [chat.md, Stop](chat.md#stop)) ends with `done` and the reason `stopped`,
+  and no `error` event.
+- **A comment, `: keep-alive`, after ten seconds without an event**, so no proxy closes a turn while
+  the model thinks. The frontend's nginx has no location of its own for the path: `/api/` passes it,
+  unbuffered by the backend's header, and its read timeout, `requestTimeout` plus ten seconds, stays
+  above the comments. An Ingress in front needs the stream annotations [above](#behind-an-ingress).
+- **The turn is exempt from `COWORK_REQUEST_TIMEOUT`**, which bounds reading its body; it is bounded
+  by `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` ([limits](#limits)).
+- **Each tool call is a request of its own** through the whole server, so the request log has a line
+  per call besides the turn's own line, which is written when the turn ends, with its whole duration.
+- **A turn is never repeated by the client**: a repeated turn would repeat its acts. A stream that
+  ends without `done` was cut — the network, a proxy, a shutdown — and the acts its results reported
+  have happened.
 
 ## Attachments
 
@@ -339,10 +477,15 @@ What nginx does with a request:
 |---|---|
 | `/healthz` | `{"status":"ok"}` from nginx itself — the frontend's liveness and readiness probes; it says nothing about the backend |
 | `/api/v1/tenants/<slug>/events` | proxied unbuffered and uncached, with a read timeout of one hour |
+| `/api/v1/tenants/<slug>/chat` | proxied as any `/api/` path; a turn's answer is passed unbuffered, because the backend sends `X-Accel-Buffering: no`, and kept within the read timeout by its comments |
 | `/api/…` | proxied to `BACKEND_URL` with the path unchanged and `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP` set; the errors nginx answers itself are problem bodies ([above](#what-nginx-answers-itself)). An API path that ends like a static file (`….png`) still goes to the backend |
-| `/auth/…` | the same, for the login flows: `/auth/options`, `/auth/local`, `/auth/logout`; the cookie and the backend's `Set-Cookie` pass through, and the errors nginx answers itself are the same problem bodies |
-| hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` |
-| everything else | `index.html` with `Cache-Control: no-store` — the Angular router resolves the path |
+| `/auth/…` | the same, for the login flows: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout`; the cookies and the backend's `Set-Cookie` pass through, and the errors nginx answers itself are the same problem bodies — a callback nginx itself fails, the backend unreachable, leaves its query, the code and the state, in the error log ([trust-boundaries.md H-14](../security/trust-boundaries.md#h-14)) |
+| hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` and the shell's `Content-Security-Policy` |
+| everything else | `index.html` with `Cache-Control: no-store` and the shell's `Content-Security-Policy` — the Angular router resolves the path |
+
+The policy keeps every script, style sheet, font, image and request of the UI on its own origin and
+runs no inline script ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)).
+A page that broke under it shows a violation in the browser's console, never in nginx's log.
 
 The pod runs with a read-only root filesystem; the chart mounts `emptyDir`s at `/tmp` and
 `/etc/nginx/conf.d`, which is all nginx writes, and `fsGroup: 101` is what makes them

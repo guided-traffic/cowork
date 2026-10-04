@@ -34,8 +34,9 @@ func questionView(q question) apigen.Question {
 		Id: q.ID, Number: int(q.Number), Question: q.Question, Options: q.Options, Recommendation: q.Recommendation,
 		Answer: nullableOf(q.Answer), Status: apigen.QuestionStatus(q.Status),
 		AskedBy: personView(q.AskedBy, q.AskedByUsername, q.AskedByName), AskedByAgent: nullableOf(q.AskedByAgent),
-		AskedOf: nullableOf[apigen.Person](nil), AnsweredBy: nullableOf[apigen.Person](nil),
-		AnsweredAt: nullableOf(q.AnsweredAt), RecordedByAgent: q.RecordedByAgent, WithdrawnAt: nullableOf(q.WithdrawnAt),
+		AskedByToken: tokenMarkView(q.AskedByTokenID, q.AskedByTokenName), AskedOf: nullableOf[apigen.Person](nil),
+		AnsweredBy: nullableOf[apigen.Person](nil), AnsweredAt: nullableOf(q.AnsweredAt), RecordedByAgent: q.RecordedByAgent,
+		AnsweredByToken: tokenMarkView(q.AnsweredByTokenID, q.AnsweredByTokenName), WithdrawnAt: nullableOf(q.WithdrawnAt),
 		Version: int(q.Version), CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
 	}
 	if q.AskedOf != nil {
@@ -164,6 +165,7 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 		}
 		ins := writeq.InsertQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: n, Question: body.Question,
 			Options: deref(body.Options), Recommendation: deref(body.Recommendation), AskedBy: p.PersonID, AskedOf: body.AskedOf}
+		ins.AskedByTokenID, ins.AskedByTokenName = actToken(p)
 		if p.IsAgent() {
 			ins.AskedByAgent = &p.Agent
 		}
@@ -325,8 +327,10 @@ func (s *Server) AnswerQuestion(ctx context.Context, req apigen.AnswerQuestionRe
 			out = q
 			return store.ErrNoChange
 		}
-		if _, err := w.AnswerQuestion(ctx, writeq.AnswerQuestionParams{TenantID: t.ID, ID: q.ID, Version: q.Version,
-			Answer: &req.Body.Answer, AnsweredBy: &p.PersonID, RecordedByAgent: p.IsAgent()}); errors.Is(err, pgx.ErrNoRows) {
+		answer := writeq.AnswerQuestionParams{TenantID: t.ID, ID: q.ID, Version: q.Version,
+			Answer: &req.Body.Answer, AnsweredBy: &p.PersonID, RecordedByAgent: p.IsAgent()}
+		answer.AnsweredByTokenID, answer.AnsweredByTokenName = actToken(p)
+		if _, err := w.AnswerQuestion(ctx, answer); errors.Is(err, pgx.ErrNoRows) {
 			return stale(q.Version, map[string]any{fieldAnswer: q.Answer})
 		} else if err != nil {
 			return err

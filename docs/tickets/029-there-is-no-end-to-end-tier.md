@@ -27,7 +27,9 @@ the suite logs in through the page.
 
 1. `frontend/e2e/` with Playwright Test, `make e2e` against both images of the same commit,
    PostgreSQL and MinIO; the identities are the local administrator and local accounts it
-   creates (Dex joins in phase 4, ADR 0056 D3's login through it then).
+   creates, and a person of the identity provider who signs in through the Dex fixture of phase 4
+   (`make dex-up`, `hack/dex/config.yaml`; ADR 0056 D3) — the redirect URI the suite's origin
+   uses must be registered in that file.
 2. The first path, the phase's own: the owner files a ticket, assigns it to the second identity,
    which sees it in "assigned to me" and in its inbox within the stream's latency, moves it and
    closes it with a verification note. Each later child adds its view's path.

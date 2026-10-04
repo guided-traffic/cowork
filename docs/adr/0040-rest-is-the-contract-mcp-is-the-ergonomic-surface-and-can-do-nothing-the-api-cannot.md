@@ -8,8 +8,19 @@ server as a thin client of it, over REST alone, over MCP alone, and over an addi
 GraphQL surface. The rules of D4–D7 were put to the owner with the question and not objected
 to.
 
-**Partly built** (phase 2, 2026-10-02): D1, D6 and D7 — the REST API with its document, served
-at `/api/v1/openapi.json`. The MCP server of D2–D5 is phase 5.
+**Built** (phase 2, 2026-10-02; D2–D5 since 2026-10-04): D1, D6 and D7 — the REST API with its
+document, served at `/api/v1/openapi.json`. D2–D5 — `backend/cmd/cowork-mcp` over
+`internal/mcpcli`, `internal/mcpserver` and `internal/tools`, on the generated client of
+`internal/api/apigen`; a unit test holds that the binary depends on no store, no database
+driver, no S3 client and no API handler. D3 as built: a tool's failure is the API's problem
+with its status and code; a failed connection is retried twice for a `GET`, `PUT`, `DELETE`
+or keyed `POST`, which cannot act twice, and an answer of the API is never retried. D4 reads
+`CLAUDE_PROJECT_DIR` beside the two variables, for the working directory.
+
+Amended 2026-10-04 for the chat in the UI
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) D1),
+provisionally with that record (D1, D3: the catalogue's second host is inside the backend and goes
+through the API all the same), and built the same day.
 
 ## Context
 
@@ -27,7 +38,10 @@ a native place for an MCP server and none for "a REST server".
 
 **D1 — The REST API with its OpenAPI document is the one interface to the data.** Every
 client — the Angular UI, the MCP server, the importer, a script — goes through it. There is
-no second path to the database.
+no second path to the database. *(Amended 2026-10-04: the chat in the UI is a client too, though it
+runs inside the backend: its tool calls are requests of this API, sent to the server's own handler
+in the same process, through the whole pipeline — authentication, the CSRF check, the tenant
+boundary, validation, the agent rules, the audit, the events — and never past it to the store.)*
 
 **D2 — The MCP server is a thin client of the API.** It lives in this repository as
 `backend/cmd/cowork-mcp`, shares the module and the generated API client with the backend,
@@ -37,15 +51,24 @@ request (ADR 0036 D3), and exposes the workflow tools the next records define.
 **D3 — The MCP server can do nothing the API cannot, and nothing the token cannot.** No
 tool exists without an API route behind it; every authorization decision is the API's; a
 tool's failure is the API's error, surfaced with its code, never swallowed or retried into
-success.
+success. *(Amended 2026-10-04: the same holds for the catalogue's second host, the chat in the UI,
+with the person's session marked as the chat's agent in place of the token — it can do nothing the
+API and that agent cannot; a tool's failure is an answer its model reads.)*
 
 **D4 — Configuration of the MCP server is environment only:** `COWORK_URL` and
 `COWORK_TOKEN`, passed through by the Claude Code MCP configuration; no configuration file,
 no stored credential. It keeps a session id and an in-memory cache and writes nothing to
-disk.
+disk *(amended 2026-10-04: but the file of session-start times of
+[ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D5, which that record names
+the only file the server writes; the two records disagreed, and the later, more specific one
+holds)*.
 
 **D5 — The MCP server checks compatibility at start** against `GET /api/v1/version` and the
 OpenAPI document's version, and refuses to serve tools against an API it does not know.
+*(Made concrete 2026-10-04: an API it does not know is another major version than the
+binary's — a binary without a semantic version, a development build, compares none — or a
+served document that lacks an operation one of its tools calls. The refusal is the answer
+to every tool call; an installation that cannot be reached is asked again at the next call.)*
 
 **D6 — The API serves its own OpenAPI document** at `GET /api/v1/openapi.json`, so a session
 without the MCP server — a script, a one-off `curl` — can load the contract from the
@@ -89,4 +112,5 @@ are fixed; the list filters of the API record serve them.
 - [ADR 0035](0035-personal-access-tokens.md), [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) — the token and the marking the MCP server carries
 - [ADR 0023](0023-the-tenant-is-in-the-path.md) — the path families the client is generated from
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5 — the pull the session-start tool performs
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — where the MCP server sits in the daily loop
+- [docs/operations/claude-code.md](../operations/claude-code.md) — where the MCP server sits in the daily loop (the workflow plan once linked here is consumed, [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) D3)
+- [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) — the chat in the UI, the catalogue's second host

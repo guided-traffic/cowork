@@ -41,56 +41,32 @@ moved here from phase 4: the browser never holds a token
 ([ADR 0035](../adr/0035-personal-access-tokens.md) D7), so the UI needs the login first
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)).
 
-## Phase 4 — OIDC and authorization
+## Phase 4 — OIDC and authorization (built 2026-10-04)
 
 **Goal:** people log in through the identity provider; only allowed groups get in; roles hold.
+The phase became a family ticket in [docs/tickets/](../tickets/README.md) when it started
+([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D2) and was built in the same change; the owner answered its open decisions on 2026-10-04. What it
+built is in the Status sections of ADR 0029–0035 and in
+[identity-provider.md](../security/identity-provider.md).
 
-**Needs:** the sessions and CSRF of phase 3.
-
-**Delivers:** the OIDC code flow with PKCE (ADR 0029); the groups snapshot and its refresh in
-the sessions of phase 3 (ADR 0031 D1); the group gate, the group → tenant/role mapping and the
-manual grant (ADR 0030), and the administrator group's members in the init state (ADR 0032 D5);
-the source-address hash of [ADR 0035](../adr/0035-personal-access-tokens.md) D2; the
-administration of memberships, roles and a restricted project's list, with `membership.changed`
-on the event stream; `make dev-up` with PostgreSQL, MinIO and a minimal Dex, and the login
-through Dex in the end-to-end tier; the security page for the identity provider. The role checks
-on every endpoint and the project restriction's predicate exist since phase 2; the local login
-since phase 3.
-
-**Verified when:** a user outside the allowed groups is refused with a test that proves it; a
-person whose group left the allow-list is logged out at the next refresh; a viewer cannot
-write; a member of one tenant cannot list another; a member outside a restricted project cannot
-read it.
-
-**Effort:** M.
-
-## Phase 5 — The LLM interface, the VS Code workflow and the chat in the UI
+## Phase 5 — The LLM interface, the VS Code workflow and the chat in the UI (built 2026-10-04)
 
 **Goal:** a Claude Code session in any bound repository starts with its ticket context and
 ends with the ticket updated by Claude; and in the UI, a chat panel at the right edge lets an
 agent operate cowork for the person, through a model the installation names — a local LM
-Studio first.
-
-**Needs:** D1–D3, D6, I1–I5; [vscode-workflow.md](vscode-workflow.md); the chat's open
-questions — where its loop runs, who acts when it acts, what may leave the installation,
-which writes the person confirms.
-
-**Delivers:** the MCP server (`cmd/cowork-mcp`, stdio) with the workflow tools; the
-`.cowork.yaml` convention; the `SessionStart` hook and the skills; a `docs/operations/` page
-for configuring Claude Code against an installation; the agent permission rules of Q-D5
-enforced server-side. For the chat: one tool catalogue the MCP server and the chat share; a
-provider gateway in the backend — every model call goes through it, never from the browser —
-with an adapter for OpenAI Chat Completions with tool calling (LM Studio, OpenAI, Ollama and
-the rest) and one for the Anthropic Messages API; the panel in the shell; a
-`Content-Security-Policy` for the shell.
-
-**Verified when:** in this repository, `claude` starts, names the active ticket, Claude works,
-records its state, opens a question, and finishes the ticket with a verification note, all
-visible in the UI timeline with agent attribution; and in the UI's chat, against LM Studio,
-the agent files a ticket, ranks it to `now` and moves it on the board, each act attributed to
-the chat.
-
-**Effort:** L.
+Studio first. The phase became tickets in [docs/tickets/](../tickets/README.md) when it started
+([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D2) and was built on the branch; the owner answered its open decisions on 2026-10-04, the chat's
+among them ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)). What it built is in the Status sections of ADR 0040–0045, ADR 0066–0070 and ADR 0076, in
+[claude-code.md](../operations/claude-code.md) and [chat.md](../operations/chat.md) for running it,
+[mcp.md](../developer/mcp.md) and [chat.md](../developer/chat.md) for changing it, and
+[agent-client.md](../security/agent-client.md) and [chat.md](../security/chat.md) for what it leaves
+open; the workflow document it consumed is deleted (ADR 0074 D3). Verified on 2026-10-04: the MCP
+server over stdio against a fresh backend, and the chat against LM Studio — a ticket filed, its
+urgency set to `now`, moved to `analysed`, each act the chat's, an act beyond the person's chosen
+capabilities refused, and Stop ending the turn and the model's generation at once. Not verified: a
+live `claude` session with the plugin, its hooks and its skills.
 
 ## Phase 6 — Import and cut-over
 
@@ -101,6 +77,14 @@ the chat.
 **Delivers:** the importer for the Markdown ticket format; a dry-run report; the confidential
 flag; the import of the sibling project's open tickets (that repository's own decision to
 remove the directory is taken there, not here); the import of this repository's own tickets.
+Then every other repository, one per session, as the workflow plan had it: its binding (its
+remote; `.cowork.yaml` only for a fork or a repository without a remote,
+[ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)),
+the import, that repository's own decision on its `docs/tickets/`
+([ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md) D4), and the
+three lines of [ADR 0069](../adr/0069-rules-stay-in-git-work-moves-to-cowork.md) D4 in its
+`CLAUDE.md`; and the owner's global working rules about tickets rewritten once to point at
+cowork.
 
 **Verified when:** every imported ticket round-trips through `GET …/markdown` to a document
 equal to the source up to the mapping documented in the ADR; the count of open tickets in the

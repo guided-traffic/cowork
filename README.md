@@ -11,23 +11,37 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 3 in progress — the UI on the core domain.** Tenants, projects and tickets —
-> with links, state transitions, open questions, comments, interest, progress, time entries and
-> attachments — the audit record and the event stream exist behind a JSON API, tested against
-> PostgreSQL 18 and MinIO. A person logs in with a local account: the local administrator the
-> installation's Secret names creates the first tenant and the accounts of its people, and each
-> person makes their own personal access tokens in the session. There is no identity provider
-> yet. What comes next is [the project plan](docs/planning/project-plan.md).
+> **Status: phase 3 — the UI on the core domain — in progress, its first part released as `0.2.0`;
+> phase 4 — the login through an identity provider — and phase 5 — the LLM interface — built on
+> this branch.** Tenants,
+> projects and tickets — with links, state transitions, open questions, comments, interest,
+> progress, time entries and attachments — the audit record and the event stream exist behind a
+> JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
+> provider, whose groups decide who gets in and — mapped per tenant — in which role, or with a local
+> account: the local administrator the installation's Secret names, or the provider's administrator
+> group, creates the first tenant, its administrators add its people, and each person makes their
+> own personal access tokens in the session. Claude Code works on the backlog through `cowork-mcp`,
+> an MCP server with hooks that runs on the person's machine
+> ([Claude Code](docs/operations/claude-code.md)); in the browser an assistant works on the same
+> tools as the person's agent, with a model of the providers the operator lists — LM Studio on the
+> operator's machine, a server of the OpenAI format or Anthropic — and the capabilities the person
+> chooses for it; its acts run at once, and Stop ends a turn at once
+> ([the chat](docs/operations/chat.md)). What comes next is
+> [the project plan](docs/planning/project-plan.md).
 
 ```mermaid
 flowchart LR
   B[Browser] --> F
-  C[Claude Code<br/>personal access token] --> F
-  F[cowork-frontend<br/>nginx + Angular bundle] -->|/api/ proxied| S
+  B -.->|login redirects| I[OpenID Connect<br/>identity provider]
+  C[Claude Code] -->|stdio| X[cowork-mcp<br/>personal access token]
+  X -->|HTTPS| F
+  F[cowork-frontend<br/>nginx + Angular bundle] -->|/api/ /auth/ proxied| S
   K[kubelet] -->|/healthz /readyz| S
   M[migrate<br/>init container] -->|owner role| P
   S[cowork-backend<br/>Go API] -->|runtime role| P[(PostgreSQL 18)]
   S -->|attachments| O[(S3-compatible<br/>object storage)]
+  S -->|discovery, code, refresh| I
+  S -->|the chat's model calls| L[LLM providers<br/>OpenAI format or Anthropic]
 ```
 
 ## ✨ Key features
@@ -35,15 +49,19 @@ flowchart LR
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API; the nginx frontend serves the Angular bundle and proxies `/api/` to it, so the browser sees one origin and the Ingress needs one rule.
 - 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
 - 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
+- 💬 **An assistant in the browser** — a chat panel whose model works on the same tools as the person's agent, with the capabilities the person chooses (by default not deciding, closing, dropping or recording answers); the providers are a list in the chart, the person picks one, and Stop ends a turn at once.
+- 🤖 **Claude Code as a co-worker** — `cowork-mcp`, one static binary per platform, serves fifteen workflow tools over the API with the person's token and runs Claude Code's hooks: a session starts with its project's state and is reminded at its end; a repository finds its project by its normalised git remote, and an unbound one gets a proposal the person confirms.
+- 🪪 **Single sign-on through any OpenID Connect provider** — the code flow with PKCE against a provider discovered at start, a gate of allowed groups and an administrator group, per-tenant group mappings that derive memberships, marked grants beside them, the groups read again every fifteen minutes, and tokens held to the same gate; tested against a minimal Dex.
 - 🔐 **A login that needs no identity provider** — a local administrator kept in step with a Secret, local accounts created by tenant administrators, Argon2id, sessions in the database behind an `HttpOnly` `__Host-` cookie, an account lockout and an address throttle that answer every failure alike, and an origin-plus-header CSRF check on every write of a session.
+- 🏛️ **Administration that leaves nothing behind a token** — members, grants, group mappings, restricted projects and their access lists in the UI; every act that can give access takes a browser session, every act is recorded with the keyed hash of the client's address, and an administrator's change that would leave a tenant without an administrator is refused.
 - 🛡️ **Tenants isolated twice** — every query names its tenant, and forced row-level security under a runtime role that owns nothing backs it; the backend refuses a role that could bypass it.
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
-- 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; `ETag` and `If-Match` keep two writers from overwriting each other.
+- 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, every credential from an existing Secret, nginx sized from the backend's limits, no RBAC because neither container talks to the Kubernetes API.
-- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18 and MinIO with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
+- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18, MinIO and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
 - 🆕 **Newest toolchains** — Go 1.27 and Angular 22, moved by Renovate as grouped updates.
 - 🗂️ **Documentation with five homes** — decisions in ADRs, work lists in tickets that get archived, one security page per perspective.
 - 🧭 **Decided, then built** — every founding question was put to the owner one at a time and became an ADR before the code that depends on it.
@@ -56,8 +74,17 @@ Every backend setting is `COWORK_<NAME>`; the full table is under [Configuration
 The frontend container substitutes four variables into its nginx configuration, `BACKEND_URL`,
 `NGINX_LOCAL_RESOLVERS`, `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT`
 ([frontend container](#frontend-container)). The integration tier reads
-`COWORK_TEST_DATABASE_URL` and `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`,
-`_SECRET_ACCESS_KEY`; `make dev-seed` reads `COWORK_DEV_SEED_DATABASE_URL`.
+`COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and
+`COWORK_TEST_OIDC_ISSUER`, every one of them required; `make dev-seed` reads
+`COWORK_DEV_SEED_DATABASE_URL`; `make dev` takes `COWORK_DEV_ADMIN` and
+`COWORK_DEV_ADMIN_PASSWORD`. The development containers take `CONTAINER_BIND` (`127.0.0.1`
+`# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
+`COWORK_URL`, `COWORK_TOKEN` and `CLAUDE_PROJECT_DIR` ([CLI (cowork-mcp)](#cli-cowork-mcp)); the
+plugin's hooks hand it `CLAUDE_PLUGIN_OPTION_COWORK_URL` and `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`
+under those names. A chat provider's variables are `COWORK_CHAT_<ID>_NAME`, `_KIND`, `_URL`,
+`_MODEL` and `_API_KEY`, the id of `COWORK_CHAT_PROVIDERS` upper-cased with its dashes as
+underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-chat-in-the-ui));
+`make dev` takes `COWORK_DEV_CHAT_MODEL`.
 
 ### Kubernetes objects (Helm chart)
 
@@ -72,6 +99,8 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url` |
 | Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while `backend.config.migrateOnStart` is true |
 | Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
+| Identity provider's client Secret | not rendered: `auth.oidc.existingSecret` names one of yours, key `auth.oidc.keys.clientSecret` (`clientSecret`) and, when set, `auth.oidc.keys.clientId` | only with `auth.oidc.issuer`; the client secret has no inline value |
+| A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
 | Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while `migrateOnStart` is true); a changed value rolls the pods |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with `storage.endpoint` and `storage.tls.caConfigMap` |
 | Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
@@ -89,14 +118,27 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Every other id | a UUIDv7 | `0199a3c2-1d2e-7f00-8000-000000000001` |
 | Personal access token | `cwk_` and 43 base62 characters; cowork stores its SHA-256 only | — |
 | Session cookie | `__Host-cowork-session`, 43 base64url characters (256 random bits); cowork stores its SHA-256 only | `HttpOnly; Secure; SameSite=Lax; Path=/`, no `Domain` |
-| Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>` | `ada.lovelace` |
+| Login state cookie | `__Host-cowork-oidc`: the state, the nonce and the PKCE verifier of a login through the identity provider, the path to return to and the time, sealed with AES-256-GCM; cleared by the callback | `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`, no `Domain` |
+| Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
+| Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
+| Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
+| Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
+| Chat provider id | 1–32 characters of `a-z`, `0-9` and `-`, a dash neither first nor last; named once in `COWORK_CHAT_PROVIDERS` | `lmstudio`, `claude-work` |
+| The chat's browser storage | `localStorage`: `cowork.chat.<person id>` (`open` or `closed`), `cowork.chat.provider.<person id>` (the picked provider's id) | — |
+| Agent header of `cowork-mcp` | `<client>/<model>/<session>`: the MCP client's name (`claude-code` in the hooks), the hook's model or `unknown`, the hook's session id or eight hex characters per process; `cowork-mcp/unknown/token-check` and `cowork-mcp/unknown/lookup` for the two subcommands | `claude-code/unknown/1f0c9a2b` |
+| Repository identity | `<host>[:<port>]/<path>` of a git remote: scheme, user, a default port, `.git` and trailing slashes removed, the host lower-cased, the path's case kept; unique per tenant with the sub-directory | `github.com/acme/app` for `git@github.com:acme/app.git` |
+| Repository sub-directory | relative to the repository root, `/`-separated, no `..`; empty for the whole repository | `services/billing` |
+| Proposed project key | the initials of the repository name's parts (`-`, `_`, `.`), else its first three letters, upper-cased; `2`, `3`, … appended while the key is taken | `VO` for `valkey-operator` |
+| MCP tool | `session_start`, `get_ticket`, … ([the tools](#the-tools)); in Claude Code `mcp__plugin_cowork_cowork__<tool>` through the plugin, `mcp__cowork__<tool>` for a server added by hand as `cowork` | `mcp__plugin_cowork_cowork__get_ticket` |
+| Commit strings for a ticket | the subject ends with `(<PROJECT>-<number>)`, the body ends with the trailer `Cowork-Ticket: <key>`, the branch is `<type>/<PROJECT>-<number>-<slug>` | `feat/COW-42-export-attachments` |
 | Request id | `X-Request-Id`, a UUIDv7 the backend makes (an inbound one is ignored); the same value is `request_id` in a problem body and in the request log | — |
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
 | Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`; the control events `resync` and `unavailable` | — |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 
@@ -105,9 +147,13 @@ The frontend container substitutes four variables into its nginx configuration, 
 | PostgreSQL container | `cowork-postgres`, `postgres:18` on `localhost:5432` | `make postgres-up`; `POSTGRES_CONTAINER=` and `POSTGRES_PORT=` move it |
 | Development database | `cowork`, owned by `cowork_owner`, served as `cowork_app` | created by `make postgres-up`; each password is the role's name |
 | MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
-| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; the database is dropped at the end, the bucket stays until `make minio-down` |
+| Dex container | `cowork-dex`, `ghcr.io/dexidp/dex` pinned by tag and digest (`DEX_IMAGE`), on `localhost:5556`; the issuer `http://localhost:5556/dex`, the client `cowork` with the secret `cowork-dev-dex-secret` | `make dex-up`, configured from [`hack/dex/config.yaml`](hack/dex/config.yaml), copied in; `DEX_CONTAINER=` and `DEX_PORT=` move it; keeps nothing, so `make dex-down` loses nothing |
+| Dex users | `ada@example.com` (`cowork-admins`, `cowork-users`), `bob@example.com` (`cowork-users`, `team-red`), `cyd@example.com` (`cowork-users`), `dan@example.com` (`team-red`), each with the password `dev-only-dex` | every credential of Dex is development-only and public in this repository |
+| Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
+| All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
+| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
-| Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
+| Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, Dex as the identity provider (allowed `cowork-users`, administrator group `cowork-admins`, the button *Sign in with Dex*), the group mapping `team-red` → `member` in the tenant `dev`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | two ways in: the form as `dev`, or *Sign in with Dex* as one of the four Dex users; state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
 
 ### Files and images
 
@@ -120,6 +166,10 @@ The frontend container substitutes four variables into its nginx configuration, 
 | Angular project | `frontend`, output `frontend/dist/frontend/browser/` | — |
 | Ticket (interim, in this repository) | `docs/tickets/NNN-<kebab-slug>.md`, `id: T<n>` | rules in [docs/tickets/README.md](docs/tickets/README.md) |
 | API document | `backend/api/openapi.yaml` and one file per path family, bundled by `make generate` into `backend/api/openapi.gen.json` | served at `/api/v1/openapi.json` |
+| `cowork-mcp` release binary | `cowork-mcp-<version>-<os>-<arch>`, `.exe` on windows, beside it `<file>.sha256`; os `linux`, `darwin`, `windows`, arch `amd64`, `arm64`; attached to the GitHub release, each with a build provenance attestation (`gh attestation verify <file> --repo guided-traffic/cowork`) | `cowork-mcp-0.3.0-darwin-arm64` |
+| Binding file | `.cowork.yaml`, the nearest at or above the working directory within the repository; schema at `/api/v1/schemas/cowork-yaml.json` | `tenant: acme`, `project: APP` |
+| Session memory of `cowork-mcp` | `<user cache directory>/cowork-mcp/<host and path of COWORK_URL>_<tenant>_<PROJECT>.json`, other characters than letters, digits, `.` and `-` as `_` | `~/.cache/cowork-mcp/cowork.example.com_acme_APP.json` |
+| Claude Code plugin | the marketplace `cowork` in `.claude-plugin/marketplace.json`, the plugin `cowork` in `claude/cowork/`; its options `cowork_url` and `cowork_token` | `claude plugin install cowork@cowork` |
 
 ### HTTP
 
@@ -128,8 +178,9 @@ The frontend container substitutes four variables into its nginx configuration, 
 | `/healthz` | liveness | nginx's own health, `{"status":"ok"}` |
 | `/readyz` | readiness: a database ping | not proxied: nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend — the backend's `/readyz` is reached through the backend Service |
 | `/api/v1/…` | the JSON API; errors are RFC 9457 `application/problem+json` with a stable `code` | proxied to the backend, path unchanged; the `413`, `502`, `503` and `504` nginx answers itself are problem bodies without a `request_id` |
-| `/auth/options`, `/auth/local`, `/auth/logout` | the browser's login flows, in the API document | proxied like `/api/`, cookies in both directions |
+| `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | proxied like `/api/`, cookies in both directions |
 | `/api/v1/tenants/<slug>/events` | the event stream | proxied unbuffered and uncached, with a read timeout of one hour |
+| `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream | proxied as any `/api/` path, unbuffered because the backend answers `X-Accel-Buffering: no` |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
 
@@ -139,19 +190,20 @@ The frontend container substitutes four variables into its nginx configuration, 
 | `application/problem+json; charset=utf-8` | every error |
 | `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id` |
 | `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
-| `text/markdown; charset=utf-8` | a ticket's canonical Markdown |
-| `text/event-stream` | the event stream |
+| `text/markdown; charset=utf-8` | a ticket's canonical Markdown and its context |
+| `text/event-stream` | the event stream, a turn of the chat |
 
 ## 📚 Documentation
 
 | Document | What it is for |
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage; runtime behaviour, the limits, what nginx answers, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
+| [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
 | [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules |
-| [docs/planning/](docs/planning/) | The project plan and the VS Code workflow plan — consumed into ADRs and tickets as work proceeds; the question catalog is consumed already |
+| [docs/planning/](docs/planning/) | The project plan — consumed into ADRs and tickets as work proceeds; the question catalog and the VS Code workflow plan are consumed already |
 | [CLAUDE.md](CLAUDE.md) | The working rules for an LLM session in this repository |
 
 ## 🚀 Fast start
@@ -166,15 +218,18 @@ Helm 3 or 4, `openssl`. `make help` lists every target.
 The quickest way to see cowork, with demo data and the UI reloading as you edit:
 
 ```bash
-make dev                # PostgreSQL, MinIO, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
+make dev                # PostgreSQL, MinIO, Dex, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
 ```
 
-Sign in as `dev` with the development-only password `dev-only-cowork`. The dev server uses a
+Sign in as `dev` with the development-only password `dev-only-cowork`, or with *Sign in with Dex*
+as `ada@example.com` (a global administrator), `bob@example.com` (a member of the tenant `dev` by
+his group), `cyd@example.com` (behind the gate, in no tenant until granted) or `dan@example.com`
+(refused at the gate), each with the development-only password `dev-only-dex`. The dev server uses a
 self-signed certificate — HTTPS, because Safari stores no `Secure` session cookie from
 `http://localhost` — so the browser asks about it once. The parts by hand:
 
 ```bash
-make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves)
+make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds MinIO and Dex
 make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
 make run                # the backend on :8080: migrates as cowork_owner, serves as cowork_app (text logs)
 make frontend-serve     # the Angular dev server on :4200, /api proxied to :8080
@@ -219,6 +274,13 @@ curl -s -H "Cookie: $COOKIE" -H 'Origin: http://localhost:4200' -H 'X-Requested-
 Every write of a session carries the `Origin` of `COWORK_BASE_URL` and `X-Requested-With: cowork`
 ([CSRF](docs/security/csrf.md)); a token's request carries neither.
 
+The login through Dex by hand is what `make dev` does: `make dex-up`, then `make run` with
+`COWORK_OIDC_ISSUER=http://localhost:5556/dex`, `COWORK_OIDC_CLIENT_ID=cowork`,
+`COWORK_OIDC_CLIENT_SECRET=cowork-dev-dex-secret`, `COWORK_OIDC_ALLOWED_GROUPS=cowork-users` and
+`COWORK_BASE_URL=https://localhost:4200` — the redirect URI Dex knows for development — and the UI
+from `make frontend-serve NG_SERVE_FLAGS=--ssl` ([`hack/dev.sh`](hack/dev.sh),
+[`hack/dex/config.yaml`](hack/dex/config.yaml)).
+
 Without object storage the backend refuses uploads (`501 uploads_disabled`). To try
 attachments, start MinIO, create a bucket with any S3 client — no target creates one — and
 hand the backend its keys:
@@ -234,7 +296,7 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 
 ```bash
 make test                       # backend unit + frontend unit
-make postgres-up minio-up       # the integration tier needs both
+make dev-up                     # the integration tier needs PostgreSQL, MinIO and Dex
 make test-integration           # a database and a bucket of its own per run
 make lint frontend-lint helm-lint
 ```
@@ -280,13 +342,32 @@ helm upgrade cowork cowork/cowork -n cowork --reuse-values \
   --set bootstrap.tenant.slug=acme --set bootstrap.tenant.name="Acme Corp"
 ```
 
+With an identity provider — instead of the local administrator, or beside it — register a
+confidential client there with the redirect URI `https://cowork.example.com/auth/callback`, put its
+secret into a Secret, and name the issuer, the client and the gate:
+
+```bash
+kubectl -n cowork create secret generic cowork-oidc --from-literal=clientSecret='CHANGE-ME'
+helm upgrade cowork cowork/cowork -n cowork --reuse-values \
+  --set backend.config.baseURL=https://cowork.example.com \
+  --set auth.oidc.issuer=https://login.example.com/realms/acme \
+  --set auth.oidc.clientId=cowork --set auth.oidc.existingSecret=cowork-oidc \
+  --set 'auth.oidc.allowedGroups={cowork-users}' --set auth.oidc.adminGroup=cowork-admins
+```
+
+Every value above is an example. The members of the administrator group are global
+administrators; with `bootstrap.tenant.slug` and `.name` the start maps the group to the first
+tenant's `admin` role, and the installation needs no local administrator. The backend refuses to
+start while it cannot fetch the provider's discovery document
+([installation.md](docs/operations/installation.md#the-identity-provider)).
+
 Behind the frontend and an Ingress the login throttle has to be told which networks are the
 proxies, or it counts one address for every browser:
 `--set backend.config.trustedProxies=<the pod network that holds the frontend and the Ingress
 controller>` ([the client address](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
 
 Attachments need an S3-compatible bucket and three more values; without them uploads are
-refused. Without a local administrator nobody can log in. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
+refused. Without a local administrator or an identity provider nobody can log in. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
 `guidedtraffic/cowork-frontend` on Docker Hub) with one version; the chart's image tags follow
 its `appVersion`. Details — the roles, the Secrets,
 the object storage, the Ingress annotations, the CloudNativePG note:
@@ -305,6 +386,22 @@ The new backend pods migrate the schema in their init container before the serve
 [docs/operations/runtime.md](docs/operations/runtime.md#the-migration-run).
 
 </details>
+
+### Connect Claude Code
+
+`cowork-mcp` of the installation's release on the `PATH`, a token from the UI's token page —
+an agent token with `write` scope — and the plugin of this repository:
+
+```bash
+cowork-mcp version                                   # from the release assets, or make build-mcp
+COWORK_URL=https://cowork.example.com COWORK_TOKEN=cwk_… cowork-mcp token check   # example values
+claude plugin marketplace add guided-traffic/cowork
+claude plugin install cowork@cowork                  # then /plugin configure cowork@cowork: the URL and the token
+cd ~/src/app && claude                               # the session starts with the repository's project, or a proposal
+```
+
+The setup by hand, the token choices, the `CLAUDE.md` block and `.cowork.yaml`:
+[docs/operations/claude-code.md](docs/operations/claude-code.md).
 
 ## 📖 Reference
 
@@ -326,12 +423,12 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_DATABASE_URL` | — (required) | `postgres://cowork_app:…@postgres:5432/cowork?sslmode=require` `# example` | The runtime role's connection URL; every request runs as this role. It must not be a superuser, have `BYPASSRLS`, own a relation of the schema or be a member of the owner role — `serve` and `migrate` refuse it otherwise. `pool_max_conns=<n>` in the URL sizes the connection pool. **Security:** a credential: from a Secret. cowork never logs it; a URL pgx cannot parse appears in the startup error with its password masked, which pgx does on a best-effort basis |
 | `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the `migrate` init container only |
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container |
-| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key; it signs the list cursors and keys the hash of a login's source address. Every replica needs the same key, and a new key invalidates the cursors clients hold (`400 invalid_cursor`). It signs no session: sessions are rows in the database, and a new key logs nobody out. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. `make run` makes a throw-away one |
+| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
 | `COWORK_LOG_FORMAT` | `json` `# default` | `json`, `text` | `text` for a terminal |
 | `COWORK_SHUTDOWN_TIMEOUT` | `15s` `# default` | a positive duration | Drain bound after `SIGTERM`; the event streams end as the drain begins. A drain that outlasts it ends the process with exit 1. Keep it below the pod's grace period |
-| `COWORK_BASE_URL` | empty `# default` | `https://cowork.example.com` `# example` | The public URL, as the browser shows it: an origin — `http` or `https`, a host, an optional port, no path, no query. **Required while `COWORK_LOCAL_ADMIN_USERNAME` is set.** The CSRF check compares the `Origin` (or `Referer`) of every write of a session, and of the login, with it exactly ([CSRF](docs/security/csrf.md)); a URL the browser does not show makes every such write `403 csrf`, and without one no write of a cookie passes. **Security:** nothing secret; a wrong value locks the browser out, never lets another origin in |
+| `COWORK_BASE_URL` | empty `# default` | `https://cowork.example.com` `# example` | The public URL, as the browser shows it: an origin — `http` or `https`, a host, an optional port, no path, no query. **Required while `COWORK_LOCAL_ADMIN_USERNAME` or `COWORK_OIDC_ISSUER` is set.** The CSRF check compares the `Origin` (or `Referer`) of every write of a session, and of the local login, with it exactly ([CSRF](docs/security/csrf.md)); a URL the browser does not show makes every such write `403 csrf`, and without one no write of a cookie passes. The identity provider's redirect URI is this URL and `/auth/callback`, and its logout returns to `/login`. **Security:** nothing secret; a wrong value locks the browser out, never lets another origin in |
 
 **Login, sessions and accounts** ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md),
 [0032](docs/adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md),
@@ -345,17 +442,40 @@ Chart values are in [Helm chart values](#helm-chart-values); the pages are
 |---|---|---|---|
 | `COWORK_LOCAL_ADMIN_USERNAME` | empty `# default` | `admin` `# example` | With `COWORK_LOCAL_ADMIN_PASSWORD`: the one account the configuration keeps, a global administrator — it creates tenants and holds no role in any until it grants itself one — and a full account (`local:<username>`). Synchronised at every start, after the migrations, under an advisory lock: created; re-hashed with all its sessions ended when the password changed; deactivated, its tokens revoked and its sessions ended, when both variables are empty; never deleted. Both set or both empty — one alone refuses the start, naming the missing variable. Needs `COWORK_BASE_URL`. 1–63 characters of `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or a digit |
 | `COWORK_LOCAL_ADMIN_PASSWORD` | empty `# default` | at least `COWORK_PASSWORD_MIN_LENGTH` characters | The account's password, read as it is — spaces included. **Security:** a secret: from a Secret, never echoed or logged; anyone who can read the pod spec or the Secret can read it. A leaked one stays valid until the Secret is rotated **and** the backend restarted; that rotation also unlocks a locked administrator and ends its sessions. The account's password cannot be changed in the UI: this is its source |
-| `COWORK_BOOTSTRAP_TENANT_SLUG` | empty `# default` | `acme` `# example` | With `COWORK_BOOTSTRAP_TENANT_NAME`: while no tenant exists, a start creates this tenant and gives the local administrator a marked grant as its `admin`; once a tenant exists these variables do nothing, whatever they say. Both or neither, and only with the local administrator |
+| `COWORK_BOOTSTRAP_TENANT_SLUG` | empty `# default` | `acme` `# example` | With `COWORK_BOOTSTRAP_TENANT_NAME`: while no tenant exists, a start creates this tenant, gives the local administrator, when one is configured, a marked grant as its `admin`, and maps `COWORK_ADMIN_GROUP`, when one is set, to its `admin` role; once a tenant exists these variables do nothing, whatever they say. Both or neither, and only with the local administrator or an administrator group, which becomes the tenant's first administrator |
 | `COWORK_BOOTSTRAP_TENANT_NAME` | empty `# default` | `Acme Corp` `# example` | The tenant's name, 1–200 characters |
 | `COWORK_PASSWORD_MIN_LENGTH` | `12` `# default` | `8` to `1024` | The shortest password of a local account, counted in characters; the policy is length only — no character classes, no history — and it holds for the local administrator too. Below `8` the start is refused |
 | `COWORK_LOGIN_LOCKOUT` | `window` `# default` | `window`, `admin` | `window`: a username locked by failures is free again when the 15-minute window passes. `admin`: it stays locked until a tenant administrator unlocks it (`DELETE …/accounts/{username}/lockout`) — or, for the local administrator, until the Secret is rotated and the backend restarted. **Security:** `admin` lets anyone who knows a username keep its account locked |
 | `COWORK_LOGIN_MAX_FAILURES` | `5` `# default` | a count; `0` never locks | Failed attempts of one username within fifteen minutes that lock it — a username nobody has too, so neither the answer nor the lock says whether an account exists |
 | `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind the frontend's nginx the peer is nginx and the limit holds for the whole installation |
-| `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; an empty list leaves one address for the whole installation ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
+| `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address — which the login throttle counts and whose keyed hash every audit row of a request carries — is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; an empty list leaves one address for the whole installation ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
 | `COWORK_SESSION_LIFETIME` | `12h` `# default` | a positive duration | The absolute lifetime of a session; it is also the cookie's `Max-Age` |
 | `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; a request within it extends the session up to the lifetime. The idle clock moves at most once a minute |
 | `COWORK_TOKEN_DEFAULT_LIFETIME` | `2160h` (90 days) `# default` | a positive duration, not above the maximum | The lifetime of a token whose creator named none |
 | `COWORK_TOKEN_MAX_LIFETIME` | `8760h` (one year) `# default` | a positive duration | The longest lifetime a token may have; a longer request is shortened to it and the answer says what the token got |
+
+**Identity provider** ([ADR 0029](docs/adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md),
+[0030](docs/adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md),
+[0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1, D3,
+[0035](docs/adr/0035-personal-access-tokens.md) D8). `COWORK_OIDC_ISSUER` turns the login through
+an OpenID Connect provider on; every other variable here is read only with it, and set without it
+refuses the start, naming itself. Chart values are `auth.oidc.*` in
+[Helm chart values](#helm-chart-values); the page is
+[identity provider](docs/security/identity-provider.md).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_OIDC_ISSUER` | empty `# default` | `https://login.example.com/realms/acme` `# example` | The issuer. `https://`, or `http://` on a loopback host (`localhost`, `127.0.0.0/8`, `::1`) for development; no user, query or fragment. Kept as written: it must equal the `issuer` the discovery document names, trailing slash and all. The backend fetches `<issuer>/.well-known/openid-configuration` at every start — no redirect followed, at most 1 MiB — and **refuses to start when it cannot**, when the document's authorization, token, keys or UserInfo endpoint is neither `https` nor `http` on a loopback host, or when it names no signature algorithm cowork verifies (the asymmetric ones; `RS256` when it names none); an `end_session_endpoint` that breaks the rule is dropped with a warning. Requires `COWORK_BASE_URL` — the redirect URI to register at the provider is `COWORK_BASE_URL` + `/auth/callback` — and the client's id and secret |
+| `COWORK_OIDC_CLIENT_ID` | — (required with the issuer) | `cowork` `# example` | cowork's client at the provider |
+| `COWORK_OIDC_CLIENT_SECRET` | — (required with the issuer) | — | The client's secret, read as it is; a public client without a secret is not supported. A secret the provider no longer accepts (`invalid_client`) logs nobody out: sessions are served on their groups, and the log says so at error level. **Security:** a secret: from a Secret, never echoed; the chart reads it from `auth.oidc.existingSecret` only. With it, the server key and the database, the stored refresh tokens can be redeemed at the provider ([H-27](docs/security/identity-provider.md#h-27)) |
+| `COWORK_OIDC_SCOPES` | `openid profile email groups offline_access` `# default` | separated by spaces or commas; `openid` among them | The scopes a login asks for. `offline_access` brings the refresh token the groups refresh needs — most providers issue one only for it; without one a session never reads the groups anew and is judged on those of the person's last login until it ends ([H-25](docs/security/identity-provider.md#h-25)) |
+| `COWORK_OIDC_GROUPS_CLAIM` | `groups` `# default` | a claim's name; `roles` `# example` | The claim that carries the groups, read from the ID token and, when it lacks it, from UserInfo; a string is one group, a list of strings the groups, anything else fails the login |
+| `COWORK_OIDC_ALLOWED_GROUPS` | empty `# default` | comma-separated group names, each at most 256 bytes; `cowork-users,Domain Users` `# example` | **The gate:** a person logs in through the provider only when one of their groups is here or is `COWORK_ADMIN_GROUP`, matched exactly, case and all; trimmed, a repetition dropped; a name cannot hold a comma. With this and `COWORK_ADMIN_GROUP` both empty the gate admits nobody: the login page offers no button and the start warns. A personal access token of a person of the provider meets the gate as well, on the groups of their last login or refresh (`401 not_allowed`). A person of another issuer than the configured one — or any person of a provider once none is configured — is outside the gate whatever their groups. **Security:** whoever can put a person into an allowed group at the provider lets them in |
+| `COWORK_ADMIN_GROUP` | empty `# default` | a group name of at most 256 bytes; `cowork-admins` `# example` | Its members are global administrators and pass the gate: they create tenants — each of which they then administer — and hold no role in a tenant they were not given until they grant themselves one, which the tenant's audit records; while no tenant exists, they and the local administrator alone log in. With `COWORK_BOOTSTRAP_TENANT_SLUG` the start maps it to the bootstrap tenant's `admin` role, and no local administrator is needed. **Security:** whoever can change this group at the provider administers the installation |
+| `COWORK_OIDC_GROUPS_REFRESH` | `15m` `# default` | a duration of at least `1m` | How often a session of the provider reads the person's groups again — on its next request, and at an open event stream's heartbeat — and how often a token of a person of the provider meets the gate. Shorter: a group left at the provider reaches cowork sooner, for a call to the provider per session and interval |
+| `COWORK_OIDC_GROUPS_MAX_AGE` | `168h` `# default` | a duration longer than `COWORK_OIDC_GROUPS_REFRESH`, which the start refuses otherwise | How old a person's groups — read at their last sign-in, or by the last session refresh that read them — may be for their personal access tokens to work: older ones refuse every token of the person with `401 not_allowed` until they sign in to the browser once, and an open event stream of such a token ends at its heartbeat. A local account's tokens are not affected. **Security:** bounds how long a person removed from a group at the provider keeps working tokens without signing in to the browser ([H-23](docs/security/identity-provider.md#h-23)); shorter asks people to sign in more often |
+| `COWORK_OIDC_EMAIL_TRUSTED` | `false` `# default` | `true`, `false` | Whether an address about which the provider says nothing — no `email_verified` claim, as Entra sends none — counts as verified when an administrator grants a role by e-mail address (`POST …/members`). With `false` only an address the provider marked verified finds a person, and a person of a provider that sends no claim is admitted by a group mapping instead; an address marked unverified never matches. **Security:** set `true` only for a provider whose addresses administrators issue: where people choose their own address unverified, one can claim a colleague's and be granted the colleague's role ([H-26](docs/security/identity-provider.md#h-26)) |
+| `COWORK_OIDC_DISPLAY_NAME` | `single sign-on` `# default` | at most 64 characters; `Acme SSO` `# example` | The login page's button: "Sign in with `<name>`" |
 
 **Limits** ([ADR 0039](docs/adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md))
 
@@ -389,6 +509,28 @@ the endpoint, the bucket and both keys together, or none of them. Without them u
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` `# default` | a duration, not negative | How long a replica keeps events for a reconnect's `Last-Event-ID`; beyond it the stream starts with `resync`. `0` keeps no replay |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10` `# default` | a count; `0` disables | The streams one person holds on one replica; one more closes the oldest with `event: unavailable` |
 
+#### The chat in the UI
+
+([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+[docs/operations/chat.md](docs/operations/chat.md)) — without `COWORK_CHAT_PROVIDERS` there is no
+chat, and a limit below set without it ends the start. Each id of the list has the variables of the
+second table. Source: [`backend/internal/config/chat.go`](backend/internal/config/chat.go).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_CHAT_PROVIDERS` | empty `# default` | `lmstudio,claude-work` `# example` | The providers the person picks from, by id, comma-separated; the first is a turn's default. **Security:** every provider listed receives what the chat reads for its person in every tenant, confidential tickets included — the owner's accepted risk ([H-37](docs/security/chat.md#h-37)); list a hosted provider only where every tenant's data may go to it |
+| `COWORK_CHAT_TURN_TIMEOUT` | `5m` `# default` | a duration, not negative; `0` disables | How long one turn — the model's calls and the tools' — may take; past it the turn ends with the `error` event `timeout` |
+| `COWORK_CHAT_MAX_STEPS` | `8` `# default` | a count; `0` disables | The calls of the model in one turn |
+| `COWORK_CHAT_TURNS_PER_PERSON` | `2` `# default` | a count; `0` disables | The turns one person runs at once on one replica; one more is `429 chat_busy` |
+
+| Variable of a provider | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_CHAT_<ID>_NAME` | the id `# default` | `LM Studio` `# example`; 1–64 characters without control characters | What the panel shows |
+| `COWORK_CHAT_<ID>_KIND` | — (required) | `openai`, `anthropic` | The wire format: OpenAI Chat Completions (LM Studio, Ollama, vLLM, OpenAI) or the Anthropic Messages API |
+| `COWORK_CHAT_<ID>_URL` | — (required) | `http://localhost:1234/v1` `# example`, `https://api.anthropic.com` `# example` | The base URL; `/chat/completions` is appended for `openai`, `/v1/messages` for `anthropic`; no user, query or fragment. **Security:** `https://`, or `http://` only on a host of the operator's network by its name or address — the key and every turn's text travel in it ([H-41](docs/security/chat.md#h-41)); never quoted in an error |
+| `COWORK_CHAT_<ID>_MODEL` | — (required) | `qwen/qwen3-30b-a3b-2507` `# example`; 1–200 characters without spaces or control characters | The model by the name its provider knows it; it is the mark's middle part |
+| `COWORK_CHAT_<ID>_API_KEY` | empty `# default`; required for `anthropic` | — | Sent as `Authorization: Bearer` (`openai`, where set) or `x-api-key` (`anthropic`), to that provider's host only. **Security:** a secret: from a Secret of its own in the chart, never echoed; the log's clip of a provider's error has it replaced ([H-42](docs/security/chat.md#h-42)) |
+
 #### Frontend container
 
 The image's entrypoint substitutes these four variables into the nginx configuration, and
@@ -405,12 +547,75 @@ nothing else:
 
 | Command | Does |
 |---|---|
-| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
+| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; discover the identity provider when `COWORK_OIDC_ISSUER` is set, and refuse to start when it cannot; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
 | `cowork migrate` | Load the configuration (`COWORK_DATABASE_URL` names the runtime role the migrations grant to, `COWORK_DATABASE_OWNER_URL` is the role they run as); apply pending migrations; exit 0. Exit 1 on a dirty or failing schema or a runtime role that could bypass row-level security |
 | `cowork version` | Print `cowork <version> (commit <sha>, built <epoch>)` |
 | `cowork help` | Print the usage (also `-h`, `--help`) |
 
 Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command or no command.
+
+### CLI (cowork-mcp)
+
+The MCP server for Claude Code and the commands its hooks run
+([ADR 0041](docs/adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md),
+[ADR 0067](docs/adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md),
+[ADR 0070](docs/adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md)). It is a
+client of `/api/v1` with the person's token and nothing else: every request carries
+`Authorization: Bearer`, `X-Cowork-Agent` ([the agent header of `cowork-mcp`](#keys-and-identifiers))
+and the `User-Agent` `cowork-mcp/<version>`, every `POST` an `Idempotency-Key` of its own, and a
+failed connection is retried twice where a repetition cannot act twice. It follows no redirect.
+Setup: [docs/operations/claude-code.md](docs/operations/claude-code.md); what it holds and leaves
+open: [docs/security/agent-client.md](docs/security/agent-client.md).
+
+| Variable | Default | Values | Meaning |
+|---|---|---|---|
+| `COWORK_URL` | — (required) | `https://cowork.example.com` `# example` | The installation, as the browser shows it; `http://` only for `localhost` or a loopback address; no user, query or fragment. **Security:** the token goes to this URL and nowhere else |
+| `COWORK_TOKEN` | — (required) | `cwk_…` | A personal access token, best an agent token with `write` scope. An error names the variable, never the value. **Security:** a credential: from the plugin's sensitive option (the system's credential store) rather than a shell profile or a settings file |
+| `CLAUDE_PROJECT_DIR` | the working directory | `/home/ada/src/app` `# example` | The directory whose repository a session works in; set by Claude Code. A hook's own `cwd` comes first |
+
+| Command | Does |
+|---|---|
+| `cowork-mcp serve` | The MCP server on stdio. At start it compares its major version with the installation's, checks that the installation serves every operation its tools use and reads the token; a refusal answers every tool call with the reason, an installation it cannot reach is asked again at the next call. Exit 1 at once on a missing or malformed variable |
+| `cowork-mcp session-context` | The `SessionStart` hook: reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), prints the session block — the binding or the proposal, the active ticket with its context or the top of the backlog, what happened since the last session — as plain text of at most about 9 000 bytes, and records the start (not after a compaction). Nothing in a directory with no remote and no binding file, or without the two variables; one line naming the cause on a malformed variable or a failure, and the token page where a new token may help. Exit 0 always |
+| `cowork-mcp session-end` | The `Stop` hook: prints `{"systemMessage": "cowork: …"}` when a ticket of the person is `in-progress` in the bound project, the repository shows work since the session started and nothing was recorded on the ticket since; nothing otherwise, also on every error and while `stop_hook_active`. Exit 0 always |
+| `cowork-mcp token check` | Whether the token works against the installation: its person, name, scope, restriction, capabilities and expiry; `--json` for the same as an object. Exit 1 when it does not work, with the installation's answer and the token page |
+| `cowork-mcp lookup` | The working directory's remotes, binding file and binding — or the proposal, or why there is none; `--json` for the same as an object |
+| `cowork-mcp version` | `cowork-mcp <version> (commit <sha>, built <epoch>, API /api/v1: <n> operations)` |
+| `cowork-mcp help` | The usage (also `-h`, `--help`) |
+
+Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command, no command or
+`--json` where a command takes none.
+
+#### The tools
+
+Every tool answers Markdown that names the canonical key of what it touched; `api` answers the
+API's JSON. A refusal of the API is the tool's error with the API's status and `code`. Each
+description names the limits the token can run into, and once the token is read, which
+capabilities it holds and lacks
+([ADR 0042](docs/adr/0042-twelve-workflow-tools-and-one-escape-hatch.md),
+[ADR 0043](docs/adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).
+A key is `tenant/PROJECT-n`, or `PROJECT-n` in a bound session.
+
+| Tool | Arguments | Does | Capability |
+|---|---|---|---|
+| `session_start` | — | the session block of `session-context`, again; the binding it finds is the session's | — |
+| `get_ticket` | `key`, `comments` (10), `activity` (10) | the ticket's context document and the commit strings for it; read only | — |
+| `search` | `query` (optional in one project: without it, the project's tickets in rank order), `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
+| `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]` | files a ticket in the bound or the named project, then its links | — |
+| `record_state` | `key`, `body`, `comment` | replaces the body as a whole with `If-Match` of the version it read | — |
+| `comment` | `key`, `text` | comments, in the person's name with the agent's mark | — |
+| `link` | `key`, `type`, `other_key` | links two tickets of a tenant; an existing link is success | — |
+| `watch` | `key` | sets the person's `watch` interest | — |
+| `open_question` | `key`, `question`, `options`, `recommendation`, `asked_of` | opens one question for a person (`me`, a username, a display name or an id; left out, the tenant) | — |
+| `record_answer` | `key`, `question`, `answer` | writes down the answer the person gave in chat, marked as recorded by the agent | `record-answer` |
+| `transition` | `key`, `to`, `reason_or_note`, `block_kind`, `blocked_by`, `comment` | moves the ticket from the state it read | `decide` to `decided`, `close` to `done`, `drop` to `dropped` |
+| `set_progress` | `key`, `percent`, `stage` (`implementation`), `note`, `reason`, `comment` | sets one of the three stages | `close` when it closes the ticket |
+| `finish_work` | `key`, `verification_note` | the note as a comment, the implementation stage at 100 — unless that would close the ticket without `close` —, then `done` with `close` from `in-progress` or `review`, else `review` from `in-progress`; says what remains for a person and for the repository | `close` for `done` |
+| `create_project` | `tenant`, `key`, `name`, `remote`, `path` | creates a project and binds the repository in one act, after the person's yes to the proposal; idempotent over the remote | `create-project` |
+| `api` | `method`, `path`, `body`, `if_match` | any route under `/api/v1/` of the installation with the same token and limits; a `POST` gets an `Idempotency-Key` | as the route needs |
+
+`session_start` is for a terminal session; a host that runs the tools in the backend leaves it
+out (`tools.Catalogue(tools.Anywhere)`, [mcp.md](docs/developer/mcp.md)).
 
 ### API (backend)
 
@@ -420,25 +625,45 @@ serves it at `/api/v1/openapi.json` with `info.version` set to its own version, 
 every request against it. What this section says in one line per route, the document says in
 full.
 
-- **Authentication.** Every route under `/api/v1/` except `version` and `openapi.json` takes
+- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json` and
+  `schemas/cowork-yaml.json` takes
   one of two credentials, and the document says which per operation (`bearerToken`,
   `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
-  agents; the session cookie `__Host-cowork-session` of `POST /auth/local` is for the browser. A
-  request with an `Authorization` header is a token's, whatever cookie it carries. Without a
-  valid credential the answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Six routes take a **session only** and answer a
+  agents; the session cookie `__Host-cowork-session` of a browser login — `POST /auth/local`, or
+  the identity provider's `GET /auth/callback` — is for the browser. A request with an
+  `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
+  answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
+  token whose person the identity provider's gate no longer admits) with
+  `WWW-Authenticate: Bearer realm="cowork"`. Sixteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
-  changing a password, logging out ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
-  [ADR 0033](docs/adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
-  D1, D5). A **write of a session** must come
+  changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
+  capabilities, a global administrator's list of every tenant, and the administration acts that can give access — adding a
+  member, setting a grant, making or changing a group mapping, restricting or opening a project,
+  putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
+  [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
   ([CSRF](docs/security/csrf.md)). A session whose account has a temporary password can only read
   `GET /api/v1/me`, change the password and log out; everything else is
   `403 password_change_required`. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an
   agent's; a token with the agent flag makes it one with or without the header.
+- **Who made an act.** The person is the actor of every act, through a token too. An act made
+  through a token carries the token — `token`, `{"id","name"}`, the name as the token has it, kept
+  after a revocation, never its secret — beside the agent mark: an act of the activity, a comment
+  and a revision of it, a file, a time entry and a revision of it, a stake (`agent`, `token`), a
+  question (`asked_by_token`, `answered_by_token`), the ticket's filing (`reporter_agent`,
+  `reporter_token`); `null` for a browser session. Whoever reads the act reads the token's name;
+  the activity of an act recorded before the name was kept has `"name": null`. The context
+  document says `through the token <name>` where it says `via <agent>` of an agent's act, and the
+  tenant's audit view carries `token_name` beside `token_id` in JSON and as the last column of its CSV
+  ([ADR 0036](docs/adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+  D6, [tokens](docs/security/tokens.md#what-is-recorded)).
 - **Tenants.** A route under `/api/v1/tenants/{tenant}` answers `404 not_found` alike for an
-  unknown slug, a tenant the person does not belong to and a token restricted to another.
+  unknown slug, a tenant the person does not belong to and a token restricted to another. A global
+  administrator who holds no role in the tenant reaches, in a browser session no `X-Cowork-Agent`
+  marks, its administration — `GET …`, `GET …/members` (without addresses), `GET …/group-mappings`
+  — and the grant of a role to themselves, `PUT …/members/{their id}/grant`; every other route
+  answers them that `404` too ([tenancy](docs/security/tenancy.md#a-global-administrator-without-a-role)).
 - **Writes.** An entity's `ETag` is its version; an overwriting write needs it in `If-Match`
   (`428` without, `412` with a stale one). An `Idempotency-Key` (a UUID) makes a creating
   `POST` safe to retry for 24 hours — the same request replays the stored answer, another one
@@ -462,16 +687,24 @@ full.
 | `GET /readyz` | `200 {"status":"ready"}`, or `503 not_ready` when the database does not answer (the error goes to the log); no authentication |
 | `GET /api/v1/version` | `200 {"version":"…","commit":"…","build_time":"…"}`; no authentication |
 | `GET /api/v1/openapi.json` | the API document; no authentication |
+| `GET /api/v1/schemas/cowork-yaml.json` | the JSON Schema (draft 2020-12) of a repository's `.cowork.yaml`: `tenant` and `project` required, `path` and `url` optional, nothing else; no authentication |
 | a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
 | any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
-| `GET /auth/options` | `200 {"local": bool, "oidc": false, "password_min_length": int}` — what the login page offers: the local form while an active local account exists, and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
+| `GET /auth/options` | `200 {"local": bool, "oidc": bool, "oidc_name": string or null, "password_min_length": int}` — what the login page offers: the local form while an active local account exists; the identity provider's button while one is configured and its gate names a group, with its name (`COWORK_OIDC_DISPLAY_NAME`; `null` without a provider); and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
+| `GET /auth/oidc/login?return_to=<path>` | a browser navigation: `302` to the identity provider's authorization endpoint for the code flow with PKCE (`S256`), a `state` and a `nonce`, setting the state cookie `__Host-cowork-oidc` for ten minutes; `303` to `/login?error=oidc_unavailable` without a provider or with a gate that admits nobody. `return_to` is a path of this installation — one leading `/`, no `//`, `/\`, backslash or control character, at most 2048 bytes — or `/`; no authentication |
+| `GET /auth/callback` | the provider's return, the redirect URI: the state cookie (at most ten minutes old) and its `state`, the code redeemed with the PKCE verifier, the ID token verified, the groups read and judged by the gate, the person found by issuer and subject or made, their memberships derived from the tenants' group mappings, the session made; `303` to `return_to` with the session cookie, or `303` to `/login?error=<code>&return=<path>` with `oidc_failed`, `not_allowed`, `not_initialised` or `oidc_unavailable` — the state cookie cleared either way. Parameters the provider adds (`iss`, `session_state`) are taken and not read; no authentication |
 | `POST /auth/local` | `{"username","password"}` → `200 {"password_change_required": bool}` and the session cookie; every failure is `401 invalid_credentials`, the same answer in the same time for an unknown username, a wrong password, a locked or a deactivated account; `429 too_many_attempts` from the address throttle; `403 not_initialised` for a person who is not a global administrator while no tenant exists; `403 csrf` unless the `Origin` is `COWORK_BASE_URL`; no authentication |
-| `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` |
-| `GET /api/v1/me` | the calling person and their memberships, whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
-| `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's (`403 forbidden`) |
+| `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` — or, for a session of the identity provider whose discovery names an `end_session_endpoint`, `200 {"end_session_url"}`: that endpoint with `client_id` and `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, for the browser to go to; cowork does not call it |
+| `GET /api/v1/me` | the calling person and their memberships — each with the effective role and its `origins`, `mapping` and `grant` with their own roles — whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
+| `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
 | `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
-| `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only |
+| `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only. The `name` shows on every act made through the token, to whoever reads the act |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
+| `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, `restricted_project`, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
+| `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
+| `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
+| `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
+| `GET /api/v1/tenants` | a global administrator, session only: every tenant of the installation by slug, `{"slug","name","role"}` — `role` the caller's, the higher of mapping and grant, `null` where they hold none; `limit` and `cursor`. Anybody else `403 forbidden`; a token `403 session_required` |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
 
@@ -496,31 +729,78 @@ An administrator's own account is off limits for a password reset, an unlock and
 | `POST …/accounts` | a session only: create one: `{"username","display_name","temporary_password","role"}`; the person changes the password at the first login; a marked grant with that role; `409 username_taken` (the installation has one namespace) |
 | `PUT …/accounts/{username}/password` | a session only: set a new temporary password; every session of the account ends |
 | `DELETE …/accounts/{username}/lockout` | forget the failures and the lock of the username |
-| `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay |
+| `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay; `409 last_admin`, changing nothing, when the tenant would be left without an administrator who can log in — the deactivation takes the tenant's lock, so two administrators who deactivate each other at once are decided one after the other; the other tenants the person administers are not asked |
 | `DELETE …/accounts/{username}/sessions` | end every session of the account, at once; tokens are not affected |
 
 </details>
 
 <details>
-<summary>Tenant and projects — 10 routes</summary>
+<summary>Members, group mappings and project access — 12 routes</summary>
+
+For the tenant's administrators, never an agent, unless a row says otherwise — a global
+administrator who holds no role in the tenant reads the members and the mappings and grants a role
+to themselves, and one who holds a role below `admin` raises their own grant. Every act that can give access takes a **browser session only** — a token, an administrator's included, is
+`403 session_required` — because what it gives would outlive a leaked token's revocation; removing a
+grant, a mapping or an access entry works with an `admin`-scope token as well. A change of a grant or
+of a mapping that would leave the tenant without an administrator who can log in — mapped or
+granted, active, and a local account or a person of the configured issuer whom the gate admitted at
+their last login, refresh or check — is `409 last_admin` and changes nothing; these changes take the
+tenant's lock, so two at once are decided one after the other. Every change is recorded and
+announced on the event stream as `membership.changed`.
 
 | Method and path | Does |
 |---|---|
-| `GET …` | the tenant and its settings |
-| `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
-| `GET …/members` | the members and their roles |
-| `GET …/audit` | the audit record, newest first, for administrators; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv` |
-| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
-| `GET …/projects` | the projects the caller can see, by key; `include_archived` |
-| `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project` |
-| `GET …/projects/{project}` | one project |
-| `PATCH …/projects/{project}` | change its name, its description or its advisory WIP limits per state — `analysed`, `decided`, `in-progress`, `review`, `blocked` — a member with `write`, an agent too; `If-Match` |
-| `PUT …/projects/{project}/archive` | archive it — an administrator, never an agent; it keeps its tickets and refuses new ones |
+| `GET …/members` | every member reads it, and a global administrator without a role in the tenant, in a session: the members by person id, each with the effective role — the higher of the mapped and the granted one — every origin with its own role (`mapping`, `grant`), `local` for a person with a local account, and `email`: the person's address for the tenant's administrators, `null` for everyone else and for a person without one |
+| `POST …/members` | a session only: `{"person","role"}` grants a role to a person who exists — an e-mail address, compared without regard to case with the address the identity provider asserted at the person's last login — only one it marked verified, or, with `COWORK_OIDC_EMAIL_TRUSTED=true`, one it said nothing about; never one it marked unverified — among the persons of the configured issuer, or a local account's username, with or without `local:`; `201` with the member; `404 person_not_found`, `409 person_ambiguous` (an address several persons share), `409 grant_exists`; takes an `Idempotency-Key` |
+| `PUT …/members/{person_id}/grant` | a session only: `{"role"}` creates the member's grant or changes its role; the mapped membership is never touched; `404 person_not_found` for a person who is no member. A global administrator who does not hold `admin` in the tenant — no role there, or a lower one — sets their own grant here, their own id and any role: a marked grant made or its role changed, recorded in the tenant with them as its actor, never `409 last_admin`; a grant to anybody else is `403 forbidden` |
+| `DELETE …/members/{person_id}/grant` | removes the grant; a mapped membership stays; `204`, also when there was none |
+| `GET …/group-mappings` | `read` scope, and a global administrator without a role in the tenant, in a session: the mappings by group, each with `includes_caller` — whether the caller's own groups, as of their last login or refresh, hold it |
+| `POST …/group-mappings` | a session only, of a global administrator who administers the tenant — any other administrator is `403 forbidden`, and nothing is written, because every tenant shares the provider's groups: `{"group","role"}`, the group as the provider's claim carries it, case and all; the memberships of every active person of the configured issuer behind the gate whose groups hold it are derived at once — whoever holds the group joins the tenant; `201` with `ETag` and `Location`; `409 mapping_exists`; takes an `Idempotency-Key` |
+| `PATCH …/group-mappings/{mapping_id}` | a session only, of a global administrator who administers the tenant (`403 forbidden` otherwise): `{"role"}` with `If-Match`; the memberships follow at once |
+| `DELETE …/group-mappings/{mapping_id}` | any administrator of the tenant: removes it; the memberships it derived go, or fall to the person's other mapped groups; grants stay; `204`, also when there was none |
+| `PUT …/projects/{project}/restriction` | a session only: `{"restricted": bool}` with the project's `If-Match`; a restricted project is visible to the tenant's administrators and the people on its access list, and to nobody else |
+| `GET …/projects/{project}/access` | `read` scope: the project's access list by person id, each entry `member` or `viewer`, with the person's `email` |
+| `PUT …/projects/{project}/access/{person_id}` | a session only: `{"role"}`, `member` or `viewer`, puts a member of the tenant on the list or changes their entry — their role in the project is the lower of their tenant role and the entry; `404 person_not_found` for a person who is no member. The list may be written before the project is restricted |
+| `DELETE …/projects/{project}/access/{person_id}` | takes a person off the list; `204`, also when they were not on it |
 
 </details>
 
 <details>
-<summary>Tickets — 19 routes</summary>
+<summary>The chat in the UI — 3 routes</summary>
+
+Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+[docs/developer/chat.md](docs/developer/chat.md)).
+
+| Method and path | Does |
+|---|---|
+| `GET …/chat` | whether the tenant's members may chat: `{"available", "providers": [{"id","name","kind","model"}], "reason"}` — the providers in the configured order, never a URL or a key; `reason` is `not_configured` without a provider, `null` otherwise; a token as well |
+| `POST …/chat` | a session only, CSRF-checked: one turn, `{"conversation","messages"}` and optionally `provider` (an id of the list; the first when left out; another is `400 validation_failed`) and `context` (the page); `200 text/event-stream` with the events `text`, `tool_call`, `ui`, `tool_result`, `error` and `done` last, which carries the messages to append and the reason `answered`, `step_limit`, `stopped` or `error`. Every tool call runs at once as the person's agent, `chat/<model>/<conversation>`, with the person's chat capabilities; `409 chat_unavailable` without a provider, `429 chat_busy` past `COWORK_CHAT_TURNS_PER_PERSON` |
+| `DELETE …/chat/turns` | a session only, never an agent-marked one, CSRF-checked: ends every running turn of the session's person in the tenant on the replica that answers, at once; `204` once they have ended, or after five seconds; nothing running is no error. Another replica's turns are not reached ([H-48](docs/security/chat.md#h-48)) |
+
+</details>
+
+<details>
+<summary>Tenant and projects — 12 routes</summary>
+
+| Method and path | Does |
+|---|---|
+| `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
+| `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
+| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before |
+| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
+| `GET …/projects` | the projects the caller can see, by key; `include_archived` |
+| `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
+| `GET …/projects/{project}` | one project |
+| `PATCH …/projects/{project}` | change its name, its description or its advisory WIP limits per state — `analysed`, `decided`, `in-progress`, `review`, `blocked` — a member with `write`, an agent too; `If-Match` |
+| `PUT …/projects/{project}/archive` | archive it — an administrator, never an agent; it keeps its tickets and refuses new ones |
+| `GET …/projects/{project}/repositories` | the repositories it owns, in the order they were bound: `identity`, `path`, `remote` as last given without credentials |
+| `POST …/projects/{project}/repositories` | bind one, `{"remote"}` and optionally `path` — those who may create a project, judged by the role in it; `201` new, `200` when the project binds it already, its remote updated to the form given; `409 repository_bound` when another project of the tenant binds it, naming that project only to a caller who sees it |
+| `DELETE …/projects/{project}/repositories/{repository}` | unbind it — the same people; `204` also when the binding is gone; the project and its tickets stay |
+
+</details>
+
+<details>
+<summary>Tickets — 20 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -539,9 +819,10 @@ An administrator's own account is off limits for a password reset, an unlock and
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
 | `GET …/{number}/interest` | who holds a stake in it |
-| `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise |
+| `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
 | `DELETE …/{number}/interest` | remove the caller's own stake |
 | `GET …/{number}/markdown` | its canonical Markdown, `text/markdown`; the `ETag` is its version; every call is recorded |
+| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent — or the token, `(through the token <name>)` —, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree, eight levels), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
 | `GET …/{number}/activity` | every recorded act on it, from the audit record |
 
 </details>
@@ -609,6 +890,7 @@ every error body carries one of these as `code`.
 | `unauthenticated` | 401 | No token or session, a malformed one, or one cowork does not know; a session that expired or was ended answers the same |
 | `token_expired` | 401 | The token is past its expiry (docs/adr/0035 D4) |
 | `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
+| `not_allowed` | 401 | The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one, or their groups were read longer ago than COWORK_OIDC_GROUPS_MAX_AGE, until a sign-in in the browser reads them again. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8) |
 | `invalid_credentials` | 401 | The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6) |
 | `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
 | `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
@@ -618,10 +900,16 @@ every error body carries one of these as `code`.
 | `not_initialised` | 403 | The installation has no tenant yet and the person is not a global administrator (docs/adr/0032 D5) |
 | `csrf` | 403 | A cookie-authenticated write, or the login, did not come from COWORK_BASE_URL or lacks `X-Requested-With: cowork` (docs/adr/0037 D1) |
 | `not_found` | 404 | No such route, or a tenant, project or ticket the caller cannot see — the answer does not say which (docs/adr/0047 D5) |
+| `person_not_found` | 404 | No active person has this e-mail address or username — nobody logged in with it through the identity provider and no local account has it — or the person named is not a member of the tenant (docs/adr/0030 D3) |
 | `method_not_allowed` | 405 | The path exists with other methods; `Allow` names them |
 | `username_taken` | 409 | The installation has a person with this username; usernames are unique (docs/adr/0033 D2) |
 | `tenant_slug_taken` | 409 | The installation has a tenant with this slug; slugs are never reused (docs/adr/0005 D4) |
 | `project_key_taken` | 409 | The tenant has a project with this key; keys are never reused (docs/adr/0007 D4) |
+| `repository_bound` | 409 | Another project of the tenant binds this repository and path; a repository is in at most one project (docs/adr/0066 D6) |
+| `person_ambiguous` | 409 | Several persons have this e-mail address, which is a display attribute and not an identity (docs/adr/0029 D5); nobody was granted |
+| `grant_exists` | 409 | The person holds a grant in this tenant already; change its role with `PUT …/members/{person_id}/grant` (docs/adr/0030 D3) |
+| `mapping_exists` | 409 | The tenant maps this group already; change that mapping's role instead (docs/adr/0030 D2) |
+| `last_admin` | 409 | The change would leave the tenant without an administrator who can sign in: nobody active and admitted by the gate would hold the admin role, mapped or granted (docs/adr/0034 D1) |
 | `project_archived` | 409 | An archived project refuses new tickets (docs/adr/0006 D4) |
 | `state_conflict` | 409 | The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2) |
 | `parent_cycle` | 409 | The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2) |
@@ -630,14 +918,17 @@ every error body carries one of these as `code`.
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
+| `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
 | `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |
 | `unsupported_media_type` | 415 | The body's type is not one the route accepts |
 | `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
 | `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
 | `too_many_attempts` | 429 | More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
+| `chat_busy` | 429 | The person has as many turns of the chat running as COWORK_CHAT_TURNS_PER_PERSON allows on this replica — in another tab, say; one ends, or is stopped with `DELETE …/chat/turns`, first (docs/adr/0076) |
 | `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
-| `not_ready` | 503 | The backend cannot reach its database |
+| `chat_provider_failed` | 502 | The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076) |
+| `not_ready` | 503 | The backend cannot do the work now: it cannot reach its database, it streams no events, or it is shutting down and ends a turn of the chat |
 | `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
 | `backend_unreachable` | 502 | The frontend's proxy could not reach the backend; answered by nginx without a request id (docs/adr/0047 D6) |
 <!-- problem-codes:end -->
@@ -677,8 +968,8 @@ localAdmin:                           # the local administrator of docs/adr/0032
   username: ""                        # renders <fullname>-local-admin; plain text in the release and in `helm get values`
   password: ""                        # both inline values or neither; the existing Secret wins; needs backend.config.baseURL
 bootstrap:
-  tenant:                             # created at start while no tenant exists; once one does, these do nothing; needs localAdmin
-    slug: ""                          # COWORK_BOOTSTRAP_TENANT_SLUG
+  tenant:                             # created at start while no tenant exists; once one does, these do nothing; needs localAdmin or auth.oidc.adminGroup
+    slug: ""                          # COWORK_BOOTSTRAP_TENANT_SLUG; the administrator group, when set, is mapped to its admin role
     name: ""                          # COWORK_BOOTSTRAP_TENANT_NAME; both or neither
 auth:
   local:
@@ -686,6 +977,21 @@ auth:
     lockout: window                   # COWORK_LOGIN_LOCKOUT: window | admin
     maxFailures: 5                    # COWORK_LOGIN_MAX_FAILURES within fifteen minutes; 0 never locks
     addressLimit: 20                  # COWORK_LOGIN_ADDRESS_LIMIT attempts per client address (IPv6: per /64) and minute; 0 disables
+  oidc:                               # the login through an OpenID Connect provider; every other value is rendered only with the issuer
+    issuer: ""                        # COWORK_OIDC_ISSUER, e.g. https://login.example.com; its discovery is fetched at every start, which fails when it cannot be; needs backend.config.baseURL
+    clientId: ""                      # COWORK_OIDC_CLIENT_ID; or from existingSecret, with keys.clientId
+    existingSecret: ""                # required with the issuer: the client secret comes from a Secret only, there is no inline value
+    keys:
+      clientSecret: clientSecret      # COWORK_OIDC_CLIENT_SECRET
+      clientId: ""                    # empty: the client id is clientId above
+    scopes: openid profile email groups offline_access # COWORK_OIDC_SCOPES; offline_access brings the refresh token the groups refresh needs
+    groupsClaim: groups               # COWORK_OIDC_GROUPS_CLAIM
+    allowedGroups: []                 # COWORK_OIDC_ALLOWED_GROUPS, rendered comma-separated: the gate; a name with a comma fails rendering
+    adminGroup: ""                    # COWORK_ADMIN_GROUP: global administrators; with allowedGroups empty as well, nobody logs in through the provider
+    groupsRefresh: 15m                # COWORK_OIDC_GROUPS_REFRESH, at least 1m
+    groupsMaxAge: 168h                # COWORK_OIDC_GROUPS_MAX_AGE, longer than groupsRefresh: older groups refuse the person's tokens until they sign in
+    emailTrusted: false               # COWORK_OIDC_EMAIL_TRUSTED: true lets a grant by address match a person without the email_verified claim; only for a provider whose addresses administrators issue
+    displayName: single sign-on       # COWORK_OIDC_DISPLAY_NAME: "Sign in with <name>"
 storage:                              # S3-compatible object storage; without an endpoint uploads are refused
   existingSecret: ""                  # required with an endpoint: the key of a bucket-scoped policy, never root
   keys:
@@ -699,6 +1005,13 @@ storage:                              # S3-compatible object storage; without an
     caConfigMap: ""                   # ConfigMap with a private authority's PEM, mounted at /etc/cowork/s3-ca
     keys:
       ca: ca.crt                      # the ConfigMap's key; COWORK_S3_CA=/etc/cowork/s3-ca/<key>
+chat:                                 # the chat in the UI; every value is rendered only with a provider
+  providers: []                       # COWORK_CHAT_PROVIDERS and COWORK_CHAT_<ID>_*: the person picks one, the first is the default.
+                                      # Each: {id, name, kind: openai|anthropic, url, model, existingSecret, keys: {apiKey: apiKey}};
+                                      # a key from that provider's own Secret only, an inline apiKey fails rendering.
+                                      # Every provider receives what the chat reads in every tenant, confidential tickets included
+  turnTimeout: 5m                     # COWORK_CHAT_TURN_TIMEOUT; 0 disables
+  maxSteps: 8                         # COWORK_CHAT_MAX_STEPS; 0 disables
 networkPolicy:                        # which pods may reach the backend
   enabled: true                       # ingress to the backend pods from the frontend pods only; enforced only by a network plugin that implements NetworkPolicy
 ingress:                              # targets the frontend Service
@@ -726,7 +1039,7 @@ backend:
     logLevel: info                    # COWORK_LOG_LEVEL, also for the init container
     logFormat: json                   # COWORK_LOG_FORMAT, also for the init container
     shutdownTimeout: 15s              # COWORK_SHUTDOWN_TIMEOUT; keep below terminationGracePeriodSeconds
-    baseURL: ""                       # COWORK_BASE_URL, set only when non-empty: the origin the browser shows; required with localAdmin
+    baseURL: ""                       # COWORK_BASE_URL, set only when non-empty: the origin the browser shows; required with localAdmin or auth.oidc.issuer
     trustedProxies: ""                # COWORK_TRUSTED_PROXIES, set only when non-empty: the networks of the proxies in front of the backend, comma-separated CIDRs
     maxJsonBody: 1048576              # COWORK_MAX_JSON_BODY, bytes; 0 disables
     attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (nginx then has no body limit either)
@@ -816,8 +1129,11 @@ without `database.owner.existingSecret` or `database.owner.url` while
 `backend.config.migrateOnStart` is `true`; without `session.existingSecret`; with a
 `storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`; with one of
 `localAdmin.username` and `localAdmin.password` alone, or a local administrator without
-`backend.config.baseURL`; and with `bootstrap.tenant.slug` and `.name` apart or without a local
-administrator. `helm lint` reports
+`backend.config.baseURL`; with an `auth.oidc.issuer` but no `backend.config.baseURL`, no client
+id (`auth.oidc.clientId`, or `auth.oidc.keys.clientId` with the Secret) or no
+`auth.oidc.existingSecret`, or with a group in `auth.oidc.allowedGroups` that holds a comma; and
+with `bootstrap.tenant.slug` and `.name` apart, or without a local administrator or an
+`auth.oidc.adminGroup` of a configured issuer. `helm lint` reports
 these as info lines, `helm template` and `helm install` fail. Where a Secret reference and its
 inline URL are both set, the reference wins and the URL is ignored.
 
@@ -835,7 +1151,16 @@ The modes that change what is exposed:
   readable with `helm get values`, so leave it empty — and nothing migrates: the backend
   refuses to start until `cowork migrate` has run.
 - **The server key has no inline path.** One Secret gives every replica the same key;
-  rotating it invalidates the cursors clients hold.
+  rotating it invalidates the cursors clients hold and ends each session of the identity provider
+  that holds a refresh token at its next refresh.
+- **The identity provider's client secret comes from a Secret only.** `auth.oidc.existingSecret`
+  names it — there is no inline value — and the client id is a value or the same Secret's
+  `auth.oidc.keys.clientId`. Every other `auth.oidc` value is rendered only while
+  `auth.oidc.issuer` is set, so emptying the issuer alone switches the provider off; the notes name
+  the redirect URI to register, `<backend.config.baseURL>/auth/callback`, and warn while the gate
+  names no group. The members of `auth.oidc.adminGroup` are global administrators: whoever may change
+  that group at the provider administers the installation
+  ([operations](docs/operations/installation.md#the-identity-provider)).
 - **The local administrator: a Secret or inline values.** `localAdmin.existingSecret` names a
   Secret whose keys `localAdmin.keys.username` and `.password` hold the account; the chart never
   sees the password. `localAdmin.username` and `.password` render `<fullname>-local-admin` for
@@ -868,10 +1193,11 @@ make dev                  # the whole stack with demo data; the UI on :4200 with
 make generate             # after a change to backend/api/, the SQL queries or the problem catalogue; CI fails on drift
 make frontend-generate    # after make generate changed the API document: the Angular client; CI fails on drift
 make lint cyclo gosec vuln
-make postgres-up minio-up # what the integration tier needs
+make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
 make build                # bin/cowork and frontend/dist/frontend/browser
+make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile
 make docker-build         # both images, from backend/Containerfile and frontend/Containerfile
 ```
 

@@ -3,67 +3,89 @@
     <app-wordmark [height]="56" />
     <h1 id="login-title">Sign in</h1>
 
+    @if (providerRefusal(); as message) {
+      <p class="error notice" role="alert" data-testid="login-provider-error">{{ message }}</p>
+    }
+
     @if (auth.options.isLoading()) {
       <p class="muted">Loading…</p>
     } @else if (unavailable()) {
       <p class="muted" data-testid="login-unavailable">
-        This installation offers no login yet. An operator configures the local administrator or an
-        identity provider.
+        This installation offers no sign-in yet. An operator configures the local administrator or
+        an identity provider.
       </p>
-    } @else if (local()) {
-      <form class="form" (ngSubmit)="submit()">
-        <label class="field">
-          <span>Username</span>
-          <input
-            pInputText
-            name="username"
-            autocomplete="username"
-            [ngModel]="username()"
-            (ngModelChange)="username.set($event)"
-            data-testid="login-username"
-          />
-        </label>
-        <label class="field">
-          <span>Password</span>
-          <span class="password">
-            <input
-              pInputPassword
-              [(mask)]="masked"
-              id="login-password"
-              name="password"
-              [ngModel]="password()"
-              (ngModelChange)="password.set($event)"
-              autocomplete="current-password"
-              [fluid]="true"
-              data-testid="login-password"
-            />
-            <button
-              type="button"
-              class="reveal"
-              (click)="masked.set(!masked())"
-              [attr.aria-label]="masked() ? 'Show the password' : 'Hide the password'"
-              data-testid="login-reveal"
-            >
-              <i [class]="masked() ? 'pi pi-eye' : 'pi pi-eye-slash'"></i>
-            </button>
-          </span>
-        </label>
-        @if (error(); as message) {
-          <p class="error" role="alert" data-testid="login-error">{{ message }}</p>
-        }
+    } @else {
+      @if (oidc()) {
         <button
           pButton
-          type="submit"
+          type="button"
           [fluid]="true"
-          data-testid="login-submit"
-          [disabled]="!canSubmit() || busy()"
+          (click)="signInWithProvider()"
+          data-testid="login-oidc"
         >
-          @if (busy()) {
-            <i class="pi pi-spinner pi-spin"></i>
-          }
-          Sign in
+          <i class="pi pi-sign-in"></i>Sign in with {{ providerName() }}
         </button>
-      </form>
+        @if (local()) {
+          <p-divider align="center" class="divider" data-testid="login-divider">
+            <span class="muted">or with a local account</span>
+          </p-divider>
+        }
+      }
+      @if (local()) {
+        <form class="form" (ngSubmit)="submit()">
+          <label class="field">
+            <span>Username</span>
+            <input
+              pInputText
+              name="username"
+              autocomplete="username"
+              [ngModel]="username()"
+              (ngModelChange)="username.set($event)"
+              data-testid="login-username"
+            />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <span class="password">
+              <input
+                pInputPassword
+                [(mask)]="masked"
+                id="login-password"
+                name="password"
+                [ngModel]="password()"
+                (ngModelChange)="password.set($event)"
+                autocomplete="current-password"
+                [fluid]="true"
+                data-testid="login-password"
+              />
+              <button
+                type="button"
+                class="reveal"
+                (click)="masked.set(!masked())"
+                [attr.aria-label]="masked() ? 'Show the password' : 'Hide the password'"
+                data-testid="login-reveal"
+              >
+                <i [class]="masked() ? 'pi pi-eye' : 'pi pi-eye-slash'"></i>
+              </button>
+            </span>
+          </label>
+          @if (refusal(); as message) {
+            <p class="error" role="alert" data-testid="login-error">{{ message }}</p>
+          }
+          <button
+            pButton
+            type="submit"
+            [fluid]="true"
+            data-testid="login-submit"
+            [disabled]="!canSubmit() || busy()"
+          >
+            @if (busy()) {
+              <i class="pi pi-spinner pi-spin"></i>
+            }
+            Sign in
+          </button>
+        </form>
+      }
     }
   </section>
 </main>

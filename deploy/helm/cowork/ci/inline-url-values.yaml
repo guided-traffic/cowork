@@ -10,6 +10,26 @@ session:
 localAdmin:
   username: admin
   password: change-me-before-use
+# The identity provider with the client id as a value and a gate without an
+# administrator group; the client secret comes from a Secret in every shape
+# (docs/adr/0058 D3).
+auth:
+  oidc:
+    issuer: https://dex.example.test/dex
+    clientId: cowork
+    existingSecret: cowork-oidc
+    allowedGroups:
+      - cowork-users
+# The chat to one model in the cluster that takes no key, named by its id
+# alone, with both limits switched off (docs/adr/0076).
+chat:
+  providers:
+    - id: ollama
+      kind: openai
+      url: http://ollama.ai.svc:11434/v1
+      model: openai/gpt-oss-20b
+  turnTimeout: 0
+  maxSteps: 0
 backend:
   config:
     baseURL: http://localhost:4200

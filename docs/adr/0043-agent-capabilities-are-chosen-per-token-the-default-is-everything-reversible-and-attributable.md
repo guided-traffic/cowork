@@ -23,16 +23,27 @@ to.
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
 on a move in the rank since 2026-10-03 and on adopting the score with the score,
-`create-project`'s repository binding with that binding — the set recorded on
-each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
+`create-project`'s repository binding with that binding (since 2026-10-04 on binding and
+unbinding a repository) — the set recorded on each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
 `PATCH` that fills the last progress stage, refused with `agent_forbidden` outside `in-progress`
 and `review` ([`mayClose`](../../backend/internal/api/transitions.go)); without `close` that
-`PATCH` is refused whole and the stage keeps its value. D6 arrives with the MCP server. The token page (phase 3, 2026-10-03) offers the nine
+`PATCH` is refused whole and the stage keeps its value. D6 is built (2026-10-04): `GET /api/v1/me/token` answers the token a request presents with
+the request's mark — whether it is an agent's, the agent recorded, the capabilities it holds —
+and `cowork-mcp` reads it at start into its tool descriptions; `finish_work` makes the
+furthest move the token may — `done` with `close` from `in-progress` or `review`, else
+`review` from `in-progress` — and says what remains for a person. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
 the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
 (since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
 removing a stake, editing a question, editing a project — until a review after experience.
+Amended 2026-10-04 (D5: a session the agent header marks, and the chat in the UI, which is one —
+provisionally, with [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md))
+and built the same day. Amended again on 2026-10-04 by the owner's answers to the chat's open
+questions, recorded in ADR 0076, and built the same day (D5: the person chooses the chat's
+capabilities from the nine of D4 — by default every one but `decide`, `close`, `drop` and
+`record-answer` —, a session the agent header marks holds that set and no longer every capability,
+and the chat proposes nothing: every call runs at once).
 
 ## Context
 
@@ -74,7 +85,7 @@ these is an amendment of the record that closed it, not of this one.
 | Capability | Grants |
 |---|---|
 | `decide` | the transition `analysed → decided` |
-| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value |
+| `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value; *(decided 2026-10-04 by the owner)* an open question of the ticket does not hold `close` back — the question stays open on the done ticket |
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)) |
 | `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3) |
@@ -89,7 +100,35 @@ and **assisted** (`decide`, `close`, `rank`, `create-project` and `record-answer
 **D5 — Enforcement is the API's, on every request marked as an agent's** (ADR 0036 D2, D3).
 A refused act answers `403` with the code `agent_forbidden` and the name of the missing
 capability or the hard-off rule; the audit row of every agent act records the capabilities
-the token had.
+the token had. *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+provisionally with it: a browser session's request that the header marks (ADR 0036 D3 as amended)
+~~holds every capability, as a plain token's with the header,~~ and meets the hard-off list and the
+handlers' agent rules like any agent; its audit row records ~~the full set~~ the set it holds. The
+chat is such a session. ~~It may do whatever an agent with every capability may — no person chooses
+less for it yet — and before they run it proposes to the person the acts a person owes a reason, a
+note or a decision for: a move to `decided`, `done`, `dropped` or `blocked`, a backward move, a
+reopen, the withdrawal of a done, the progress write that closes or reopens a ticket,
+`finish_work`, `record_answer` and `create_project`, and every write once its conversation has read
+a confidential ticket. A proposal is the chat's own gate in front of the API's, not a capability:
+the API still decides what the call may do when the person runs it.~~)*
+*(Amended again 2026-10-04 by the owner's answers recorded in ADR 0076, and built the same day:)*
+**the person chooses the chat's capabilities.** A browser session's request that the header marks
+holds the capabilities its person gave the chat — the nine of D4, chosen with `PUT /api/v1/me/chat`
+in a browser session only (a token is `403 session_required`, a session the header marks `403
+agent_forbidden`: what the chat may do is access, and the chat never widens its own), read with `GET
+/api/v1/me/chat` — and a person who never chose holds the default: every capability but `decide`,
+`close` and `drop`, which the owner keeps a person's, and `record-answer`, because with nothing
+waiting for the person a text the model read could otherwise record an answer in the person's
+name. The set is read on every marked request of the session
+([`authenticateSession`](../../backend/internal/api/session.go), `auth.DefaultChatCapabilities`),
+so a change reaches a running turn at its next call; it lives in `chat_capabilities`, one row per
+person that only the person reads and writes
+([migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql)), and a
+change is the person's recorded act. The chat proposes nothing: every call runs at once, and the
+capabilities and the API's rules are the limit — an act that needs a capability the person did not
+give is `403 agent_forbidden` naming it, an answer the model reads. The tool descriptions and the
+instructions the chat gives the model name the capabilities it holds, as D6 does for a token.
 
 **D6 — The MCP server reads the token's capabilities at start** (`GET /api/v1/me/token`)
 and puts them into its tool descriptions, so the model knows before calling what this token

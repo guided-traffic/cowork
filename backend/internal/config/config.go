@@ -63,6 +63,18 @@ const (
 	EnvTokenDefaultLifetime = "COWORK_TOKEN_DEFAULT_LIFETIME" // #nosec G101 -- the variable's name, not a credential
 	EnvTokenMaxLifetime     = "COWORK_TOKEN_MAX_LIFETIME"     // #nosec G101 -- the variable's name, not a credential
 	EnvTrustedProxies       = "COWORK_TRUSTED_PROXIES"
+
+	EnvOIDCIssuer        = "COWORK_OIDC_ISSUER"
+	EnvOIDCClientID      = "COWORK_OIDC_CLIENT_ID"
+	EnvOIDCClientSecret  = "COWORK_OIDC_CLIENT_SECRET" // #nosec G101 -- the variable's name, not a credential
+	EnvOIDCScopes        = "COWORK_OIDC_SCOPES"
+	EnvOIDCGroupsClaim   = "COWORK_OIDC_GROUPS_CLAIM"
+	EnvOIDCAllowedGroups = "COWORK_OIDC_ALLOWED_GROUPS"
+	EnvAdminGroup        = "COWORK_ADMIN_GROUP"
+	EnvOIDCGroupsRefresh = "COWORK_OIDC_GROUPS_REFRESH"
+	EnvOIDCGroupsMaxAge  = "COWORK_OIDC_GROUPS_MAX_AGE"
+	EnvOIDCEmailTrusted  = "COWORK_OIDC_EMAIL_TRUSTED"
+	EnvOIDCDisplayName   = "COWORK_OIDC_DISPLAY_NAME"
 )
 
 // Defaults and the accepted log formats.
@@ -99,6 +111,20 @@ const (
 	// a lock ends with its window, or stays until an administrator unlocks.
 	LockoutWindow = "window"
 	LockoutAdmin  = "admin"
+
+	// The identity provider's defaults (docs/adr/0029 D4, docs/adr/0030 D5).
+	// offline_access is in the scopes because without a refresh token the
+	// groups refresh cannot run once the access token has expired: Dex, Entra
+	// and Okta issue one only for that scope.
+	DefaultOIDCScopes        = "openid profile email groups offline_access"
+	DefaultOIDCGroupsClaim   = "groups"
+	DefaultOIDCGroupsRefresh = 15 * time.Minute
+	MinOIDCGroupsRefresh     = time.Minute
+	// DefaultOIDCGroupsMaxAge is how old the groups a token's person is judged
+	// by may be (docs/adr/0035 D8): a week, so a weekly sign-in in the browser
+	// keeps a person's tokens working.
+	DefaultOIDCGroupsMaxAge = 7 * 24 * time.Hour
+	DefaultOIDCDisplayName  = "single sign-on"
 )
 
 // Config is the complete server configuration.
@@ -190,6 +216,60 @@ type Config struct {
 	// X-Forwarded-For from the right through them. Empty — the default — means
 	// the TCP peer is the client and the header is never read.
 	TrustedProxies []netip.Prefix
+	// OIDC is the identity provider the browser logs in through
+	// (docs/adr/0029); nil when COWORK_OIDC_ISSUER is unset, and the login
+	// page then offers none.
+	OIDC *OIDC
+	// Chat is the chat in the UI and the providers it talks to
+	// (docs/adr/0076); nil when COWORK_CHAT_PROVIDERS is unset, and no tenant
+	// has a chat.
+	Chat *Chat
+}
+
+// OIDC is the identity provider: the issuer cowork is a relying party of, and
+// the groups that decide who may log in and who administers the installation
+// (docs/adr/0029 D4, docs/adr/0030 D1, D5).
+type OIDC struct {
+	// Issuer is the URL discovery is fetched from: https, or http on a loopback
+	// host for development.
+	Issuer string
+	// ClientID and ClientSecret are the relying party's credentials; the
+	// secret is never echoed.
+	ClientID     string
+	ClientSecret string
+	// Scopes are requested at the login; they contain openid.
+	Scopes []string
+	// GroupsClaim names the claim that carries the groups (docs/adr/0029 D2).
+	GroupsClaim string
+	// AllowedGroups is the gate: a person with none of them, and not in
+	// AdminGroup, may not log in (docs/adr/0030 D1, D8).
+	AllowedGroups []string
+	// AdminGroup's members are global administrators and behind the gate by
+	// definition; empty for none.
+	AdminGroup string
+	// GroupsRefresh is how often a session's groups are read again and a
+	// token's person checked against the gate (docs/adr/0030 D5,
+	// docs/adr/0035 D8).
+	GroupsRefresh time.Duration
+	// GroupsMaxAge is how old a person's stored groups may be for their tokens
+	// to work: older ones — no sign-in and no session refresh read them since —
+	// refuse the tokens until the person signs in to the browser once
+	// (docs/adr/0035 D8). Longer than GroupsRefresh.
+	GroupsMaxAge time.Duration
+	// EmailTrusted says the issuer's addresses are verified even where it does
+	// not say so: a grant by e-mail address then matches a person without the
+	// email_verified claim, not only one the issuer marked verified
+	// (docs/adr/0030 D3). An address marked unverified never matches.
+	EmailTrusted bool
+	// DisplayName is the provider's name on the login page's button.
+	DisplayName string
+}
+
+// Admits reports whether the gate admits somebody at all: without an allowed
+// group and an administrator group nobody may log in through the provider
+// (docs/adr/0030 D8).
+func (o *OIDC) Admits() bool {
+	return o != nil && (len(o.AllowedGroups) > 0 || o.AdminGroup != "")
 }
 
 // Storage is the object storage the attachments' bytes live in. Endpoint,
@@ -247,6 +327,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	l.storage(&cfg)
 	l.login(&cfg)
 	l.trustedProxies(&cfg)
+	l.chat(&cfg)
 	return cfg, errors.Join(l.errs...)
 }
 
@@ -502,6 +583,7 @@ func (l *loader) login(cfg *Config) {
 		l.fail("%s must not exceed %s", EnvTokenDefaultLifetime, EnvTokenMaxLifetime)
 	}
 	l.localAdmin(cfg)
+	l.oidc(cfg)
 	l.bootstrapTenant(cfg)
 	l.baseURL(cfg)
 }
@@ -613,10 +695,10 @@ func (l *loader) localAdmin(cfg *Config) {
 }
 
 // bootstrapTenant reads the tenant a start creates while none exists
-// (docs/adr/0032 D6): both variables or neither, and only with a local
-// administrator, who becomes its first administrator — a tenant without an
-// administrator cannot come to exist (D7), and the group mapping that would
-// be the other way to one arrives with the identity provider.
+// (docs/adr/0032 D6): both variables or neither, and only with somebody to
+// administer it — the local administrator, who gets a marked grant, or the
+// administrator group, whose mapping the start seeds. A tenant without an
+// administrator cannot come to exist (D7).
 func (l *loader) bootstrapTenant(cfg *Config) {
 	slug, haveSlug := l.get(EnvBootstrapTenantSlug)
 	name, haveName := l.get(EnvBootstrapTenantName)
@@ -638,9 +720,9 @@ func (l *loader) bootstrapTenant(cfg *Config) {
 		l.fail("%s must be at most 200 characters", EnvBootstrapTenantName)
 		return
 	}
-	if cfg.LocalAdminUsername == "" {
-		l.fail("%s needs %s and %s: the local administrator becomes the first administrator of the tenant (docs/adr/0032 D7)",
-			EnvBootstrapTenantSlug, EnvLocalAdminUsername, EnvLocalAdminPassword)
+	if cfg.LocalAdminUsername == "" && (cfg.OIDC == nil || cfg.OIDC.AdminGroup == "") {
+		l.fail("%s needs %s and %s, or %s: the local administrator or the administrator group becomes the first administrator of the tenant (docs/adr/0032 D6, D7)",
+			EnvBootstrapTenantSlug, EnvLocalAdminUsername, EnvLocalAdminPassword, EnvAdminGroup)
 		return
 	}
 	cfg.BootstrapTenantSlug, cfg.BootstrapTenantName = slug, name
@@ -648,12 +730,18 @@ func (l *loader) bootstrapTenant(cfg *Config) {
 
 // baseURL checks the public URL and derives the origin the CSRF check
 // compares against (docs/adr/0037 D1). A cookie login needs it: it is required
-// while the local administrator is configured (docs/adr/0037 D6).
+// while the local administrator is configured (docs/adr/0037 D6), and while an
+// identity provider is, whose redirect URI is the URL and /auth/callback
+// (docs/adr/0029 D4).
 func (l *loader) baseURL(cfg *Config) {
 	if cfg.BaseURL == "" {
 		if cfg.LocalAdminUsername != "" {
 			l.fail("%s is required while %s is set: a cookie login needs the origin the browser sees (docs/adr/0037 D6)",
 				EnvBaseURL, EnvLocalAdminUsername)
+		}
+		if cfg.OIDC != nil {
+			l.fail("%s is required while %s is set: the redirect URI is %s/auth/callback (docs/adr/0029 D4)",
+				EnvBaseURL, EnvOIDCIssuer, EnvBaseURL)
 		}
 		return
 	}
@@ -675,7 +763,7 @@ func Origin(raw string) (string, error) {
 	switch {
 	case err != nil:
 		return "", errors.New("is not a URL")
-	case u.Scheme != "http" && u.Scheme != "https":
+	case u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS:
 		return "", errors.New("must start with http:// or https://")
 	case u.Hostname() == "":
 		return "", errors.New("names no host")
@@ -686,7 +774,7 @@ func Origin(raw string) (string, error) {
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
-	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+	if (u.Scheme == schemeHTTP && port == "80") || (u.Scheme == schemeHTTPS && port == "443") {
 		port = ""
 	}
 	origin := u.Scheme + "://" + host

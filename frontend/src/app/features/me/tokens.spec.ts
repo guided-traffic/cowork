@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { isSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { MessageService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { Tooltip } from 'primeng/tooltip';
 import type { MockInstance } from 'vitest';
 import { Membership, Problem, Token, TokenCreated } from '../../api/models';
@@ -169,6 +169,9 @@ describe('Tokens', () => {
       expect(host(fixture).querySelector('h1')?.textContent).toBe('Your tokens');
       expect(host(fixture).querySelector('.lead')?.textContent).toContain(
         'cowork shows it once, when you make it, and never again',
+      );
+      expect(host(fixture).querySelector('.lead')?.textContent?.replace(/\s+/g, ' ')).toContain(
+        'Whatever it does is marked as done through it, with its name, for everyone who reads the ticket.',
       );
       expect(el(fixture, 'new-token')?.textContent?.trim()).toBe('New token');
     });
@@ -409,6 +412,20 @@ describe('Tokens', () => {
       el(fixture, `token-revoke-${id}`)?.click();
       await settle(fixture);
     }
+
+    it("shows a confirmation's message as text, never as markup", async () => {
+      const fixture = await render();
+
+      fixture.debugElement.injector
+        .get(ConfirmationService)
+        .confirm({ header: 'Revoke it?', message: '<a href="x">y</a>' });
+      await settle(fixture);
+
+      expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
+        '<a href="x">y</a>',
+      );
+      expect(dialog()?.querySelector('a')).toBeNull();
+    });
 
     it('is offered for a token that works, and for none that does not', async () => {
       const fixture = await render();

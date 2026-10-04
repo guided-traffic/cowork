@@ -22,6 +22,14 @@ the chart. D5 arrives with the inbox.
 **Built** (phase 3, 2026-10-03): D6 with the local login — `COWORK_LOGIN_MAX_FAILURES` and
 `COWORK_LOGIN_ADDRESS_LIMIT`, in the chart `auth.local.maxFailures` and `auth.local.addressLimit`.
 
+Amended 2026-10-04 for the chat in the UI
+([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md) D7),
+provisionally with that record (D2: a turn's limits; D3: the turn's stream behind nginx), and built
+the same day ([`config/chat.go`](../../backend/internal/config/chat.go),
+[`api/chat.go`](../../backend/internal/api/chat.go)). Amended again on 2026-10-04 by the owner's
+answers recorded in ADR 0076 (D2: no decisions in a turn's body; the person's stop of their turns, on
+the replica that answers it), built the same day.
+
 ## Context
 
 Login attempts are already limited ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md)
@@ -56,7 +64,22 @@ one request hold unbounded memory and that `0` belongs in no production values f
 *(Added 2026-10-02:)* the event stream of ADR 0054 is exempt from `COWORK_REQUEST_TIMEOUT`; its
 heartbeat bounds an idle stream instead. The timeout is a context deadline that rolls the
 transaction back, never a buffering handler, and a read deadline on the request body, lifted
-once the body is read: a body that trickles in fails at the deadline.
+once the body is read: a body that trickles in fails at the deadline. *(Added 2026-10-04: a turn of
+the chat is exempt as well — the request timeout bounds reading its body, and the turn has limits
+of its own, each a variable and each disabled by `0`: `COWORK_CHAT_TURN_TIMEOUT` (`5m`; past it the
+turn's stream ends with the `error` event `timeout`), `COWORK_CHAT_MAX_STEPS` (`8` calls of the model
+a turn; the turn then ends and a new message goes on) and `COWORK_CHAT_TURNS_PER_PERSON` (`2` turns
+of one person at once on one replica; one more is `429 chat_busy`). A turn's body is held to
+`COWORK_MAX_JSON_BODY` like any. Fixed, not configured: the conversation's shape in the API document
+— at most 400 messages, a text of at most 100,000 characters, 32 tool calls a message, ~~32
+decisions~~ —, a tool's answer clipped to 16,000 characters for the model and 2,000 for the person,
+a comment after ten seconds of silence, and the gateway's bounds on a provider: two minutes to
+begin an answer, ninety seconds of silence, a line of 1 MiB, a stream of 32 MiB, a body of 8 MiB,
+an answer's text of 256 KiB, a call's arguments of 64 KiB, 64 calls an answer, 4096 tokens an
+answer. The count of turns is a bound on what runs at once, not a budget: D1 stands.)* *(Amended
+2026-10-04 by the owner's answers on the chat, ADR 0076: the decisions are gone with the proposals;
+a person stops their running turns at once with `DELETE …/chat/turns`, which ends them on the
+replica that answers it, as the count of turns is that replica's.)*
 
 **D3 — The frontend proxy is sized above the backend's limits.** nginx's
 `client_max_body_size` is set from the attachment maximum plus headroom and its proxy
@@ -70,7 +93,9 @@ nginx's own limit, a backend nginx cannot reach and a backend that does not answ
 get static problem bodies from nginx — without `instance` and `request_id`
 ([ADR 0047](0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6); the backend's
 own errors pass through, never intercepted. The event stream's location has no buffering and
-an hour's read timeout.
+an hour's read timeout. *(Added 2026-10-04: a turn of the chat has no location of its own; it
+passes `/api/` with the read timeout above, unbuffered because the backend answers it with
+`X-Accel-Buffering: no`, and kept within the read timeout by its comment every ten seconds.)*
 
 **D4 — Abuse is answered by the record and by revocation.** The per-token view of the audit
 record ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6)

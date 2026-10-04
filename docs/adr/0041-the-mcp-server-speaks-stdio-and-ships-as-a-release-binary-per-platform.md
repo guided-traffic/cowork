@@ -8,7 +8,15 @@ where no local process can start — over `stdio` alone without that door, over 
 now, and over a container image run as the stdio process. The rules of D4–D7 were put to the
 owner with the question and not objected to.
 
-**Not built.** No `cowork-mcp`.
+**Built** (phase 5, 2026-10-04): D1 — stdio through the MCP Go SDK, standard error for
+warnings, never the token; D2 as amended — the job `release-mcp` of the release workflow, and
+`make build-mcp`; `cowork-mcp version` prints the version, the commit, the build time and the
+number of API operations its tools call. D3 as amended, in
+[docs/operations/claude-code.md](../operations/claude-code.md) with the plugin in `claude/cowork/`.
+D4 as amended. D5 — the start-up message names the variable and the token page; a missing
+variable ends `serve` with exit 1, a rejected token answers every tool call with it. D6 — the
+tools in `internal/tools` know no transport and run as well over an in-process doer. D7 — no
+image.
 
 ## Context
 
@@ -30,19 +38,30 @@ long as the session. Standard output is the MCP channel; logging goes to standar
 never contains the token.
 
 **D2 — The binary ships as a release asset per platform.** The release workflow cross-compiles
-`cowork-mcp` for `darwin/arm64`, `darwin/amd64`, `linux/amd64` and `linux/arm64`, attaches
-each with a SHA-256 file to the GitHub release, and `cowork-mcp version` prints the version,
+`cowork-mcp` for `darwin/arm64`, `darwin/amd64`, `linux/amd64` and `linux/arm64` *(amended
+2026-10-04: and `windows/amd64` and `windows/arm64`, as `.exe`; no session on Windows has used
+them)*, attaches each with a SHA-256 file to the GitHub release *(amended 2026-10-04, the owner's
+answer: and a build provenance attestation per binary, made by the release workflow with its own
+identity and verified with `gh attestation verify`; notarisation by Apple waits for an account)*, and `cowork-mcp version` prints the version,
 the commit and the API version it was built against ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
 D5).
 
 **D3 — Installation is one copy and one configuration entry.** The operations page gives the
-`~/.claude/settings.json` (user-wide) and `.mcp.json` (per repository) forms; both set the
+~~`~/.claude/settings.json` (user-wide)~~ *(amended 2026-10-04: user-wide, which Claude Code
+keeps in `~/.claude.json` and `claude mcp add --scope user` writes — `~/.claude/settings.json`
+holds the hooks of [ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md);
+first of all the Claude Code plugin of this repository, which starts the server and keeps the
+token in the system's credential store)* and `.mcp.json` (per repository) forms; both set the
 command and pass the two variables. Updates are manual in the first release.
 
 **D4 — The server reads the repository binding from its working directory and nowhere
-else.** The MCP host starts the process in the repository root; `.cowork.yaml` there names
+else.** ~~The MCP host starts the process in the repository root; `.cowork.yaml` there names
 the tenant and the project ([ADR 0006](0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md)
-D3). A missing or malformed binding is reported by the session-start tool, not guessed.
+D3).~~ *(amended 2026-10-04, after [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+D3 and D4: the working directory — `CLAUDE_PROJECT_DIR` when the host sets it, a hook's own
+`cwd` — gives the git remotes the server's lookup binds by, and an optional `.cowork.yaml`, the
+nearest at or above it within the repository, which wins.)* A missing or malformed binding is
+reported by the session-start tool, not guessed.
 
 **D5 — A missing or rejected token is a clear start-up message,** naming the variable and
 the token page of the installation, never the token value.
@@ -82,7 +101,9 @@ Go binary needs neither.
   scope and the `cwk_` prefix are the mitigations, and the operations page says to prefer the
   per-repository `.mcp.json` only when the repository is private.
 - Cross-compiled binaries without code signing produce a warning on macOS at first start;
-  the operations page gives the one-time step. Signing is an amendment.
+  the operations page gives the one-time step. Signing is an amendment. *(Amended 2026-10-04: the
+  build provenance attestation of D2 proves where a binary was built to whoever verifies it; the
+  operating systems check none of it — no notarisation by Apple, no Authenticode.)*
 
 ## References
 

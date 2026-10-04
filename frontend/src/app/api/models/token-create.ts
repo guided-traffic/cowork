@@ -20,6 +20,12 @@ export interface TokenCreate {
    * shortened to `COWORK_TOKEN_MAX_LIFETIME` when longer (docs/adr/0035 D4)
    */
   lifetime_days?: number;
+
+  /**
+   * Shown beside every act made through the token — in a ticket's activity, on its comments,
+   * questions, answers, files and time — to whoever reads the act, and kept there after the token is
+   * revoked (docs/adr/0036 D6)
+   */
   name: string;
 
   /**

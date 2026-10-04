@@ -22,6 +22,7 @@ import { CAPABILITY } from '../../api/models/capability-array';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
+import { assisted, capabilityMeanings } from '../../shared/capabilities';
 import { describedBy, numberAria, selectAria } from '../../shared/field-aria';
 import { keepOpenWhile } from '../../shared/keep-open';
 
@@ -42,25 +43,6 @@ export const scopeMeanings: Record<Scope, string> = {
     'unlocking, ending the sessions of and deactivating (for good) the local accounts of the tenant.',
 };
 
-/** What each capability lets an agent do beyond the baseline (docs/adr/0043 D4). */
-export const capabilityMeanings: Record<Capability, string> = {
-  decide: 'Move a ticket from analysed to decided.',
-  close: 'Move a ticket to done; the verification note stays mandatory.',
-  drop: 'Move a ticket to dropped, with a reason.',
-  rank: 'Move the rank and adopt the score.',
-  'override-urgency': 'Override the urgency of a ticket, with a reason.',
-  interest: 'Register need and urgent interest, not only watch.',
-  upload: 'Upload attachments.',
-  'create-project': 'Create a project and bind a repository, where you may.',
-  'record-answer': 'Record an answer you gave, marked as recorded by the agent.',
-};
-
-/** The "assisted" shortcut of docs/adr/0043 D4: a person stays the one to decide, close and rank. */
-export const assisted: Capability[] = CAPABILITY.filter(
-  (capability) =>
-    !['decide', 'close', 'rank', 'create-project', 'record-answer'].includes(capability),
-);
-
 /**
  * The longest lifetime the form takes, in days: the bound of the API's schema. The installation
  * holds a token to its own maximum, shortens a longer one, and says what the token got.
@@ -70,8 +52,9 @@ export const maxLifetimeDays = 3650;
 const scopes: Scope[] = ['read', 'write', 'admin'];
 
 /**
- * Creates a personal access token (docs/adr/0035 D5): its name, scope, an agent flag with the
- * capabilities (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
+ * Creates a personal access token (docs/adr/0035 D5): its name — which shows on every act made
+ * through it, and says so (docs/adr/0036 D6) —, scope, an agent flag with the capabilities
+ * (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
  * An agent token has at most `write` scope, and the form says so before the server has to; one
  * with no capability keeps the baseline and nothing more, which is a choice like any other. The
  * lifetime is left empty unless the person fills it, which is the installation's default. The
@@ -108,9 +91,16 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             [ngModel]="name()"
             (ngModelChange)="name.set($event)"
             [attr.aria-invalid]="!!errors()['name']"
-            [attr.aria-describedby]="describedBy(errors()['name'] && 'token-name-error')"
+            [attr.aria-describedby]="
+              describedBy('token-name-hint', errors()['name'] && 'token-name-error')
+            "
             data-testid="token-name"
           />
+          <small class="muted" id="token-name-hint" data-testid="token-name-hint">
+            The name shows on what the token does: everyone who can read a ticket sees it beside the
+            acts made through this token — changes, comments, questions, answers, files, time — also
+            after you revoke it.
+          </small>
           @if (errors()['name']; as error) {
             <small
               class="error"

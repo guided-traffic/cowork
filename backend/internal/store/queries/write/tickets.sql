@@ -12,11 +12,13 @@ RETURNING last_number;
 -- (docs/adr/0014 D2).
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, assignee_id, confidential, rank
+    urgency_derived, urgency_rule, effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
+    reporter_token_name, assignee_id, confidential, rank
 ) VALUES (
     sqlc.arg(tenant_id), sqlc.arg(project_id), sqlc.arg(number), sqlc.arg(type), sqlc.arg(title),
     sqlc.arg(body), sqlc.arg(severity), sqlc.arg(security), sqlc.narg(threat), sqlc.arg(urgency_derived),
     sqlc.arg(urgency_rule), sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
+    sqlc.narg(reporter_agent), sqlc.narg(reporter_token_id), sqlc.narg(reporter_token_name),
     sqlc.narg(assignee_id), sqlc.arg(confidential), sqlc.arg(rank)::text
 )
 RETURNING id;
@@ -71,6 +73,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
+       t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl

@@ -1,10 +1,14 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/config"
@@ -18,7 +22,13 @@ import (
 // D1, D3, D6). Whatever is wrong with the cookie — malformed, unknown, ended,
 // past a limit, its person deactivated — is the same 401, and the answer tells
 // the browser to drop it. A session has no agent flag and no scope: it acts
-// with the person's whole role, which the scope admin leaves to the role.
+// with the person's whole role, which the scope admin leaves to the role. An
+// X-Cowork-Agent header makes its request an agent's, held to the hard-off
+// list as a token's with the header and holding the capabilities the person
+// chose for the chat — the chat of the UI marks its tool calls so, and the
+// set is read on every such request, so a change reaches a running turn at its
+// next call (docs/adr/0036 D3, docs/adr/0043 D5, docs/adr/0076); the header
+// only ever narrows, and a malformed one is refused.
 func (h *handler) authenticateSession(r *http.Request, value string) (auth.Principal, *problem.Error) {
 	ctx := r.Context()
 	dead := sessionEnded()
@@ -38,18 +48,74 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 	if !h.sessionLive(rec.Session.ExpiresAt, rec.Session.LastSeenAt, now) || rec.Person.DeactivatedAt != nil {
 		return auth.Principal{}, dead
 	}
+	if rec.Session.Method == store.MethodOIDC {
+		ended, err := h.checkProviderSession(ctx, rec, hash[:], now)
+		if err != nil {
+			h.logger.Error("the session's groups refresh failed", "request_id", requestid.From(ctx), "error", err)
+			return auth.Principal{}, problem.New(problem.Internal, "internal error")
+		}
+		if ended {
+			return auth.Principal{}, dead
+		}
+		// A refresh may have changed the person's administrator flag.
+		if rec, err = h.opts.DB.LookupSession(ctx, hash); err != nil {
+			return auth.Principal{}, dead
+		}
+	}
+	header, perr := agentHeader(r)
+	if perr != nil {
+		return auth.Principal{}, perr
+	}
 	if err := h.opts.DB.TouchSession(ctx, rec, now); err != nil {
 		h.logger.Error("touching the session failed", "request_id", requestid.From(ctx), "error", err)
 	}
-	return auth.Principal{
+	p := auth.Principal{
 		PersonID:               rec.Person.ID,
 		DisplayName:            rec.Person.DisplayName,
 		Session:                true,
 		SessionHash:            hash[:],
+		SessionMethod:          rec.Session.Method,
+		Provider:               rec.Person.Provider,
 		Scope:                  domain.ScopeAdmin,
 		GlobalAdmin:            rec.Person.GlobalAdmin,
 		PasswordChangeRequired: rec.Person.PasswordChangeRequired,
-	}, nil
+	}
+	if header != "" {
+		caps, err := h.chatCapabilities(ctx, rec.Person.ID)
+		if err != nil {
+			h.logger.Error("reading the chat's capabilities failed", "request_id", requestid.From(ctx), "error", err)
+			return auth.Principal{}, problem.New(problem.Internal, "internal error")
+		}
+		p.Agent, p.Capabilities = header, caps
+	}
+	return p, nil
+}
+
+// chatCapabilities is what the chat of a person holds: the set the person
+// chose, or the default (docs/adr/0043 D5).
+func (h *handler) chatCapabilities(ctx context.Context, person uuid.UUID) ([]string, error) {
+	caps, chosen, err := h.opts.DB.ChatCapabilities(ctx, person)
+	if err != nil {
+		return nil, err
+	}
+	if !chosen {
+		return slices.Clone(auth.DefaultChatCapabilities), nil
+	}
+	return caps, nil
+}
+
+// agentHeader reads the X-Cowork-Agent header of a request: empty without
+// one, a validation problem for one that breaks the rule (docs/adr/0036 D3).
+func agentHeader(r *http.Request) (string, *problem.Error) {
+	v := r.Header.Get(auth.AgentHeader)
+	if v == "" {
+		return "", nil
+	}
+	parsed, err := auth.ParseAgentHeader(v)
+	if err != nil {
+		return "", problem.Field("header:"+auth.AgentHeader, err.Error())
+	}
+	return parsed, nil
 }
 
 // sessionLive reports whether neither limit has passed: the absolute one, set

@@ -12,10 +12,17 @@ Amended 2026-10-02 (D3: the visible projects are recomputed at every heartbeat; 
 payload carries and which acts are published; D5: the heartbeat checks the token and the
 membership again, and a replica that lost its listener keeps no replay point from before). Revocation is immediate
 ([ADR 0035](0035-personal-access-tokens.md) D6), and an open stream is not a next request.
+Amended 2026-10-04 (D2: `membership.changed`, its payload and its audiences; D3: a membership event
+reaches its audience whatever project it names; D5: the heartbeat asks the identity provider's gate
+as well), and again on 2026-10-04 after the security review (D3: a project-restricted token's
+stream hears only the membership events of its project and its own person), and on 2026-10-04 for
+the chat in the UI (D9: the shutdown ends the chat's turns as well; built the same day —
+`ChatOptions.Shutdown` in [`api/chat.go`](../../backend/internal/api/chat.go),
+`TestTheChatsTurnLimitAndShutdown`).
 
 **Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
-with the inbox), D2 without `inbox.changed` and `membership.changed` (no route changes a
-membership yet), D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
+with the inbox), D2 without `inbox.changed` and ~~`membership.changed` (no route changes a
+membership yet)~~ — built 2026-10-04, below —, D3–D6, D8 and D9 — [`internal/events`](../../backend/internal/events/),
 [`notify.go`](../../backend/internal/store/notify.go) and [`events.go`](../../backend/internal/api/events.go);
 the nginx template has the events location. D3's recomputation on `membership.changed`
 arrives with that event. D7's client side and D8's hidden tab since phase 3 (2026-10-03):
@@ -25,6 +32,12 @@ fifteen seconds, retries every minute and holds events while the tab is hidden; 
 reloads the lists in full — the `If-None-Match` of D7 is outstanding. Measured on 2026-10-03
 through the Angular dev server's proxy: a comment's event reached an open stream 29 ms after the
 write began.
+
+**Built** (phase 4, 2026-10-04): `membership.changed` of D2, published by every act on who belongs
+to a tenant or who sees a project — an administrator's and the identity provider's alike
+([`store/notify.go`](../../backend/internal/store/notify.go) `MembershipChange`,
+[`events/hub.go`](../../backend/internal/events/hub.go) `Filter.Admits`) — and the client's reloads
+on it.
 
 ## Context
 
@@ -52,14 +65,27 @@ person's own events (inbox, questions asked of them) across their tenants when o
 likewise `comment.changed`, `question.changed`, `link.changed`, `interest.changed`,
 `inbox.changed {"unread": 3}`, `membership.changed`. The client refetches what it shows
 through the ordinary API, which enforces authorization; the stream itself exposes nothing a
-list would not.
+list would not. *(Made concrete 2026-10-04: `membership.changed` carries the ids of what changed,
+each only where it applies — `{"person_id", "project_id", "mapping_id"}` — and no version and no
+kind. Its audience is part of the act: a grant, a derived membership and a project's restriction
+reach every member of the tenant, who read the member list anyway and saw the project at one of the
+two moments; a group mapping reaches the tenant's administrators, who alone read the mappings; an
+entry of a restricted project's access list reaches the administrators and the person it names, so
+no member who does not see the project hears of it. The client reloads its members, mappings and
+access lists, its projects when a `project_id` is there, and the person's own `GET /api/v1/me`.)*
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on
 `membership.changed`) *(amended 2026-10-02: and at every heartbeat, with the person's current
 role, so a project gained or lost by a change no event announces counts within one
 heartbeat)* and drops events of projects the person may not see, so not even the
-existence of a key in a restricted project leaks. Events never cross tenants: a subscription
+existence of a key in a restricted project leaks. *(Amended 2026-10-04: the server recomputes at
+the heartbeat, not on `membership.changed`, and a membership event is judged by its audience alone,
+whatever project it names ~~— the stream of a project-restricted token included, which therefore
+hears the tenant's membership changes~~.)* *(Amended after the security review, 2026-10-04: except
+on the stream of a project-restricted token, which knows nothing of the tenant beyond its project and
+hears a membership event only when it names that project, or names the token's own person and no
+project ([docs/security/tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).)* Events never cross tenants: a subscription
 is to one tenant, and the person-level `?me=true` events are addressed to the person.
 
 **D4 — Publication is `NOTIFY` at commit.** The mutation wrapper of ADR 0027 D3 issues
@@ -83,6 +109,10 @@ from closing idle streams. *(Added 2026-10-02: the heartbeat checks the token �
 not revoked, not expired, its person active — and the person's membership of the tenant again,
 and ends the stream when either fails. A replica whose listener comes back after a loss empties
 its ring buffers: the acts of the loss never reached them, so an earlier id answers `resync`.)*
+*(Amended 2026-10-04: the heartbeat checks a session as well — it exists, neither limit passed,
+its person active — and the identity provider's gate: a provider session's groups refresh when it
+is due, without moving the idle clock, and a provider person's token meets the gate when its check
+is due ([ADR 0035](0035-personal-access-tokens.md) D8).)*
 
 **D6 — The proxies are told not to buffer.** The backend sets `X-Accel-Buffering: no`,
 `Cache-Control: no-cache` and `Content-Type: text/event-stream`; the nginx template gets a
@@ -104,7 +134,12 @@ visible again.
 **D9 — Shutdown closes streams at once.** On `SIGTERM` the backend ends every stream before
 draining requests ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D5's timeout is for requests, not streams); clients reconnect to another replica and replay
-from `Last-Event-ID`.
+from `Last-Event-ID`. *(Amended 2026-10-04 for the chat in the UI,
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md): a
+turn of the chat is a stream as well, and the signal ends every turn that runs — its `error` event
+`503 not_ready`, "the server is shutting down: send the turn again", then `done` with the messages
+it added — instead of holding the drain for up to `COWORK_CHAT_TURN_TIMEOUT`. The client does
+not send a turn again by itself; the person does, on another replica.)*
 
 ## Consequences
 

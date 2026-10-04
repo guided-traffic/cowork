@@ -1,18 +1,26 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal, WritableSignal } from '@angular/core';
+import { computed, Signal, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
 import { Me, Membership, Problem, Tenant } from '../../api/models';
-import { SessionService } from '../../core/session.service';
+import { OpenableTenant, SessionService } from '../../core/session.service';
 import { TenantsService } from '../../core/tenants.service';
 import { Home } from './home';
 
-const acme: Membership = { role: 'admin', tenant: { name: 'Acme Corp', slug: 'acme' } };
-const globex: Membership = { role: 'member', tenant: { name: 'Globex', slug: 'globex' } };
+const acme: Membership = {
+  role: 'admin',
+  tenant: { name: 'Acme Corp', slug: 'acme' },
+  origins: [{ source: 'grant', role: 'admin' }],
+};
+const globex: Membership = {
+  role: 'member',
+  tenant: { name: 'Globex', slug: 'globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+};
 
 function person(globalAdmin: boolean, memberships: Membership[] = []): Me {
   return {
@@ -41,14 +49,25 @@ describe('Home', () => {
       me: { isLoading: WritableSignal<boolean>; error: WritableSignal<unknown> };
       person: WritableSignal<Me | undefined>;
       memberships: WritableSignal<Membership[]>;
+      tenants: Signal<OpenableTenant[]>;
+      installation: { isLoading: WritableSignal<boolean>; hasValue: WritableSignal<boolean> };
       soleTenant: WritableSignal<string | null>;
     };
+    /** The tenants of the installation a global administrator holds no role in. */
+    let roleless: WritableSignal<OpenableTenant[]>;
 
     beforeEach(() => {
+      roleless = signal<OpenableTenant[]>([]);
+      const memberships = signal<Membership[]>([]);
       session = {
         me: { isLoading: signal(false), error: signal<unknown>(undefined) },
         person: signal<Me | undefined>(undefined),
-        memberships: signal<Membership[]>([]),
+        memberships,
+        tenants: computed(() => [
+          ...memberships().map(({ tenant, role }) => ({ ...tenant, role })),
+          ...roleless(),
+        ]),
+        installation: { isLoading: signal(false), hasValue: signal(true) },
         soleTenant: signal<string | null>(null),
       };
       TestBed.configureTestingModule({
@@ -172,6 +191,45 @@ describe('Home', () => {
         expect(page.querySelector('[data-testid="tenant-acme"]')).not.toBeNull();
       });
 
+      // docs/adr/0034 D2: a global administrator finds the tenants they hold no role in.
+      it('lists every tenant of the installation, the ones without a role marked so', async () => {
+        session.person.set(person(true, [acme]));
+        session.memberships.set([acme]);
+        roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
+
+        const page = await render();
+
+        expect(page.querySelector('app-first-tenant')).toBeNull();
+        expect(page.querySelector('[data-testid="tenant-acme"] .muted')?.textContent).toBe(
+          'acme · admin',
+        );
+        const other = page.querySelector('[data-testid="tenant-initech"]');
+        expect(other?.getAttribute('href')).toBe('/t/initech');
+        expect(other?.querySelector('.muted')?.textContent).toBe('initech · no role');
+      });
+
+      it('is offered no first tenant where tenants exist that they hold no role in', async () => {
+        session.person.set(person(true));
+        roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
+
+        const page = await render();
+
+        expect(page.querySelector('app-first-tenant')).toBeNull();
+        expect(page.querySelector('[data-testid="tenant-initech"]')).not.toBeNull();
+      });
+
+      it('waits for the installation\'s tenants before it offers or lists anything', async () => {
+        session.person.set(person(true));
+        session.installation.isLoading.set(true);
+        session.installation.hasValue.set(false);
+
+        const page = await render();
+
+        expect(page.querySelector('app-first-tenant')).toBeNull();
+        expect(page.querySelector('p-skeleton')).not.toBeNull();
+        expect(page.textContent).not.toContain('You are not a member of any tenant yet.');
+      });
+
       it('goes straight to the only tenant, as anybody does', async () => {
         session.person.set(person(true, [acme]));
         session.memberships.set([acme]);
@@ -280,6 +338,12 @@ describe('Home', () => {
       const fixture = TestBed.createComponent(Home);
       fixture.detectChanges();
       http.expectOne('/api/v1/me').flush(person(true));
+      // A global administrator's session lists the installation's tenants: there are none.
+      const listed = (request: { method: string; url: string }) =>
+        request.method === 'GET' && request.url === '/api/v1/tenants';
+      await new Promise((resolve) => setTimeout(resolve));
+      TestBed.tick();
+      http.expectOne(listed).flush({ items: [], next_cursor: null });
       await fixture.whenStable();
       fixture.detectChanges();
       const page = fixture.nativeElement as HTMLElement;
@@ -313,8 +377,12 @@ describe('Home', () => {
       await new Promise((resolve) => setTimeout(resolve));
       fixture.detectChanges();
 
-      // The person is loaded again, because the new membership is what the tenant's pages read.
+      // The person is loaded again, because the new membership is what the tenant's pages read, and
+      // the installation's tenants, which the new one joins.
       http.expectOne('/api/v1/me').flush(person(true, [acme]));
+      http
+        .expectOne(listed)
+        .flush({ items: [{ slug: 'acme', name: 'Acme Corp', role: 'admin' }], next_cursor: null });
       await fixture.whenStable();
       expect(navigate).toHaveBeenCalledWith(['/t', 'acme']);
       http.verify();

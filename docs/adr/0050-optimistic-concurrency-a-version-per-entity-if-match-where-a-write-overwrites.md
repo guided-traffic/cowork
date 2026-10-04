@@ -12,7 +12,9 @@ do not; D2: an entity read never answers `304`; D3: the overwriting writes the f
 implementation added; D5: an empty field's current value is `null`) and 2026-10-03 (D1: a
 move in the rank counts, the first key given to a ticket a release before the rank left
 without one does not; D4: a move in the rank takes no `If-Match`, written when the rank was
-built). A value cowork derives from another entity — the urgency re-derived when a link or
+built) and 2026-10-04 (D4: a person's choice of the chat's capabilities takes no `If-Match`, written
+when it was built for the owner's answers recorded in
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)). A value cowork derives from another entity — the urgency re-derived when a link or
 another ticket changes, a parent's progress derived from its children — falls under D1's own
 reason: counting it would fail an edit on a concurrent change elsewhere.
 
@@ -67,7 +69,12 @@ interest, watch), `POST` with an idempotency key, transitions with their `from`
 D1, D2, D3). *(Amended 2026-10-03:)* A move in the rank
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2) takes none either: it names
 where the ticket goes, not the key it had, so the last move wins and a drag keeps the person's
-drop; the move still raises the version (D1).
+drop; the move still raises the version (D1). *(Amended 2026-10-04:)* The person's choice of the
+chat's capabilities, `PUT /api/v1/me/chat`
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5), takes none either and has no version: it is the person's own setting with the person as its
+only writer, the whole set is sent each time, and the same set sent again changes nothing; between
+two tabs of the same person the last choice wins, and each tab reads it again when its panel opens.
 
 **D5 — A `412` carries what the client needs to merge:** the current `version` and, in
 `errors[]`, each field the request tried to change with its `pointer` and the `current`

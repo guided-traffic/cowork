@@ -6,7 +6,10 @@ Accepted, amended 2026-09-29 (D6: images from the attachment endpoint, see
 [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md))
 and 2026-10-01 (D2: an agent may record a person's answer, see
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-D8).
+D8) and 2026-10-04 (D2: the token a question was asked through and the one its answer was recorded
+through, by the owner's decision that every act made through a token is shown as such,
+[ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day,
+[migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "enrichment:
 body text versus structured parts?": the body stays prose, the open questions become
 entities. The additional rules of D3–D6 were put to the owner with the question and were not
@@ -40,7 +43,10 @@ each replacement is a recorded act with a diff in the timeline.
 
 **D2 — An open question is an entity of its own.** Fields: the question, the context and the
 options (Markdown), the recommendation, the answer (Markdown), who asked, whom it is asked
-of, who answered, when, `recorded_by_agent`, and a status `open`, `answered`, `withdrawn`. A
+of, who answered, when, `recorded_by_agent`, *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* the token the
+question was asked through and the token the answer was recorded through — each its id and name,
+none for a browser session; a changed answer records its own —, and a status `open`, `answered`,
+`withdrawn`. A
 question belongs to exactly one ticket. **Only a person decides an answer**; ~~an agent may
 ask, may withdraw its own question, and may not touch the answer~~ *(amended 2026-10-01,
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)

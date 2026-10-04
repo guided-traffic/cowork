@@ -4,7 +4,9 @@
 
 Accepted, amended 2026-10-01 (D4: an agent token with the `interest` capability of
 [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-may register `need` and `urgent`). Date: 2026-09-29. Decided by the owner as the answer to the
+may register `need` and `urgent`) and 2026-10-04 (D1: a stake records the mark of the write that
+set it, by the owner's rule that an act an agent or a token makes is always marked,
+[ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day, [migration 28](../../backend/internal/store/migrations/000028_filing_and_stake_marks.up.sql)). Date: 2026-09-29. Decided by the owner as the answer to the
 catalog question on "users link tickets to take part in prioritisation": a person-to-ticket interest relation
 with a weight and a note, over plain votes, over direct rank editing by members, and over a
 point budget. The additional rules of D4–D5 were put to the owner with the question and were
@@ -29,7 +31,10 @@ owner's decision.
 
 ## Decision
 
-**D1 — Interest is a row (person, ticket, weight, note, since).** One row per person and
+**D1 — Interest is a row (person, ticket, weight, note, since).** *(Amended 2026-10-04,
+[ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6: and the mark of the write that set it as it stands — the agent mark of an agent that
+set it in the person's name, the token it came through, its id and name — none for the person's
+own browser session; the ticket shows it beside the holder.)* One row per person and
 ticket, changeable, removable. Weights: `watch` (tell me what happens), `need` (I need this),
 `urgent` (this blocks me). The note is free text and is expected for `need` and `urgent`
 ("for release X on the 15th").

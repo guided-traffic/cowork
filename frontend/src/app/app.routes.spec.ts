@@ -19,6 +19,7 @@ import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
 import { Accounts } from './features/tenant/accounts';
+import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
 import { TenantOverview } from './features/tenant/overview';
 import { TenantSettings } from './features/tenant/tenant-settings';
@@ -54,6 +55,7 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/tickets/:key', TicketDetail],
   ['t/:tenant/members', Members],
   ['t/:tenant/accounts', Accounts],
+  ['t/:tenant/group-mappings', GroupMappings],
   ['t/:tenant/time', TimeReport],
   ['dev/design', DesignPreview],
   ['**', NotFound],
@@ -141,6 +143,7 @@ describe('the routes', () => {
       named('/t/acme', Shell, TenantScope, TenantOverview),
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),
+      named('/t/acme/group-mappings', Shell, TenantScope, GroupMappings),
       named('/t/acme/time', Shell, TenantScope, TimeReport),
       named('/t/acme/settings', Shell, TenantScope, TenantSettings),
       named('/t/acme/p/COW/backlog', Shell, TenantScope, Backlog),
@@ -217,6 +220,14 @@ describe('the routes', () => {
       expect(inputs).toContain('return');
     });
 
+    it("hands why the identity provider's way back failed, ?error=, to an input of the login page", async () => {
+      const [login] = await navigate('/login?error=not_allowed');
+
+      expect(login.queryParams['error']).toBe('not_allowed');
+      const inputs = reflectComponentType(Login)?.inputs.map((input) => input.templateName);
+      expect(inputs).toContain('error');
+    });
+
     it.each([
       ['/t/acme/p/COW/backlog', '/t/acme/p/OPS/backlog'],
       ['/t/acme/p/COW/board', '/t/acme/p/OPS/board'],
@@ -224,6 +235,7 @@ describe('the routes', () => {
       ['/t/acme/tickets/COW-12', '/t/acme/tickets/COW-13'],
       ['/t/acme/members', '/t/globex/members'],
       ['/t/acme/accounts', '/t/globex/accounts'],
+      ['/t/acme/group-mappings', '/t/globex/group-mappings'],
     ])('keeps the page when only a parameter changes from %s to %s', async (from, to) => {
       TestBed.configureTestingModule({
         providers: [provideRouter(routes, withComponentInputBinding()), provideLocationMocks()],

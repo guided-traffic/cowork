@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { MessageService } from 'primeng/api';
@@ -29,6 +29,8 @@ function ticket(project: string, number: number, overrides: Partial<Ticket> = {}
     confidential: false,
     assignee: null,
     reporter: ada,
+    reporter_agent: null,
+    reporter_token: null,
     block: null,
     threat: null,
     parent: null,
@@ -155,6 +157,7 @@ describe('summarise', () => {
 describe('TenantOverview', () => {
   let tenant: WritableSignal<string | null>;
   let membership: WritableSignal<Membership | undefined>;
+  let oversight: WritableSignal<boolean>;
   let projects: {
     list: WritableSignal<Project[]>;
     projects: { isLoading: WritableSignal<boolean> };
@@ -168,10 +171,12 @@ describe('TenantOverview', () => {
   let listParams: () => unknown;
 
   beforeEach(() => {
+    oversight = signal(false);
     tenant = signal<string | null>('acme');
     membership = signal<Membership | undefined>({
       role: 'admin',
       tenant: { name: 'Acme Corp', slug: 'acme' },
+      origins: [{ source: 'grant', role: 'admin' }],
     });
     projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
     cache = new EntityCache<Ticket>();
@@ -181,7 +186,19 @@ describe('TenantOverview', () => {
       providers: [
         provideRouter([]),
         MessageService,
-        { provide: SessionService, useValue: { tenant, membership } },
+        {
+          provide: SessionService,
+          useValue: {
+            tenant,
+            workTenant: computed(() => (oversight() ? null : tenant())),
+            membership,
+            shown: computed(() => {
+              const held = membership();
+              return held ? { ...held.tenant, role: held.role } : undefined;
+            }),
+            oversight,
+          },
+        },
         { provide: ProjectsService, useValue: projects },
         {
           provide: TicketsService,
@@ -226,6 +243,18 @@ describe('TenantOverview', () => {
 
       expect(listParams()).toEqual({ tenant: 'acme', page: 1, per_page: 100 });
       expect(pageSize).toBe(100);
+    });
+
+    it('asks for nothing in a tenant a global administrator holds no role in (docs/adr/0034 D2)', async () => {
+      oversight.set(true);
+      membership.set(undefined);
+
+      const { page } = await render();
+
+      expect(listParams()).toBeUndefined();
+      expect(page.querySelector('.projects')).toBeNull();
+      expect(page.textContent).not.toContain('Recently updated');
+      expect(text(page, 'h1')).toBe('acme');
     });
 
     it('asks for nothing outside a tenant', async () => {

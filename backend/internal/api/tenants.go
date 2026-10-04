@@ -29,10 +29,11 @@ var read = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeRead}
 // agent (docs/adr/0034 D1, docs/adr/0035 D3, docs/adr/0043 D3).
 var administer = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffAdministration}
 
-// GetTenant answers the tenant and its settings.
+// GetTenant answers the tenant and its settings, to its members and to a
+// global administrator who oversees it (docs/adr/0034 D2).
 func (s *Server) GetTenant(ctx context.Context, _ apigen.GetTenantRequestObject) (apigen.GetTenantResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
+	if perr := administrationRead(principal(ctx), t, read); perr != nil {
 		return nil, perr
 	}
 	var row readq.GetTenantRow
@@ -208,11 +209,13 @@ func pick(values map[string]any, keys []string) map[string]any {
 	return out
 }
 
-// ListMembers lists the tenant's members with their roles
-// (docs/adr/0034 D7).
+// ListMembers lists the tenant's members with their roles and where each comes
+// from (docs/adr/0034 D7, docs/adr/0030 D4), to its members and to a global
+// administrator who oversees it (D2), who reads no address: that is the
+// tenant's administrators'.
 func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestObject) (apigen.ListMembersResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
+	if perr := administrationRead(principal(ctx), t, read); perr != nil {
 		return nil, perr
 	}
 	const op = "listMembers"
@@ -233,11 +236,9 @@ func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestO
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(m readq.ListMembersRow) string { return m.ID.String() })
 	out := apigen.ListMembers200JSONResponse{Items: []apigen.Member{}, NextCursor: nullableString(next)}
+	admin := t.Role == domain.RoleAdmin
 	for _, m := range rows {
-		out.Items = append(out.Items, apigen.Member{
-			Person: apigen.Person{Id: m.ID, Username: nullableOf(m.Username), DisplayName: m.DisplayName},
-			Role:   apigen.Role(m.Role),
-		})
+		out.Items = append(out.Items, memberView(m.ID, m.Username, m.DisplayName, m.Email, admin, m.Role, m.Sources, m.Roles, m.Local))
 	}
 	return out, nil
 }
@@ -306,7 +307,7 @@ func (s *Server) ListAudit(ctx context.Context, req apigen.ListAuditRequestObjec
 func auditView(a readq.ListAuditForTenantRow) apigen.AuditEvent {
 	v := apigen.AuditEvent{
 		Id: a.ID, CreatedAt: a.CreatedAt, EntityType: a.EntityType, Action: apigen.AuditAction(a.Action),
-		Agent: nullableOf(a.Agent), TokenId: nullableOf(a.TokenID), EntityId: nullableOf(a.EntityID),
+		Agent: nullableOf(a.Agent), TokenId: nullableOf(a.TokenID), TokenName: nullableOf(a.TokenName), EntityId: nullableOf(a.EntityID),
 		TicketKey: nullableOf(a.TicketKey), Reason: nullableOf(a.Reason), Note: nullableOf(a.Note),
 		RequestId: nullableOf(a.RequestID), IdempotencyKey: nullableOf(a.IdempotencyKey),
 	}
@@ -334,17 +335,22 @@ func auditView(a readq.ListAuditForTenantRow) apigen.AuditEvent {
 }
 
 // auditCSV renders audit rows as CSV; a cell that a spreadsheet would read
-// as a formula is prefixed with an apostrophe.
+// as a formula is prefixed with an apostrophe. A column added after a release
+// goes last, so a reader that takes the columns by position keeps reading the
+// released ones where they were — token_name since 2026-10-04.
 func auditCSV(rows []readq.ListAuditForTenantRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"id", "created_at", "actor_user_id", "actor_system", "agent", "token_id", "entity_type",
-		"entity_id", "ticket_key", "action", "reason", fieldNote, "request_id", "before", "after"})
+	_ = w.Write([]string{"id", "created_at", "actor_user_id", "actor_system", "agent", "token_id",
+		"entity_type", "entity_id", "ticket_key", "action", "reason", fieldNote, "request_id", "before", "after",
+		"token_name"})
 	for _, a := range rows {
 		_ = w.Write(neutralise([]string{
 			a.ID.String(), a.CreatedAt.UTC().Format(time.RFC3339Nano), uuidString(a.ActorUserID), deref(a.ActorSystem),
-			deref(a.Agent), uuidString(a.TokenID), a.EntityType, uuidString(a.EntityID), deref(a.TicketKey), a.Action,
+			deref(a.Agent), uuidString(a.TokenID), a.EntityType, uuidString(a.EntityID), deref(a.TicketKey),
+			a.Action,
 			deref(a.Reason), deref(a.Note), uuidString(a.RequestID), string(a.Before), string(a.After),
+			deref(a.TokenName),
 		}))
 	}
 	w.Flush()
@@ -449,3 +455,46 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 }
 
 func tenantURL(slug string) string { return "/api/v1/tenants/" + slug }
+
+// ListTenants lists every tenant of the installation for a global
+// administrator, by slug, with the role they hold in each — none where they
+// hold none (docs/adr/0034 D2): how they find a tenant to look after. The
+// document takes a browser session only; anybody who is not a global
+// administrator finds their tenants in GET /api/v1/me.
+func (s *Server) ListTenants(ctx context.Context, req apigen.ListTenantsRequestObject) (apigen.ListTenantsResponseObject, error) {
+	p := principal(ctx)
+	if !p.GlobalAdmin {
+		return nil, problem.New(problem.Forbidden, "listing the tenants needs a global administrator")
+	}
+	const op = "listTenants"
+	scope := p.PersonID.String()
+	size := s.h.pageSize(req.Params.Limit)
+	params := readq.ListTenantsParams{UserID: p.PersonID, PageSize: limitArg(size)}
+	if req.Params.Cursor != nil {
+		after, perr := s.cursors.decode(op, scope, *req.Params.Cursor)
+		if perr != nil {
+			return nil, perr
+		}
+		params.After = &after
+	}
+	var rows []readq.ListTenantsRow
+	err := s.db.Installation(ctx, func(r *store.Reader) error {
+		var err error
+		rows, err = r.ListTenants(ctx, params)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	rows, next := page(s.h, rows, size, op, scope, func(t readq.ListTenantsRow) string { return t.Slug })
+	out := apigen.ListTenants200JSONResponse{Items: []apigen.TenantSummary{}, NextCursor: nullableString(next)}
+	for _, t := range rows {
+		role := nullableOf[apigen.Role](nil)
+		if t.Role != "" {
+			r := apigen.Role(t.Role)
+			role = nullableOf(&r)
+		}
+		out.Items = append(out.Items, apigen.TenantSummary{Slug: t.Slug, Name: t.Name, Role: role})
+	}
+	return out, nil
+}

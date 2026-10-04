@@ -7,7 +7,21 @@ const backend = process.env['COWORK_DEV_BACKEND'] ?? 'http://localhost:8080';
 // Node keeps response headers until the first body byte, and an event stream may send none for
 // twenty seconds; the browser would not see the stream open until the first heartbeat. The proxy
 // sets the headers in the same tick it emits this event, so they are flushed on the next one.
+//
+// A browser that aborts a request — the chat's Stop — closes only its own side, and the proxy
+// keeps the request to the backend open: the backend would go on with the turn and its model.
+// Ending the backend's request when the browser's side closes before the answer ended is what
+// nginx does in the container (proxy_ignore_client_abort off).
 function configure(proxy) {
+  proxy.on('proxyReq', (proxyReq, req, res) => {
+    res.on('close', () => {
+      // Whether the browser's side is done says nothing over HTTP/2, whose aborted stream counts
+      // as finished; the backend's answer that has not ended does.
+      if (!proxyReq.res?.complete) {
+        proxyReq.destroy();
+      }
+    });
+  });
   proxy.on('proxyRes', (proxyRes, req, res) => {
     if (String(proxyRes.headers['content-type'] ?? '').startsWith('text/event-stream')) {
       process.nextTick(() => res.flushHeaders());

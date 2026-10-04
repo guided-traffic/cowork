@@ -5,8 +5,9 @@ the pipeline every request runs before its handler, authentication — a token o
 the CSRF check, the tenant boundary, authorization, errors, idempotency, versions, paging,
 filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
 (errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
-(versions), [ADR 0031] (sessions), [ADR 0037] (CSRF); the reference table of routes and codes is
-[README.md, API](../../README.md#api-backend). Read against the tree on 2026-10-03.
+(versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
+the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
+against the tree on 2026-10-04.
 
 ## The document
 
@@ -16,14 +17,17 @@ into the file of its path family.
 
 | File | Paths |
 |---|---|
-| [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json` — `security: []`, read before a client authenticates |
-| [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/logout` — see [the login flows](#the-login-flows) |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}` |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | creating a tenant (`POST /tenants`), the tenant, its members, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
+| [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents |
+| [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export |
+| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
+| [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
@@ -38,7 +42,9 @@ into the file of its path family.
    writes [`internal/api/apigen/api.gen.go`](../../backend/internal/api/apigen/api.gen.go): the
    models, the strict server interface on `net/http`'s mux, and the Go client the integration
    tests use. Nullable fields are `nullable.Nullable[T]`; every enum constant carries its type's
-   name (`EffortS`); `streamEvents` is excluded.
+   name (`EffortS`); `streamEvents` and `runChatTurn` are excluded, and `skip-prune` keeps the
+   models only their bodies and events name — the turn's body and the data of its events, which
+   `chat.go` reads and writes.
 4. `sqlc generate` (the data layer, [data-access.md](data-access.md)).
 
 The generated files are committed and never edited; `make generate-check` fails CI on a diff or
@@ -65,14 +71,16 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    [the rule](../security/local-accounts.md#the-client-address)): with no trusted network the
    header is never read, and an entry that is no address stops the walk.
 4. **Authentication**, when the operation declares `bearerToken` or `sessionCookie` — all but
-   the four public operations (`getVersion`, `getOpenAPI`, `getAuthOptions`, `loginLocal`). One
-   resolver for both credentials ([Authentication](#authentication)); the `auth.Principal` and
-   the `store.Caller` go into the context. A public operation that writes and says
+   the seven public operations (`getVersion`, `getOpenAPI`, `getCoworkYamlSchema`, `getAuthOptions`,
+   `loginLocal`, `loginOidc`, `oidcCallback`). One resolver for both credentials
+   ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
+   keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
-   **For a request authenticated by a session** two more rules run here, before the tenant
-   boundary: **the CSRF check** on an unsafe method (`403 csrf`), and the gate of a temporary
-   password (`403 password_change_required` for everything but `getMe`, `changeMyPassword` and
-   `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
+   **For a request authenticated by a session** three more rules run here, before the tenant
+   boundary: **the CSRF check** on an unsafe method (`403 csrf`); a session the agent header marks
+   is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
+   temporary password (`403 password_change_required` for everything but `getMe`,
+   `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
 5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
    context.
 6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
@@ -86,7 +94,9 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    `413 payload_too_large` before anything is read; a longer body fails while it is read.
 9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
    `errors[]` entry of `400 validation_failed`; a query parameter the operation does not declare
-   is refused (the validator would let it pass); a path parameter that breaks its schema is
+   is refused (the validator would let it pass) — except on an operation marked
+   `x-cowork-open-query`, the identity provider's callback, to which an issuer may add its own; a
+   path parameter that breaks its schema is
    `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
    ids are UUIDv7); defaults are not written into the request — the handlers apply them; a
    multipart body is left to the handler. The validator sees the route without its security
@@ -95,7 +105,9 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
 10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,
     `serveValidated` holds the response to the document as well ([testing.md](testing.md)); it
     reads the whole body before the handler runs, so a test of the body's timing switches it
-    off.
+    off. `runChatTurn` goes to `serveChat` instead, on the context from before step 7: the
+    timeout bounded reading its body, and the turn has limits of its own
+    ([chat.md](chat.md#a-turn)).
 
 A handler returns a `*problem.Error` or an error; `writeError` answers a problem as it is,
 `store.ErrNotFound` as `404`, `store.ErrIdempotencyMismatch` as `422 idempotency_mismatch`, a
@@ -107,12 +119,19 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 [`authn.go`](../../backend/internal/api/authn.go) and [`session.go`](../../backend/internal/api/session.go)
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
-`sessionCookie` the operation declares — the default is both, written once at the root; the six
-session-only operations (`createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`,
-`changeMyPassword`, `logout`) declare `sessionCookie` alone, the four public ones declare
-nothing — and `authenticate` decides. What the first four make — a token, a tenant, an account,
-a password only its setter knows — would outlive the revocation of a leaked token, which is why
-a token cannot call them ([ADR 0033] D1, D5):
+`sessionCookie` the operation declares — the default is both, written once at the root; the
+sixteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+`resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
+`createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
+its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
+of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
+(`setMyChat`); a turn of the chat acts with the person's session and its stop ends the session's
+person's turns, and a token's agent has the MCP server; the list of every tenant is a global
+administrator's view of the installation's clients, which a token of theirs does not get
+([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
+[tokens.md](../security/tokens.md#what-only-a-session-does)):
 
 - **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
   cookie is not looked at. A valid token on a session-only operation is `403 session_required`
@@ -122,26 +141,46 @@ a token cannot call them ([ADR 0033] D1, D5):
   match `^cwk_[0-9A-Za-z]{43}$` (`auth.WellFormedToken`) is refused before the database is
   asked; the lookup is by SHA-256 (`auth.HashToken`, `DB.LookupToken`).
   Missing, malformed or unknown: `401 unauthenticated`; revoked, or its person deactivated:
-  `401 token_revoked`; expired: `401 token_expired`. Every `401` carries
-  `WWW-Authenticate: Bearer realm="cowork"`. A dead token's use is recorded as an
-  installation-level `refused` act, at most once per token, reason and hour ([ADR 0035] D9).
+  `401 token_revoked`; expired: `401 token_expired`; its person one of the identity provider's whom
+  the gate no longer admits — judged on their stored groups at most every
+  `COWORK_OIDC_GROUPS_REFRESH`, and at every request when the person is not the configured
+  issuer's or their groups are older than `COWORK_OIDC_GROUPS_MAX_AGE` (`tokenGate` in
+  [`identity.go`](../../backend/internal/api/identity.go))
+  — `401 not_allowed`. Every `401` carries `WWW-Authenticate: Bearer realm="cowork"`. A dead or
+  gated token's use is recorded as an installation-level `refused` act, at most once per token,
+  reason and hour ([ADR 0035] D9). The principal carries the token's id and name (`TokenID`,
+  `TokenName`); `callerOf` hands both to the `store.Caller`, whose audit rows record them, and a
+  handler writes them beside the agent mark on the rows that show an act — a comment and its
+  revision, a file, a question asked and its answer, a time entry and its revision — through
+  `actToken` in [`tickets.go`](../../backend/internal/api/tickets.go); `tokenMarkView` answers them
+  as `token`, `{id, name}`, `null` for a session ([ADR 0036] D6).
 - **A session** is the cookie `__Host-cowork-session` (`auth.SessionCookie`): 43 characters of
   base64url, the SHA-256 of which is `sessions.token_hash` (`auth.HashSession`,
   `DB.LookupSession`). Malformed, unknown, ended, past a limit (`sessionLive`: the absolute
   `expires_at`, the idle `last_seen_at` plus `COWORK_SESSION_IDLE`) or its person deactivated:
-  the same `401`, with a `Set-Cookie` that clears the cookie. A live session moves its idle clock
-  at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure is logged).
+  the same `401`, with a `Set-Cookie` that clears the cookie. A session of the identity provider
+  whose person is not the configured issuer's ends with every session of that person; one whose
+  groups are due runs its groups refresh first — the request that claims it waits for the issuer,
+  the session's others are served on its groups — and a refresh that ends it is that `401` too
+  ([architecture.md](architecture.md#the-groups-refresh-in-the-request-path)). A live session moves
+  its idle clock at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure
+  is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
-  session has no scope, the role decides — no agent mark, `GlobalAdmin` and
+  session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
   is how the session policies find the row; no audit row ever carries it.
 - `X-Cowork-Agent: name/model/session` — three parts of 1 to 64 printable ASCII characters
   without a leading or trailing space; a malformed header is `400` on `header:X-Cowork-Agent`,
-  never ignored. It belongs to a token's request: `auth.Mark` decides the agent mark: a token
-  with the agent flag is an agent's with or without the header (recorded as the header or
-  `unknown-agent`) and holds the token's capabilities; a plain token with the header is an
-  agent's holding every capability; a plain token without it is the person ([ADR 0036],
-  [ADR 0043] D4). A session is never an agent's.
+  never ignored. `auth.Mark` decides the agent mark: a token with the agent flag is an agent's
+  with or without the header (recorded as the header or `unknown-agent`) and holds the token's
+  capabilities; a plain token with the header is an agent's holding every capability; a plain
+  token without it is the person ([ADR 0036], [ADR 0043] D4). A session is read the same way as a
+  plain token: with the header its request is an agent's holding the capabilities its person chose
+  for the chat, or `auth.DefaultChatCapabilities` ([ADR 0043] D5; `chatCapabilities` in
+  [`session.go`](../../backend/internal/api/session.go), one read of `chat_capabilities` per such
+  request), which `sessionRules` then refuses what only a session does — the chat in the UI marks its tool calls so,
+  `chat/<model>/<conversation>` ([chat.md](chat.md#the-loopback)); without it the session is the
+  person.
 - The token's `last_used_on` is written at most once per UTC day (a process-local note, then
   the column), outside `Mutate`, and a failure never fails the request.
 
@@ -156,10 +195,10 @@ first half alone, for the login. A token's request is never checked.
 
 ## The login flows
 
-`/auth/options`, `/auth/local` and `/auth/logout` are in the API document, in
-[`auth.yaml`](../../backend/api/auth.yaml), so the pipeline validates their bodies, the generated
-Go and Angular clients know them and the document says which credential each takes — **with
-paths outside `/api/v1`**, as [ADR 0037] D5 names them. `httpserver.New` mounts the API handler
+`/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback` and `/auth/logout` are in the
+API document, in [`auth.yaml`](../../backend/api/auth.yaml), so the pipeline validates their bodies
+and parameters, the generated Go and Angular clients know them and the document says which
+credential each takes — **with paths outside `/api/v1`**, as [ADR 0037] D5 names them. `httpserver.New` mounts the API handler
 at `/auth/` as well as `/api/`; the frontend's nginx and the dev proxy forward `/auth` like
 `/api`. They are browser flows, but they are no secret: the served document lists them, and a
 script that wants a session can read how.
@@ -168,10 +207,23 @@ script that wants a session can read how.
 client address), `NormaliseUsername`, `DB.LookupLogin`, **one** `passwordFits` — against the stored hash or
 the dummy — and `DB.RecordLoginAttempt` (the lock and the counting in one transaction under the
 username's advisory lock), then `DB.CreateSession` for a success; every failure is the same
-`invalid_credentials`. `Logout` deletes the session's row. The store's side is
-[data-access.md](data-access.md#the-login-and-the-sessions); the security design is
-[docs/security/local-accounts.md](../security/local-accounts.md),
+`invalid_credentials`. `Logout` deletes the session's row, and for a session of the identity
+provider whose issuer names an end-session endpoint answers `200` with its URL instead of `204`.
+The store's side is [data-access.md](data-access.md#the-login-and-the-sessions); the security
+design is [docs/security/local-accounts.md](../security/local-accounts.md),
 [sessions.md](../security/sessions.md) and [csrf.md](../security/csrf.md).
+
+[`oidc.go`](../../backend/internal/api/oidc.go): `LoginOidc` and `OidcCallback` are browser
+navigations — the login page sets `window.location` — that answer redirects, never JSON: the start
+`302` to the issuer, the callback `303` to the path the login began with or to
+`/login?error=<code>`. The callback's answer sets two cookies, the session's and the cleared state
+cookie, which the generated response type, with one `Set-Cookie`, cannot carry: `redirect`
+implements the generated `VisitOidcCallbackResponse` itself. Its failures are redirects too, so
+`OidcCallback` returns no `problem.Error` for them; the reason goes to the log. The relying party
+itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
+[`store.CompleteOIDCLogin`](../../backend/internal/store/identity.go)
+([architecture.md](architecture.md#the-two-logins),
+[identity-provider.md](../security/identity-provider.md)).
 
 ## The tenant boundary
 
@@ -186,6 +238,18 @@ exists ([ADR 0047] D5):
 - a token restricted to a project, on a path without `{project}` — except `listProjects`,
   `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
+
+**A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
+where `GetTenantForPerson` finds no membership, `overseen` admits the request when `oversees` holds —
+a global administrator, a session, no agent mark, and an operation of `oversight`: `getTenant`,
+`listMembers`, `listGroupMappings`, `setMemberGrant` — and reads the tenant by slug
+(`GetTenantBySlug`, which the `tenants` policy shows a global administrator since migration 26). The
+`tenantScope` it hands on has no `Role` and `Oversight` set. The three reads authorize through
+`administrationRead`, which takes the mark for the role; `SetMemberGrant` sends a grant to the
+person themselves to `grantSelf` when `ownGrant` holds — a global administrator in a session no agent
+marks who does not hold `admin`, with a role in the tenant or without — and anybody else's to
+`auth.Authorize`, which a scope without a role fails (`403 forbidden`). Every other operation is refused like an unknown slug, before any handler;
+a token, an agent-marked session and the event stream's heartbeat get no such admission.
 
 Inside the tenant, `visibleProject` and `visibleTicket` read through the visibility predicates
 ([data-access.md](data-access.md#visibility-in-sql)): a restricted project or a confidential
@@ -214,6 +278,7 @@ another token. The checks run in this order; the first failure answers:
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
@@ -221,14 +286,27 @@ another token. The checks run in this order; the first failure answers:
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
-The handlers also build a few needs inline: `createProject` (admin, or member while the tenant
-allows it; `write`; `create-project`), `setConfidential` (admin, `admin`, hard-off), the
+The handlers also build a few needs inline: `creating` for `createProject`, `bindRepository`
+and `unbindRepository` (admin, or member while the tenant allows it; `write`; `create-project`
+— [`repositories.go`](../../backend/internal/api/repositories.go), judged by the project role for
+a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
 (`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
-use `administer`; creating a tenant (`CreateTenant`) needs `Principal.GlobalAdmin` and a session,
-which the pipeline has already settled. A session passes every scope check: its scope is `admin`. Rules about *whose* entity it is —
+and the writes of [`members.go`](../../backend/internal/api/members.go) use `administer`, the
+member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
+`409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
+tenant's lock first);
+creating a tenant (`CreateTenant`) and listing every tenant (`ListTenants`) need
+`Principal.GlobalAdmin` and a session, which the pipeline has already settled; a global
+administrator's grant to themselves where they do not hold `admin` (`grantSelf`, `setOwnGrant`) takes
+the tenant's lock and meets no `lastAdmin`, since it takes no administrator away — unless it lowers a
+grant of `admin` another administrator gave them meanwhile; making a group mapping or changing its role (`CreateGroupMapping`,
+`UpdateGroupMapping`) needs `Principal.GlobalAdmin` after `administer`, else `403 forbidden` before
+an idempotency key is kept or a row is written (`mapsGroups`, [ADR 0030] D7). A session passes every
+scope check: its scope is `admin`. Rules about *whose* entity it is —
 the asker, the author, the person asked — are checked after `Authorize`, in the handler.
 
 ## Problem details
@@ -246,8 +324,9 @@ request id.
 
 ## Idempotency
 
-A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addComment`, `bookTime`,
-`uploadAttachment` — calls `keyed(ctx, key, op, scope, body)` in
+A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQuestion`, `addComment`,
+`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping` — calls
+`keyed(ctx, key, op, scope, body)` in
 [`server.go`](../../backend/internal/api/server.go):
 
 - No `Idempotency-Key`: a person's request goes on unkeyed; an agent's is
@@ -262,8 +341,13 @@ A creating `POST` — `createProject`, `createTicket`, `askQuestion`, `addCommen
   `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
   `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
   replay comes back as `*store.Result`, decoded
-  with `replayed[T]` and `header`. The same key with another request is
-  `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours.
+  with `replayed[T]` and `header`. A required nullable field the stored answer does not carry — one
+  added after the release that stored it, such as an act's `token` — is answered as `null`
+  (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
+  (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
+  `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
+  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
 transition carries its `from` state instead; a key sent with it is recorded on the act, not
@@ -283,8 +367,9 @@ once: the state is written with `bump` false after the fields.
 
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
 `replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
-`updateQuestion`, `answerQuestion` (changing an answer given), `editComment` and
-`editTimeEntry`. Links, interest and attachments are written without it and carry no version
+`updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
+`editTimeEntry`, `updateGroupMapping` and `setProjectRestriction` (the project's version). A grant
+and an access entry are addressed by their person and written without it, like a link. Links, interest and attachments are written without it and carry no version
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
 
@@ -320,7 +405,8 @@ list answers that `invalid_cursor`.
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
-  questions by number; members and interest by person id; the other lists by id.
+  questions by number; members, interest and a project's access list by person id; the group
+  mappings by group; the installation's tenants by slug; the other lists by id.
 
 ## Filters
 
@@ -347,13 +433,24 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
   `Content-Length`, never `304`, and records every call as `exported`
   ([markdown-grammar.md](markdown-grammar.md)). The validator reads `text/markdown` with the
   plain-text body decoder registered in `validate.go`.
+- **The context** returns `contextResponse` from [`context.go`](../../backend/internal/api/context.go)
+  for the same reason: `text/markdown; charset=utf-8` and `Content-Length`, no `ETag` — it is no
+  one entity — and every call recorded as `exported` with the format `context v1`.
 - **The event stream** is no response a handler returns: oapi-codegen excludes `streamEvents`,
   and the pipeline calls `serveEvents` in [`events.go`](../../backend/internal/api/events.go)
   ([events.md](events.md)).
+- **A turn of the chat** is a `POST` answered with `text/event-stream` once it has begun: oapi-codegen
+  excludes `runChatTurn` as well, and `serveOperation` calls `serveChat` in
+  [`chat.go`](../../backend/internal/api/chat.go) after the body limit and the validation; a failure
+  after the stream began is its `error` event, a problem body from `problem.BodyOf`
+  ([chat.md](chat.md#a-turn)).
 
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
+[ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0033]: ../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md
+[ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md

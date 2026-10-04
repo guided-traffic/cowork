@@ -33,8 +33,8 @@ type comment = readq.GetCommentRow
 func commentView(c comment) apigen.Comment {
 	v := apigen.Comment{
 		Id: c.ID, Author: personView(c.AuthorID, c.AuthorUsername, c.AuthorName), Agent: nullableOf(c.Agent),
-		Body: nullableOf(&c.Body), Withdrawn: c.WithdrawnAt != nil, WithdrawnAt: nullableOf(c.WithdrawnAt),
-		Edited: c.Edited, Explains: make([]apigen.AuditAction, 0, len(c.Explains)),
+		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), Withdrawn: c.WithdrawnAt != nil,
+		WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited, Explains: make([]apigen.AuditAction, 0, len(c.Explains)),
 		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if v.Withdrawn {
@@ -132,10 +132,12 @@ func (s *Server) GetComment(ctx context.Context, req apigen.GetCommentRequestObj
 }
 
 // writeComment adds a comment as the caller, with its act; an agent writes
-// in its person's name with its mark (docs/adr/0015 D3).
+// in its person's name with its mark (docs/adr/0015 D3), and a token's comment
+// carries the token (docs/adr/0036 D6).
 func writeComment(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, text string) (uuid.UUID, error) {
 	p := principal(ctx)
 	ins := writeq.InsertCommentParams{TenantID: t.ID, TicketID: tc.row.ID, AuthorID: p.PersonID, Body: text}
+	ins.TokenID, ins.TokenName = actToken(p)
 	if p.IsAgent() {
 		ins.Agent = &p.Agent
 	}
@@ -275,6 +277,7 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 			return err
 		}
 		rev := writeq.InsertCommentRevisionParams{TenantID: t.ID, CommentID: c.ID, Body: c.Body, EditedBy: p.PersonID}
+		rev.TokenID, rev.TokenName = actToken(p)
 		if p.IsAgent() {
 			rev.Agent = &p.Agent
 		}
@@ -362,7 +365,7 @@ func (s *Server) ListCommentRevisions(ctx context.Context, req apigen.ListCommen
 	out := apigen.ListCommentRevisions200JSONResponse{Items: make([]apigen.CommentRevision, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, r := range rows {
 		out.Items = append(out.Items, apigen.CommentRevision{Body: r.Body, EditedBy: personView(r.EditedBy, r.EditedByUsername, r.EditedByName),
-			Agent: nullableOf(r.Agent), At: r.CreatedAt})
+			Agent: nullableOf(r.Agent), Token: tokenMarkView(r.TokenID, r.TokenName), At: r.CreatedAt})
 	}
 	return out, nil
 }
@@ -421,8 +424,8 @@ func (s *Server) ListActivity(ctx context.Context, req apigen.ListActivityReques
 func activityView(a readq.ListTicketActivityRow, visible map[uuid.UUID]bool) apigen.Activity {
 	v := apigen.Activity{
 		Id: a.ID, At: a.CreatedAt, Actor: nullableOf[apigen.Person](nil), ActorSystem: nullableOf(a.ActorSystem),
-		Agent: nullableOf(a.Agent), Action: apigen.AuditAction(a.Action), EntityType: a.EntityType,
-		EntityId: nullableOf(a.EntityID), ExplainedByComment: nullableOf(a.ExplainedByCommentID),
+		Agent: nullableOf(a.Agent), Token: tokenMarkView(a.TokenID, a.TokenName), Action: apigen.AuditAction(a.Action),
+		EntityType: a.EntityType, EntityId: nullableOf(a.EntityID), ExplainedByComment: nullableOf(a.ExplainedByCommentID),
 		Reason: nullableOf(a.Reason), Note: nullableOf(a.Note), Before: jsonObject(a.Before), After: jsonObject(a.After),
 	}
 	if a.ActorUserID != nil {

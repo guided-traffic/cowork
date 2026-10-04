@@ -1,0 +1,67 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 64rem;
+  padding: 2rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+
+  h1 {
+    font-size: 1.5rem;
+  }
+}
+
+.spacer {
+  flex: 1;
+}
+
+.lead {
+  margin: 0;
+  max-width: 48rem;
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  overflow: hidden;
+}
+
+.col-role {
+  width: 6rem;
+}
+
+.col-grant {
+  width: 9rem;
+
+  :host ::ng-deep & .p-select {
+    width: 100%;
+  }
+}
+
+.col-actions {
+  width: 3rem;
+  text-align: right;
+}
+
+.email {
+  display: block;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.origins {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.empty {
+  padding: 1.5rem;
+  text-align: center;
+}

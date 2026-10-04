@@ -12,7 +12,19 @@ events:
       `link.changed` and `interest.changed`, each with `data: {"key", "version", "kind"}` — a key
       and a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a
       project the caller cannot see, or of a confidential ticket they may not read, never
-      arrives (D3). A reconnect with `Last-Event-ID` inside the replay window replays the gap;
+      arrives (D3).
+
+      `membership.changed` says that who belongs to the tenant, or who sees a project, changed —
+      by an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its
+      `data` carries keys only, each where it applies: `person_id`, the person whose membership
+      or project access changed; `project_id`, the project whose restriction or access list
+      changed; `mapping_id`, the group mapping made, changed or removed. The client reloads what
+      it shows of members, mappings and access lists, its project list when `project_id` is
+      there, and the person's own `GET /api/v1/me`. An event about an access entry reaches the
+      tenant's administrators and the person it names, one about a mapping the administrators,
+      every other every member.
+
+      A reconnect with `Last-Event-ID` inside the replay window replays the gap;
       beyond it the stream starts with `event: resync`, and the client refetches its lists (D5).
       A comment every twenty seconds keeps proxies open and checks the token and the
       membership again; the stream ends when either fails. `event: unavailable` ends a stream

@@ -21,6 +21,9 @@ me:
               memberships:
                 - tenant: {slug: acme, name: Acme}
                   role: admin
+                  origins:
+                    - source: grant
+                      role: admin
       default:
         $ref: './components/responses.yaml#/Problem'
 tokens:
@@ -112,6 +115,82 @@ token:
     responses:
       '204':
         description: Revoked
+      default:
+        $ref: './components/responses.yaml#/Problem'
+currentToken:
+  get:
+    operationId: getMyToken
+    tags: [me]
+    summary: The token this request presents, and what it makes of the request
+    description: |
+      The token's metadata as the list shows it, the key of the project it is
+      restricted to, and the request's mark: whether it is an agent's — by the
+      token's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the
+      agent recorded on its acts, and the capabilities it holds
+      (docs/adr/0043 D4). The MCP server reads it at start to tell the model what
+      it may do (D6), and `cowork-mcp token check` to tell a person
+      (docs/adr/0070 D2). A browser session presents no token: `404 not_found`.
+    responses:
+      '200':
+        description: The token
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/CurrentToken'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+chat:
+  get:
+    operationId: getMyChat
+    tags: [me]
+    summary: The capabilities the person gives the chat in the UI
+    description: |
+      The chat acts as the person's agent, and its requests hold exactly this set
+      (docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused
+      to the chat with `403 agent_forbidden` and stays the person's. A person who never chose
+      holds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,
+      and `chosen` is false.
+    responses:
+      '200':
+        description: The chat's capabilities
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ChatCapabilities'
+            example:
+              capabilities: [rank, override-urgency, interest, upload, create-project]
+              chosen: false
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  put:
+    operationId: setMyChat
+    tags: [me]
+    summary: Choose the capabilities the person gives the chat in the UI
+    description: |
+      Only the person, in a browser session: what the chat may do is access to the person's
+      tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+      the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
+      replaces the one before, from the chat's next request on, a running turn's included; an empty
+      set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
+      writer, and the same set sent twice changes nothing (docs/adr/0050 D4). A change is recorded
+      as the person's act.
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ChatCapabilitiesUpdate'
+          example:
+            capabilities: [rank, override-urgency]
+    responses:
+      '200':
+        description: The chat's capabilities as chosen
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ChatCapabilities'
       default:
         $ref: './components/responses.yaml#/Problem'
 password:

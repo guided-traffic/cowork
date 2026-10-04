@@ -3,7 +3,19 @@
 ## Status
 
 Accepted, amended 2026-10-02 (D1, D9: creating a project is a member act unless the tenant
-reserves it to administrators). Date: 2026-10-01. Decided by the owner as the answer to the
+reserves it to administrators) and 2026-10-04 (D1: no change leaves a tenant without an
+administrator; D3, D7: the administration built, and a restricted project's entries on its own
+access list, not in the member list), and again on 2026-10-04 after the security review (D1: only
+an administrator who can log in counts, and the changes take the tenant's lock; D3: a trigger holds
+the restriction to the tenant's administrators; D7: the address shown to administrators only),
+and a third time on 2026-10-04 (D1: the deactivation of a local account is held to the rule in the
+tenant that manages the account), and a fourth time on 2026-10-04 (D1: making a group mapping and
+changing its role take a global administrator besides the `admin` role — the owner's answer, recorded
+in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D7), and a fifth time on 2026-10-04 (D2: built — the owner's choice of the global administrator's
+grant to themselves as the recovery of a tenant without an administrator, in any tenant in which
+they do not hold `admin` — one without a role, or one with a lower role, whose own grant they raise;
+the view of a tenant without a role is a browser session's). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "roles?": three tenant roles with an optional per-project restriction, over tenant roles
 alone, over a configurable permission matrix, and over an additional project-lead role. The
 rules of D6–D8 were put to the owner with the question and not objected to. D9 is the
@@ -25,11 +37,37 @@ the administration.
 the start-up synchronisation sets for the local administrator, and `POST /api/v1/tenants`; a
 global administrator who creates a tenant is its first administrator by a marked grant
 ([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
-D7), and in any other tenant has no role and meets the tenant boundary like a stranger. Not built:
-the view of a tenant's administration without a role, the reading of installation-level audit
-rows, the deletion of a tenant and the route by which a global administrator grants themselves a
-role in an existing tenant; the `memberships` policy admits a global administrator's own grant as
-`admin`, which the creation of a tenant uses.
+D7), and in any other tenant has no role ~~and meets the tenant boundary like a stranger~~. Not built:
+~~the view of a tenant's administration without a role,~~ the reading of installation-level audit
+rows, the deletion of a tenant ~~and the route by which a global administrator grants themselves a
+role in an existing tenant~~ *(built 2026-10-04, below)*; the `memberships` policy admits a global
+administrator's own grant as `admin`, which the creation of a tenant uses *(in any role since
+migration 26)*.
+
+**Built** (phase 4, 2026-10-04): D7's acts — a member's grant added by address or username, its
+role changed and removed, the group mappings of
+[ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md),
+a project's restriction and its access list — in
+[`api/members.go`](../../backend/internal/api/members.go) and the UI, every one recorded and
+announced as `membership.changed`; the writes of the restriction's list held to the tenant's
+administrators in the data layer by restrictive policies
+([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql));
+D1's refusal to leave a tenant without an administrator (`409 last_admin`), and — built the same
+day — the deactivation of a local account held to it in the managing tenant under that tenant's
+lock ([`api/accounts.go`](../../backend/internal/api/accounts.go) `DeactivateAccount`). The members of the
+identity provider's administrator group are global administrators too (ADR 0030 D1). Still not
+built: D2's parts named above.
+
+**Built** (2026-10-04): D2's view of a tenant without a role, the list of every tenant and the
+grant to themselves — the request layer's admission (`oversees` and `overseen` in
+[`api/tenant.go`](../../backend/internal/api/tenant.go)), `GET /api/v1/tenants`
+([`api/tenants.go`](../../backend/internal/api/tenants.go) `ListTenants`), the grant
+([`api/members.go`](../../backend/internal/api/members.go) `grantSelf`), the policies of
+[migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql), and
+the UI's offer above a tenant's pages — and, the same day, the raise of a global administrator's own
+grant where they hold a role below `admin` (`ownGrant`, `setOwnGrant`; the UI's offer on the members
+page). Still not built: the reading of installation-level audit rows
+and the deletion of a tenant.
 
 ## Context
 
@@ -54,20 +92,73 @@ in-tenant leak this record avoids by deciding it now.
 |---|---|
 | `viewer` | read everything of the tenant it may see (D3); register `watch` interest |
 | `member` | everything of the working day: create and edit tickets, transition them, comment, link, register any interest, ask questions and answer those asked of them or open in the tenant, book time, upload and download attachments, drag the rank; *(added 2026-10-02)* create projects while the tenant allows it (D9) |
-| `admin` | all of `member`, plus: members, mappings and grants, local accounts of the tenant, projects (~~create,~~ archive, restrict; *(amended 2026-10-02)* create always, D9), delete, restore and purge tickets, the time-period lock, the tenant's settings, read every time entry |
+| `admin` | all of `member`, plus: members, mappings *(amended 2026-10-04: making one and changing its role take a global administrator besides, ADR 0030 D7; reading and removing one do not)* and grants, local accounts of the tenant, projects (~~create,~~ archive, restrict; *(amended 2026-10-02)* create always, D9), delete, restore and purge tickets, the time-period lock, the tenant's settings, read every time entry |
+
+*(Added 2026-10-04:)* A tenant always has an administrator. A change of a grant or of a group
+mapping that would leave no ~~active~~ person holding `admin` in the tenant, mapped or granted, is
+refused with `409 last_admin` and changes nothing — the administrator's own grant and the mapping
+that makes them administrator included. A derivation from the identity provider's groups at a
+login, a refresh or a token's gate check is the issuer's word and is not refused
+([docs/security/identity-provider.md](../security/identity-provider.md) H-29). *(Amended after the
+security review, 2026-10-04: only a person who can log in counts — active, and a local account or a
+person of the configured issuer whom the gate admitted at their last login, refresh or check — and
+each such change takes the tenant's lock before any person's, so two administrators who take each
+other's role away at once are decided one after the other. ~~Not held to the rule: the deactivation of
+a local account ([docs/security/local-accounts.md](../security/local-accounts.md) H-32).~~)*
+*(Amended 2026-10-04: the deactivation of a local account is such a change in the tenant that
+manages the account — a deactivated person is no administrator who can log in. It takes that
+tenant's lock first and is refused with `409 last_admin`, changing nothing, when no administrator
+who can log in would remain, so two administrators who deactivate each other's accounts at once are
+decided one after the other. The other tenants in which the person holds `admin` are not asked: the
+deactivation runs in the managing tenant's transaction, and row-level security keeps their rows out
+of it ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D3, D8;
+[docs/security/local-accounts.md](../security/local-accounts.md) H-32).)*
 
 **D2 — The global administrator has no implicit role in any tenant.** A global administrator
 creates and deletes tenants, reads installation-level audit rows and the allow-list, and in
 a tenant's pages sees its administration (members, mappings, settings) — but no tickets,
 no time, no attachments — until they grant themselves a role, which is a recorded manual
-grant like any other.
+grant like any other. *(Built 2026-10-04, chosen by the owner as the recovery of a tenant that lost
+its last administrator who can log in, whatever took it — a derivation from the issuer's groups, a
+mapping's change, the deactivation of an account another tenant manages
+([docs/security/identity-provider.md](../security/identity-provider.md) H-29,
+[docs/security/local-accounts.md](../security/local-accounts.md) H-32). The reach is a browser
+session's that no agent header marks: the request layer admits a global administrator without a
+role in the tenant to `getTenant`, `listMembers` — without the addresses, which are the tenant's
+administrators' (D7) — and `listGroupMappings`, and to `setMemberGrant` on their own person, and
+answers every other route of the tenant the `404` an unknown tenant gets; a token of theirs keeps
+the reach of the person's memberships, so a leaked one gains nothing by it, and an agent — the chat
+in the UI among them — gets none. They find such a tenant through `GET /api/v1/tenants`, every
+tenant of the installation with the role they hold in it or none, which takes a browser session as
+well ([ADR 0035](0035-personal-access-tokens.md) D5). The grant is `PUT …/members/{person_id}/grant`
+with their own id, in any role — the UI offers `admin` first —: made under the tenant's lock,
+recorded in the tenant with the administrator as its actor and announced to its members as
+`membership.changed`; it takes no administrator away, so it is never `409 last_admin`. A global
+administrator who holds a role below `admin` in the tenant — mapped or granted — sets their own grant
+the same way, made or its role changed, which raises them (the owner's answer of 2026-10-04: "a
+global administrator grants themselves `admin` in any tenant"). Once they hold `admin` they are an
+administrator of the tenant like any other, and their grant is changed or removed as anyone's, a
+lowering of their own held to `last_admin`. Row-level security
+shows a global administrator every row of `tenants`, admits their own grant in any role and the
+change of their own grant's role in the tenant (migration 26); inside the tenant's transaction the tenant-bound tables admit whomever the request
+layer admitted, as they do for a member ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+D3), so which operations a global administrator without a role reaches is the request layer's
+list.)*
 
 **D3 — A project is open to every member of its tenant unless an administrator restricts
 it.** A restricted project carries a list of (person, `member` or `viewer`) entries; a
 person's effective role in it is the lower of their tenant role and their entry; a person
 with no entry does not see the project, its tickets, its board, its tiles, its search hits,
 or any notification about it. Tenant administrators always see every project. Restriction
-and its list are recorded acts.
+and its list are recorded acts. *(Built 2026-10-04: `PUT …/projects/{project}/restriction` with
+the project's `If-Match`, and `PUT`/`DELETE …/projects/{project}/access/{person_id}` for a member of
+the tenant, an entry `member` or `viewer`; restricting, opening and putting a person on the list take
+a browser session, taking a person off it an administrator's token as well
+([ADR 0035](0035-personal-access-tokens.md) D5). The list may be written before the project is
+restricted, so nobody on it loses the project in between.)* *(Amended after the security review,
+2026-10-04: the restriction is the tenant's administrators' in the data layer too — a trigger,
+`projects_restriction_guard`, refuses a change of `restricted` by anyone else, because a member may
+change the project's other settings and a policy cannot tell the columns apart.)*
 
 **D4 — The restriction is one predicate, carried by the data layer, not by call sites.** The
 wrapper of ADR 0027 D2 knows the person and their tenant role; every generated query on
@@ -85,8 +176,16 @@ permission record names what an agent may never do; the role says what the perso
 agent gets the intersection.
 
 **D7 — Role changes are recorded acts, and roles are visible.** The member list shows role,
-origin (mapping, grant, local account) and project entries; a change of role or of a project
+origin (mapping, grant, local account) ~~and project entries~~; a change of role or of a project
 list is an audit row ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
+*(Amended 2026-10-04: a restricted project's entries are on the project's own access list,
+`GET …/projects/{project}/access`, which the tenant's administrators read, and not in the member
+list: every member, a viewer included, reads the member list, and an entry there would name a
+restricted project to members who must not learn it exists (D3). The member list shows the effective
+role, every origin with its own role — the mapping, the grant — and whether the person has a local
+account.)* *(Amended after the security review, 2026-10-04: and, to the tenant's administrators only,
+the person's e-mail address, which tells two persons of one name apart; everyone else reads `null`.
+The access list shows it too, being the administrators' to read.)*
 
 **D8 — What a `viewer` cannot do is as fixed as what a `member` can.** A `viewer` answers no
 question, books no time, uploads nothing, moves nothing; the UI hides what the role forbids
@@ -135,6 +234,24 @@ D4). Archiving, restricting and deleting a project stay administration acts.
 - D5's default hides time from members; a tenant that is one team flips the setting once.
 - `viewer` with `watch` only (D1) may be too thin or too generous; the first client tenant
   will tell.
+- *(Added 2026-10-04.)* D1 holds a deactivation to the managing tenant alone. A local account
+  that another tenant manages and that is a tenant's only administrator who can log in is
+  deactivated without that tenant being asked, and leaves it without one
+  ([docs/security/local-accounts.md](../security/local-accounts.md) H-32); D2's self-grant ~~, which
+  would recover such a tenant, is not built~~ *(built 2026-10-04)* recovers such a tenant once a
+  global administrator acts.
+- *(Added 2026-10-04.)* D2's reach of a global administrator without a role is held by one list in
+  the request layer: inside the tenant's transaction row-level security admits its tickets, time and
+  attachments to whomever the request layer admitted (ADR 0021 D3), so an operation added to that
+  list by mistake would show the tenant's work to a global administrator who holds no role in it.
+  The integration tier walks every route of the document as such a global administrator, so a route
+  that answers more than an unknown tenant's `404` fails the day it is added.
+- ~~*(Added 2026-10-04.)* A global administrator who holds a role below `admin` in a tenant does not
+  grant themselves one: they are no longer without a role, and changing their own grant is an
+  administrator's act. In a tenant without an administrator who can log in they cannot recover it;
+  another global administrator who holds no role there can
+  ([docs/security/identity-provider.md](../security/identity-provider.md) H-29).~~ *(Closed
+  2026-10-04 by the owner's answer recorded in D2: they raise their own grant.)*
 
 ## References
 

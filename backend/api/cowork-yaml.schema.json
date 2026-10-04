@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": ".cowork.yaml",
+  "description": "The optional binding of a repository to a cowork project (docs/adr/0066 D4). A repository is found by its remote; this file is needed only for a repository without a remote, or to bind a fork to the original's project. When it is present it wins, and a disagreement with the server's binding is reported. The nearest file at or above the working directory applies.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant", "project"],
+  "properties": {
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+      "description": "The tenant's slug."
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+      "description": "The project's key."
+    },
+    "path": {
+      "type": "string",
+      "maxLength": 512,
+      "description": "The sub-directory of a monorepo this binding stands for, relative to the repository root; by default the directory the file is in."
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^https?://",
+      "description": "The installation the binding belongs to, for people with several; a session against another installation ignores the file."
+    }
+  }
+}

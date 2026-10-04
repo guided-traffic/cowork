@@ -5,7 +5,7 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 ([ADR 0011] D4). This page is grammar v1 exactly as
 [`markdown.Render`](../../backend/internal/markdown/markdown.go) writes it; the golden files in
 [`internal/markdown/testdata/`](../../backend/internal/markdown/testdata/) are its examples.
-Read against the tree on 2026-10-03.
+Read against the tree on 2026-10-04.
 
 ## The route
 
@@ -110,6 +110,40 @@ blocked-from: review
 `questions.md` the three answer forms and a body with its own `## Open questions` heading;
 `done.md` and `dropped.md` the notes of the terminal states.
 
+## The context
+
+`GET …/tickets/{number}/context` is the ticket for reading ([ADR 0044] D2):
+[`markdown.RenderContext`](../../backend/internal/markdown/context.go), gathered by
+[`ExportTicketContext`](../../backend/internal/api/context.go) in one read transaction from the
+queries of the lists, recorded as `exported` with the format `context v1`, `text/markdown;
+charset=utf-8` without an `ETag`. In order:
+
+1. One line, `<!-- cowork: context of <key>, exported <RFC 3339 UTC> by <person> (via <agent>) —
+   not an import format -->`; with it the document does not start with frontmatter, so it is no
+   file of grammar v1. A request of a plain token says `(through the token <name>)` instead of
+   `(via <agent>)`, and so does every line below where a token and no agent made the act
+   (`through the token <name>`, `through a token` where the act did not record the name;
+   [ADR 0036] D6, `via` in `context.go`); a person's own act says neither.
+2. The canonical document, exactly as `Render` writes it.
+3. `## Links`: `- <name read from this ticket> <key> — <title> (<state>, <assignee>)`.
+4. `## Prerequisites`: `<open> of <all> open.`, then the tree of the tickets that block it, two
+   spaces of indent per level, `- <key> — <title> (<state>, <assignee>, <implementation stage>%)`;
+   eight levels at most, stopping at a ticket the reader cannot see.
+5. `## Recent comments` — left out for `comments=0` —: the last ones, oldest of them first, each
+   `**<author>** via <agent>, <time UTC>:` and its text as a block quote, or `[withdrawn]`.
+6. `## Attachments`: `- <name> — <type>, <size> — <URL>`.
+7. `## Recent activity` — left out for `activity=0` —: the last acts of the ticket's activity
+   list, which leaves out time entries and what took data out (the exports among them), each
+   `- <time UTC> — <actor> via <agent> — <action>`, with the states of a transition, the ends of a link, the fields of an update, the
+   reason and the note quoted and cut to 200 characters; an act that names a ticket the reader
+   cannot see says so instead.
+
+An empty section says `None.`. A document lists at most 200 links, 200 nodes of the tree and 200
+attachments (`maxContext*` in `context.go`) and does not say when it stops at one.
+`context-full.md` and `context-quiet.md` in `testdata/` are its golden files, `TestRenderContext`
+their test; `context-token.md` and `TestRenderContextNamesTheTokenOfAPersonsAct` hold the token's
+lines.
+
 ## Changing the grammar
 
 The golden files are the specification's test: `TestRender` in
@@ -122,4 +156,5 @@ change of a contract.
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md

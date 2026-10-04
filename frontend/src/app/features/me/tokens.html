@@ -1,4 +1,4 @@
-<p-confirmdialog />
+<app-confirm-dialog />
 <app-new-token-dialog [(visible)]="creating" (created)="created($event)" />
 <app-secret-dialog [(secret)]="secret" header="Your new token" label="Token">
   <strong>Shown once.</strong> This token is a bearer credential: whoever holds it acts as you, with
@@ -17,7 +17,8 @@
   </header>
   <p class="muted lead">
     A token lets a tool — an agent, a script — act as you, within the scope and the reach you give
-    it. It is a password: cowork shows it once, when you make it, and never again.
+    it. It is a password: cowork shows it once, when you make it, and never again. Whatever it does
+    is marked as done through it, with its name, for everyone who reads the ticket.
   </p>
 
   <div class="panel">

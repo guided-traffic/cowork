@@ -118,9 +118,47 @@ spec:
                   name: {{ include "cowork.localAdminSecretName" . }}
                   key: {{ include "cowork.localAdminPasswordKey" . }}
             {{- end }}
+            {{- if include "cowork.oidcEnabled" . }}
+            - name: COWORK_OIDC_ISSUER
+              value: {{ .Values.auth.oidc.issuer | quote }}
+            - name: COWORK_OIDC_CLIENT_ID
+              {{- if and .Values.auth.oidc.existingSecret .Values.auth.oidc.keys.clientId }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.keys.clientId }}
+              {{- else }}
+              value: {{ .Values.auth.oidc.clientId | quote }}
+              {{- end }}
+            - name: COWORK_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ include "cowork.oidcClientSecretKey" . }}
+            - name: COWORK_OIDC_SCOPES
+              value: {{ .Values.auth.oidc.scopes | quote }}
+            - name: COWORK_OIDC_GROUPS_CLAIM
+              value: {{ .Values.auth.oidc.groupsClaim | quote }}
+            {{- with .Values.auth.oidc.allowedGroups }}
+            - name: COWORK_OIDC_ALLOWED_GROUPS
+              value: {{ join "," (toStrings .) | quote }}
+            {{- end }}
+            {{- with .Values.auth.oidc.adminGroup }}
+            - name: COWORK_ADMIN_GROUP
+              value: {{ . | quote }}
+            {{- end }}
+            - name: COWORK_OIDC_GROUPS_REFRESH
+              value: {{ .Values.auth.oidc.groupsRefresh | quote }}
+            - name: COWORK_OIDC_GROUPS_MAX_AGE
+              value: {{ .Values.auth.oidc.groupsMaxAge | quote }}
+            - name: COWORK_OIDC_EMAIL_TRUSTED
+              value: {{ .Values.auth.oidc.emailTrusted | quote }}
+            - name: COWORK_OIDC_DISPLAY_NAME
+              value: {{ .Values.auth.oidc.displayName | quote }}
+            {{- end }}
             {{- if or .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
-            {{- if not (include "cowork.localAdminEnabled" .) }}
-            {{- fail "bootstrap.tenant needs the local administrator: it becomes the tenant's first administrator (docs/adr/0032 D7); set localAdmin" }}
+            {{- if not (or (include "cowork.localAdminEnabled" .) (and (include "cowork.oidcEnabled" .) .Values.auth.oidc.adminGroup)) }}
+            {{- fail "bootstrap.tenant needs a first administrator (docs/adr/0032 D6, D7): set localAdmin, or auth.oidc with auth.oidc.adminGroup" }}
             {{- end }}
             - name: COWORK_BOOTSTRAP_TENANT_SLUG
               value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.slug | quote }}
@@ -168,6 +206,32 @@ spec:
             - name: COWORK_S3_CA
               value: /etc/cowork/s3-ca/{{ .Values.storage.tls.keys.ca }}
             {{- end }}
+            {{- end }}
+            {{- if include "cowork.chatEnabled" . }}
+            - name: COWORK_CHAT_PROVIDERS
+              value: {{ include "cowork.chatProviderIds" . | quote }}
+            {{- range .Values.chat.providers }}
+            {{- $env := include "cowork.chatEnv" .id }}
+            - name: {{ $env }}_NAME
+              value: {{ .name | default .id | quote }}
+            - name: {{ $env }}_KIND
+              value: {{ lower .kind | quote }}
+            - name: {{ $env }}_URL
+              value: {{ .url | quote }}
+            - name: {{ $env }}_MODEL
+              value: {{ .model | quote }}
+            {{- if .existingSecret }}
+            - name: {{ $env }}_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .existingSecret }}
+                  key: {{ (default (dict) .keys).apiKey | default "apiKey" }}
+            {{- end }}
+            {{- end }}
+            - name: COWORK_CHAT_TURN_TIMEOUT
+              value: {{ .Values.chat.turnTimeout | quote }}
+            - name: COWORK_CHAT_MAX_STEPS
+              value: {{ .Values.chat.maxSteps | int64 | toString | quote }}
             {{- end }}
             - name: COWORK_LOG_LEVEL
               value: {{ .Values.backend.config.logLevel | quote }}

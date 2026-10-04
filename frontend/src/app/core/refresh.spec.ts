@@ -1,6 +1,7 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Injector, resource, ResourceRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { refresh } from './refresh';
+import { gone, keepShown, refresh } from './refresh';
 
 describe('refresh', () => {
   let injector: Injector;
@@ -230,5 +231,122 @@ describe('refresh', () => {
       expect(loads).toHaveLength(1);
       expect(ref.value()).toBe('first');
     });
+  });
+});
+
+describe('gone', () => {
+  it.each([401, 403, 404])('says that a %i takes away what was asked for', (status) => {
+    expect(gone(new HttpErrorResponse({ status }))).toBe(true);
+  });
+
+  it.each([0, 409, 412, 429, 500, 503])('says that a %i does not', (status) => {
+    expect(gone(new HttpErrorResponse({ status }))).toBe(false);
+  });
+
+  it('says that a failure without an answer of the server does not', () => {
+    expect(gone(new TypeError('Failed to fetch'))).toBe(false);
+  });
+});
+
+describe('keepShown', () => {
+  /** A resource whose loader keeps what it shows, with loads that end when the test says so. */
+  function kept(params = signal('acme')) {
+    const loads: { resolve: (value: string) => void; reject: (error: unknown) => void }[] = [];
+    const ref: ResourceRef<string | undefined> = TestBed.runInInjectionContext(() =>
+      resource({
+        params: () => params(),
+        loader: () =>
+          keepShown(
+            ref,
+            () =>
+              new Promise<string>((resolve, reject) => {
+                loads.push({ resolve, reject });
+              }),
+          ),
+      }),
+    );
+    TestBed.tick();
+    return { ref, loads, params };
+  }
+
+  async function settle() {
+    await new Promise((resolve) => setTimeout(resolve));
+    TestBed.tick();
+  }
+
+  const outage = new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' });
+
+  it('answers with what the load gets', async () => {
+    const { ref, loads } = kept();
+
+    loads[0].resolve('first');
+    await settle();
+
+    expect(ref.value()).toBe('first');
+  });
+
+  it('answers a failed load again with the value shown', async () => {
+    const { ref, loads } = kept();
+    loads[0].resolve('first');
+    await settle();
+
+    ref.reload();
+    TestBed.tick();
+    loads[1].reject(outage);
+    await settle();
+
+    expect(ref.status()).toBe('resolved');
+    expect(ref.value()).toBe('first');
+  });
+
+  it('keeps a value the page set over the last answer', async () => {
+    const { ref, loads } = kept();
+    loads[0].resolve('first');
+    await settle();
+    ref.set('set here');
+
+    ref.reload();
+    TestBed.tick();
+    loads[1].reject(outage);
+    await settle();
+
+    expect(ref.value()).toBe('set here');
+  });
+
+  it('fails a load again that says the value is gone', async () => {
+    const { ref, loads } = kept();
+    loads[0].resolve('first');
+    await settle();
+
+    ref.reload();
+    TestBed.tick();
+    loads[1].reject(new HttpErrorResponse({ status: 404 }));
+    await settle();
+
+    expect(ref.status()).toBe('error');
+    expect(ref.hasValue()).toBe(false);
+  });
+
+  it('fails a first load, which has nothing to keep', async () => {
+    const { ref, loads } = kept();
+
+    loads[0].reject(outage);
+    await settle();
+
+    expect(ref.status()).toBe('error');
+  });
+
+  it('fails the load for other params instead of showing the value of the ones before', async () => {
+    const { ref, loads, params } = kept();
+    loads[0].resolve('of acme');
+    await settle();
+
+    params.set('globex');
+    TestBed.tick();
+    loads[1].reject(outage);
+    await settle();
+
+    expect(ref.status()).toBe('error');
+    expect(ref.hasValue()).toBe(false);
   });
 });

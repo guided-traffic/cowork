@@ -1,0 +1,28 @@
+{
+  "name": "cowork",
+  "displayName": "cowork",
+  "description": "Work from a cowork backlog: the cowork MCP server, a SessionStart hook that shows the session's ticket, a Stop hook that reminds of unfinished work, and the skills /next, /ticket, /question and /done. Needs the cowork-mcp binary on the PATH.",
+  "author": {
+    "name": "Guided Traffic",
+    "url": "https://github.com/guided-traffic"
+  },
+  "homepage": "https://github.com/guided-traffic/cowork/blob/main/docs/operations/claude-code.md",
+  "repository": "https://github.com/guided-traffic/cowork",
+  "license": "Apache-2.0",
+  "keywords": ["backlog", "tickets", "kanban", "mcp"],
+  "userConfig": {
+    "cowork_url": {
+      "type": "string",
+      "title": "cowork URL",
+      "description": "The cowork installation, such as https://cowork.example.com",
+      "required": true
+    },
+    "cowork_token": {
+      "type": "string",
+      "title": "cowork token",
+      "description": "An agent token, cwk_…, from the installation's token page; kept in the system's credential store",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

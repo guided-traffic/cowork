@@ -1,0 +1,390 @@
+# Who belongs to a tenant and who sees which project (docs/adr/0030,
+# docs/adr/0034): the members with their roles and where each comes from, the
+# manual grant, the group mappings that derive memberships from the identity
+# provider's groups, and a project's restriction with its access list.
+#
+# The member list is every member's to read (docs/adr/0034 D7); everything else
+# is the tenant's administrators', a token's `read` scope for a read. What gives
+# access — adding a member, setting a grant, making or changing a mapping,
+# restricting or opening a project, putting a person on an access list — takes a
+# browser session only, and a token gets `403 session_required`: made with a
+# leaked token, it would outlive the token's revocation, as an account or a
+# password would (docs/adr/0035 D5). What only takes access away — removing a
+# grant, a mapping or an entry — stays open to an administrator's `admin`-scope
+# token. Making a group mapping or changing its role takes, besides, a global
+# administrator who administers the tenant: every tenant shares the identity
+# provider's one namespace of groups, and a mapping admits everyone in its group
+# at once; any other administrator is `403 forbidden` (docs/adr/0030 D7). An
+# agent writes none of it (docs/adr/0043 D3). Every change is recorded
+# (docs/adr/0030 D6, docs/adr/0026) and announced on the tenant's event stream
+# as `membership.changed` (docs/adr/0054 D2). A change that would leave the
+# tenant without an administrator — nobody holding `admin`, mapped or granted —
+# is `409 last_admin`. A global administrator who holds no role in the tenant
+# reads its members and its group mappings and grants themselves a role, in a
+# browser session, and does nothing else here until they have one; one who
+# holds a role below `admin` raises their own grant (docs/adr/0034 D2).
+members:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listMembers
+    tags: [tenants]
+    summary: The tenant's members and their roles (docs/adr/0034 D7)
+    description: |
+      Each member with the effective role — the higher of the mapped and the
+      granted one (docs/adr/0030 D4) — and `origins`, every source with its
+      own role; `local` marks a person with a local account rather than an
+      identity of the identity provider (docs/adr/0033). `email` is the
+      address that tells two persons of one name apart, for the tenant's
+      administrators; everyone else reads null — a global administrator who
+      holds no role in the tenant and reads the list as part of its
+      administration too (docs/adr/0034 D2).
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of members, by person id
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MemberList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: addMember
+    tags: [tenants]
+    summary: Grant a role to a person, by e-mail address or username
+    description: |
+      A manual grant, marked as such (docs/adr/0030 D3), for a person who
+      exists: who has logged in through the identity provider once, or has a
+      local account. Nobody active by that address or name is
+      `404 person_not_found`; an address several persons share is
+      `409 person_ambiguous`, since an e-mail address is a display attribute
+      and not an identity (docs/adr/0029 D5); a person who holds a grant here
+      already is `409 grant_exists` — change it with
+      `PUT …/members/{person_id}/grant`. A person with a mapped membership gets
+      the grant beside it, and the higher role of the two applies (D4).
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/MemberAdd'
+          example:
+            person: bob@example.com
+            role: member
+    responses:
+      '201':
+        description: The member, with the grant among the origins
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Member'
+            example:
+              person:
+                id: 0199a3c2-1d2e-7f00-8000-000000000002
+                username: null
+                display_name: Bob Example
+              email: bob@example.com
+              role: member
+              origins:
+                - source: grant
+                  role: member
+              local: false
+      default:
+        $ref: './components/responses.yaml#/Problem'
+memberGrant:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/PersonID'
+  put:
+    operationId: setMemberGrant
+    tags: [tenants]
+    summary: Give a member a grant, or change its role
+    description: |
+      Creates the member's manual grant with the role, or changes the role of
+      the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
+      mapped membership is never touched: it holds until the mapping or the
+      groups change (docs/adr/0030 D3). The person must be a member of the
+      tenant, else `404 person_not_found` — a person who is not one yet is
+      added by e-mail address or username.
+
+      A global administrator who does not hold `admin` in the tenant — who
+      holds no role there, or a lower one — sets their own grant here, their
+      own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
+      any other, made or its role changed under the tenant's lock, recorded in
+      the tenant's audit with the administrator as its actor and announced to
+      its members as `membership.changed`. It takes no administrator away, so
+      it is never `409 last_admin`; it is how a tenant left without an
+      administrator who can log in gets one again. A grant to anybody else
+      stays an administrator's act: `403 forbidden`.
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/MemberGrantSet'
+          example:
+            role: admin
+    responses:
+      '200':
+        description: The member as the grant leaves them
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Member'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: removeMemberGrant
+    tags: [tenants]
+    summary: Remove a member's grant
+    description: |
+      The mapped membership, if any, stays; without one the person is no
+      longer a member (docs/adr/0030 D3). Idempotent: removing a grant that
+      does not exist answers 204 as well.
+    responses:
+      '204':
+        description: The person holds no grant in the tenant
+      default:
+        $ref: './components/responses.yaml#/Problem'
+groupMappings:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listGroupMappings
+    tags: [tenants]
+    summary: The tenant's group mappings, by group
+    description: |
+      Each mapping gives its role to every person whose groups include its
+      group; several matches yield the highest role (docs/adr/0030 D2).
+      `includes_caller` says the calling person is one of them, so the editor
+      can warn before a change takes the editor's own role away. The tenant's
+      administrators read them, and a global administrator who holds no role
+      in the tenant, in a browser session (docs/adr/0034 D2).
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of mappings
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/GroupMappingList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createGroupMapping
+    tags: [tenants]
+    summary: Map a group of the identity provider to a role
+    description: |
+      The group is matched exactly, case and all, against the groups the
+      identity provider's claim carries (docs/adr/0029 D2). The mapping applies
+      at once to every person whose groups, as of their last login or groups
+      refresh, include it: their memberships are derived in the same
+      transaction, recorded with the cause `mapping`. Everyone else is caught
+      up at their next login or groups refresh (docs/adr/0030 D5). A group the
+      tenant maps already is `409 mapping_exists`.
+
+      Only a global administrator who administers the tenant maps a group, in
+      a browser session; any other administrator of the tenant is
+      `403 forbidden`, and nothing is written. Every tenant shares the identity
+      provider's one namespace of groups, and a mapping admits everyone in its
+      group at once (docs/adr/0030 D7).
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/GroupMappingCreate'
+          example:
+            group: team-red
+            role: member
+    responses:
+      '201':
+        description: The mapping
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/GroupMapping'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+groupMapping:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/GroupMappingID'
+  patch:
+    operationId: updateGroupMapping
+    tags: [tenants]
+    summary: Change a mapping's role
+    description: |
+      `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
+      derives change at once, as at its creation. Like its creation, a global
+      administrator's who administers the tenant: any other administrator is
+      `403 forbidden` (docs/adr/0030 D7).
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/GroupMappingPatch'
+          example:
+            role: viewer
+    responses:
+      '200':
+        description: The changed mapping
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/GroupMapping'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: deleteGroupMapping
+    tags: [tenants]
+    summary: Remove a mapping
+    description: |
+      The memberships it derived go at once, or fall to the highest of the
+      person's other mapped groups; grants stay (docs/adr/0030 D3). Any
+      administrator of the tenant may remove one, with an `admin`-scope token
+      too: it only takes access away (docs/adr/0030 D7).
+      Idempotent: removing a mapping that does not exist answers 204 as well.
+    responses:
+      '204':
+        description: The mapping is gone
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectRestriction:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  put:
+    operationId: setProjectRestriction
+    tags: [projects]
+    summary: Restrict a project to its access list, or open it
+    description: |
+      A restricted project is visible to the tenant's administrators and the
+      people on its access list only, each with at most the role of their
+      entry; anyone else does not see it, its tickets, its board or its search
+      hits (docs/adr/0034 D3, D4). The restriction is a project setting:
+      `If-Match` is required (docs/adr/0050 D3), and the version rises. The
+      access list may be written before the project is restricted, so nobody
+      on it loses the project in between; its entries count while the project
+      is restricted.
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectRestrictionSet'
+          example:
+            restricted: true
+    responses:
+      '200':
+        description: The project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectAccessList:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: listProjectAccess
+    tags: [projects]
+    summary: The project's access list
+    description: |
+      The people a restricted project admits besides the tenant's
+      administrators, each with the most they may do in it, `member` or
+      `viewer`; a person's role in the project is the lower of their tenant
+      role and their entry (docs/adr/0034 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of entries, by person id
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectAccessList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectAccess:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/PersonID'
+  put:
+    operationId: setProjectAccess
+    tags: [projects]
+    summary: Put a member on the access list, or change their entry
+    description: |
+      The person must be a member of the tenant, else `404 person_not_found`.
+      Repeating it changes nothing (docs/adr/0045 D1).
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectAccessSet'
+          example:
+            role: viewer
+    responses:
+      '200':
+        description: The entry
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectAccessEntry'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: removeProjectAccess
+    tags: [projects]
+    summary: Take a person off the access list
+    description: |
+      On a restricted project the person no longer sees it, unless they
+      administer the tenant. Idempotent: removing an entry that does not exist
+      answers 204 as well.
+    responses:
+      '204':
+        description: The person is not on the list
+      default:
+        $ref: './components/responses.yaml#/Problem'

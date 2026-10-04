@@ -20,23 +20,17 @@ import { AccountsService } from '../../core/accounts.service';
 import { ProblemService } from '../../core/problem.service';
 import { describedBy, selectAria } from '../../shared/field-aria';
 import { keepOpenWhile } from '../../shared/keep-open';
+import { roleMeanings } from './roles';
 import { IssuedPassword, TemporaryPassword } from './temporary-password';
 
 /** A username: lower case, one to 63 characters, a letter or a digit first (docs/adr/0033 D2). */
 export const accountUsername = /^[a-z0-9][a-z0-9._-]{0,62}$/;
 
-/** What each role may do, in a line (docs/adr/0034 D1), shown beside the choice. */
-export const roleMeanings: Record<Role, string> = {
-  viewer: 'Reads what the tenant shares and watches tickets; changes nothing.',
-  member: 'Does the daily work: files and moves tickets, comments, books time.',
-  admin: 'Does what a member does, and administers the tenant: accounts, settings, projects.',
-};
-
 /**
  * Creates a local account in the tenant (docs/adr/0033 D1): its username, its name, its role and a
- * temporary password the person changes at the first login. The page shows the password once, from
- * the event; the dialog forgets it as soon as it closes, however it closes. While the request is
- * out nothing closes it, so that a refusal always lands in the form that was sent. The username
+ * temporary password the person changes at the first sign-in. The page shows the password once,
+ * from the event; the dialog forgets it as soon as it closes, however it closes. While the request
+ * is out nothing closes it, so that a refusal always lands in the form that was sent. The username
  * field has a neutral name and the attributes password managers read as "leave this alone", so
  * that neither this form nor the password field in it looks like the sign-up of a credential.
  */
@@ -59,7 +53,7 @@ export const roleMeanings: Record<Role, string> = {
       <form class="form" (ngSubmit)="save()">
         <p class="muted lead">
           For a person who has no identity elsewhere. They sign in with this username and the
-          temporary password, and choose their own password at the first login.
+          temporary password, and choose their own password at the first sign-in.
         </p>
         <div class="field">
           <label for="account-username-input">Username</label>

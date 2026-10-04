@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
-import { ConfirmDialog } from 'primeng/confirmdialog';
 import { Skeleton } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
@@ -19,18 +18,20 @@ import { HARD_NAVIGATION } from '../../core/hard-navigation';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { SecretDialog } from '../../shared/secret-dialog';
 import { dateTime } from '../../shared/time';
-import { NewAccountDialog, roleMeanings } from './new-account-dialog';
+import { NewAccountDialog } from './new-account-dialog';
+import { roleMeanings } from './roles';
 import { ResetPasswordDialog } from './reset-password-dialog';
 import { IssuedPassword } from './temporary-password';
 
 /** What each flag of an account means, for the tooltip beside it. */
 export const flagMeanings = {
   locked:
-    'Failed logins locked the account. Unlock it, or wait: a lock ends by itself when the installation lets it.',
+    'Failed sign-ins locked the account. Unlock it, or wait: a lock ends by itself when the installation lets it.',
   passwordChange: 'Its person has not changed the temporary password yet.',
-  deactivated: 'No login, no token and no session; nothing reactivates it.',
+  deactivated: 'No sign-in, no token and no session; nothing reactivates it.',
 };
 
 /**
@@ -91,13 +92,16 @@ export class Accounts {
     // What the list holds is as old as the last visit: ask again on the way in. A load that is
     // under way already is a fresh one, and `reload` leaves it alone.
     this.accounts.accounts.reload();
-    // A dialog belongs to the tenant it was opened in; another tenant's page starts clean.
+    // A dialog and a question belong to the tenant they were opened in; another tenant's page
+    // starts clean. The page is reused when only the tenant of the path changes: a question
+    // answered then would send the account it names to the tenant shown now.
     effect(() => {
       this.session.tenant();
       untracked(() => {
         this.creating.set(false);
         this.resetting.set(null);
         this.secret.set(null);
+        this.confirm.close();
       });
     });
   }
@@ -119,7 +123,7 @@ export class Accounts {
   protected unlock(account: Account): void {
     void this.run(
       () => this.accounts.unlock(account.username),
-      this.said('Account unlocked', `${account.username} can try to log in again.`),
+      this.said('Account unlocked', `${account.username} can try to sign in again.`),
     );
   }
 
@@ -156,7 +160,7 @@ export class Accounts {
     this.confirm.confirm({
       header: `Deactivate ${account.username}?`,
       message:
-        'No login, no token and no session from now on, and nothing reactivates the account. ' +
+        'No sign-in, no token and no session from now on, and nothing reactivates the account. ' +
         'The person, their grants and everything they did stay.',
       acceptLabel: 'Deactivate',
       rejectLabel: 'Keep it',
@@ -166,7 +170,7 @@ export class Accounts {
       accept: () =>
         this.run(
           () => this.accounts.deactivate(account.username),
-          this.said('Account deactivated', `${account.username} cannot log in any more.`),
+          this.said('Account deactivated', `${account.username} cannot sign in any more.`),
         ),
     });
   }

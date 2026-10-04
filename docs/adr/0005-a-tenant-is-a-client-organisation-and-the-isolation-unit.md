@@ -16,10 +16,17 @@ and parents by composite keys), the slug immutable and the name editable.
 tenant of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D6. Until the identity provider exists a global administrator is the one local administrator
 the configuration names: `users.global_admin` is set by the start-up synchronisation, by no route,
-and no policy lets a tenant's administrator set it. Not built: members joining through the
+and no policy lets a tenant's administrator set it. ~~Not built: members joining through the
 identity provider's group mapping, and an administrator's grant of an existing person into a
 tenant — members come in as the local accounts a tenant's administrators create
-([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1).
+([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1).~~
+
+**Built** (phase 4, 2026-10-04): D5's other ways in — members joining through the identity
+provider's group mapping, and an administrator's grant of an existing person, by address or
+username, into a tenant
+([ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md));
+the members of the provider's administrator group are global administrators beside the local
+administrator, the flag set by the provider's login and by no route.
 
 ## Context
 
@@ -113,4 +120,4 @@ exist on a fresh installation is one decision, taken in the identity block of th
 
 - [ADR 0004](0004-cowork-is-a-team-product.md) — several people per tenant, the global administrator as an explicit grant
 - [`backend/internal/store/migrations/000001_tenants.up.sql`](../../backend/internal/store/migrations/000001_tenants.up.sql) — the slug rule and the key
-- [docs/planning/vscode-workflow.md](../planning/vscode-workflow.md) — the repository binding that carries the slug
+- [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md), [docs/operations/claude-code.md](../operations/claude-code.md) — the repository binding that carries the slug (the workflow plan once linked here is consumed, ADR 0074 D3)

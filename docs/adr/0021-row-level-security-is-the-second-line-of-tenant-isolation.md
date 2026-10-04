@@ -6,7 +6,19 @@ Accepted, amended 2026-10-02 (D2: a separate owner role is mandatory; D1, D3, D6
 concrete by the first implementation: the guarded setting functions, the settings besides the
 tenant, the policy of every named table) and 2026-10-03 (D3, D6: the settings and the policies
 of the sessions and of the local login; D1: a migration that rewrites rows lifts the force for
-its own transaction only, written when the rank's migration needed it). Date: 2026-09-30.
+its own transaction only, written when the rank's migration needed it) and 2026-10-04 (D3: the
+job `identity-provider` and the setting `app.person_lookup`; D6: the identity provider's policies
+and the restrictive policies of the administration, and — after the security review — the trigger
+that holds a project's restriction to the tenant's administrators), and again on 2026-10-04 by the
+owner's answer recorded in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D7 (D6: the restrictive policies hold a group mapping's insert and update to an administrator of the
+tenant who is a global administrator as well), and for the global administrator's grant to
+themselves of [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2 (D6: a global administrator reads every tenant, inserts their own grant in any role and changes
+its role), and for the chat's capabilities of
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D5 (D6: `chat_capabilities`, a named table that only its person reads and writes; built 2026-10-04).
+Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -38,7 +50,14 @@ add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_lo
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
 them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force
 on `tickets` for its backfill, a unit test holds every lifted force to its restore in the same
-file, and the integration tier reads the force back after the run.
+file, and the integration tier reads the force back after the run. Migrations 20 to 22 (phase 4,
+2026-10-04) widen the policies of `users`, `tenants` and `memberships` for the identity provider,
+add `group_mappings` with the canonical policy and three more, and hold the writes of
+`group_mappings` and `project_access` to a tenant's administrators with restrictive policies.
+Migration 25 (2026-10-04) narrows a mapping's insert and update to an administrator of the tenant
+who is a global administrator as well. Migration 26 (2026-10-04) widens `tenants` to a global
+administrator's reading of every row and `memberships` to their own grant in any role and the
+change of its role.
 
 ## Context
 
@@ -114,7 +133,14 @@ actors more — `login` (the login's own transaction, where no person is known y
 [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md))
 — and the policies of the tables they write admit them by that name. A policy that asks whether
 the person is a global administrator reads the flag through `app_is_global_admin()`, of the
-person in `app.user_id`.
+person in `app.user_id`. *(Amended 2026-10-04:)* `app.job` names one actor more,
+`identity-provider`: the identity provider's own transactions — a login through it, a session's
+groups refresh *(amended after the security review: the transaction that applies its answer; the
+short one that claims it runs as the person and names no job)*, a token's gate check — and, inside an administrator's transaction, the derivation
+that follows a change of a group mapping, which names the job for that part only and clears it
+after. A seventh setting, `app.person_lookup`, carries the e-mail address or username a tenant's
+administrator adds a member by, in that lookup's transaction alone, read through
+`app_person_lookup()`.
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the
@@ -154,9 +180,49 @@ administrator into their tenant, the creator of a tenant into it, the bootstrap 
 an insert by the person and a read and update extended to the administrators of a managed account
 and the bootstrap job, which revoke tokens when they deactivate an account. What a tenant's
 administrators manage is decided in one place, `local_accounts.managing_tenant_id` — the tenant
-that created the account — through `app_manages_account()` and `app_manages_username()`. A
+that created the account — through `app_manages_account()` and `app_manages_username()`. ~~A
 global administrator still reads only the tenants they are a member of; the reading of all
-tenants is not built.
+tenants is not built.~~ *(Built 2026-10-04 for
+[ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2, [migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql):
+`tenants` admits every row to a global administrator, `app_is_global_admin()` — the list of every
+tenant and the request layer's admission to a tenant without a role read it in a transaction that
+names no tenant —, and `memberships` admits a global administrator's own marked grant in any role,
+not only as `admin`, and the change of its role inside the tenant's transaction, by which one who
+holds a role below `admin` raises it. No other policy changes: inside the tenant's transaction the tenant-bound
+tables admit whomever D3's request layer admitted, and which operations it admits a global
+administrator without a role to is the request layer's list, as membership is for everyone else.)*
+*(Made concrete 2026-10-04:)* the identity provider reads every person —
+the derivation of a mapping finds the persons whose groups hold its group — and inserts and updates
+only the persons of the provider (`oidc_issuer` set, no username), never a local account; it reads
+whether any tenant exists; it reads every tenant's `group_mappings`; and it alone inserts, changes
+and removes a `mapping` membership, while a `grant` membership is changed and removed by an
+administrator of its tenant alone. A tenant's administrator reads, besides the persons who share the
+tenant, the persons the lookup in `app.person_lookup` names. `group_mappings` carries `tenant_id`
+and the canonical policy; the bootstrap inserts the administrator group's mapping. On
+`group_mappings` and `project_access` every write must also pass an `AS RESTRICTIVE` policy that
+names an administrator of the current tenant (the bootstrap's insert excepted): a restrictive policy
+is ANDed with the permissive ones, so no later permissive policy widens who writes them. *(Amended
+2026-10-04, the owner's answer recorded in ADR 0030 D7: the insert and the update of a group mapping
+name an administrator of the current tenant who is a global administrator as well,
+`app_is_tenant_admin() AND app_is_global_admin()`; its delete stays any administrator's of the tenant
+([migration 25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql)).
+Every tenant shares the identity provider's groups, and the second line holds the rule the handler
+holds.)* *(Added
+after the security review, 2026-10-04:)* a rule on one column, which a policy cannot state because
+it sees rows, is a `BEFORE UPDATE OF` trigger: `projects_restriction_guard`
+([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql))
+refuses a change of `projects.restricted` unless the caller is an administrator of the tenant, while
+a member still changes the project's other settings; a superuser, whom no policy binds either, is
+left to it. *(Added 2026-10-04 for the chat's capabilities,
+[migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql):)*
+`chat_capabilities` — one row per person, the set the person gave the chat in the UI — carries no
+tenant and is read, inserted and updated by its person alone (`user_id = app_user_id()` in every
+policy), never deleted (no grant), and holds only the nine capabilities (a `CHECK`). It is a table of
+its own rather than a column of `users` because `users`' update policies are permissive and admit an
+administrator of the account, the start-up synchronisation and the identity provider: a policy that
+let a person update their own row would admit every column the runtime role may update there,
+`global_admin` and `deactivated_at` among them, and a policy sees rows, not columns.
 
 **D7 — Widening the boundary is a migration, and this record says how.** When the product
 needs a cross-tenant view, the policy of the tables concerned is amended
@@ -221,3 +287,4 @@ policy, not a bypass.
 - [ADR 0004](0004-cowork-is-a-team-product.md) D4 — no bypass for the administrator
 - [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D5 — the migration run this record leaves as it is
 - [`backend/internal/store/migrations/000001_tenants.up.sql`](../../backend/internal/store/migrations/000001_tenants.up.sql) — the first table that gets its policy
+- [migrations 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)–[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql) — the identity provider's and the administration's policies

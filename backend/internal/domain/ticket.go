@@ -167,6 +167,9 @@ var (
 // ValidProjectKey reports whether s is a project key: upper case, no hyphen.
 func ValidProjectKey(s string) bool { return projectKeyPattern.MatchString(s) }
 
+// ValidTenantSlug reports whether s is a tenant's slug (docs/adr/0005 D4).
+func ValidTenantSlug(s string) bool { return slugPattern.MatchString(s) }
+
 // TicketKey is a parsed ticket key.
 type TicketKey struct {
 	// Tenant is the slug; empty for a short key.

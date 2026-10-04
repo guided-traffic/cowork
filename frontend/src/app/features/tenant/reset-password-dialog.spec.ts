@@ -126,7 +126,7 @@ describe('ResetPasswordDialog', () => {
       );
       const lead = host(fixture).querySelector('.lead')?.textContent ?? '';
       expect(lead).toContain('Every session of the account ends');
-      expect(lead).toContain('chooses a new password at the next login');
+      expect(lead).toContain('chooses a new password at the next sign-in');
       expect(lead).toContain('stays locked if it is');
       expect(lead).toContain('its tokens stay as they are');
       expect(el(fixture, 'reset-password')).not.toBeNull();

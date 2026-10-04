@@ -20,8 +20,8 @@ import {
 } from '../api/functions';
 import { Ticket, TicketList } from '../api/models';
 import { EntityCache } from './entity-cache';
-import { EventStreamService, StreamEvent } from './event-stream.service';
-import { refresh } from './refresh';
+import { changesVisibility, EventStreamService, StreamEvent } from './event-stream.service';
+import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
 /** A page of a list: the keys in the server's order; the tickets themselves are in the cache. */
@@ -67,7 +67,7 @@ export type ProjectTicketPagesParams = Omit<
  * tickets through one cache, so a refetch shows on every view at once. An event about a cached
  * ticket refetches it, and every open list reloads once per burst, so a new ticket or a state
  * change appears without a reload (docs/adr/0054); `resync` and the fallback's `poll` reload
- * everything shown.
+ * everything shown. A list that loads again and fails keeps what it shows ({@link keepShown}).
  */
 @Injectable({ providedIn: 'root' })
 export class TicketsService {
@@ -96,15 +96,15 @@ export class TicketsService {
     params: () => ListProjectTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
-    return this.track(
-      resource({
-        params,
-        loader: ({ params }) =>
+    const tickets: ResourceRef<TicketPage | undefined> = resource({
+      params,
+      loader: ({ params }) =>
+        keepShown(tickets, () =>
           this.api.invoke(listProjectTickets, params).then((list) => this.keep(list)),
-        injector,
-      }),
+        ),
       injector,
-    );
+    });
+    return this.track(tickets, injector);
   }
 
   /**
@@ -118,14 +118,12 @@ export class TicketsService {
     params: () => ProjectTicketPagesParams | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
-    return this.track(
-      resource({
-        params,
-        loader: ({ params }) => this.followPages(params),
-        injector,
-      }),
+    const tickets: ResourceRef<TicketPage | undefined> = resource({
+      params,
+      loader: ({ params }) => keepShown(tickets, () => this.followPages(params)),
       injector,
-    );
+    });
+    return this.track(tickets, injector);
   }
 
   /** A list across the tenant's projects. */
@@ -133,15 +131,15 @@ export class TicketsService {
     params: () => ListTenantTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
-    return this.track(
-      resource({
-        params,
-        loader: ({ params }) =>
+    const tickets: ResourceRef<TicketPage | undefined> = resource({
+      params,
+      loader: ({ params }) =>
+        keepShown(tickets, () =>
           this.api.invoke(listTenantTickets, params).then((list) => this.keep(list)),
-        injector,
-      }),
+        ),
       injector,
-    );
+    });
+    return this.track(tickets, injector);
   }
 
   /**
@@ -224,11 +222,19 @@ export class TicketsService {
   }
 
   private react(event: StreamEvent): void {
-    if (event.name === 'resync' || event.name === 'poll') {
+    // A project's restriction, its access list or the person's own role may have hidden a project
+    // or shown one: what is shown is fetched again, and a ticket the person no longer sees goes.
+    // Any other change of a membership leaves the tickets as they are.
+    const visibility =
+      event.name === 'membership.changed' && changesVisibility(event, this.session.person()?.id);
+    if (event.name === 'resync' || event.name === 'poll' || visibility) {
       for (const key of this.watched.keys()) {
         this.refetch(key);
       }
       this.reloadLists();
+      return;
+    }
+    if (event.name === 'membership.changed') {
       return;
     }
     const held = this.cache.value(event.key);

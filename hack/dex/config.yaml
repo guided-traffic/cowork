@@ -1,0 +1,65 @@
+# The development and test issuer of cowork (docs/adr/0029 D3): a plain Dex in its minimal
+# configuration — one static client, four static users with their groups, no connectors, and
+# nothing kept beyond the process. `make dex-up` copies this file into the container `cowork-dex`
+# (and moves the issuer's port with DEX_PORT); `make dev` logs the browser in through it, and the
+# integration tier reaches it at COWORK_TEST_OIDC_ISSUER. It is the fixture the login is proven
+# against, not a recommendation for running an identity provider.
+#
+# EVERY CREDENTIAL IN THIS FILE IS DEVELOPMENT-ONLY. The client secret and the passwords are
+# public in this repository and protect nothing: never point an installation at this issuer, and
+# never reuse a value from it.
+#
+# The four users share the password dev-only-dex. What each is to cowork under make dev's
+# configuration (COWORK_OIDC_ALLOWED_GROUPS=cowork-users, COWORK_ADMIN_GROUP=cowork-admins, and
+# the demo data's group mapping team-red -> member in the tenant dev):
+#
+#   ada@example.com  cowork-admins, cowork-users  a global administrator, by the administrator group
+#   bob@example.com  cowork-users, team-red       behind the gate, a member of dev by the mapping
+#   cyd@example.com  cowork-users                 behind the gate, in no mapped group: needs a grant
+#   dan@example.com  team-red                     outside the gate: refused, whatever the mapping says
+
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: cowork
+    name: cowork
+    secret: cowork-dev-dex-secret
+    redirectURIs:
+      # make dev: the Angular dev server, which proxies /auth/ to the backend.
+      - https://localhost:4200/auth/callback
+      # The integration tier: the test intercepts the redirect and replays it against its own
+      # server, so the name never has to resolve.
+      - http://cowork.test/auth/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: ada@example.com
+    username: ada
+    userID: a7a65a32-08ea-4918-ac06-0be94ad30b84
+    hash: "$2a$10$eF/e4/hNLuvUX0d3owq29eSR.FP/DSHMy3vZZzJ9SHLuW95hKfOfq"
+    groups: [cowork-admins, cowork-users]
+  - email: bob@example.com
+    username: bob
+    userID: 920f6f94-43f2-46f3-8c2b-5736947665ee
+    hash: "$2a$10$nDDneZ5xnaeJV9x/M2Ur..LYonRiIyiVF1g8CKPgJR1L/QGl/4GMK"
+    groups: [cowork-users, team-red]
+  - email: cyd@example.com
+    username: cyd
+    userID: b0cd573b-d4c4-41b0-a024-14276850ecb0
+    hash: "$2a$10$7coLdCbgZSKdmuLxWkH/4.fKc.5xZWoDxcdGj5QK3uR30UFAg1K9."
+    groups: [cowork-users]
+  - email: dan@example.com
+    username: dan
+    userID: ccb83471-5b14-4e50-9c10-166ae3d0a0b0
+    hash: "$2a$10$TxHZ0gFbsR24FtTsp3g8g.0yayFMIlAxtM0/jTT.hrbZn7FM60mju"
+    groups: [team-red]

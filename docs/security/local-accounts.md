@@ -15,8 +15,10 @@ A local account is a person with a row in `local_accounts`
 D1, D2): the Argon2id hash of the password, whether it is temporary
 (`password_change_required`), where the account comes from (`origin`) and which tenant manages
 it (`managing_tenant_id`). Its identity is `local:<username>`; the username is the person's
-`users.username`, unique in the installation. A person without such a row — a fixture person,
-and later an identity from the provider — cannot log in with a password.
+`users.username`, unique in the installation. A person without such a row — a fixture person, or a
+person of the identity provider, who has no username at all
+([identity-provider.md](identity-provider.md#the-identity-is-issuer-and-subject)) — cannot log in
+with a password.
 
 | Origin | Made by | Managed by | Is |
 |---|---|---|---|
@@ -216,6 +218,21 @@ administrator of the current tenant and an account that tenant manages, and the 
   D5) revokes every token of the person, ends every session and refuses the login; the person,
   the grants and every act they made stay. No route reactivates a person, and the memberships
   of a deactivated person are not marked inactive: they stay as they were.
+- **A deactivation is held to `last_admin` in the managing tenant.** A deactivated
+  person counts as no tenant's administrator, so the deactivation is a change of who administers
+  the tenant and is held to the rule the changes of grants and mappings are held to
+  ([tenancy.md](tenancy.md#members-grants-and-group-mappings);
+  [ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+  D1): it takes the tenant's lock first (`LockTenant`), deactivates, and is refused with
+  `409 last_admin` when no administrator who can log in remains — the whole act rolls back, so no
+  token is revoked, no session ended and no act recorded (`DeactivateAccount`, `lastAdmin`;
+  `TestADeactivationLeavesTheTenantAnAdministrator`). The administrator acting counts unless
+  something took their own account or role away meanwhile, so what the refusal decides is the
+  race: two administrators who deactivate each other at the same moment are decided one after the
+  other, and the second, whose own account the first has just deactivated, meets `last_admin` —
+  or, authenticated only after the first committed, finds its session ended
+  (`TestTwoAdministratorsCannotDeactivateEachOther`, eight rounds). The other tenants the person
+  administers are not asked ([H-32](#h-32)).
 - **A username exists once in the installation**, so `409 username_taken` tells an
   administrator that a name is taken, whichever tenant has it.
 
@@ -295,8 +312,8 @@ and the rule is only as sound as `COWORK_TRUSTED_PROXIES` is right:
   botnet — has a bucket for each and is slowed by this limit only that much; the lockout of
   the username is what bounds the guesses against one account, at the price of H-18.
 
-The audit record carries no address hash either: ADR 0035 D2 has its rule now, and the hash in
-the audit row stays with the phase that builds the identity provider. Rate limits at the
+The keyed address hash every audit row of a request carries is found by the same rule and is as
+good as the list in the same way ([tokens.md](tokens.md#what-is-recorded)). Rate limits at the
 Ingress, which sees the real client, do what this limit cannot;
 `COWORK_LOGIN_ADDRESS_LIMIT=0` switches the throttle off.
 
@@ -343,3 +360,47 @@ Not built: a way for a person to recover their own password without an administr
 is no e-mail flow ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)); a
 route that creates an account for no tenant or lists the accounts of other tenants for a global
 administrator; the reactivation of a deactivated person.
+
+<a id="h-32"></a>
+### H-32 — Deactivating an account does not ask the other tenants it administers
+
+Live in every tenant one of whose administrators is a local account another tenant manages. Any
+tenant's administrator grants a role to a local account by its username
+([tenancy.md](tenancy.md#members-grants-and-group-mappings)), so an account one tenant manages may
+be an administrator of another — the only one there who can log in. The deactivation holds the
+managing tenant to `last_admin` under that tenant's lock
+([above](#who-may-manage-which-account)) and asks no other tenant: the managing tenant's
+administrators deactivate the account without seeing that it leaves another tenant without an
+administrator, and that tenant's own changes, which take its lock and not the managing tenant's,
+count the account until the deactivation has committed. What stands in the way of the check is
+the boundary itself: the deactivation runs in the managing tenant's transaction, where row-level
+security admits neither the person's memberships in other tenants nor those tenants'
+administrators ([tenancy.md](tenancy.md)), and reading them would open the boundary to a request of
+another tenant ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+D3, D7, D8).
+
+Read from the code; no test runs it. The tenant is then where
+[identity-provider.md](identity-provider.md#h-29) H-29 leaves one: without an administrator until a
+global administrator who does not hold `admin` there grants themselves `admin` and gives it one of
+its own
+([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
+`TestAStrandedTenantIsRecoveredByTheSelfGrant`), and no route reactivates the person. Mitigation:
+give every tenant an administrator
+whose account it manages itself, or a person of the identity provider, so no other tenant can
+deactivate its last one.
+
+**The start-up's deactivation of the local administrator asks no tenant either.** Dormant until the
+operator acts: when `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` are emptied, or
+name another username, the next start deactivates the account the configuration kept — its tokens
+revoked, its sessions ended ([above](#the-local-administrator)) — as `system:bootstrap`, without a
+tenant's lock and without `last_admin` in any tenant
+([`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `run`, `deactivate`). Its
+memberships stay, but a deactivated person counts as no tenant's administrator, so a tenant whose
+only administrator who can log in is the local administrator — the bootstrap tenant made with it and
+without `COWORK_ADMIN_GROUP`, say — is left without one. Read from the code; no test runs it.
+Recovery: name the same username again, and the next start reactivates the account with its
+memberships; or the self-grant of
+[ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2 by a global administrator — a member of `COWORK_ADMIN_GROUP`, or the local administrator under
+its new username. Mitigation: before the variables change, grant every tenant the local
+administrator administers another administrator.

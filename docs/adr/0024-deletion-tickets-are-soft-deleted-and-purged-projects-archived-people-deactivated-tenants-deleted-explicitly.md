@@ -16,8 +16,12 @@ filter on every list and the tenant deletion are not built; no route deletes any
 deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the
 start-up synchronisation deactivates the local administrator when its variables are emptied: the
 person cannot log in, their sessions end, their tokens are revoked, and the person and every
-act stay. Not built: marking the memberships inactive — they stay as they were, and a deactivated
-person is refused at the resolver everywhere —, a route that reactivates (only the start-up
+act stay. *(Built 2026-10-04:)* a tenant administrator's deactivation is refused with
+`409 last_admin` when it would leave the managing tenant without an administrator who can log in,
+under that tenant's lock ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D1); the other tenants the person administers are not asked. Not built: marking the memberships
+inactive — they stay as they were, and a deactivated person is refused at the resolver everywhere
+—, a route that reactivates (only the start-up
 synchronisation does, for the configured account) and the deactivation of a person who has no
 local account.
 

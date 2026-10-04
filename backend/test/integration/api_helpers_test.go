@@ -82,9 +82,16 @@ func newAPI(t *testing.T, opts ...func(*api.Options)) apiServer {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the event listener did not start")
 	}
+	// The chat's tool calls go through the whole server, as cowork serve wires
+	// them (docs/adr/0076).
+	var root http.Handler
+	if o.Chat != nil && o.Chat.Loopback == nil {
+		o.Chat.Loopback = func() http.Handler { return root }
+	}
 	h, err := api.New(o)
 	require.NoError(t, err)
-	srv := httptest.NewServer(httpserver.New(httpserver.Options{API: h, Logger: o.Logger}))
+	root = httpserver.New(httpserver.Options{API: h, Logger: o.Logger})
+	srv := httptest.NewServer(root)
 	t.Cleanup(func() {
 		o.Events.Close()
 		srv.Close()

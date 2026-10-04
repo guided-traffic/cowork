@@ -5,8 +5,9 @@ policies read, the visibility predicates and the lint that holds every query to 
 place SQL is built at run time, the advisory locks, the background jobs and the publication of
 acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
-audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate) and [ADR 0031] (the
-sessions). Read against the tree on 2026-10-03.
+audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0031] (the
+sessions) and [ADR 0030] (the memberships the identity provider derives). Read against the tree on
+2026-10-04.
 
 ## Two database roles
 
@@ -39,17 +40,21 @@ file; the integration tier reads the force back after the run.
 The grants are per table and per column: `SELECT`, `INSERT` where rows are created, `UPDATE`
 on the columns a route may change — table-wide only on `ticket_counters`, `idempotency_keys`
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
-`idempotency_keys`, `sessions`, `login_attempts` and `login_locks`. `audit_events` gets
-`SELECT, INSERT` and nothing else — append-only is a grant ([ADR 0026] D3). `users`,
-`tenants`, `memberships` and `tokens` are inserted by routes now — a person by an account's
-creation or the bootstrap, a tenant by its creation, a grant by both, a token by its person —
-and each insert has a policy that names who may (migration 15), with the columns a grant lists
-(`global_admin` is the bootstrap's alone: the policy refuses it to a request); the application
-makes the ids of the persons, tenants and grants it inserts (`uuid.NewV7`), because an
+`project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
+`memberships`, `group_mappings` and `project_access`. `audit_events` gets `SELECT, INSERT` and
+nothing else — append-only is a grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and
+`tokens` are inserted by routes — a person by an account's creation, the bootstrap or a first login
+through the identity provider, a tenant by its creation, a grant by an administrator or the
+bootstrap, a mapped membership by the identity provider, a token by its person — and each insert
+has a policy that names who may (migrations 15, 20, 22), with the columns a grant lists
+(`global_admin` is the bootstrap's and the identity provider's alone: the policy refuses it to a
+request); the application makes the ids of the persons, tenants, memberships and mappings it
+inserts (`uuid.NewV7`), because an
 `INSERT … RETURNING` would have to pass the read policy of a row its writer has no membership of
-yet. `project_access` has no write grant: no route writes it yet; the tests and `make dev-seed`
-write persons, tenants, grants and tokens over the administrative connection too
-([testing.md](testing.md#fixtures-of-the-integration-tier)).
+yet. Migrations 20 to 22 add the identity provider's columns of `users` and `sessions` with their
+grants, `group_mappings`, and the writes of `memberships`, `project_access` and
+`projects.restricted`; the tests and `make dev-seed` write persons, tenants, grants and tokens over
+the administrative connection too ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 
 ## The wrappers
 
@@ -72,15 +77,17 @@ write query.
 
 Who a transaction acts for is a `store.Caller` in the context
 ([`caller.go`](../../backend/internal/store/caller.go)), put there by the API pipeline after
-authentication: the person or a `system:<name>` actor, the token, the token's project
+authentication: the person or a `system:<name>` actor, the token and its name, the token's project
 restriction, the agent mark, the agent's capabilities and the request id. The person is never a
 call-site argument. `Mutate` refuses a context with neither or both of person and system actor.
 
 Outside the wrappers, deliberately: `LookupToken` and `LookupSession` (read one token or session
 by the hash the request presents, see below), `TouchTokenLastUsed` and `TouchSession` (the
 last-used date and the idle clock, bookkeeping and not acts, [ADR 0035] D2,
-[ADR 0031] D3), the login's own transactions ([below](#the-login-and-the-sessions)),
-`CheckRuntimeRole`, `SchemaState`, `Ping`, and `Listen`.
+[ADR 0031] D3), the login's own transactions ([below](#the-login-and-the-sessions)), the identity
+provider's ([below](#the-identity-providers-transactions)), `FindPerson` (the person lookup of a
+member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaState`, `Ping`, and
+`Listen`.
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments. A missing or invisible row
@@ -99,9 +106,10 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migration 15 and 16 name `login`, `bootstrap`, `session-expiry` and `login-expiry` for the rows those system actors keep (`app_job()`) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16 and 20–22 name `login`, `bootstrap`, `session-expiry`, `login-expiry` and `identity-provider` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
-| `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
+| `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
+| `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
 
 A transaction-local setting reads `''`, not `NULL`, on a pooled connection after its
 transaction ended, and a bare `''::uuid` raises. Every policy therefore reads a setting through
@@ -118,7 +126,7 @@ list — `tenants`, `users`, `memberships`, `tokens`, `idempotency_keys`, `audit
 `local_accounts`, `sessions`, `login_attempts`, `login_locks` — has policies of its own, because
 those rows are read across tenants by their person or have no tenant ([ADR 0021] D6). The
 policies of the last four, and the new write policies on the others, use five more functions
-(migration 15): `app_job()` and `app_session_hash()`, which read the settings,
+(migration 15) — and `app_person_lookup()` since migration 20: `app_job()` and `app_session_hash()`, which read the settings,
 `app_is_global_admin()`, and `app_manages_account(user)` and `app_manages_username(name)` — the
 current person is an administrator of the current tenant **and the account is one that tenant
 manages** (`local_accounts.managing_tenant_id`). That last rule is where an account, which
@@ -126,6 +134,30 @@ belongs to the whole installation, meets a tenant: see
 [docs/security/local-accounts.md](../security/local-accounts.md). `TestEveryTableHasItsPolicyAndGrant` checks all of it on the migration
 files, without a database; application queries still filter by `tenant_id` as well
 ([ADR 0021] D4).
+
+`group_mappings` carries `tenant_id` and the canonical policy, and three more: the identity
+provider reads every tenant's mappings, the bootstrap inserts the administrator group's, and
+**restrictive** policies (`AS RESTRICTIVE`) hold every write to an administrator of the current
+tenant — an insert and an update to one who is a global administrator as well
+(`app_is_tenant_admin() AND app_is_global_admin()`, the handler's `mapsGroups` in the data layer,
+[ADR 0030] D7), a delete to any (the bootstrap's insert excepted, which names no person). `tenants`
+admits every row to a global administrator and `memberships` their own marked grant in any role, and
+the change of its role in the tenant's transaction,
+([migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql),
+[ADR 0034] D2): the list of every tenant and the boundary's admission of a global administrator
+without a role read the tenant in an `Installation` transaction; inside the tenant's transaction no
+policy tells them from a member, and the operations they reach are the boundary's list
+([api.md](api.md#the-tenant-boundary)). A
+restrictive policy is ANDed with the permissive ones instead of ORed: it narrows what any other
+policy admits, so a later permissive policy cannot widen who writes a mapping. `project_access` has
+three restrictive policies on `app_is_tenant_admin()` alone (migrations
+[21](../../backend/internal/store/migrations/000021_group_mappings.up.sql),
+[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql),
+[25](../../backend/internal/store/migrations/000025_group_mappings_global_admin.up.sql);
+`TestPoliciesOfThePersonsAndTheirAccounts`). On
+`memberships` the writes are split by source instead: a grant is inserted, changed and removed by
+an administrator of its tenant, a mapped membership only in a transaction named
+`identity-provider`.
 
 ## Mutate: acts, idempotency, publication
 
@@ -141,8 +173,13 @@ files, without a database; application queries still filter by `tenant_id` as we
 3. A function that recorded no act gets `ErrNoAct`, and nothing commits.
 4. For every act (`Writer.Record(store.Event{…})`) it writes one `audit_events` row with the
    caller's facts — person or system actor, agent mark, the capability set when the request is
-   an agent's, token, request id — and the idempotency key: the keyed request's own, or an
-   `Event.IdempotencyKey` a client sent where no response is stored. The row's id is made in
+   an agent's, token and its name (`tokenName`: the name only with the token, [ADR 0036] D6),
+   request id, the keyed hash of the client's address (`Caller.SourceHash`, none for a job) — and
+   the idempotency key: the keyed request's own, or an
+   `Event.IdempotencyKey` a client sent where no response is stored. An act with `Event.System`
+   set is a system actor's recorded in the request: it carries the request id and the source hash,
+   never the caller's person, token or agent mark — the identity provider's derivation in an
+   administrator's change of a mapping. The row's id is made in
    Go (`uuid.NewV7`): an `INSERT … RETURNING` would have to pass the read policy, which a system
    actor's installation-level row does not. Then it publishes the act (below).
 5. A keyed mutation stores the `Result` the function set with `Respond`
@@ -161,6 +198,8 @@ files, without a database; application queries still filter by `tenant_id` as we
 | `ExplainedBy` | the comment written in the same request ([ADR 0015] D2) |
 | `Refs` | the other tickets the payload names; a reader who cannot see one of them gets the act without its payload ([domain.md](domain.md#comments-and-the-activity-list)) |
 | `IdempotencyKey` | a key recorded, not stored ([ADR 0045] D7) |
+| `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
+| `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
 
 ## Visibility in SQL
 
@@ -190,6 +229,7 @@ the one on the ticket the query reads.
 | `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation belongs to the ticket, not to the reader ([domain.md](domain.md#urgency)) |
 | `CanSeeProject`, `CanSeeTicket` | whether *another* person sees a project or a ticket: the assignee, the person asked |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
+| `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
@@ -233,12 +273,18 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the tenant, before the cycle walk |
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
+| `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
+| `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
 The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
 ([`jobs.go`](../../backend/internal/store/jobs.go)). The check that follows a lock is a new
 statement and sees every write committed before the lock was granted, so two concurrent writes
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
-never meets it. Two orderings are row locks, not advisory: the `ticket_counters` row and the
+never meets it. A transaction that takes a tenant's lock and persons' locks takes the tenant's first
+and the persons' in the order of their ids; none takes a tenant's lock after a person's, so the two
+cannot deadlock. A transaction takes the lock of its own tenant and of no other, so the tenants'
+locks need no order among themselves. Two orderings are row locks, not advisory: the
+`ticket_counters` row and the
 tenant row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
 project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
 and a return from done or dropped — a reopen, a withdrawal of a done by hand, a lower stage that
@@ -276,6 +322,48 @@ tenant are handlers' `Mutate` calls like any other. The session's timestamps and
 windows come from the backend's clock (`Options.Now`) passed in as parameters, not from `now()`,
 so a test moves one clock.
 
+## The identity provider's transactions
+
+What the identity provider decides runs in transactions of its own, outside `Mutate` and
+`RunJob`, as the system actor `system:identity-provider`
+([`identity.go`](../../backend/internal/store/identity.go); [ADR 0030] D6). `beginIdentity` opens a
+read-write transaction whose settings name the job `identity-provider`, the request id, the source
+hash and the session hash a login replaces or a refresh holds; `forPerson` names the person in
+`app.user_id` — which admits the person's sessions and memberships — and takes the advisory lock
+`cowi` of the person before anything is read that the decision depends on. The acts are written
+through the same `Writer.flush` as `Mutate`'s, tenant by tenant: `flushIn` sets `app.tenant_id` for
+the rows of one tenant and clears it again, because a decision about one person writes rows in
+every tenant whose mappings it touches.
+
+| Function | Decides | Writes |
+|---|---|---|
+| `CompleteOIDCLogin` | a verified login: the gate, deactivated, the init state | a refusal (`login_refused`, and for a known, active person outside the gate their groups with the gate's stamp and the administrator flag cleared, and the end of their sessions — no memberships, which stay as they were); or the person kept or made, the memberships derived in every tenant (`deriveEverywhere`), the session — with its groups and sealed refresh token — and the person's own `logged_in`, as the person |
+| `ClaimSessionRefresh` | whether this request refreshes the session: one short transaction **as the person**, no job, that moves `refresh_retry_at` thirty seconds ahead where the refresh is due and nobody holds it (`ClaimSessionRefresh` in `sessions.sql`), and returns the sealed refresh token | the lease only; no act. The API then asks the issuer with no transaction open |
+| `ApplySessionRefresh` | the issuer's answer, under the person's lock and the session's row `FOR UPDATE`, only while `refresh_retry_at` is still the claimed lease | read: the session's groups, and the person's (`keepSnapshot`) unless their `oidc_groups_at` is newer than the read, the memberships while the gate admits them; judged — nothing was read: the session's row only (`SetSessionGroups`); outside the gate: the end of every session of the person; refused: the end of this session; unreachable: the retry time and a rotated refresh token (`DeferSessionRefresh`) |
+| `EndProviderSessions` | nothing to decide: the person is not the configured issuer's | the end of every session of the person, `revoked` with the cause `gate` |
+| `CheckTokenGate` | a token's person against the gate, on their stored issuer and groups | nothing when outside; when admitted, the check's stamp, the administrator flag and the memberships |
+
+Two more pieces run inside an administrator's `Mutate`. `RederiveGroup(group, issuer)` — after a
+mapping is made, changed or removed, under the tenant's lock the handler took first — names the job
+`identity-provider` in the administrator's transaction, finds every person of the configured issuer
+whose stored groups hold the group (`ListPersonsInGroup`, ordered by id), takes each one's lock in
+that order, reads the person again under it and passes over one who is deactivated, of another
+issuer, or has no gate stamp (`GetPersonForDerivation`), brings the others' mapped membership in the
+transaction's tenant in line, records each change as an `Event` with
+`System: system:identity-provider`, and names the job no more. `FindPerson` is a read-only
+transaction of the administrator's, in their tenant, that names the address or username in
+`app.person_lookup` and looks an address up among the configured issuer's persons only — one the
+issuer marked verified, or, with `PersonLookup.EmailTrusted` (`COWORK_OIDC_EMAIL_TRUSTED`), one it
+said nothing about.
+
+The mapped memberships themselves are written by `applyMapped` only — insert, role change or
+delete, by the row's id — and a grant is never among them: the policies of
+[migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql) admit
+the writes of a `mapping` row to the job `identity-provider` alone, and those of a `grant` row to an
+administrator of its tenant alone. What the identity provider may write of `users` is its own
+persons — `oidc_issuer` set, no username — never a local account
+([migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)).
+
 ## Jobs
 
 `DB.RunJob(ctx, name, lockKey, fn)` runs a job's work in one transaction under
@@ -297,9 +385,11 @@ too — key `4`, `system:bootstrap` — run once at start, and retried until the
 ## Publication
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
-`Mutate` writes that belongs to a tenant and a ticket, except the actions `downloaded` and
-`exported` and the entity `time_entry`. It reads the ticket's project, version and confidential
-facts (`TicketFacts`) and calls `pg_notify('cowork_events', <json>)` in the same transaction;
+written — by `Mutate` and by the identity provider's transactions alike — that belongs to a tenant
+and either carries an `Event.Membership` or names a ticket, except the actions `downloaded` and
+`exported` and the entity `time_entry`. A ticket's act reads the ticket's project, version and
+confidential facts (`TicketFacts`); a membership act sends the keys of its `MembershipChange` and
+its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
 one connection outside the pool on the channel. The rest is [events.md](events.md).
 
@@ -310,8 +400,10 @@ one connection outside the pool on the channel. The rest is [events.md](events.m
 [ADR 0025]: ../adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0027]: ../adr/0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md
+[ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md

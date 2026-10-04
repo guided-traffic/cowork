@@ -2,9 +2,12 @@
 
 ## Status
 
-Accepted, amended 2026-10-02 (D2 until a login exists; D6, D7 added) and 2026-10-03 (D2: the
+Accepted, amended 2026-10-02 (D2 until a login exists; D6, D7 added), 2026-10-03 (D2: the
 Angular dev server's proxy holds the seeded token until the login of phase 3; D2, D6 and the
-consequence of the seeded token: the local login now exists in the backend). Date: 2026-10-01.
+consequence of the seeded token: the local login now exists in the backend) and 2026-10-04 (D2,
+D4, D5 and the Consequences: Make targets with Dex instead of a compose file and `.env.dev`, bound
+to `127.0.0.1`; D3: the fixture identities are four Dex users, the rest of the matrix is the
+tests' own). Date: 2026-10-01.
 Decided by the owner as the answer to the catalog question "local development login?": no
 development-only authentication code, over a `COWORK_DEV_LOGIN` switch and over a test-only
 build tag. The rules of D3–D5 were put to the owner with the question and not objected to.
@@ -32,9 +35,15 @@ fixture stays for the tests and for `make dev-seed` (D7). `make dev` keeps the d
 token until the UI has its login page, and in that setup a browser login does not act: a request
 that carries an `Authorization` header is a token's and its cookie is not looked at
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), so the proxy's token
-decides, and the routes that take a session only answer `403 session_required`. Not built: Dex,
+decides, and the routes that take a session only answer `403 session_required`. ~~Not built: Dex,
 the compose file, `make dev-up`, `.env.dev` and D3's fixture identities, which are the identity
-provider's.
+provider's.~~
+
+**Built** (phase 4, 2026-10-04): Dex — `make dex-up` and `make dex-down` with
+[`hack/dex/config.yaml`](../../hack/dex/config.yaml) —, `make dev-up`, `make dev` with Dex as the
+identity provider beside the local administrator, the integration tier's Dex, and D3's fixture
+identities as amended. The compose file and `.env.dev` are not built and will not be: D2 and D4 are
+amended.
 
 ## Context
 
@@ -56,8 +65,11 @@ build tag, no fake session. Development, tests and production go through the sam
 with `COWORK_LOCAL_ADMIN_USERNAME` and `_PASSWORD` set — the local administrator logs in and
 creates the first tenant. The full one: `make dev-up` starts PostgreSQL 18, MinIO
 ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md))
-and the minimal Dex from one `compose.yaml` at the repository root, and `make run` reads
-`.env.dev`. *(Amended 2026-10-02: until the login of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+and the minimal Dex ~~from one `compose.yaml` at the repository root, and `make run` reads
+`.env.dev`~~ *(amended 2026-10-04: as three Make targets of their own — `make postgres-up`,
+`make minio-up`, `make dex-up` —, each a plain container of the Makefile's pinned image,
+Dex's configuration copied in between `docker create` and `docker start`; there is no compose
+file, and `make dev` sets the backend's configuration itself in [`hack/dev.sh`](../../hack/dev.sh))*. *(Amended 2026-10-02: until the login of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 exists, the small start is `make postgres-up`, `make dev-seed` (D7) and `make run`, and the
 seeded token is the credential.)* *(Amended 2026-10-03: `make dev` runs the whole stack —
 PostgreSQL, MinIO, the backend, demo data, the Angular dev server with live reload on
@@ -69,23 +81,50 @@ attaches to the seeded person `dev`. The dev server holds no credential
 straight to the backend. HTTPS, because Safari stores no `Secure` cookie from `http://localhost`
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D2). Until the login existed, the
 dev server's proxy presented a seeded token for a few hours of 2026-10-03; it is gone.)*
+*(Amended 2026-10-04: `make dev` runs Dex as well and gives the backend Dex as its identity
+provider — `cowork-users` allowed, `cowork-admins` the administrator group — and maps the group
+`team-red` to `member` in the tenant `dev` through a session of the local administrator, so the
+browser has two ways in: the form as `dev`, or ~~*Log in with Dex*~~ *Sign in with Dex* (the
+button's text since the same day) as one of D3's users. The backend listens on `127.0.0.1:8080`.)*
 
 **D3 — The fixture identities live in the Dex configuration and are documented.** Static
 users with passwords and groups that together cover the test matrix of the earlier records:
-a global administrator (in `COWORK_ADMIN_GROUP`), a tenant administrator, a member and a
+~~a global administrator (in `COWORK_ADMIN_GROUP`), a tenant administrator, a member and a
 viewer of tenant A, a member of tenant B, one person in both tenants, and one person who
-passes the gate but is in no mapped group (the grant case). Their names, groups and
+passes the gate but is in no mapped group (the grant case).~~ Their names, groups and
 passwords are listed in [docs/developer/testing.md](../developer/testing.md) when the file
-exists; the passwords are visibly development-only (`dev-only-…`).
+exists; the passwords are visibly development-only (`dev-only-…`). *(Amended 2026-10-04: Dex
+holds four users, one for each case of the gate — `ada` in `cowork-admins` and `cowork-users`, a
+global administrator by the administrator group; `bob` in `cowork-users` and `team-red`, behind the
+gate and a member by a mapping; `cyd` in `cowork-users` alone, behind the gate and in no mapped
+group, the grant case; `dan` in `team-red` alone, outside the gate — all at `example.com`, with the
+password `dev-only-dex` ([testing.md](../developer/testing.md#the-identity-provider-in-the-tests)).
+The roles across two tenants — an administrator, a member and a viewer of one, a member of the
+other, a person in both — are not Dex users: the integration tests build them themselves, from the
+fixture's persons with local accounts, the mappings and grants a test creates, persons of an issuer
+written as their first login would write them, and an issuer of the tests' own in their process. A
+person of Dex is one per issuer and subject and outlives a test, so a test that logs Dex's users in
+takes a database of its own.)*
 
 **D4 — `.env.dev` carries the development configuration and nothing secret.** Issuer, client
 id and secret of the fixture Dex, `COWORK_OIDC_ALLOWED_GROUPS`, `COWORK_ADMIN_GROUP`, a
 bootstrap tenant, the local administrator, the MinIO endpoint and keys — all values that
 are meaningless outside `localhost`. The compose file says in its first lines that it binds
-to `127.0.0.1` and is for development only.
+to `127.0.0.1` and is for development only. *(Amended 2026-10-04: there is no `.env.dev` and no
+compose file. [`hack/dev.sh`](../../hack/dev.sh) carries the development values — the fixture
+Dex's issuer, client id and secret, the gate, the local administrator, the MinIO endpoint and keys,
+all meaningless outside `localhost` — and [`hack/dex/config.yaml`](../../hack/dex/config.yaml) says
+in its first lines that every credential in it is development-only and public. The PostgreSQL,
+MinIO and Dex containers publish their ports on `CONTAINER_BIND`, `127.0.0.1` by default, so none
+is reachable from the network the machine is on; a container made before keeps its binding until
+it is removed.)*
 
 **D5 — The integration tier uses the same services as service containers** with the same
-configuration files, so what a developer logs in with is what CI logs in with.
+configuration files, so what a developer logs in with is what CI logs in with. *(Amended
+2026-10-04: PostgreSQL is a service container; MinIO and Dex are started by `make minio-up` and
+`make dex-up` on the job's Docker daemon, with the Makefile's pinned images and the same
+`hack/dex/config.yaml` as `make dev`, because a service container takes neither a command nor a
+configuration file. The tests reach Dex at `COWORK_TEST_OIDC_ISSUER`, which they require.)*
 
 **D6 — Until a login exists, persons, tenants, memberships and tokens come from a test-only
 fixture over the administrative connection.** *(Added 2026-10-02. Amended 2026-10-03: the local
@@ -120,8 +159,11 @@ an installation step; the README's fast start shows it as such.
   one variable, by courtesy of ADR 0032.
 - The fixture set of D3 is a test asset with a shape (seven identities) that every
   two-identity, two-tenant, three-role test draws from; changing it is changing tests.
-- `make dev-up` and `make dev-down` join the Makefile; `compose.yaml` and the Dex
-  configuration join the repository; the operations page points developers at them and
+- ~~`make dev-up` and `make dev-down` join the Makefile; `compose.yaml` and the Dex
+  configuration join the repository;~~ *(amended 2026-10-04: `make dev-up`, `make dex-up` and
+  `make dex-down` join the Makefile — the containers come down with `make postgres-down minio-down
+  dex-down`, there is no `make dev-down` — and the Dex configuration joins the repository as
+  `hack/dex/config.yaml`;)* the operations page points developers at them and
   operators away from them.
 - *(Added 2026-10-02.)* Until the login exists, Claude works with a seeded token in
   development and in the tests only; an installation of such a release has no way to issue

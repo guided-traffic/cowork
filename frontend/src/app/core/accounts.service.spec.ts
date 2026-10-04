@@ -32,9 +32,21 @@ const person = (admin = true): Me => ({
   local: true,
   password_change_required: false,
   memberships: [
-    { tenant: { slug: 'acme', name: 'Acme' }, role: admin ? 'admin' : 'member' },
-    { tenant: { slug: 'globex', name: 'Globex' }, role: 'admin' },
-    { tenant: { slug: 'initech', name: 'Initech' }, role: 'viewer' },
+    {
+      tenant: { slug: 'acme', name: 'Acme' },
+      role: admin ? 'admin' : 'member',
+      origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
+    },
+    {
+      tenant: { slug: 'globex', name: 'Globex' },
+      role: 'admin',
+      origins: [{ source: 'grant', role: 'admin' }],
+    },
+    {
+      tenant: { slug: 'initech', name: 'Initech' },
+      role: 'viewer',
+      origins: [{ source: 'grant', role: 'viewer' }],
+    },
   ],
 });
 
@@ -325,6 +337,9 @@ describe('AccountsService', () => {
         items: names.map((name) => ({
           person: { id: `id-${name}`, display_name: name },
           role: 'member',
+          origins: [{ source: 'grant', role: 'member' }],
+          local: true,
+          email: null,
         })),
         next_cursor: null,
       });

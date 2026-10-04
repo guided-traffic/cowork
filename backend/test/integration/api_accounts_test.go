@@ -4,15 +4,21 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
@@ -339,6 +345,172 @@ func TestAccountRoutesAnAdministratorsTokenMayStillCall(t *testing.T) {
 		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND actor_user_id = $2 AND action = $3::audit_action
 			AND token_id IS NOT NULL AND entity_type = 'user'`, w.A, w.AdminA, action), action)
 	}
+}
+
+// tenantLockNamespace is the first key of a tenant's lock, "cowt"
+// (store.Writer.LockTenant; docs/developer/data-access.md).
+const tenantLockNamespace int32 = 0x636f7774
+
+// tenantAdmins makes n persons with an account the tenant manages, each its
+// administrator by a grant, and returns their ids and usernames.
+func tenantAdmins(t *testing.T, tenant uuid.UUID, n int) ([]uuid.UUID, []string) {
+	t.Helper()
+	ctx := context.Background()
+	f := fixtures(t)
+	ids, names := make([]uuid.UUID, 0, n), make([]string, 0, n)
+	for range n {
+		id, err := f.Person(ctx, uniqueSlug("admin"), "Admin")
+		require.NoError(t, err)
+		require.NoError(t, f.Account(ctx, id, testPassword, tenant, false))
+		require.NoError(t, f.Member(ctx, tenant, id, domain.RoleAdmin))
+		ids, names = append(ids, id), append(names, usernameOf(t, id))
+	}
+	return ids, names
+}
+
+// holdTenantLock takes the tenant's lock in a transaction of the test's own
+// over the administrative connection; release ends the transaction.
+func holdTenantLock(t *testing.T, tenant uuid.UUID) (release func()) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, env.AdminURL)
+	require.NoError(t, err)
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext($2::text))", tenantLockNamespace, tenant)
+	require.NoError(t, err)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			_ = tx.Rollback(ctx)
+			_ = conn.Close(ctx)
+		})
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// waitForTenantLock returns once a transaction waits for the tenant's lock, and
+// fails when the request answered without waiting for it.
+func waitForTenantLock(t *testing.T, tenant uuid.UUID, answered <-chan *http.Response) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		select {
+		case res := <-answered:
+			require.Failf(t, "the request did not wait for the tenant's lock", "it answered %d", res.StatusCode)
+		default:
+		}
+		if scalar[int64](t, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+			AND classid = $1::int4::oid AND objid = hashtext($2::text)::oid AND objsubid = 2`, tenantLockNamespace, tenant) > 0 {
+			return
+		}
+	}
+	require.Fail(t, "no request waited for the tenant's lock")
+}
+
+// docs/adr/0034 D1, docs/adr/0024 D5: a deactivation changes who administers
+// its tenant, so it waits for the tenant's lock and decides on what committed
+// before it — an administrator deactivated a moment earlier counts no more.
+// With no administrator who can log in left it is 409 last_admin and changes
+// nothing: no token revoked, no session ended, no act recorded. With one left
+// it goes through.
+func TestADeactivationLeavesTheTenantAnAdministrator(t *testing.T) {
+	ctx := context.Background()
+	f := fixtures(t)
+	s := newAPI(t, withLogin)
+	deactivations := `SELECT count(*) FROM audit_events WHERE action = 'deactivated' AND entity_id = $1`
+	for _, tc := range []struct {
+		name   string
+		admins int
+	}{
+		{"the last administrator", 2},
+		{"another administrator remains", 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			slug := uniqueSlug("keep")
+			tenant, err := f.Tenant(ctx, slug, "Keep")
+			require.NoError(t, err)
+			ids, names := tenantAdmins(t, tenant, tc.admins)
+			actor, target := ids[0], ids[1]
+			admin, person := s.browser(t), s.browser(t)
+			admin.mustLogin(names[0], testPassword)
+			person.mustLogin(names[1], testPassword)
+			token, _, err := f.Token(ctx, fixture.TokenSpec{UserID: target})
+			require.NoError(t, err)
+
+			// The request waits for the lock the test holds; meanwhile another
+			// administrator deactivates the actor and commits first.
+			release := holdTenantLock(t, tenant)
+			answered := make(chan *http.Response, 1)
+			path := accountsPath(slug, "/", names[1], "/deactivation")
+			go func() { answered <- admin.request(http.MethodPut, path, nil) }()
+			waitForTenantLock(t, tenant, answered)
+			require.NoError(t, f.Exec(ctx, `UPDATE users SET deactivated_at = now() WHERE id = $1`, actor))
+			release()
+			res := <-answered
+
+			if tc.admins == 2 {
+				assertProblem(t, res, http.StatusConflict, "last_admin")
+				assert.False(t, scalar[bool](t, `SELECT deactivated_at IS NOT NULL FROM users WHERE id = $1`, target), "the person stays active")
+				assert.Equal(t, http.StatusOK, person.get("/api/v1/me").StatusCode, "no session ended")
+				assert.Equal(t, http.StatusOK, s.do(t, caller{Token: token}, http.MethodGet, "/api/v1/me", nil).StatusCode, "no token revoked")
+				assert.Zero(t, scalar[int64](t, deactivations, target), "no act recorded")
+				return
+			}
+			require.Equal(t, http.StatusNoContent, res.StatusCode, "the third administrator remains")
+			assertProblem(t, person.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
+			assertProblem(t, s.do(t, caller{Token: token}, http.MethodGet, "/api/v1/me", nil), http.StatusUnauthorized, "token_revoked")
+			assert.EqualValues(t, 1, scalar[int64](t, deactivations, target))
+		})
+	}
+}
+
+// docs/adr/0034 D1: two administrators who deactivate each other at the same
+// moment are decided one after the other. One goes through; the other meets
+// last_admin — or, authenticated only after the first committed, finds its
+// session ended. The tenant keeps an administrator who can log in.
+func TestTwoAdministratorsCannotDeactivateEachOther(t *testing.T) {
+	ctx := context.Background()
+	f := fixtures(t)
+	s := newAPI(t, withLogin)
+	refusals := 0
+	for round := range 8 {
+		slug := uniqueSlug("pair")
+		tenant, err := f.Tenant(ctx, slug, "Pair")
+		require.NoError(t, err)
+		_, names := tenantAdmins(t, tenant, 2)
+		browsers := []*browser{s.browser(t), s.browser(t)}
+		for i, b := range browsers {
+			b.mustLogin(names[i], testPassword)
+		}
+		problems := make([]string, 2)
+		deactivate := func(i int) func() int {
+			return func() int {
+				res := browsers[i].request(http.MethodPut, accountsPath(slug, "/", names[1-i], "/deactivation"), nil)
+				var body struct {
+					Code string `json:"code"`
+				}
+				_ = json.NewDecoder(res.Body).Decode(&body)
+				problems[i] = body.Code
+				return res.StatusCode
+			}
+		}
+		codes := simultaneously(deactivate(0), deactivate(1))
+		winner := slices.Index(codes, http.StatusNoContent)
+		require.NotEqual(t, -1, winner, "round %d: one goes through, %v", round, codes)
+		switch loser := 1 - winner; codes[loser] {
+		case http.StatusConflict:
+			assert.Equal(t, "last_admin", problems[loser], "round %d", round)
+			refusals++
+		case http.StatusUnauthorized:
+			assert.Equal(t, "unauthenticated", problems[loser], "round %d", round)
+		default:
+			assert.Failf(t, "the other is refused", "round %d: %v", round, codes)
+		}
+		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id
+			WHERE m.tenant_id = $1 AND m.role = 'admin' AND u.deactivated_at IS NULL`, tenant), "round %d: the tenant keeps an administrator", round)
+	}
+	assert.Positive(t, refusals, "a round in which both were authenticated before either committed")
 }
 
 // docs/adr/0033 D1: a lock someone caused against a name before an account had

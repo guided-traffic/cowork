@@ -1,11 +1,16 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
-import { MessageService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
+import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
-import { Problem, Project } from '../../api/models';
+import { provideApiConfiguration } from '../../api/api-configuration';
+import { Member, Problem, Project } from '../../api/models';
+import { EventStreamService } from '../../core/event-stream.service';
+import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
@@ -36,16 +41,20 @@ const columns = ['analysed', 'decided', 'in-progress', 'blocked', 'review'];
 
 describe('ProjectSettings', () => {
   let list: WritableSignal<Project[]>;
+  let tenant: WritableSignal<string | null>;
   let isAdmin: WritableSignal<boolean>;
   let update: MockInstance<ProjectsService['update']>;
   let archive: MockInstance<ProjectsService['archive']>;
+  let restrict: MockInstance<ProjectsService['restrict']>;
   let navigate: MockInstance<Router['navigate']>;
 
   beforeEach(() => {
     list = signal<Project[]>([project()]);
+    tenant = signal<string | null>('acme');
     isAdmin = signal(true);
     update = vi.fn<ProjectsService['update']>().mockResolvedValue(project());
     archive = vi.fn<ProjectsService['archive']>().mockResolvedValue(project());
+    restrict = vi.fn<ProjectsService['restrict']>().mockResolvedValue(project());
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
@@ -56,10 +65,21 @@ describe('ProjectSettings', () => {
             byKey: (key: string) => list().find((each) => each.key === key),
             update,
             archive,
+            restrict,
           },
         },
-        { provide: SessionService, useValue: { tenant: signal<string | null>('acme') } },
+        // The access section has a spec of its own: here the session names no membership, so
+        // its list asks for nothing.
+        {
+          provide: SessionService,
+          useValue: { tenant, membership: signal(undefined) },
+        },
         { provide: TenantService, useValue: { isAdmin } },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideApiConfiguration(''),
+        { provide: EventStreamService, useValue: { events: new Subject() } },
+        { provide: MembersService, useValue: { list: signal<Member[]>([]) } },
       ],
     });
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -183,6 +203,52 @@ describe('ProjectSettings', () => {
       expect((el(fixture, 'settings-name') as HTMLInputElement).value).toBe('Cowork 2');
       expect((el(fixture, 'settings-description') as HTMLTextAreaElement).value).toBe('');
       expect(columns.map((column) => limitShown(fixture, column))).toEqual(['5', '', '', '', '']);
+    });
+
+    it('keeps what is typed when the list brings the project again at the same version', async () => {
+      const fixture = await render();
+      typeInto(fixture, 'settings-name', 'Cowork, the tool');
+
+      // An event or a poll loads the list again (docs/adr/0054): a new object, the same version.
+      list.set([project()]);
+      await settle(fixture);
+
+      expect((el(fixture, 'settings-name') as HTMLInputElement).value).toBe('Cowork, the tool');
+    });
+
+    it('keeps what is typed when only the restriction changed, and writes over the newest version', async () => {
+      const fixture = await render();
+      typeInto(fixture, 'settings-name', 'Cowork, the tool');
+
+      const restricted = project({ restricted: true, version: 5 });
+      list.set([restricted]);
+      await settle(fixture);
+      expect((el(fixture, 'settings-name') as HTMLInputElement).value).toBe('Cowork, the tool');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(update).toHaveBeenCalledExactlyOnceWith(
+        restricted,
+        expect.objectContaining({ name: 'Cowork, the tool' }),
+      );
+    });
+
+    it.each<[string, Partial<Project>]>([
+      ['the description', { description: 'Something else' }],
+      ['a limit', { wip_limits: { 'in-progress': 3, blocked: 4 } }],
+    ])('starts again from the project when %s changed', async (_what, changed) => {
+      const fixture = await render();
+      typeInto(fixture, 'settings-name', 'Cowork, the tool');
+
+      list.set([project({ ...changed, version: 5 })]);
+      await settle(fixture);
+
+      expect((el(fixture, 'settings-name') as HTMLInputElement).value).toBe('Cowork');
+      expect((el(fixture, 'settings-description') as HTMLTextAreaElement).value).toBe(
+        changed.description ?? 'The tool itself',
+      );
+      expect(limitShown(fixture, 'blocked')).toBe(String(changed.wip_limits?.blocked ?? 2));
     });
 
     it('follows the project of the path', async () => {
@@ -328,6 +394,38 @@ describe('ProjectSettings', () => {
     });
   });
 
+  describe('who sees the project', () => {
+    const restricted = (fixture: ComponentFixture<ProjectSettings>) =>
+      el(fixture, 'project-restricted')?.querySelector('input')?.checked;
+
+    it('is offered to an administrator, for the project shown, between its settings and its archive', async () => {
+      const fixture = await render();
+
+      expect(el(fixture, 'project-access')).not.toBeNull();
+      expect(restricted(fixture)).toBe(false);
+      expect(
+        [...host(fixture).querySelectorAll('.page > *')].map((each) => each.tagName.toLowerCase()),
+      ).toEqual(['header', 'form', 'app-project-access', 'section']);
+    });
+
+    it('follows the project when it is replaced by a newer version', async () => {
+      const fixture = await render();
+
+      list.set([project({ restricted: true, version: 5 })]);
+      await settle(fixture);
+
+      expect(restricted(fixture)).toBe(true);
+    });
+
+    it('is not offered to anyone else (docs/adr/0034 D8)', async () => {
+      isAdmin.set(false);
+
+      const fixture = await render();
+
+      expect(host(fixture).querySelector('app-project-access')).toBeNull();
+    });
+  });
+
   describe('archiving', () => {
     const dialog = () => document.body.querySelector('.p-confirmdialog');
 
@@ -340,6 +438,20 @@ describe('ProjectSettings', () => {
       el(fixture, 'settings-archive')?.click();
       await settle(fixture);
     }
+
+    it("shows a confirmation's message as text, never as markup", async () => {
+      const fixture = await render();
+
+      fixture.debugElement.injector
+        .get(ConfirmationService)
+        .confirm({ header: 'Archive it?', message: '<a href="x">y</a>' });
+      await settle(fixture);
+
+      expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
+        '<a href="x">y</a>',
+      );
+      expect(dialog()?.querySelector('a')).toBeNull();
+    });
 
     it('is offered to an administrator', async () => {
       const fixture = await render();
@@ -423,6 +535,62 @@ describe('ProjectSettings', () => {
       await settle(fixture);
 
       expect(dialog()).toBeNull();
+    });
+
+    // The page is reused when only the tenant of the path changes: confirmed now, the question
+    // would archive the project of the same key in the tenant shown.
+    it('drops the question when the page turns to another tenant before it is answered', async () => {
+      const fixture = await render();
+      await ask(fixture);
+      expect(dialog()?.textContent).toContain('Archive COW?');
+
+      tenant.set('globex');
+      await settle(fixture);
+
+      expect(dialog()).toBeNull();
+      press('Archive');
+      await settle(fixture);
+      expect(archive).not.toHaveBeenCalled();
+    });
+
+    it('drops the question when the page turns to another project before it is answered', async () => {
+      list.set([project(), project({ id: 'id-OPS', key: 'OPS', name: 'Operations' })]);
+      const fixture = await render();
+      await ask(fixture);
+
+      fixture.componentRef.setInput('project', 'OPS');
+      await settle(fixture);
+
+      expect(dialog()).toBeNull();
+      press('Archive');
+      await settle(fixture);
+      expect(archive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a question of the access section and another tenant', () => {
+    // The section's own question (docs/adr/0034 D3) goes with the section: the projects of
+    // another tenant are not there while they load, as ProjectsService has it, and the page
+    // shows no project and no section meanwhile.
+    it('is gone with the section, and restricts nothing in the tenant shown now', async () => {
+      const fixture = await render();
+      fixture.debugElement
+        .query(By.css('[data-testid="project-restricted"]'))
+        .triggerEventHandler('ngModelChange', true);
+      await settle(fixture);
+      expect(document.body.querySelector('.p-confirmdialog')?.textContent).toContain(
+        'Restrict COW?',
+      );
+
+      tenant.set('globex');
+      list.set([]);
+      await settle(fixture);
+      list.set([project({ id: 'id-COW-globex' })]);
+      await settle(fixture);
+
+      expect(document.body.querySelector('.p-confirmdialog')).toBeNull();
+      expect(el(fixture, 'project-access')).not.toBeNull();
+      expect(restrict).not.toHaveBeenCalled();
     });
   });
 });

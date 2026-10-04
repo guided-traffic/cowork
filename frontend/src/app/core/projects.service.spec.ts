@@ -1,8 +1,14 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
+import { Subject } from 'rxjs';
 import { Project, ProjectList } from '../api/models';
+import { EventStreamService, StreamEvent } from './event-stream.service';
 import { ProjectsService } from './projects.service';
 import { SessionService } from './session.service';
 
@@ -24,6 +30,15 @@ const pageOf = (keys: string[], next: string | null): ProjectList => ({
   next_cursor: next,
 });
 
+/** Fails a request: without an answer at all (status 0), or with a problem of the status. */
+const fail = (request: TestRequest, status: number) =>
+  status === 0
+    ? request.error(new ProgressEvent('error'))
+    : request.flush(
+        { type: 'about:blank', title: 'Refused', status, code: 'internal' },
+        { status, statusText: `Status ${status}` },
+      );
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const listUrl = '/api/v1/tenants/acme/projects';
 
@@ -37,6 +52,7 @@ describe('ProjectsService', () => {
   let service: ProjectsService;
   let session: SessionService;
   let http: HttpTestingController;
+  let stream: Subject<StreamEvent>;
 
   /**
    * Starts the loads that are due, lets the promise chains of answered requests finish, and runs the
@@ -65,8 +81,14 @@ describe('ProjectsService', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
+    stream = new Subject<StreamEvent>();
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideApiConfiguration('')],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideApiConfiguration(''),
+        { provide: EventStreamService, useValue: { events: stream.asObservable() } },
+      ],
     });
     service = TestBed.inject(ProjectsService);
     session = TestBed.inject(SessionService);
@@ -497,6 +519,148 @@ describe('ProjectsService', () => {
       );
     });
 
+    describe('restrict', () => {
+      it('puts the restriction over the version that was read, as If-Match (docs/adr/0050 D3)', async () => {
+        const done = service.restrict(project('VKO', { version: 7 }), true);
+
+        const sent = write('PUT', `${listUrl}/VKO/restriction`);
+        expect(sent.request.body).toEqual({ restricted: true });
+        expect(sent.request.headers.get('If-Match')).toBe('"7"');
+        sent.flush(project('VKO', { restricted: true, version: 8 }));
+
+        expect((await done).restricted).toBe(true);
+        (await reload()).flush(pageOf(['VKO'], null));
+      });
+
+      it('opens a project with false', async () => {
+        const done = service.restrict(project('VKO', { restricted: true }), false);
+
+        const sent = write('PUT', `${listUrl}/VKO/restriction`);
+        expect(sent.request.body).toEqual({ restricted: false });
+        sent.flush(project('VKO', { version: 2 }));
+        await done;
+        (await reload()).flush(pageOf(['VKO'], null));
+      });
+
+      it('puts the project as the answer has it into the list at once, and loads the list again', async () => {
+        const done = service.restrict(project('VKO'), true);
+        write('PUT', `${listUrl}/VKO/restriction`).flush(
+          project('VKO', { restricted: true, version: 2 }),
+        );
+        await done;
+
+        expect(service.byKey('VKO')?.restricted).toBe(true);
+        expect(service.byKey('VKO')?.version).toBe(2);
+        (await reload()).flush({
+          items: [project('VKO', { restricted: true, version: 2 })],
+          next_cursor: null,
+        });
+        await settle();
+        expect(service.byKey('VKO')?.restricted).toBe(true);
+      });
+
+      it('leaves the other projects of the list as they are', async () => {
+        service.projects.reload();
+        await settle();
+        page('acme').flush(pageOf(['VKO', 'COW'], null));
+        await settle();
+        const cow = service.byKey('COW');
+
+        const done = service.restrict(project('VKO'), true);
+        write('PUT', `${listUrl}/VKO/restriction`).flush(
+          project('VKO', { restricted: true, version: 2 }),
+        );
+        await done;
+
+        expect(service.byKey('COW')).toBe(cow);
+        expect(service.byKey('VKO')?.restricted).toBe(true);
+        (await reload()).flush(pageOf(['VKO', 'COW'], null));
+      });
+
+      it('loads a list that failed again, instead of putting the answer into it', async () => {
+        service.projects.reload();
+        await settle();
+        // Only a failure that says the list is gone empties it; an outage would keep it shown.
+        page('acme').flush(
+          { type: 'about:blank', title: 'Forbidden', status: 403, code: 'forbidden' },
+          { status: 403, statusText: 'Forbidden' },
+        );
+        await settle();
+        expect(service.projects.status()).toBe('error');
+
+        const done = service.restrict(project('VKO'), true);
+        write('PUT', `${listUrl}/VKO/restriction`).flush(
+          project('VKO', { restricted: true, version: 2 }),
+        );
+        await done;
+
+        expect(service.list()).toEqual([]);
+        (await reload()).flush({
+          items: [project('VKO', { restricted: true, version: 2 })],
+          next_cursor: null,
+        });
+        await settle();
+        expect(service.byKey('VKO')?.restricted).toBe(true);
+      });
+
+      it('does not put an answer into the list of a tenant the pages turned to meanwhile', async () => {
+        const done = service.restrict(project('VKO'), true);
+        const sent = write('PUT', `${listUrl}/VKO/restriction`);
+        session.enter('globex');
+        TestBed.tick();
+        page('globex').flush(pageOf(['VKO'], null));
+        await settle();
+
+        sent.flush(project('VKO', { restricted: true, version: 2 }));
+        await done;
+        await settle();
+
+        expect(service.byKey('VKO')?.restricted).toBe(false);
+        page('globex').flush(pageOf(['VKO'], null));
+      });
+
+      it('loads the list once more when it ends during a load, whose answer may predate it', async () => {
+        service.projects.reload();
+        await settle();
+        const inFlight = page('acme');
+
+        const done = service.restrict(project('VKO'), true);
+        write('PUT', `${listUrl}/VKO/restriction`).flush(
+          project('VKO', { restricted: true, version: 2 }),
+        );
+        await done;
+        await settle();
+        inFlight.flush(pageOf(['VKO'], null));
+        await settle();
+
+        page('acme').flush({
+          items: [project('VKO', { restricted: true, version: 2 })],
+          next_cursor: null,
+        });
+        await settle();
+        expect(service.byKey('VKO')?.restricted).toBe(true);
+      });
+
+      it.each([
+        [412, 'precondition_failed'],
+        [428, 'precondition_required'],
+        [403, 'forbidden'],
+      ])('rejects with the HTTP error of a %i and changes nothing', async (status, code) => {
+        const outcome = rejection(service.restrict(project('VKO'), true));
+
+        write('PUT', `${listUrl}/VKO/restriction`).flush(
+          refusal(status, code).body,
+          refusal(status, code).init,
+        );
+        const error = await outcome;
+        await settle();
+
+        expect((error as HttpErrorResponse).status).toBe(status);
+        expect(service.byKey('VKO')?.restricted).toBe(false);
+        http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
+      });
+    });
+
     // A write that ends during a load of the list — a second write in quick succession, or a slow
     // first load — must show itself: the answer on its way was asked for before the write, so the
     // list loads once more when that load ends (core/refresh.ts).
@@ -561,5 +725,99 @@ describe('ProjectsService', () => {
       expect(service.projects.status()).toBe('idle');
       expect(service.list()).toEqual([]);
     });
+  });
+
+  describe('when the stream says who sees which project (docs/adr/0034 D3, docs/adr/0054)', () => {
+    beforeEach(async () => {
+      session.enter('acme');
+      TestBed.tick();
+      page('acme').flush(pageOf(['VKO'], null));
+      await settle();
+    });
+
+    /** The session asks who is working again on every membership event; this answers it. */
+    const answerMe = () =>
+      http.expectOne('/api/v1/me').flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+
+    it.each<[string, StreamEvent]>([
+      ['a restriction set or lifted', { name: 'membership.changed', id: 'e1', projectId: 'j1' }],
+      [
+        'an access entry',
+        { name: 'membership.changed', id: 'e1', personId: 'p2', projectId: 'j1' },
+      ],
+      ["the person's own role", { name: 'membership.changed', id: 'e1', personId: 'p1' }],
+      ['a resync', { name: 'resync' }],
+      ["the fallback's poll", { name: 'poll' }],
+    ])('loads the projects again on %s', async (_what, event) => {
+      stream.next(event);
+      await settle();
+
+      page('acme').flush(pageOf(['VKO', 'SEC'], null));
+      answerMe();
+      await settle();
+
+      expect(keys()).toEqual(['VKO', 'SEC']);
+    });
+
+    it.each<[string, StreamEvent]>([
+      ["somebody else's membership", { name: 'membership.changed', id: 'e1', personId: 'p2' }],
+      ['a group mapping', { name: 'membership.changed', id: 'e1', mappingId: 'm1' }],
+    ])('leaves the projects alone on %s', async (_what, event) => {
+      stream.next(event);
+      await settle();
+      answerMe();
+      await settle();
+
+      http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
+    });
+
+    it('leaves the projects alone on an event that names a ticket', async () => {
+      stream.next({ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' });
+      await settle();
+
+      http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
+    });
+
+    it.each([0, 500, 503])(
+      'keeps listing the projects when loading them again fails with a status of %i',
+      async (status) => {
+        stream.next({ name: 'poll' });
+        await settle();
+
+        fail(page('acme'), status);
+        answerMe();
+        await settle();
+
+        expect(service.projects.status()).toBe('resolved');
+        expect(keys()).toEqual(['VKO']);
+      },
+    );
+
+    it('keeps listing the projects when a later page of the load again fails', async () => {
+      stream.next({ name: 'poll' });
+      await settle();
+
+      page('acme').flush(pageOf(['VKO'], 'c1'));
+      answerMe();
+      fail(await nextPage('acme', 'c1'), 503);
+      await settle();
+
+      expect(keys()).toEqual(['VKO']);
+    });
+
+    it.each([401, 403, 404])(
+      'lists nothing when loading them again answers %i: they are gone for the person',
+      async (status) => {
+        stream.next({ name: 'poll' });
+        await settle();
+
+        fail(page('acme'), status);
+        answerMe();
+        await settle();
+
+        expect(service.projects.status()).toBe('error');
+        expect(service.list()).toEqual([]);
+      },
+    );
   });
 });

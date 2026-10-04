@@ -141,7 +141,12 @@
   </dd>
 
   <dt>Reporter</dt>
-  <dd>{{ ticket().reporter.display_name }}</dd>
+  <dd data-testid="reporter">
+    {{ ticket().reporter.display_name }}
+    @if (ticket().reporter_agent || ticket().reporter_token) {
+      <app-agent-mark [mark]="ticket().reporter_agent" [token]="ticket().reporter_token" />
+    }
+  </dd>
 
   @if (ticket().parent) {
     <dt>Parent</dt>

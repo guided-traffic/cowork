@@ -64,6 +64,14 @@ type Event struct {
 	// response; it is recorded, not stored (docs/adr/0045 D7). A keyed
 	// mutation records its own key on every act instead.
 	IdempotencyKey uuid.UUID
+	// System names the system actor of an act a request's transaction records
+	// on another's behalf — the identity provider's derivation of memberships
+	// in an administrator's change of a mapping (docs/adr/0030 D6); empty for
+	// the caller's own act.
+	System string
+	// Membership announces the act on the tenant's event stream as
+	// membership.changed (docs/adr/0054 D2); nil for every other act.
+	Membership *MembershipChange
 }
 
 // Record adds an act to the mutation.
@@ -258,6 +266,8 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 			ActorSystem:          strPtr(caller.System),
 			Agent:                strPtr(caller.Agent),
 			TokenID:              uuidPtr(caller.TokenID),
+			TokenName:            tokenName(caller),
+			SourceHash:           caller.SourceHash,
 			EntityType:           e.EntityType,
 			EntityID:             uuidPtr(e.EntityID),
 			TicketID:             uuidPtr(e.TicketID),
@@ -274,6 +284,12 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		if caller.Agent != "" {
 			p.AgentCapabilities = append([]string{}, caller.Capabilities...)
 		}
+		if e.System != "" {
+			// The act is a system actor's, recorded in the caller's request: it
+			// carries the request, never the caller's person, token or agent.
+			p.ActorUserID, p.ActorSystem, p.Agent, p.AgentCapabilities = nil, &e.System, nil, nil
+			p.TokenID, p.TokenName = nil, nil
+		}
 		switch {
 		case keyed:
 			p.IdempotencyKey = uuidPtr(idem.Key)
@@ -288,6 +304,16 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		}
 	}
 	return nil
+}
+
+// flush writes the acts recorded so far for tenantID — which the transaction's
+// app.tenant_id must name, as the audit policy demands — as caller's, and
+// forgets them: a transaction that acts in several tenants, or for several
+// actors, writes each batch in its own context.
+func (w *Writer) flush(ctx context.Context, tenantID uuid.UUID, caller Caller) error {
+	err := w.writeEvents(ctx, tenantID, caller, Idempotency{}, false)
+	w.events = nil
+	return err
 }
 
 // storeResult writes the keyed response; false means a concurrent request
@@ -361,6 +387,16 @@ func jsonOrNil(v any) ([]byte, error) {
 		return nil, fmt.Errorf("encode audit diff: %w", err)
 	}
 	return b, nil
+}
+
+// tokenName is the name an audit row records beside its token: the token's
+// name as the request presented it, never without the token (docs/adr/0036
+// D6).
+func tokenName(c Caller) *string {
+	if c.TokenID == uuid.Nil {
+		return nil
+	}
+	return strPtr(c.TokenName)
 }
 
 func uuidPtr(id uuid.UUID) *uuid.UUID {
