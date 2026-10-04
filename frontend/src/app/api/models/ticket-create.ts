@@ -5,12 +5,23 @@ import { Effort } from '../models/effort';
 import { SecurityClass } from '../models/security-class';
 import { Severity } from '../models/severity';
 import { TicketType } from '../models/ticket-type';
+import { Urgency } from '../models/urgency';
 export interface TicketCreate {
+
+  /**
+   * The open ticket of the same horizon this one is filed directly after; not with before
+   */
+  after?: number;
 
   /**
    * A member of the tenant
    */
   assignee?: string;
+
+  /**
+   * The open ticket of the same horizon this one is filed directly before; not with after
+   */
+  before?: number;
   body?: string;
   effort: Effort;
 
@@ -23,4 +34,5 @@ export interface TicketCreate {
   threat?: string;
   title: string;
   type: TicketType;
+  urgency?: Urgency;
 }

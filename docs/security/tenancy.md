@@ -606,11 +606,6 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
   by the open prerequisites the closer can see (`ListOpenPrerequisites`): a ticket can be
   closed over an open prerequisite its closer cannot see, without an override and without a
   mention in the act, and its `open_prerequisites` reads 0 to that closer.
-- Rule `v1:icebox-decision` counts an open decision that blocks the ticket whether or not the
-  reader can see it (`GetUrgencyInputs`), and every reader sees the derived urgency and the
-  rule's name. When such a decision opens or settles, the tickets it blocks are derived again;
-  a standing override stays, and no act is recorded on their timelines — the change shows in
-  `urgency_derived` and `urgency_rule` alone.
 - Each derived progress stage is the effort-weighted mean of the same stage of every child not
   dropped, confidential ones included (`ticket_derived_stage`), and a parent whose children are
   all done shows 100 in each.

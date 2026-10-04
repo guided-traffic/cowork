@@ -7,7 +7,8 @@ D7 and D8 (`create-project` and `record-answer` become selectable capabilities; 
 project and recording a person's answer leave the hard-off list), amended 2026-10-02 (D4:
 `create-project` follows the tenant setting of
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D9 instead of the `admin` role), amended 2026-10-03 (D4: `close` covers both ways to `done`
+D9 instead of the `admin` role), amended 2026-10-04 (D4: `rank` and `override-urgency` cover a filing's place and
+horizon, with the horizon of ADR 0010 D3 as amended that day), amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
 `review`; the owner's answer when the progress stages were made to close a ticket, since an
@@ -22,7 +23,9 @@ to.
 **Built** (phase 2, 2026-10-02) for the acts that exist: D1, D2, D3, D4 and D5 — the capability
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
-on a move in the rank since 2026-10-03 and on adopting the score with the score,
+on a move in the rank since 2026-10-03 and on adopting the score with the score, `rank` and
+`override-urgency` on a filing's place and horizon since 2026-10-04 (`filing.capabilities` in
+[`tickets.go`](../../backend/internal/api/tickets.go)),
 `create-project`'s repository binding with that binding (since 2026-10-04 on binding and
 unbinding a repository) — the set recorded on each act. D4's amendment of 2026-10-03 is built (2026-10-03): `close` on done by hand and on the
 `PATCH` that fills the last progress stage, refused with `agent_forbidden` outside `in-progress`
@@ -87,8 +90,8 @@ these is an amendment of the record that closed it, not of this one.
 | `decide` | the transition `analysed → decided` |
 | `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value; *(decided 2026-10-04 by the owner)* an open question of the ticket does not hold `close` back — the question stays open on the done ticket |
 | `drop` | the transition `→ dropped` with a reason |
-| `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)) |
-| `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3) |
+| `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)); *(amended 2026-10-04)* naming a filing's place in its horizon (ADR 0014 D2) |
+| `override-urgency` | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
 | `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 amended by this) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
 | `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |

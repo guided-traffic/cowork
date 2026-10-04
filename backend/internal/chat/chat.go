@@ -129,7 +129,7 @@ var offered = map[string]bool{
 	"session_start": false, "api": false,
 	"get_ticket": true, "search": true, "open_ticket": true, "open_backlog": true, "open_board": true,
 	"file_ticket": true, "record_state": true, "open_question": true, "comment": true, "link": true, "watch": true,
-	"set_urgency": true, "transition": true, "set_progress": true, "finish_work": true, "record_answer": true,
+	"place_ticket": true, "transition": true, "set_progress": true, "finish_work": true, "record_answer": true,
 	"create_project": true,
 }
 

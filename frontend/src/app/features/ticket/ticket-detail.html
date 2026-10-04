@@ -3,7 +3,7 @@
 <section class="page">
   <nav class="crumbs muted">
     @if (at(); as a) {
-      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'backlog']">{{ a.project }}</a>
+      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'board']">{{ a.project }}</a>
       <span>/</span>
       <span class="tabular">{{ key() }}</span>
     }

@@ -234,7 +234,7 @@ describe('NewProjectDialog', () => {
       expect(create.mock.calls[0][0]).toStrictEqual({ key: 'COW', name: 'cowork' });
     });
 
-    it('closes the dialog, empties the form and opens the backlog of the new project', async () => {
+    it('closes the dialog, empties the form and opens the board of the new project', async () => {
       const fixture = await render();
       fill(fixture, 'COW', 'cowork');
       typeInto(fixture, 'project-description', 'The tool itself');
@@ -243,7 +243,7 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
 
       expect(fixture.componentInstance.visible()).toBe(false);
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'p', 'COW', 'backlog']);
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'p', 'COW', 'board']);
       fixture.componentInstance.visible.set(true);
       await settle(fixture);
       expect((el(fixture, 'project-key') as HTMLInputElement).value).toBe('');
@@ -251,7 +251,7 @@ describe('NewProjectDialog', () => {
       expect((el(fixture, 'project-description') as HTMLTextAreaElement).value).toBe('');
     });
 
-    it('opens the backlog of the key the server answered with', async () => {
+    it('opens the board of the key the server answered with', async () => {
       create.mockResolvedValue({ key: 'OPS', name: 'operations' } as Project);
       const fixture = await render();
       fill(fixture, 'ops', 'operations');
@@ -259,7 +259,7 @@ describe('NewProjectDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'p', 'OPS', 'backlog']);
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'p', 'OPS', 'board']);
     });
 
     it('creates once while the project is on its way, and shows the button as busy', async () => {

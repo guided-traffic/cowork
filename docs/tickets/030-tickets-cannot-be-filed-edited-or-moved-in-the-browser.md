@@ -1,6 +1,6 @@
 ---
 id: T30
-title: the ticket page cannot edit the title, the body, the parent, the urgency override or the confidential flag, and an editor left open writes to the ticket the page turns to
+title: the ticket page cannot edit the title, the body, the parent, the horizon or the confidential flag, and an editor left open writes to the ticket the page turns to
 state: in-progress
 severity: high
 security: none
@@ -27,9 +27,9 @@ state and its withdrawal — in one dialog
 ([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts),
 [`move-dialog.ts`](../../frontend/src/app/features/ticket/move-dialog.ts)), the matrix mirroring
 `backend/internal/domain/transition.go` in
-[`shared/transitions.ts`](../../frontend/src/app/shared/transitions.ts). The urgency override
-and its withdrawal are set from the backlog and the board (a drag, the row menu, the Now button),
-with a reason a person may leave out. Every write puts its answer into the cache. Missing:
+[`shared/transitions.ts`](../../frontend/src/app/shared/transitions.ts). The horizon is set
+from the backlog and the board (a drag, the row menu, the Now button), with a reason a person may
+leave out. Every write puts its answer into the cache. Missing:
 
 - **The body cannot be changed after filing.** The page shows it as text
   ([`ticket-detail.html`](../../frontend/src/app/features/ticket/ticket-detail.html#L51-L52));
@@ -42,7 +42,7 @@ with a reason a person may leave out. Every write puts its answer into the cache
   ([`ticket-detail.html`](../../frontend/src/app/features/ticket/ticket-detail.html#L30)); **the
   parent** is shown, never chosen, neither on filing nor on the page
   ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html#L151-L153)).
-- **The urgency override** and its withdrawal are not on the detail page.
+- **The horizon** cannot be set on the detail page.
 - **The confidential flag** shows as a badge
   ([`ticket-detail.html`](../../frontend/src/app/features/ticket/ticket-detail.html#L20-L24)), and
   nothing sets or lifts it: `setConfidential` is a tenant administrator's act with `admin` scope,
@@ -67,8 +67,7 @@ with a reason a person may leave out. Every write puts its answer into the cache
 1. The body edited on the page as Markdown and written with `replaceTicketBody` and `If-Match`,
    with the `412` prompt the fields have; the title edited in place; the parent chosen from the
    project's tickets, on filing and on the page.
-2. The urgency override and its withdrawal on the detail page, with `If-Match` and the optional
-   reason; the confidential flag for a tenant administrator, the lift with its reason.
+2. The horizon set on the detail page, with `If-Match` and the optional reason; the confidential flag for a tenant administrator, the lift with its reason.
 3. The threat editor, the stage dialog and the move dialog close when the page turns to another
    ticket, as the confirmation does; a unit test per editor that a turn closes it and writes
    nothing.

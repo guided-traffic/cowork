@@ -14,6 +14,7 @@ import { ProblemView } from '../../core/problem.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { Stage, stages } from '../../shared/stages';
 import { Clock, dateTime } from '../../shared/time';
+import { meanings } from '../../shared/vocabulary';
 import { MoveDialog } from './move-dialog';
 import { shown, TicketFields } from './ticket-fields';
 
@@ -271,19 +272,24 @@ describe('TicketFields', () => {
       expect(tooltipOf('5 minutes ago')).toBe(dateTime('2026-10-03T11:55:00Z'));
     });
 
-    it('shows the urgency, explained with the rule that derived it', async () => {
+    const horizonTip = (fixture: ComponentFixture<TicketFields>, value: string) =>
+      fixture.debugElement
+        .queryAll(By.directive(Tooltip))
+        .find((candidate) => candidate.nativeElement.textContent.trim() === value)
+        ?.injector.get(Tooltip)
+        .content();
+
+    it('shows the horizon, explained by its meaning alone', async () => {
       const fixture = await render(ticket({ urgency: 'next', urgency_rule: 'v1:default' }));
 
-      expect(fields(fixture)['Urgency']).toBe('next');
-      const urgency = fixture.debugElement
-        .queryAll(By.directive(Tooltip))
-        .find((candidate) => candidate.nativeElement.textContent.trim() === 'next');
-      expect(urgency?.injector.get(Tooltip).content()).toBe(
-        'Medium or worse, and its trigger is live (rule v1:default)',
+      expect(fields(fixture)).not.toHaveProperty('Urgency');
+      expect(fields(fixture)['Horizon']).toBe('next');
+      expect(horizonTip(fixture, 'next')).toBe(
+        'Next: taken up when now is empty, to move the project forward',
       );
     });
 
-    it('marks an urgency that a person overrode', async () => {
+    it('adds the reason the horizon was set with to its meaning, and marks nothing else', async () => {
       const fixture = await render(
         ticket({
           urgency: 'now',
@@ -291,7 +297,20 @@ describe('TicketFields', () => {
         }),
       );
 
-      expect(fields(fixture)['Urgency']).toBe('now overridden');
+      expect(fields(fixture)['Horizon']).toBe('now');
+      expect(horizonTip(fixture, 'now')).toBe(`${meanings.urgency.now} — Today`);
+    });
+
+    it('shows the meaning alone for a horizon set without a reason', async () => {
+      const fixture = await render(
+        ticket({
+          urgency: 'release',
+          urgency_override: { value: 'release', reason: null, at: '2026-10-03T09:00:00Z' },
+        }),
+      );
+
+      expect(fields(fixture)['Horizon']).toBe('release');
+      expect(horizonTip(fixture, 'release')).toBe('Release: has to be in the next release');
     });
 
     it('names the parent when there is one and shows none otherwise', async () => {

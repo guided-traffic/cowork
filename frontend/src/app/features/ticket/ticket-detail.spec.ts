@@ -410,13 +410,13 @@ describe('TicketDetail', () => {
   });
 
   describe('the header', () => {
-    it('links the project in the breadcrumbs and names the key', async () => {
+    it('links the project in the breadcrumbs to its board and names the key', async () => {
       show();
 
       const { page } = await render();
 
       const crumbs = page.querySelector('nav.crumbs');
-      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/board');
       expect(crumbs?.querySelector('a')?.textContent).toBe('COW');
       expect(crumbs?.querySelector('.tabular')?.textContent).toBe('COW-12');
     });

@@ -46,7 +46,7 @@ left out.
 | `title` | the title |
 | `type`, `state`, `severity`, `security` | the vocabulary values |
 | `threat` | the threat; only when `security` is not `none` |
-| `urgency` | the urgency the ticket shows: the override when one stands, else the derived value |
+| `urgency` | the ticket's horizon: the one set on it, else `later` |
 | `effort` | the effort |
 | `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
 | `progress` | always present: the implementation stage, likewise |

@@ -172,7 +172,7 @@ export class NewProjectDialog {
       this.key.set('');
       this.name.set('');
       this.description.set('');
-      await this.router.navigate(['/t', this.session.tenant(), 'p', project.key, 'backlog']);
+      await this.router.navigate(['/t', this.session.tenant(), 'p', project.key, 'board']);
     } catch (error) {
       this.errors.set(this.problems.report(error, { fields: true }).fields);
     } finally {

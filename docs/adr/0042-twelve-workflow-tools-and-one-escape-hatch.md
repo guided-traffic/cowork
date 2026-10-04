@@ -21,6 +21,10 @@ records, and a unit test holds every operation a tool calls to the document. The
 surface: `session_start` reads the working directory and is for a terminal; a host inside the
 backend runs the others in process — ~~which credential such a host presents is not decided~~.
 
+Amended 2026-10-04 (D1: `place_ticket` in place of `set_urgency`, and `file_ticket` into a
+horizon at a place — the owner's answer recorded in [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)
+D3), and built the same day: `place_ticket` and the horizon of `file_ticket` in
+[`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go), in `cowork-mcp` and in the chat.
 Amended 2026-10-04 (D1: `set_urgency`, and the preconditions `from` and `version` a caller may pin),
 with the chat in the UI provisionally
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
@@ -96,7 +100,16 @@ ticket and the reason of the one that reopens it.)* *(Amended 2026-10-04: a sixt
 `finish_work(…, from?)` act only while the ticket is in the state named, `set_progress(…, version?)`
 only while the ticket has the version named ~~— the chat pins what it read before the person decides
 (ADR 0076 D2)~~ *(the chat no longer pins: nothing of it waits for a decision, 2026-10-04; the
-preconditions stay any caller's)*; left out, the state or version read at the call.)*
+preconditions stay any caller's)*; left out, the state or version read at the call.)* *(Amended 2026-10-04, with the horizon of
+ADR 0010 D3 as amended that day:)* ~~`set_urgency(key, urgency?, reason?, withdraw?)`~~
+`place_ticket(key, horizon?, after?, before?, reason?)` — the horizon of a ticket, its place
+directly after or before another ticket of that horizon, or both in one call: the horizon through
+the override routes (`later`, the derived value of every ticket, withdraws), the place through
+`PUT …/tickets/{number}/rank`; a horizon needs `override-urgency` and a reason, a place `rank`.
+`file_ticket(…, horizon?, after?, before?)` files into a horizon at a place in one request,
+`later` at the end without them. Both descriptions say what a horizon means and that it is not a
+state: asked to file a ticket into `next`, an agent of the earlier catalogue sent the person to
+the state `analysed`.
 
 **D2 — ~~`answer_question` is not a tool and never will be;~~** *(amended 2026-10-01:
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and

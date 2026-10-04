@@ -171,11 +171,14 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 	mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now."})
 	mustCall(t, cs, "set_progress", map[string]any{"key": "VO-1", "percent": 50})
 	mustCall(t, cs, "watch", map[string]any{"key": key})
-	ranked := mustCall(t, cs, "set_urgency", map[string]any{"key": "VO-1", "urgency": "now", "reason": "the failover gates the release"})
-	assert.Contains(t, ranked, "Set the urgency of "+key+" to now")
+	ranked := mustCall(t, cs, "place_ticket", map[string]any{"key": "VO-1", "horizon": "now", "reason": "the failover gates the release"})
+	assert.Contains(t, ranked, "Moved "+key+" from the horizon later to now")
 	other := mustCall(t, cs, "file_ticket", map[string]any{"type": "task", "title": "Write the retry", "severity": "low",
-		"security": "none", "effort": "S", "links": []any{map[string]any{"type": "relates-to", "key": "VO-1"}}})
+		"security": "none", "effort": "S", "horizon": "now", "before": "VO-1",
+		"links": []any{map[string]any{"type": "relates-to", "key": "VO-1"}}})
+	assert.Contains(t, other, "Filed "+e.SlugA+"/VO-2 — Write the retry (task, filed), in the horizon now, directly before VO-1.")
 	assert.Contains(t, other, "Linked: "+e.SlugA+"/VO-2 relates-to "+key)
+	assert.Contains(t, mustCall(t, cs, "place_ticket", map[string]any{"key": "VO-1", "before": "VO-2"}), "Placed "+key+", directly before VO-2.")
 	assert.Contains(t, mustCall(t, cs, "search", map[string]any{"query": "failover"}), key)
 
 	start = mustCall(t, cs, "session_start", nil)

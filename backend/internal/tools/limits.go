@@ -52,6 +52,7 @@ const (
 	capDecide          = auth.CapDecide
 	capClose           = auth.CapClose
 	capDrop            = auth.CapDrop
+	capRank            = auth.CapRank
 	capOverrideUrgency = auth.CapOverrideUrgency
 	capInterest        = auth.CapInterest
 	capCreateProject   = auth.CapCreateProject

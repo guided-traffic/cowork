@@ -113,7 +113,7 @@ func TestBlockingTickets(t *testing.T) {
 	assert.Equal(t, apigen.TicketStateDecided, b.From)
 	assert.Equal(t, "needs 2.0 out", b.Reason)
 	assert.Equal(t, release.Key, b.Ticket.MustGet())
-	assert.Equal(t, apigen.UrgencyRelease, res.JSON200.Urgency, "rule set v1: blocked on a release")
+	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency, "a block moves no horizon (docs/adr/0010 D3)")
 	assert.Equal(t, []string{"blocks " + tk.Key}, e.links(t, member, release), "the block records its blocks link")
 
 	wrong := e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateBlocked, To: toInProgress})
@@ -230,27 +230,31 @@ func TestAgentTransitions(t *testing.T) {
 		http.StatusNotFound, "not_found")
 }
 
-// docs/adr/0010 D3: a decision that settles frees the tickets it blocks.
-func TestSettlingADecisionRederivesWhatItBlocks(t *testing.T) {
+// docs/adr/0010 D3 as amended 2026-10-04: a decision that blocks a ticket,
+// settles, reopens or stops being a decision moves no ticket to another
+// horizon, and leaves the version of what it blocks alone.
+func TestSettlingADecisionLeavesTheHorizonOfWhatItBlocks(t *testing.T) {
 	e := newTicketEnv(t)
 	member := caller{Token: e.tk.MemberA}
-	work := e.file(t, member, "ALPHA", task("Waits for the call"))
+	work := e.file(t, member, "ALPHA", task("Waits for the call", into(apigen.UrgencyNext)))
 	decision := e.file(t, member, "ALPHA", task("Pick the queue", func(b *apigen.TicketCreate) { b.Type = apigen.TicketTypeDecision }))
 	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, work).StatusCode)
-	assert.Equal(t, apigen.UrgencyIcebox, e.get(t, member, "ALPHA", work.Number).JSON200.Urgency)
+	assert.Equal(t, apigen.UrgencyNext, e.get(t, member, "ALPHA", work.Number).JSON200.Urgency)
 	version := e.get(t, member, "ALPHA", work.Number).JSON200.Version
 
 	res := e.move(t, member, decision, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDropped, Reason: ptr("moot")})
 	require.Equal(t, http.StatusOK, res.StatusCode())
 	got := e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyLater, got.Urgency, "the settled decision no longer holds it back")
+	assert.Equal(t, apigen.UrgencyNext, got.Urgency, "settled")
 	assert.Equal(t, version, got.Version)
 
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateDropped, To: apigen.TicketStateFiled, Reason: ptr("not moot")})
 	require.Equal(t, http.StatusOK, res.StatusCode())
-	assert.Equal(t, apigen.UrgencyIcebox, e.get(t, member, "ALPHA", work.Number).JSON200.Urgency, "reopened, it holds it back again")
+	assert.Equal(t, apigen.UrgencyNext, e.get(t, member, "ALPHA", work.Number).JSON200.Urgency, "reopened")
 
 	retyped := e.patch(t, member, *res.JSON200, apigen.TicketPatch{Type: ptr(apigen.TicketTypeTask)})
 	require.Equal(t, http.StatusOK, retyped.StatusCode(), string(retyped.Body))
-	assert.Equal(t, apigen.UrgencyLater, e.get(t, member, "ALPHA", work.Number).JSON200.Urgency, "no longer a decision, it holds nothing back")
+	got = e.get(t, member, "ALPHA", work.Number).JSON200
+	assert.Equal(t, apigen.UrgencyNext, got.Urgency, "no longer a decision")
+	assert.Equal(t, version, got.Version)
 }

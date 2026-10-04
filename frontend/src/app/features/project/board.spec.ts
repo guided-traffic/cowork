@@ -7,6 +7,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MenuItem, MessageService } from 'primeng/api';
 import { Menu } from 'primeng/menu';
+import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
 import { ListProjectTickets$Params } from '../../api/functions';
 import { Block, Problem, Project, Ticket, TicketState, Urgency } from '../../api/models';
@@ -429,6 +430,16 @@ describe('Board', () => {
         'Blocked',
         'Review',
       ]);
+    });
+
+    it('explain Next as the tickets in the horizon next', async () => {
+      const { fixture } = await render();
+
+      expect(
+        fixture.debugElement.query(By.css('#column-next')).injector.get(Tooltip).content(),
+      ).toBe(
+        'Tickets in the horizon next, in whatever state; Now moves one to now, and it shows in the column of its state',
+      );
     });
 
     it('put the open leaves of urgency now and release in the column of their state, in rank, and next on the left', async () => {
@@ -1077,7 +1088,7 @@ describe('Board', () => {
         expect.objectContaining({
           severity: 'warn',
           summary: 'Changed meanwhile',
-          detail: 'COW-1 was changed by someone else: its urgency is later now.',
+          detail: 'COW-1 was changed by someone else: its horizon is later now.',
         }),
       );
     });

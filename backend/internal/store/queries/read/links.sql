@@ -30,20 +30,6 @@ WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.type = sqlc.arg(type)
 -- visibility: exempt (an integrity walk returns no ticket)
 SELECT blocks_path_exists(sqlc.arg(tenant_id), sqlc.arg(from_id), sqlc.arg(to_id))::boolean AS reachable;
 
--- name: GetUrgencyInputs :one
--- The facts rule set v1 reads (docs/adr/0010 D3). The derivation belongs to
--- the ticket, not to a reader: an open decision that blocks it counts whether
--- or not the caller can see it, and only the derived value leaves.
--- visibility: exempt (the derivation's inputs of a ticket the caller writes)
-SELECT t.state, t.block_kind,
-       EXISTS (SELECT 1
-               FROM ticket_links l
-               JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
-               WHERE l.tenant_id = t.tenant_id AND l.target_id = t.id AND l.type = 'blocks'
-                 AND s.type = 'decision' AND s.state NOT IN ('done', 'dropped')) AS open_decision_blocker
-FROM tickets t
-WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id);
-
 -- name: ListOpenPrerequisites :many
 -- The open direct blocks sources of a ticket the caller can see: what refuses
 -- done (docs/adr/0012 D7). One the caller cannot see neither shows nor
@@ -56,14 +42,3 @@ WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.target_id = sqlc.arg(ticket_id) AN
   AND s.state NOT IN ('done', 'dropped')
   AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 ORDER BY sp.key, s.number;
-
--- name: ListBlockedTickets :many
--- The tickets a ticket blocks, whose urgency derivation reads it
--- (docs/adr/0010 D3). Only their derived urgency changes; nothing of them
--- reaches the caller.
--- visibility: exempt (the dependents of a derivation input)
-SELECT t.id
-FROM ticket_links l
-JOIN tickets t ON t.tenant_id = l.tenant_id AND t.id = l.target_id
-WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.source_id = sqlc.arg(ticket_id) AND l.type = 'blocks'
-ORDER BY t.id;

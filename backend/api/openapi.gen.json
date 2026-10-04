@@ -3579,7 +3579,7 @@
             ]
           },
           "urgency_rule": {
-            "description": "The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)",
+            "description": "The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)",
             "type": "string"
           },
           "version": {
@@ -3648,10 +3648,22 @@
       "TicketCreate": {
         "additionalProperties": false,
         "properties": {
+          "after": {
+            "description": "The open ticket of the same horizon this one is filed directly after; not with before",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "assignee": {
             "description": "A member of the tenant",
             "format": "uuid",
             "type": "string"
+          },
+          "before": {
+            "description": "The open ticket of the same horizon this one is filed directly before; not with after",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
           },
           "body": {
             "maxLength": 200000,
@@ -3682,6 +3694,9 @@
           },
           "type": {
             "$ref": "#/components/schemas/TicketType"
+          },
+          "urgency": {
+            "$ref": "#/components/schemas/Urgency"
           }
         },
         "required": [
@@ -4376,6 +4391,7 @@
         "type": "object"
       },
       "Urgency": {
+        "description": "The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)",
         "enum": [
           "now",
           "release",
@@ -6586,7 +6602,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived\n(docs/adr/0010 D3); a live or boundary security class makes the ticket confidential\n(docs/adr/0065 D2). An archived project refuses.\n",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `urgency` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is stored as the override, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`override-urgency` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2). An archived project refuses.\n",
         "operationId": "createTicket",
         "parameters": [
           {
@@ -8340,7 +8356,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override": {
       "delete": {
-        "description": "The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).",
+        "description": "Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).",
         "operationId": "withdrawUrgencyOverride",
         "parameters": [
           {
@@ -8367,7 +8383,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Withdraw the urgency override",
+        "summary": "Return the ticket to the horizon later",
         "tags": [
           "tickets"
         ]
@@ -8384,7 +8400,7 @@
         }
       ],
       "put": {
-        "description": "The override holds until a person or an agent withdraws it or sets another; when an input of\nthe derivation changes, the derived value and its rule change beside it and the override stays\n(docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request\nwithout one is 400 at `/reason`. An agent needs the override-urgency capability\n(docs/adr/0043 D4).\n",
+        "description": "Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning\ncategory independent of the state, which holds until a person or an agent withdraws it or\nsets another; nothing derives it, the derived value is `later` for every ticket\n(docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose\nrequest without one is 400 at `/reason`. An agent needs the override-urgency capability\n(docs/adr/0043 D4).\n",
         "operationId": "overrideUrgency",
         "parameters": [
           {
@@ -8421,7 +8437,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Override the derived urgency",
+        "summary": "Set the horizon",
         "tags": [
           "tickets"
         ]

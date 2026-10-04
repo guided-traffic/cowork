@@ -107,7 +107,7 @@ export interface Ticket {
   urgency_override: (UrgencyOverride | null);
 
   /**
-   * The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)
+   * The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)
    */
   urgency_rule: string;
   version: number;

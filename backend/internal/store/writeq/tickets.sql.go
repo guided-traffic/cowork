@@ -220,14 +220,17 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 const insertTicket = `-- name: InsertTicket :one
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
+    urgency_derived, urgency_rule, urgency_override, urgency_override_by, urgency_override_at,
+    effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
     reporter_token_name, assignee_id, confidential, rank
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
-    $11, $12, $13, $14,
-    $15, $16, $17,
-    $18, $19, $20::text
+    $11, $12::urgency, $13::uuid,
+    CASE WHEN $12::urgency IS NULL THEN NULL ELSE now() END,
+    $14, $15, $16,
+    $17, $18, $19,
+    $20, $21, $22::text
 )
 RETURNING id
 `
@@ -244,6 +247,8 @@ type InsertTicketParams struct {
 	Threat            *string
 	UrgencyDerived    domain.Urgency
 	UrgencyRule       string
+	UrgencyOverride   *domain.Urgency
+	UrgencyOverrideBy *uuid.UUID
 	Effort            domain.Effort
 	ParentID          *uuid.UUID
 	ReporterID        uuid.UUID
@@ -255,8 +260,9 @@ type InsertTicketParams struct {
 	Rank              string
 }
 
-// A new ticket, with its key at the bottom of its project's rank
-// (docs/adr/0014 D2).
+// A new ticket, with its key at its place in its project's rank
+// (docs/adr/0014 D2), and the horizon it was filed into as its override, set
+// by the filer, when that is not the derived one (docs/adr/0010 D3).
 func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertTicket,
 		arg.TenantID,
@@ -270,6 +276,8 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (uui
 		arg.Threat,
 		arg.UrgencyDerived,
 		arg.UrgencyRule,
+		arg.UrgencyOverride,
+		arg.UrgencyOverrideBy,
 		arg.Effort,
 		arg.ParentID,
 		arg.ReporterID,

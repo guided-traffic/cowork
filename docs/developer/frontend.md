@@ -76,7 +76,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`) and time entries |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the urgency override and its withdrawal (a `412` is written over once while the urgency is unchanged); every answer goes into the cache |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal (a `412` is written over once while the horizon is unchanged); every answer goes into the cache |
 | `Conversation` | Comments, questions and answers, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
@@ -222,8 +222,9 @@ Lists hold keys and read the tickets through the cache, so one refetch updates t
 board, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
 moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); the board holds
 itself while a card is dragged ([the board](#the-board)). `comment.changed` and `interest.changed` do not refetch the
-ticket — its version counts its own fields only ([ADR 0050] D1) — while `question.changed` and
-`link.changed` do, because they re-derive its urgency. `resync` (the stream could not replay a
+ticket — its version counts its own fields only ([ADR 0050] D1) — and neither does
+`question.changed`, while `link.changed` does, because a link changes the ticket's
+`open_prerequisites` without a new version. `resync` (the stream could not replay a
 gap) and the fallback's `poll` reload every open list and refetch the tickets a detail view
 shows; they load the views of `membership.changed` again as well, because the gap may have hidden
 one. While the tab is hidden, events wait and arrive merged when it is visible (ADR 0054 D8): the
@@ -237,13 +238,15 @@ A poll reloads the lists in full; the `If-None-Match` of D7 is outstanding.
 ## The backlog
 
 A project has two views under one header, [`ProjectHeader`](../../frontend/src/app/features/project/project-header.ts):
-the key, the name and the description, the settings, *New ticket*, and the tabs *Backlog* and
-*Board*, router links to `/t/:tenant/p/:project/backlog` and `…/board`; the project's address
-without a view redirects to the backlog ([`app.routes.ts`](../../frontend/src/app/app.routes.ts)).
-The board is [its own section](#the-board).
+the key, the name and the description, the settings, *New ticket*, and the tabs *Board* and
+*Backlog*, router links to `/t/:tenant/p/:project/board` and `…/backlog`. A project opens on its
+board ([ADR 0018] D1): the project's address without a view redirects to it
+([`app.routes.ts`](../../frontend/src/app/app.routes.ts)), and so do the links that open a project
+as a whole — the navigation's project list, the overview's cards, the breadcrumb of a ticket, and
+the navigation after *New project*. The board is [its own section](#the-board).
 
 The backlog ([`backlog.ts`](../../frontend/src/app/features/project/backlog.ts), [ADR 0018] D1) is
-one `<table>` with a `<tbody cdkDropList>` per urgency group, in the order `now`, `release`, `next`,
+one `<table>` with a `<tbody cdkDropList>` per horizon, in the order `now`, `release`, `next`,
 `later`, `icebox`. Each group starts with a header row — its name, its count, and the meaning of
 [`vocabulary.ts`](../../frontend/src/app/shared/vocabulary.ts) as a tooltip — and lists its rows in
 the order the list answered, which is the project's rank; the page never sees a rank key.
@@ -262,6 +265,14 @@ dash for `decided`, which waits, and for a closed ticket), the last update and t
 | `planStep`, `planGroup` | What the row's menu asks for: a place among the siblings, or the end of another group |
 | `movedKeys`, `unanswered`, `withMoves` | The order the page shows while its own moves are not in the list yet |
 
+**Horizon, not urgency.** The five values are the ticket's horizon ([ADR 0010] D3): a person or an
+agent sets it, and nothing derives it. The API keeps the names — `urgency`, `urgency_override`,
+`urgency_derived`, which is `later` for every ticket, `urgency_rule`, the capability
+`override-urgency` —, and so do the code's identifiers and test ids; what the page says to the
+person is *horizon*, never urgency, a derived value, a rule or an override. The detail page's field
+*Horizon* ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) has
+the meaning as its tooltip, followed by `— <reason>` where the horizon was set with one.
+
 The page scrolls in the shell's `<main class="content">`, which is a `cdkScrollable`
 ([`shell.html`](../../frontend/src/app/layout/shell.html)): the CDK takes its drop lists' scroll
 containers from the `ScrollDispatcher`, so it scrolls that area while a row is held at its top or
@@ -277,9 +288,9 @@ it next to the rows it shows, which the rank route takes:
 | Its group, at the top | `PUT …/tickets/{number}/rank` with `{before}` the first sibling |
 | Its group, elsewhere | `PUT …/rank` with `{after}` the sibling above |
 | Its group where it was, a child outside its parent's family, beside the table | Nothing; the row goes back |
-| Another group, which is the ticket's `urgency_derived` | `DELETE …/urgency-override` with `If-Match`, then the rank as above |
+| Another group, which is the ticket's `urgency_derived` (`later`) | `DELETE …/urgency-override` with `If-Match`, then the rank as above |
 | Another group | `PUT …/urgency-override` `{value}` with `If-Match`, then the rank as above, then the reason field |
-| Another group that is empty, or a child outside its parent's family there | The urgency write only (and the reason field after an override) |
+| Another group that is empty, or a child outside its parent's family there | The horizon's write only (and the reason field after a `PUT`) |
 
 The menu of a row — *Move up*, *Move down*, *Move to top*, *Move to bottom*, *Move to* each other
 group, at its end — makes the same calls for the keyboard and screen readers, which the CDK drag
@@ -288,11 +299,11 @@ ticket went.
 
 **The writes** of the moves run one after the other through `TicketActions` (`rank`,
 `overrideUrgency`, `withdrawUrgency`), and a move shows before them: its group from a map of the
-urgencies on their way, its place as a `Move` on top of the list's order. A failure takes back what
+horizons on their way, its place as a `Move` on top of the list's order. A failure takes back what
 was not written — the row is where the list and the cache have it —, shows the problem and reloads
-the list. A `412` on the urgency refetches the ticket and writes once more while its urgency is
-still the one the cache held; otherwise somebody else decided it, and the person is told. After an
-override a field in the row offers the reason, which a person may leave out ([ADR 0010] D3): Enter
+the list. A `412` on the horizon refetches the ticket and writes once more while its horizon is
+still the one the cache held; otherwise somebody else decided it, and the person is told. After a
+`PUT` of the horizon a field in the row offers the reason, which a person may leave out ([ADR 0010] D3): Enter
 sends the override again with the same value, the reason and the newer `ETag`; Escape, an empty
 Enter or leaving the field drops it. A request carries a reason only when one was typed.
 
@@ -326,7 +337,7 @@ well (ADR 0018 D1).
 The board ([`board.ts`](../../frontend/src/app/features/project/board.ts), [ADR 0018] D1) shows the
 current work under the project header: on the left the column *Next*, then *Refinement*, *Ready*,
 *In Progress*, *Blocked* and *Review*, a view over the states of [ADR 0009] D1. Its list is the
-project's open tickets of urgency `now`, `release` and `next`, every page of it
+project's open tickets in the horizons `now`, `release` and `next`, every page of it
 (`projectTicketPages` with `urgency` and no page limit), in the project's rank; the cards read the
 tickets through the cache. A parent is never on it — `progress_derived` is true exactly for a ticket
 with children — and neither are `later`, `icebox`, `done` and `dropped`. The decisions are pure
@@ -335,7 +346,7 @@ functions in [`board-model.ts`](../../frontend/src/app/features/project/board-mo
 | Function | Decides |
 |---|---|
 | `columnSpecs`, `columnOf` | The five state columns, the states each holds (Refinement `filed` and `analysed`) and the WIP limit each counts against (Refinement the `analysed` one) |
-| `placeOf` | Where a ticket stands: an open leaf of urgency `now` or `release` in the column of its state, one of urgency `next` in *Next* whatever its state, anything else nowhere |
+| `placeOf` | Where a ticket stands: an open leaf in the horizon `now` or `release` in the column of its state, one in `next` in *Next* whatever its state, anything else nowhere |
 | `arrange` | The columns in the order of the list, each with its count, its limit and whether it is over the limit |
 | `dropMove`, `dropTargets` | The transition a drop on a column is — the move of [`transitions.ts`](../../frontend/src/app/shared/transitions.ts) to a state of that column, forward, back, into `blocked` or out of it — or none |
 | `cardAction`, `menuMoves` | The move inside the card's own column (`filed → analysed`), and the card's menu: that action, then a move to each column that takes the card |
@@ -351,7 +362,7 @@ tickets in the backlog, `…/backlog?closed=true&done_after=` with the same time
 for `done` or `dropped`.
 
 **The cards** ([`board-card.ts`](../../frontend/src/app/features/project/board-card.ts)) carry the
-type and the key (a link to the ticket), the title, `release` where that is the urgency, the state
+type and the key (a link to the ticket), the title, `release` where that is the horizon, the state
 in Refinement, which holds two, severity and security, the bar of the stage its state works on
 ([the progress stages](#the-progress-stages-and-the-done-dialog): none in Ready, in Blocked the
 stage of the state the block came from), the block's kind and reason on a
@@ -374,7 +385,7 @@ The board scrolls sideways where the window is narrow; like the shell's content 
 | A drop whose move needs input: back (`decided → analysed`, `in-progress → decided` or `analysed`, `review → in-progress`) or into `blocked` | The move's dialog first (the reason, or the block's kind and text), then the same call |
 | A drop on its own column, beside the board, or where the card is not taken | Nothing; the card goes back |
 | The card action | `POST …/transitions` `{to: analysed}` |
-| *Now* on a card of *Next* | `PUT …/urgency-override` `{value: now}` without a reason ([ADR 0010] D3), or `DELETE` where the ticket derives `now` |
+| *Now* on a card of *Next* | `PUT …/urgency-override` `{value: now}` without a reason ([ADR 0010] D3), or `DELETE` where `urgency_derived` is `now`, which it is for no ticket since nothing derives |
 
 A move shows at once: the card stands in its new column with the state it goes to — while its
 dialog is open, too — and goes back when the dialog is cancelled or a write without a dialog fails,

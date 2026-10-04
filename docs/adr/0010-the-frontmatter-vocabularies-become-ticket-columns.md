@@ -4,7 +4,9 @@
 
 Accepted, amended 2026-10-02 (D3: the rule set v1 over the facts cowork holds, and the agent
 sentence that ADR 0043 D4 replaced) and 2026-10-03 (D3: an override holds until it is
-withdrawn or replaced, and a person may leave its reason out). Date: 2026-09-29. Decided by
+withdrawn or replaced, and a person may leave its reason out) and 2026-10-04 (D1, D3: the five
+values are the ticket's horizon, a planning category a person or an agent sets in whatever state
+the ticket is; nothing derives them any more; a ticket can be filed into one). Date: 2026-09-29. Decided by
 the owner as the answer to the catalog question "which frontmatter fields become
 first-class?": all of them, with the vocabularies the ticket rules already define. The
 amendment of D3 is the owner's answer of 2026-10-02 to the question which rules the
@@ -23,14 +25,30 @@ whatever their urgency, and over keeping the expiry. Does a drag between the urg
 need a reason? The owner chose a reason a person may leave out and an agent must give, over a
 required reason and over a generated one.
 
+The amendment of 2026-10-04 is the owner's answer to an agent that, asked to file a ticket into
+`next`, could not and told the owner to move the ticket to the state `analysed`. The owner
+defined the values as planning categories and nothing else, independent of the state: `now` is
+to be worked on now, `next` is taken up when `now` is empty, `later` may be done some day or
+never and is kept so it is not forgotten; every ticket can stand in any of them in any state,
+and an agent can file a ticket directly into one. Asked about `release` and `icebox`, the owner
+chose the same model for both, over retiring them and over keeping `icebox` alone, and asked for
+a word for the five: *horizon* is this record's proposal, and so are the meanings of `release`
+and `icebox`, open to objection.
+
 **Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
-as a CHECK and in the API, rule set v1 ([`DeriveUrgency`](../../backend/internal/domain/ticket.go)),
+as a CHECK and in the API, rule set v1 (`DeriveUrgency`, removed 2026-10-04),
 the override and its end. D4's `found-in` link exists; D5 arrives with the importer. The
-amendment of 2026-10-03 is built (2026-10-03): an input change derives the value and its rule
+amendment of 2026-10-03 is built (2026-10-03): ~~an input change derives the value and its rule
 again beside a standing override, which stays, and records no act of its own (`rederive` in
-[`links.go`](../../backend/internal/api/links.go)); the reason is optional for a person and
+`links.go`)~~ *(removed 2026-10-04 with the derivation)*; the reason is optional for a person and
 required of an agent, whose override without one is `400` at `/reason`; migration 19 lets an
-override stand without a reason.
+override stand without a reason. The amendment of 2026-10-04 is built (2026-10-04): rule set v2
+([`domain.UrgencyDefault`](../../backend/internal/domain/ticket.go), `v2:default`) and nothing
+that derives — no state, block or link writes the urgency any more; a filing names its horizon
+(`urgency` of `POST …/tickets`, `filingOf` in [`tickets.go`](../../backend/internal/api/tickets.go));
+[migration 29](../../backend/internal/store/migrations/000029_horizon_set_by_people_only.up.sql)
+keeps the horizon every ticket showed; the UI says *horizon*. Not built: the identifiers keep
+the name `urgency`.
 
 ## Context
 
@@ -50,7 +68,7 @@ person belongs to, derivable, importable one to one — or becomes labels and pr
 | `severity` | `critical`, `high`, `medium`, `low`, `cosmetic` | impact if never fixed — for a `feature`, the impact of never building it |
 | `security` | `live`, `boundary`, `hardening`, `none` | the threat-model class of the tickets page |
 | `threat` | text | required when `security` is not `none`; names the guarantee or principal, verb and target |
-| `urgency` | `now`, `release`, `next`, `later`, `icebox` | derived (D3) |
+| `urgency` | `now`, `release`, `next`, `later`, `icebox` | ~~derived (D3)~~ *(amended 2026-10-04:)* the ticket's horizon (D3) |
 | `effort` | `XS`, `S`, `M`, `L` | size, not time |
 | `opened_at` | timestamp | creation, or the imported `opened:` date |
 
@@ -73,7 +91,30 @@ ticket from which value to which either way. ~~An agent may not override.~~ *(Am
 [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
 D4, which replaced this sentence on 2026-10-01 without marking it here.)*
 
-*(Added 2026-10-02.)* **Rule set v1**, first match, top down; the stored rule names the
+*(Amended 2026-10-04.)* **`urgency` is the ticket's horizon** — a planning category and nothing
+else: it says when the work is meant to be taken up, not how the ticket stands. A person or an
+agent sets it, in whatever state the ticket is, and nothing changes it on its own — no state, no
+block, no link moves a ticket to another horizon. The five, in order:
+
+| Horizon | Meaning |
+|---|---|
+| `now` | to be worked on now: it may still need refinement, but its content matters to the project now, or it is a low-hanging fruit to clear off the table |
+| `release` | has to be in the next release; on the board beside `now`, marked |
+| `next` | taken up when `now` is empty, to move the project forward |
+| `later` | worth less to the project at the moment: maybe done some day, maybe never, kept so it is not forgotten; other work matters more, and it has no time and no time horizon |
+| `icebox` | frozen as things stand: not to be done until what it waits for — a decision, a person, a product call — changes, and kept for the record |
+
+A ticket filed without a horizon is `later`; a filing may name its horizon, and the ticket stands
+in it from its filing — the filing is the act, and it needs no reason, since a new ticket has no
+standing call to change. **Rule set v2** has one row, `later` (`v2:default`), so the derived value
+is `later` for every ticket, and the horizon a person or an agent set is what the API still calls
+the override: setting it is the override, withdrawing it returns the ticket to `later`. The rule
+of the reason stands as amended 2026-10-03 for a horizon set on an existing ticket. Migration 29
+keeps what every ticket showed: a ticket that derived `release` or `icebox` under v1 and had no
+override holds that value as a set horizon, set by nobody and without an act, its reason naming
+the migration.
+
+*(Added 2026-10-02; superseded 2026-10-04 by rule set v2 above.)* **Rule set v1**, first match, top down; the stored rule names the
 version, so a later rule set can tell its rows apart:
 
 | Rule | Urgency | Stored rule |
@@ -123,6 +164,12 @@ guessing; the report names the field and the ticket.
   override does not hide: every `now` and `release` ticket stays on the board.
 - *(Added 2026-10-03.)* An override set by a person without a reason says only who set it and
   when; the reason is worth writing where the call is not obvious from the ticket.
+- *(Added 2026-10-04.)* A blocked ticket stays in its horizon: waiting shows in the state and its
+  block, not in a move to `icebox` or `release`. A ticket nobody placed is `later`, whatever
+  happens to it, until somebody plans it.
+- *(Added 2026-10-04.)* The API, the database and the capability `override-urgency` keep the
+  names `urgency` and override for what is now the horizon a person or an agent set; whether the
+  names follow the word is open.
 
 ## Alternatives Considered
 
@@ -146,6 +193,12 @@ guessing; the report names the field and the ticket.
   record. Lost.
 - **A separate planning field beside `urgency`.** Two fields for one judgement, and urgency
   set by the person under another name. Not offered.
+- *(Added 2026-10-04.)* **Three horizons**, `release` folded into `now` and `icebox` into
+  `later` — the recommendation, since the owner's meaning of `later` covers a frozen ticket.
+  Lost: the owner kept all five under the same model.
+- *(Added 2026-10-04.)* **`icebox` kept, `release` folded into `now`.** Lost with the above.
+- *(Added 2026-10-04.)* **Rule set v1 kept for tickets nobody placed.** A blocked ticket would
+  still leave the horizon it was filed in. Lost: a horizon holds in any state.
 
 ## Residual risks
 

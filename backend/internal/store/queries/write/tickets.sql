@@ -8,16 +8,20 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
 RETURNING last_number;
 
 -- name: InsertTicket :one
--- A new ticket, with its key at the bottom of its project's rank
--- (docs/adr/0014 D2).
+-- A new ticket, with its key at its place in its project's rank
+-- (docs/adr/0014 D2), and the horizon it was filed into as its override, set
+-- by the filer, when that is not the derived one (docs/adr/0010 D3).
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
+    urgency_derived, urgency_rule, urgency_override, urgency_override_by, urgency_override_at,
+    effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
     reporter_token_name, assignee_id, confidential, rank
 ) VALUES (
     sqlc.arg(tenant_id), sqlc.arg(project_id), sqlc.arg(number), sqlc.arg(type), sqlc.arg(title),
     sqlc.arg(body), sqlc.arg(severity), sqlc.arg(security), sqlc.narg(threat), sqlc.arg(urgency_derived),
-    sqlc.arg(urgency_rule), sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
+    sqlc.arg(urgency_rule), sqlc.narg(urgency_override)::urgency, sqlc.narg(urgency_override_by)::uuid,
+    CASE WHEN sqlc.narg(urgency_override)::urgency IS NULL THEN NULL ELSE now() END,
+    sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
     sqlc.narg(reporter_agent), sqlc.narg(reporter_token_id), sqlc.narg(reporter_token_name),
     sqlc.narg(assignee_id), sqlc.arg(confidential), sqlc.arg(rank)::text
 )

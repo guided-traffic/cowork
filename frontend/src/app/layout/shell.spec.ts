@@ -772,17 +772,17 @@ describe('Shell', () => {
       ]);
     });
 
-    it('lists the projects of the tenant, each linked to its backlog', async () => {
+    it('lists the projects of the tenant, each linked to its board', async () => {
       projects.list.set([project('COW', 'Cowork'), project('OPS', 'Operations')]);
 
       const { page } = await render();
 
       const cow = page.querySelector('[data-testid="nav-project-COW"]');
-      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/board');
       expect(cow?.querySelector('.key')?.textContent).toBe('COW');
       expect(cow?.querySelector('.name')?.textContent).toBe('Cowork');
       expect(page.querySelector('[data-testid="nav-project-OPS"]')?.getAttribute('href')).toBe(
-        '/t/acme/p/OPS/backlog',
+        '/t/acme/p/OPS/board',
       );
       expect(page.querySelector('.empty')).toBeNull();
     });
@@ -898,7 +898,7 @@ describe('Shell', () => {
       await fixture.whenStable();
       expect(active()).toEqual(['nav-settings']);
 
-      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/backlog');
+      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/board');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-project-COW']);
     });

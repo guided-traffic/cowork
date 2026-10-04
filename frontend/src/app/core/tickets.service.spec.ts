@@ -763,28 +763,22 @@ describe('TicketsService', () => {
       http.expectNone(ticketUrl('acme/VKO-99'));
     });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'refetches a cached ticket on %s even at the version it holds, because its urgency is derived',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('refetches a cached ticket on link.changed even at the version it holds, because its open prerequisites change', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { urgency: 'now' }));
-        await settle();
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { open_prerequisites: 1 }));
+      await settle();
 
-        expect(service.cache.value(key)?.urgency).toBe('now');
-      },
-    );
+      expect(service.cache.value(key)?.open_prerequisites).toBe(1);
+    });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'does not fetch a ticket that is not cached on %s',
-      (name) => {
-        stream.next(changed(name, 'acme/VKO-99', 1));
+    it('does not fetch a ticket that is not cached on link.changed', () => {
+      stream.next(changed('link.changed', 'acme/VKO-99', 1));
 
-        http.expectNone(ticketUrl('acme/VKO-99'));
-      },
-    );
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
 
-    it.each(['comment.changed', 'interest.changed'] as const)(
+    it.each(['question.changed', 'comment.changed', 'interest.changed'] as const)(
       'never refetches the ticket on %s, whatever version it names, because they change nothing it shows',
       async (name) => {
         stream.next(changed(name, key, 99));
@@ -829,17 +823,14 @@ describe('TicketsService', () => {
       },
     );
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'keeps the ticket as well when the refetch after a %s event fails with a 500',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('keeps the ticket as well when the refetch after a link.changed event fails with a 500', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        fail(http.expectOne(ticketUrl(key)), 500);
-        await settle();
+      fail(http.expectOne(ticketUrl(key)), 500);
+      await settle();
 
-        expect(service.cache.value(key)?.version).toBe(5);
-      },
-    );
+      expect(service.cache.value(key)?.version).toBe(5);
+    });
 
     it('keeps the entry when the refetch fails with something that is not an HTTP error', async () => {
       interceptorFailure = new Error('an interceptor broke');

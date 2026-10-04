@@ -2234,13 +2234,17 @@ type Ticket struct {
 	Title  string                    `json:"title"`
 
 	// Type docs/adr/0008 D1
-	Type            TicketType                         `json:"type"`
-	UpdatedAt       time.Time                          `json:"updated_at"`
-	Urgency         Urgency                            `json:"urgency"`
+	Type      TicketType `json:"type"`
+	UpdatedAt time.Time  `json:"updated_at"`
+
+	// Urgency The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
+	Urgency Urgency `json:"urgency"`
+
+	// UrgencyDerived The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
 	UrgencyDerived  Urgency                            `json:"urgency_derived"`
 	UrgencyOverride nullable.Nullable[UrgencyOverride] `json:"urgency_override"`
 
-	// UrgencyRule The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)
+	// UrgencyRule The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)
 	UrgencyRule string `json:"urgency_rule"`
 	Version     int    `json:"version"`
 }
@@ -2255,10 +2259,16 @@ type TicketBodyReplace struct {
 
 // TicketCreate defines model for TicketCreate.
 type TicketCreate struct {
+	// After The open ticket of the same horizon this one is filed directly after; not with before
+	After *int `json:"after,omitempty"`
+
 	// Assignee A member of the tenant
 	Assignee *openapi_types.UUID `json:"assignee,omitempty"`
-	Body     *string             `json:"body,omitempty"`
-	Effort   Effort              `json:"effort"`
+
+	// Before The open ticket of the same horizon this one is filed directly before; not with after
+	Before *int    `json:"before,omitempty"`
+	Body   *string `json:"body,omitempty"`
+	Effort Effort  `json:"effort"`
 
 	// Parent A ticket key of the same project, short or full
 	Parent   *string       `json:"parent,omitempty"`
@@ -2269,6 +2279,9 @@ type TicketCreate struct {
 
 	// Type docs/adr/0008 D1
 	Type TicketType `json:"type"`
+
+	// Urgency The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
+	Urgency *Urgency `json:"urgency,omitempty"`
 }
 
 // TicketList defines model for TicketList.
@@ -2554,7 +2567,7 @@ type Transition struct {
 	To TicketState `json:"to"`
 }
 
-// Urgency defines model for Urgency.
+// Urgency The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
 type Urgency string
 
 // UrgencyOverride defines model for UrgencyOverride.
@@ -2564,14 +2577,18 @@ type UrgencyOverride struct {
 
 	// Reason Null when a person set the override without one (docs/adr/0010 D3)
 	Reason nullable.Nullable[string] `json:"reason"`
-	Value  Urgency                   `json:"value"`
+
+	// Value The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
+	Value Urgency `json:"value"`
 }
 
 // UrgencyOverrideSet defines model for UrgencyOverrideSet.
 type UrgencyOverrideSet struct {
 	// Reason Optional for a person, required of an agent (docs/adr/0010 D3)
 	Reason *string `json:"reason,omitempty"`
-	Value  Urgency `json:"value"`
+
+	// Value The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
+	Value Urgency `json:"value"`
 }
 
 // Version defines model for Version.
@@ -4330,9 +4347,14 @@ type ClientInterface interface {
 	// CreateTicketWithBody File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-	// (docs/adr/0065 D2). An archived project refuses.
+	// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+	// the state, `later` when left out; another horizon is stored as the override, set by the
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+	// confidential (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4342,9 +4364,14 @@ type ClientInterface interface {
 	// CreateTicket File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-	// (docs/adr/0065 D2). An archived project refuses.
+	// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+	// the state, `later` when left out; another horizon is stored as the override, set by the
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+	// confidential (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4872,19 +4899,20 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions (the `TransitionTicket` operationId).
 	TransitionTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *TransitionTicketParams, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// WithdrawUrgencyOverride Withdraw the urgency override
+	// WithdrawUrgencyOverride Return the ticket to the horizon later
 	//
-	// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+	// Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 	WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OverrideUrgencyWithBody Override the derived urgency
+	// OverrideUrgencyWithBody Set the horizon
 	//
-	// The override holds until a person or an agent withdraws it or sets another; when an input of
-	// the derivation changes, the derived value and its rule change beside it and the override stays
-	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+	// category independent of the state, which holds until a person or an agent withdraws it or
+	// sets another; nothing derives it, the derived value is `later` for every ticket
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+	// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 	// (docs/adr/0043 D4).
 	//
 	// Takes any type of body and a specified content type.
@@ -4892,12 +4920,13 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OverrideUrgency Override the derived urgency
+	// OverrideUrgency Set the horizon
 	//
-	// The override holds until a person or an agent withdraws it or sets another; when an input of
-	// the derivation changes, the derived value and its rule change beside it and the override stays
-	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+	// category independent of the state, which holds until a person or an agent withdraws it or
+	// sets another; nothing derives it, the derived value is `later` for every ticket
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+	// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 	// (docs/adr/0043 D4).
 	//
 	// Takes a body of the `application/json` content type.
@@ -6530,9 +6559,14 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // CreateTicketWithBody File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-// (docs/adr/0065 D2). An archived project refuses.
+// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+// the state, `later` when left out; another horizon is stored as the override, set by the
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+// confidential (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6552,9 +6586,14 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // CreateTicket File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-// (docs/adr/0065 D2). An archived project refuses.
+// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+// the state, `later` when left out; another horizon is stored as the override, set by the
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+// confidential (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7592,9 +7631,9 @@ func (c *Client) TransitionTicket(ctx context.Context, tenant TenantSlug, projec
 	return c.Client.Do(req)
 }
 
-// WithdrawUrgencyOverride Withdraw the urgency override
+// WithdrawUrgencyOverride Return the ticket to the horizon later
 //
-// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+// Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 func (c *Client) WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7609,12 +7648,13 @@ func (c *Client) WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug,
 	return c.Client.Do(req)
 }
 
-// OverrideUrgencyWithBody Override the derived urgency
+// OverrideUrgencyWithBody Set the horizon
 //
-// The override holds until a person or an agent withdraws it or sets another; when an input of
-// the derivation changes, the derived value and its rule change beside it and the override stays
-// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+// category independent of the state, which holds until a person or an agent withdraws it or
+// sets another; nothing derives it, the derived value is `later` for every ticket
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 // (docs/adr/0043 D4).
 //
 // Takes any type of body and a specified content type.
@@ -7632,12 +7672,13 @@ func (c *Client) OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug,
 	return c.Client.Do(req)
 }
 
-// OverrideUrgency Override the derived urgency
+// OverrideUrgency Set the horizon
 //
-// The override holds until a person or an agent withdraws it or sets another; when an input of
-// the derivation changes, the derived value and its rule change beside it and the override stays
-// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+// category independent of the state, which holds until a person or an agent withdraws it or
+// sets another; nothing derives it, the derived value is `later` for every ticket
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 // (docs/adr/0043 D4).
 //
 // Takes a body of the `application/json` content type.
@@ -15508,9 +15549,14 @@ type ClientWithResponsesInterface interface {
 	// CreateTicketWithBodyWithResponse File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-	// (docs/adr/0065 D2). An archived project refuses.
+	// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+	// the state, `later` when left out; another horizon is stored as the override, set by the
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+	// confidential (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -15520,9 +15566,14 @@ type ClientWithResponsesInterface interface {
 	// CreateTicketWithResponse File a ticket
 	//
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-	// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-	// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-	// (docs/adr/0065 D2). An archived project refuses.
+	// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+	// the state, `later` when left out; another horizon is stored as the override, set by the
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+	// confidential (docs/adr/0065 D2). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -16096,21 +16147,22 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions (the `TransitionTicket` operationId).
 	TransitionTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *TransitionTicketParams, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
 
-	// WithdrawUrgencyOverrideWithResponse Withdraw the urgency override
+	// WithdrawUrgencyOverrideWithResponse Return the ticket to the horizon later
 	//
-	// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+	// Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
 	WithdrawUrgencyOverrideWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*WithdrawUrgencyOverrideResponse, error)
 
-	// OverrideUrgencyWithBodyWithResponse Override the derived urgency
+	// OverrideUrgencyWithBodyWithResponse Set the horizon
 	//
-	// The override holds until a person or an agent withdraws it or sets another; when an input of
-	// the derivation changes, the derived value and its rule change beside it and the override stays
-	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+	// category independent of the state, which holds until a person or an agent withdraws it or
+	// sets another; nothing derives it, the derived value is `later` for every ticket
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+	// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 	// (docs/adr/0043 D4).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -16118,12 +16170,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
 
-	// OverrideUrgencyWithResponse Override the derived urgency
+	// OverrideUrgencyWithResponse Set the horizon
 	//
-	// The override holds until a person or an agent withdraws it or sets another; when an input of
-	// the derivation changes, the derived value and its rule change beside it and the override stays
-	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-	// without one is 400 at `/reason`. An agent needs the override-urgency capability
+	// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+	// category independent of the state, which holds until a person or an agent withdraws it or
+	// sets another; nothing derives it, the derived value is `later` for every ticket
+	// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+	// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 	// (docs/adr/0043 D4).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -23071,9 +23124,14 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // CreateTicketWithBodyWithResponse File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-// (docs/adr/0065 D2). An archived project refuses.
+// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+// the state, `later` when left out; another horizon is stored as the override, set by the
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+// confidential (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -23089,9 +23147,14 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // CreateTicketWithResponse File a ticket
 //
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-// the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-// (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-// (docs/adr/0065 D2). An archived project refuses.
+// the project's next. `urgency` is the ticket's horizon, a planning category independent of
+// the state, `later` when left out; another horizon is stored as the override, set by the
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+// confidential (docs/adr/0065 D2). An archived project refuses.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -23971,9 +24034,9 @@ func (c *ClientWithResponses) TransitionTicketWithResponse(ctx context.Context, 
 	return ParseTransitionTicketResponse(rsp)
 }
 
-// WithdrawUrgencyOverrideWithResponse Withdraw the urgency override
+// WithdrawUrgencyOverrideWithResponse Return the ticket to the horizon later
 //
-// The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+// Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -23986,12 +24049,13 @@ func (c *ClientWithResponses) WithdrawUrgencyOverrideWithResponse(ctx context.Co
 	return ParseWithdrawUrgencyOverrideResponse(rsp)
 }
 
-// OverrideUrgencyWithBodyWithResponse Override the derived urgency
+// OverrideUrgencyWithBodyWithResponse Set the horizon
 //
-// The override holds until a person or an agent withdraws it or sets another; when an input of
-// the derivation changes, the derived value and its rule change beside it and the override stays
-// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+// category independent of the state, which holds until a person or an agent withdraws it or
+// sets another; nothing derives it, the derived value is `later` for every ticket
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 // (docs/adr/0043 D4).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -24005,12 +24069,13 @@ func (c *ClientWithResponses) OverrideUrgencyWithBodyWithResponse(ctx context.Co
 	return ParseOverrideUrgencyResponse(rsp)
 }
 
-// OverrideUrgencyWithResponse Override the derived urgency
+// OverrideUrgencyWithResponse Set the horizon
 //
-// The override holds until a person or an agent withdraws it or sets another; when an input of
-// the derivation changes, the derived value and its rule change beside it and the override stays
-// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-// without one is 400 at `/reason`. An agent needs the override-urgency capability
+// Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+// category independent of the state, which holds until a person or an agent withdraws it or
+// sets another; nothing derives it, the derived value is `later` for every ticket
+// (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+// request without one is 400 at `/reason`. An agent needs the override-urgency capability
 // (docs/adr/0043 D4).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -29474,10 +29539,10 @@ type ServerInterface interface {
 	// TransitionTicket Move the ticket to another state
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions)
 	TransitionTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params TransitionTicketParams)
-	// WithdrawUrgencyOverride Withdraw the urgency override
+	// WithdrawUrgencyOverride Return the ticket to the horizon later
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	WithdrawUrgencyOverride(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params WithdrawUrgencyOverrideParams)
-	// OverrideUrgency Override the derived urgency
+	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
@@ -40559,10 +40624,10 @@ type StrictServerInterface interface {
 	// TransitionTicket Move the ticket to another state
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions)
 	TransitionTicket(ctx context.Context, request TransitionTicketRequestObject) (TransitionTicketResponseObject, error)
-	// WithdrawUrgencyOverride Withdraw the urgency override
+	// WithdrawUrgencyOverride Return the ticket to the horizon later
 	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	WithdrawUrgencyOverride(ctx context.Context, request WithdrawUrgencyOverrideRequestObject) (WithdrawUrgencyOverrideResponseObject, error)
-	// OverrideUrgency Override the derived urgency
+	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(ctx context.Context, request OverrideUrgencyRequestObject) (OverrideUrgencyResponseObject, error)
 	// ListTenantTickets The tenant's tickets across its projects, newest first

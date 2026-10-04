@@ -748,6 +748,7 @@ SecurityClass:
   enum: [live, boundary, hardening, none]
 Urgency:
   type: string
+  description: The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
   enum: [now, release, next, later, icebox]
 Effort:
   type: string
@@ -811,7 +812,7 @@ Ticket:
       $ref: '#/Urgency'
     urgency_derived:
       $ref: '#/Urgency'
-    urgency_rule: {type: string, description: 'The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)'}
+    urgency_rule: {type: string, description: 'The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)'}
     urgency_override:
       oneOf:
         - $ref: '#/UrgencyOverride'
@@ -896,6 +897,10 @@ TicketCreate:
       $ref: '#/Effort'
     parent: {type: string, description: 'A ticket key of the same project, short or full'}
     assignee: {type: string, format: uuid, description: A member of the tenant}
+    urgency:
+      $ref: '#/Urgency'
+    after: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly after; not with before'}
+    before: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly before; not with after'}
 TicketPatch:
   type: object
   additionalProperties: false

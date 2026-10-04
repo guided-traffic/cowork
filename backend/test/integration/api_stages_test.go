@@ -375,7 +375,8 @@ func TestDoneByTheStagesRefusals(t *testing.T) {
 }
 
 // docs/adr/0009 D2, D5: a ticket done from blocked keeps its block and takes
-// it back when the done by hand is withdrawn; the urgency follows the state.
+// it back when the done by hand is withdrawn; the horizon stays later through
+// all of it (docs/adr/0010 D3 as amended 2026-10-04).
 func TestDoneFromBlocked(t *testing.T) {
 	e := newTicketEnv(t)
 	member := caller{Token: e.tk.MemberA}
@@ -383,13 +384,13 @@ func TestDoneFromBlocked(t *testing.T) {
 	res := e.move(t, member, tk, apigen.Transition{From: toDecided, To: apigen.TicketStateBlocked, Reason: ptr("needs 2.0 out"),
 		Block: &apigen.BlockSet{Kind: apigen.BlockKindRelease, ExternalRef: ptr("RELEASE-2.0")}})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	assert.Equal(t, apigen.UrgencyRelease, res.JSON200.UrgencyDerived)
+	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency, "a block on a release moves no horizon")
 
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateBlocked, To: toDone, Note: ptr("2.0 shipped it")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.Equal(t, apigen.TicketStateBlocked, res.JSON200.DoneFrom.MustGet())
 	assert.True(t, res.JSON200.Block.IsNull(), "a done ticket shows no block")
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.UrgencyDerived, "no longer blocked")
+	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency)
 
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: toDone, To: apigen.TicketStateBlocked, Reason: ptr("2.0 slipped")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
@@ -398,7 +399,7 @@ func TestDoneFromBlocked(t *testing.T) {
 	assert.Equal(t, apigen.BlockKindRelease, b.Kind)
 	assert.Equal(t, "needs 2.0 out", b.Reason)
 	assert.Equal(t, "RELEASE-2.0", b.ExternalRef.MustGet())
-	assert.Equal(t, apigen.UrgencyRelease, res.JSON200.UrgencyDerived)
+	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency)
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateBlocked, To: toDecided})
 	require.Equal(t, http.StatusOK, res.StatusCode(), "and leaves it to where it came from")
 }
@@ -631,10 +632,11 @@ func TestDoneByThePreviousRelease(t *testing.T) {
 	assert.Equal(t, []string{"below", "Closed in a rollback"}, e.titles(t, member, e.projectTickets("ALPHA"), ""), "ranked at the bottom")
 }
 
-// docs/adr/0010 D3: an override holds until it is withdrawn or replaced —
-// across a block, an unblock and a link that changes the derivation, whose
-// value and rule change beside it without an act or a version; the reason is
-// optional for a person and required of an agent.
+// docs/adr/0010 D3 as amended 2026-10-04: the horizon set on a ticket holds
+// until it is withdrawn or replaced — across a block, an unblock, an open
+// decision that blocks it and that link removed, none of which moves it or
+// derives anything but later; the reason is optional for a person and
+// required of an agent.
 func TestUrgencyOverrideHolds(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -664,45 +666,43 @@ func TestUrgencyOverrideHolds(t *testing.T) {
 	tk = *res.JSON200
 
 	steps := []struct {
-		name    string
-		do      func() apigen.Ticket
-		derived apigen.Urgency
-		rule    string
+		name string
+		do   func() apigen.Ticket
 	}{
 		{"blocked on a decision", func() apigen.Ticket {
 			res := e.move(t, member, tk, apigen.Transition{From: toDecided, To: apigen.TicketStateBlocked, Reason: ptr("the owner decides"),
 				Block: &apigen.BlockSet{Kind: apigen.BlockKindDecision}})
 			require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 			return *res.JSON200
-		}, apigen.UrgencyIcebox, "v1:icebox-block"},
+		}},
 		{"unblocked", func() apigen.Ticket {
 			res := e.move(t, member, tk, apigen.Transition{From: apigen.TicketStateBlocked, To: toDecided})
 			require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 			return *res.JSON200
-		}, apigen.UrgencyLater, "v1:default"},
+		}},
 		{"an open decision blocks it", func() apigen.Ticket {
 			require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, tk).StatusCode)
 			return *e.get(t, member, "ALPHA", tk.Number).JSON200
-		}, apigen.UrgencyIcebox, "v1:icebox-decision"},
+		}},
 		{"the link removed", func() apigen.Ticket {
 			require.Equal(t, http.StatusNoContent, e.s.do(t, member, http.MethodDelete, e.linkPath(decision, apigen.LinkTypeBlocks, tk), nil).StatusCode)
 			return *e.get(t, member, "ALPHA", tk.Number).JSON200
-		}, apigen.UrgencyLater, "v1:default"},
+		}},
 	}
 	for _, s := range steps {
 		version := tk.Version
 		tk = s.do()
 		assert.Equal(t, apigen.UrgencyNow, tk.Urgency, "%s: the override holds", s.name)
 		assert.Equal(t, apigen.UrgencyNow, tk.UrgencyOverride.MustGet().Value, s.name)
-		assert.Equal(t, s.derived, tk.UrgencyDerived, "%s: the derived value changes beside it", s.name)
-		assert.Equal(t, s.rule, tk.UrgencyRule, s.name)
+		assert.Equal(t, apigen.UrgencyLater, tk.UrgencyDerived, s.name)
+		assert.Equal(t, "v2:default", tk.UrgencyRule, s.name)
 		if s.name == "an open decision blocks it" || s.name == "the link removed" {
-			assert.Equal(t, version, tk.Version, "%s: a derived change leaves the version", s.name)
+			assert.Equal(t, version, tk.Version, "%s: a link leaves the version", s.name)
 		}
 	}
 	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", tk.Id)
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, n, "the three overrides, and no act of the derivation")
+	assert.EqualValues(t, 3, n, "the three overrides, and nothing else")
 
 	etag := strconv.Quote(strconv.Itoa(tk.Version))
 	back, err := e.s.client(t, agent).WithdrawUrgencyOverrideWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number, &apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})

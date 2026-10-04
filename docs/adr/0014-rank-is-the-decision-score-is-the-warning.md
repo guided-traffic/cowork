@@ -7,7 +7,9 @@ it is computed, where a filed and a reopened ticket start, what a release before
 leaves behind — open tickets without a key, done and dropped ones with one — written when the
 rank was built; that a key is never shown and whether a move writes is decided over the
 tickets the mover sees — written the same day, when a review found that a shown key tells
-where hidden tickets sit and whether they are still open). Date: 2026-09-29. Decided by the
+where hidden tickets sit and whether they are still open) and 2026-10-04 (D2: a filing may
+name its place in its horizon, the owner's answer when an agent could neither file a ticket into
+a horizon nor re-sort the backlog). Date: 2026-09-29. Decided by the
 owner as the answer to the catalog question "priority model?": both a manual rank and a
 computed score, the rank winning inside a project, over rank only, score only, and
 score-with-pins. The formula of D4 was proposed with the question; the owner chose the option
@@ -15,7 +17,8 @@ without objecting to it, and it stands as version 1 until amended.
 
 **Partly built** (2026-10-03): D1 and D2 — the `rank` column ([migration 17](../../backend/internal/store/migrations/000017_ticket_rank.up.sql),
 which ranked every project's open tickets in number order), [`domain.RankBetween`](../../backend/internal/domain/rank.go),
-filings and reopens at the bottom, done and dropped without a key, the move
+filings and reopens at the bottom — or, since 2026-10-04, a filing beside a ticket of its
+horizon (`rankBeside` in [`rank.go`](../../backend/internal/api/rank.go)) —, done and dropped without a key, the move
 `PUT …/tickets/{number}/rank` recorded as `ranked` ([`rank.go`](../../backend/internal/api/rank.go)),
 and a project's list in its rank; the drag in the backlog
 ([ADR 0018](0018-the-views-of-the-first-release.md) D1). **Not built:** the score of D3–D5 and
@@ -57,7 +60,14 @@ among them is answered unchanged, without an act, whatever sits between unseen. 
 two keys a move takes the middle; at an open end it moves by no more than the square of the
 distance to that end, so filings at the bottom and moves to the top keep the keys short — ten
 thousand stay within five characters. A filed ticket and a reopened one join the rank at the
-bottom; done and dropped take the key away (D1). The writes that hand out keys in a project
+bottom; done and dropped take the key away (D1). *(Amended 2026-10-04:)* A filing may name the
+ticket it goes directly after or before — an open ticket of the project in the horizon it is
+filed into ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3 as amended
+2026-10-04) — and takes its key as a move there would; without one it joins at the bottom, which
+is the end of its horizon, since a horizon's group in the backlog is the rank read over that
+horizon. An agent names a place with `rank`
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4). The writes that hand out keys in a project
 are ordered by one lock. A ticket filed or reopened by a release before the rank has no key;
 the project's list shows it after the ranked tickets, by number, and the next write that hands
 out a key in its project ranks it there first — no move, so no act and no version

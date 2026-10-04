@@ -35,11 +35,16 @@ export const meanings = {
     decision: 'A choice to make and record',
     question: 'Something to find out',
   } satisfies Record<TicketType, string>,
+  /**
+   * The horizons of docs/adr/0010 D3 as amended 2026-10-04: the API's `urgency` is the ticket's
+   * horizon, the one a person or an agent set, and the UI calls it so.
+   */
   urgency: {
-    now: 'Now: a defect in unreleased work, or a statement measured false',
-    release: 'Gates the release, or is gated on it',
-    next: 'Medium or worse, and its trigger is live',
-    later: 'A decided or cheap known fix',
-    icebox: 'Needs a product call, a decision or an escalation first',
+    now: 'Now: to be worked on now — maybe still to be refined, but it matters to the project now, or it is a low-hanging fruit',
+    release: 'Release: has to be in the next release',
+    next: 'Next: taken up when now is empty, to move the project forward',
+    later:
+      'Later: worth less at the moment — maybe some day, maybe never; kept so it is not forgotten',
+    icebox: 'Icebox: frozen as things stand, kept until what it waits for changes',
   } satisfies Record<Urgency, string>,
 };

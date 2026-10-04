@@ -239,13 +239,13 @@ export class TicketsService {
     }
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
-    // a question or a link re-derives its urgency without one; a comment or a stake changes
-    // nothing the ticket itself shows.
+    // a link changes its open prerequisites without one; a question, a comment or a stake
+    // changes nothing the ticket itself shows.
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
         ? held.version < event.version
-        : event.name === 'question.changed' || event.name === 'link.changed');
+        : event.name === 'link.changed');
     if (stale) {
       this.refetch(event.key);
     }

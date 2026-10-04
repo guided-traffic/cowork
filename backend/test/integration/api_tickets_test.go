@@ -118,7 +118,7 @@ func TestFilingTickets(t *testing.T) {
 	assert.Equal(t, `"1"`, *first.Headers201.ETag)
 	assert.Equal(t, apigen.TicketStateFiled, tk.State)
 	assert.Equal(t, apigen.UrgencyLater, tk.Urgency, "rule set v1's default (docs/adr/0010 D3)")
-	assert.Equal(t, "v1:default", tk.UrgencyRule)
+	assert.Equal(t, "v2:default", tk.UrgencyRule)
 	assert.Equal(t, e.MemberA, tk.Reporter.Id)
 	assert.False(t, tk.Confidential)
 

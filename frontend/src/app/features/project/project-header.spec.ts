@@ -115,17 +115,27 @@ describe('ProjectHeader', () => {
       await fixture.whenStable();
     };
 
-    it('are two links, Backlog and Board, in a navigation that has a name', async () => {
+    it('are two links, Board and Backlog, in a navigation that has a name', async () => {
       const { page } = await render();
 
       const nav = page.querySelector('nav.tabs');
       expect(nav?.getAttribute('aria-label')).toBe('Views of the project');
       expect(
         [...(nav?.querySelectorAll('a') ?? [])].map((link) => link.textContent?.trim()),
-      ).toEqual(['Backlog', 'Board']);
+      ).toEqual(['Board', 'Backlog']);
     });
 
-    it('lead to the backlog and the board of the project under the tenant', async () => {
+    it('put the board first, left of the backlog', async () => {
+      const { page } = await render();
+
+      const links = [...page.querySelectorAll<HTMLAnchorElement>('nav.tabs a')];
+      expect(links.map((link) => link.getAttribute('href'))).toEqual([
+        '/t/acme/p/COW/board',
+        '/t/acme/p/COW/backlog',
+      ]);
+    });
+
+    it('lead to the board and the backlog of the project under the tenant', async () => {
       const { page } = await render();
 
       expect(tab(page, 'backlog')?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');

@@ -350,3 +350,91 @@ func TestStagesMigrationBackfill(t *testing.T) {
 	require.Error(t, f.Exec(ctx, "UPDATE tickets SET state = 'in-progress' WHERE id = $1", ids["blocked late"]),
 		"a blocked ticket's block is kept with blocked only")
 }
+
+// docs/adr/0010 D3 as amended 2026-10-04, docs/adr/0028 D3: migration 29 keeps
+// the horizon every ticket showed — one that derived release or icebox under
+// rule set v1 and had none set holds it as its own, set by nobody, with a
+// reason and a new version; one set stays — makes every derived value later
+// under v2, and restores the forced row-level security it lifts.
+func TestHorizonMigrationKeepsWhatTicketsShow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := fmt.Sprintf("cowork_it_horizon_%d", time.Now().UnixNano())
+	require.NoError(t, createDatabase(ctx, env.AdminURL, name))
+	t.Cleanup(func() {
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer dropCancel()
+		assert.NoError(t, dropDatabase(dropCtx, env.AdminURL, name))
+	})
+	adminURL, err := withUserAndDatabase(env.AdminURL, "", "", name)
+	require.NoError(t, err)
+	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
+	require.NoError(t, err)
+
+	migrateTo(t, ownerURL, 28)
+	f, err := fixture.Connect(ctx, adminURL)
+	require.NoError(t, err)
+	t.Cleanup(f.Close)
+	person, err := f.Person(ctx, uniqueSlug("planner"), "Planner")
+	require.NoError(t, err)
+	tenant, err := f.Tenant(ctx, uniqueSlug("horizon"), "Horizon")
+	require.NoError(t, err)
+	project, err := f.Project(ctx, tenant, "PLAN", "Plan")
+	require.NoError(t, err)
+	for range 4 {
+		_, _, err := f.Ticket(ctx, tenant, project, person, "planned")
+		require.NoError(t, err)
+	}
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET urgency_rule = 'v1:default' WHERE project_id = $1`, project))
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET urgency_derived = 'icebox', urgency_rule = 'v1:icebox-decision'
+		WHERE project_id = $1 AND number = 1`, project))
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET urgency_derived = 'release', urgency_rule = 'v1:release-block',
+		urgency_override = 'now', urgency_override_by = $2, urgency_override_at = now() WHERE project_id = $1 AND number = 2`, project, person))
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET state = 'dropped', urgency_derived = 'icebox', urgency_rule = 'v1:icebox-block'
+		WHERE project_id = $1 AND number = 4`, project))
+
+	_, err = store.Migrate(ctx, ownerURL, runtimeRole)
+	require.NoError(t, err)
+
+	type row struct {
+		derived, rule string
+		set, reason   *string
+		by            *uuid.UUID
+		version       int
+	}
+	rows, err := f.Query(ctx, `SELECT number, urgency_derived, urgency_rule, urgency_override, urgency_override_reason,
+		urgency_override_by, version FROM tickets WHERE project_id = $1`, project)
+	require.NoError(t, err)
+	got := map[int]row{}
+	for rows.Next() {
+		var n int
+		var r row
+		require.NoError(t, rows.Scan(&n, &r.derived, &r.rule, &r.set, &r.reason, &r.by, &r.version))
+		got[n] = r
+	}
+	require.NoError(t, rows.Err())
+	rows.Close()
+
+	for n, r := range got {
+		assert.Equal(t, "later", r.derived, "ticket %d derives later", n)
+		assert.Equal(t, "v2:default", r.rule, "ticket %d", n)
+	}
+	for _, n := range []int{1, 4} {
+		require.NotNil(t, got[n].set, "ticket %d keeps its horizon", n)
+		assert.Equal(t, "icebox", *got[n].set)
+		assert.Nil(t, got[n].by, "set by nobody")
+		require.NotNil(t, got[n].reason)
+		assert.Contains(t, *got[n].reason, "kept from the derivation")
+		assert.Equal(t, 2, got[n].version, "what it shows is its own now")
+	}
+	require.NotNil(t, got[2].set)
+	assert.Equal(t, "now", *got[2].set, "a horizon set stays")
+	assert.Equal(t, person, *got[2].by)
+	assert.Equal(t, 1, got[2].version)
+	assert.Nil(t, got[3].set, "later stays later, nothing set")
+	assert.Equal(t, 1, got[3].version)
+
+	var forced bool
+	require.NoError(t, f.QueryRow(ctx, "SELECT relforcerowsecurity FROM pg_class WHERE oid = 'tickets'::regclass").Scan(&forced))
+	assert.True(t, forced, "row-level security is forced on tickets again")
+}

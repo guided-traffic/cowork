@@ -90,15 +90,12 @@
     />
   </dd>
 
-  <dt>Urgency</dt>
+  <dt>Horizon</dt>
   <dd>
-    <span
-      [pTooltip]="meanings.urgency[ticket().urgency] + ' (rule ' + ticket().urgency_rule + ')'"
-      >{{ ticket().urgency }}</span
-    >
-    @if (ticket().urgency_override) {
-      <span class="muted small"> overridden</span>
-    }
+    @let reason = ticket().urgency_override?.reason;
+    <span [pTooltip]="meanings.urgency[ticket().urgency] + (reason ? ' — ' + reason : '')">{{
+      ticket().urgency
+    }}</span>
   </dd>
 
   <dt class="top">Progress</dt>

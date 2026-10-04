@@ -77,7 +77,7 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
 | `state` | `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` | changed by transitions, and by the progress stages that close and reopen a ticket; below |
 | `severity` | `critical`, `high`, `medium`, `low`, `cosmetic` | [ADR 0010] D1 |
 | `security` | `live`, `boundary`, `hardening`, `none` | `threat` is required unless the class is `none`, and absent with `none` — `400` at `/threat` (`checkThreat`) and a table `CHECK` ([ADR 0010] D2) |
-| `urgency` | `now`, `release`, `next`, `later`, `icebox` | derived, may be overridden; below |
+| `urgency` | `now`, `release`, `next`, `later`, `icebox` | the ticket's horizon, set by a person or an agent; below |
 | `effort` | `XS`, `S`, `M`, `L` | a size ([ADR 0017] D1) |
 | block kind | `decision`, `human`, `product`, `release`, `external`, `ticket` | only while blocked |
 
@@ -136,43 +136,30 @@ parent, assignee, the three progress stages, the flag set with a class), `Update
 `SetUrgencyOverride`, `SetConfidential`, `TransitionTicket`, `EndDoneByHand` and
 `MoveTicketRank` (a move in the rank) raise `version` by one. A `PATCH` whose stages close or
 reopen the ticket writes its state with `TransitionTicket` too, with `bump` false: one request,
-one version. A re-derived urgency, derived stages and the first key the rank gives an unranked
-ticket (`RankUnrankedTicket`) do not: they are caused by other tickets' writes and would fail a
+one version. Derived stages and the first key the rank gives an unranked ticket
+(`RankUnrankedTicket`) do not: they are caused by other tickets' writes and would fail a
 concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
 attachments and time entries are entities of their own and leave the ticket's version alone.
 
-## Urgency
+## Urgency, the horizon
 
-Rule set v1 is [`domain.DeriveUrgency`](../../backend/internal/domain/ticket.go), first match
-([ADR 0010] D3):
+The five values are the ticket's horizon — a planning category a person or an agent sets, in
+whatever state the ticket is ([ADR 0010] D3 as amended 2026-10-04). Nothing derives it: rule set
+v2 has one row, [`domain.UrgencyDefault`](../../backend/internal/domain/ticket.go) `later` with the
+rule `UrgencyRuleDefault` `v2:default`, which every filing writes as `urgency_derived` and
+`urgency_rule`; no state, block or link changes them.
 
-| Inputs | Urgency | `urgency_rule` |
-|---|---|---|
-| blocked on `release` | `release` | `v1:release-block` |
-| blocked on `decision`, `human` or `product` | `icebox` | `v1:icebox-block` |
-| an open ticket of type `decision` blocks it | `icebox` | `v1:icebox-decision` |
-| anything else | `later` | `v1:default` |
-
-`now` and `next` therefore come only from an override: `PUT …/urgency-override` with a value,
-`DELETE` to withdraw; both with `If-Match`, both recorded as `overridden`, an agent's needing
-`override-urgency`. The reason is optional for a person — a drag between the backlog's urgency
-groups — and required of an agent, whose override without one is `400` at `/reason`
-(`overrideInputs`); `urgency_override.reason` is `null` without one (migration 19 relaxed the
-`CHECK` that tied the two). The override holds until a person or an agent withdraws it or sets
-another. The ticket shows the override when one stands, else the derived value;
-`urgency_derived` and `urgency_rule` are always there.
-
-`rederive` in [`links.go`](../../backend/internal/api/links.go) re-applies the rules when an
-input may have changed, comparing `UrgencyInputs.Normalized()` before and after: the state only
-as blocked or not, the block kind only while blocked, and whether an open decision blocks the
-ticket. A real change writes the new derivation with `RederiveUrgency`, without raising the
-version and without an act of its own; a standing override stays, the new derived value and
-rule beside it ([ADR 0010] D3). It runs for the target of a `blocks` link that is added or
-removed, for the ticket itself on every state change — a transition, or the done act and the
-reopen of the stages — and for the tickets a decision blocks when the decision opens or settles
-(a change between open and terminal) or when an open ticket becomes or stops being a decision.
-The inputs are read past the visibility predicate — the derivation is the ticket's, not the
-reader's — and only the derived value leaves.
+What a person or an agent sets is stored as the override: `PUT …/urgency-override` with a value,
+`DELETE` to return the ticket to `later`; both with `If-Match`, both recorded as `overridden`, an
+agent's needing `override-urgency`. The reason is optional for a person — a drag between the
+backlog's groups — and required of an agent, whose request without one is `400` at `/reason`
+(`overrideInputs`); `urgency_override.reason` is `null` without one. A filing names its horizon
+with `urgency`: another than `later` is written as the override by `InsertTicket`, set by the
+filer and without a reason, and an agent needs `override-urgency` for it (`filing.capabilities`
+in [`tickets.go`](../../backend/internal/api/tickets.go)). The ticket shows the override when one
+stands, else `later`. Migration 29 turned what rule set v1 had derived — `release` and `icebox`
+for blocked tickets and those an open decision blocked — into overrides set by nobody, so no
+ticket moved when the derivation was retired.
 
 ## Links
 
@@ -276,7 +263,13 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
   cannot see included (`LastRank`, `NextRankedTicket`, `PreviousRankedTicket`) — so two writes
   never compute a key from the same neighbours and no key is handed out twice.
 - **A filing, a reopen, a withdrawal and a lower stage that reopens** get `rankAtBottom`: the key
-  after the greatest of the project.
+  after the greatest of the project — for a filing the end of its horizon, since a horizon's group
+  is the rank read over it.
+- **A filing with a place** — `after` or `before`, a number of the same project — gets
+  `rankBeside` ([ADR 0014] D2 as amended 2026-10-04): under the lock, the neighbour the caller can
+  see, open and in the horizon the ticket is filed into (else `400` at the pointer, or `409
+  state_conflict` for a done or dropped one), and a key strictly between its key and the next key
+  of any ticket on that side, as a move computes it. The filing act names the neighbour.
 - **A move** is `PUT …/{number}/rank` with `{"after": n}` or `{"before": n}`, a number of the
   same project. Under the lock it reads the ticket and the neighbour again, and beside the
   neighbour on that side (`beside`) the first open ticket the caller can see

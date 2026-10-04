@@ -151,7 +151,7 @@
           @for (project of projects.list(); track project.id) {
             <a
               class="item project"
-              [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
+              [routerLink]="['/t', tenant, 'p', project.key, 'board']"
               routerLinkActive="active"
               [attr.data-testid]="'nav-project-' + project.key"
               ><span class="key">{{ project.key }}</span

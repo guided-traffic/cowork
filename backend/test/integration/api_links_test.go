@@ -143,18 +143,18 @@ func TestConcurrentBlocksLinks(t *testing.T) {
 	}
 }
 
-// docs/adr/0010 D3: an open decision that blocks a ticket makes it icebox;
-// the change of that input derives the urgency again beside a standing
-// override, which holds; neither changes the ticket's version (docs/adr/0050
-// D1) nor records an act of its own.
-func TestLinksDeriveUrgency(t *testing.T) {
+// docs/adr/0010 D3 as amended 2026-10-04: a blocks link — of a task or of an
+// open decision — moves no ticket to another horizon: one set holds, one
+// nobody set stays later; neither changes the ticket's version (docs/adr/0050
+// D1) nor records an act.
+func TestLinksLeaveTheHorizon(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
 	member := caller{Token: e.tk.MemberA}
 	work := e.file(t, member, "ALPHA", task("Build it"))
 	decision := e.file(t, member, "ALPHA", task("Which database?", func(b *apigen.TicketCreate) { b.Type = apigen.TicketTypeDecision }))
 	other := e.file(t, member, "ALPHA", task("Some task"))
-	plain := e.file(t, member, "ALPHA", task("No override"))
+	plain := e.file(t, member, "ALPHA", task("No horizon set"))
 
 	etag := strconv.Quote(strconv.Itoa(work.Version))
 	ov, err := e.s.client(t, member).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", work.Number,
@@ -163,36 +163,33 @@ func TestLinksDeriveUrgency(t *testing.T) {
 	require.Equal(t, http.StatusOK, ov.StatusCode(), string(ov.Body))
 	version := ov.JSON200.Version
 
-	require.Equal(t, http.StatusCreated, e.link(t, member, other, apigen.LinkTypeBlocks, work).StatusCode)
-	got := e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "a task that blocks is no input of v1")
-	assert.Equal(t, "v1:default", got.UrgencyRule)
-
-	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, work).StatusCode)
-	got = e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the input changed: the override holds")
-	assert.Equal(t, "demo on Friday", got.UrgencyOverride.MustGet().Reason.MustGet())
-	assert.Equal(t, apigen.UrgencyIcebox, got.UrgencyDerived, "and the derived value changes beside it")
-	assert.Equal(t, "v1:icebox-decision", got.UrgencyRule)
-	assert.Equal(t, version, got.Version, "a derived change leaves the version")
+	for _, source := range []apigen.Ticket{other, decision} {
+		require.Equal(t, http.StatusCreated, e.link(t, member, source, apigen.LinkTypeBlocks, work).StatusCode)
+		got := e.get(t, member, "ALPHA", work.Number).JSON200
+		assert.Equal(t, apigen.UrgencyNow, got.Urgency, "%s blocks it: the horizon holds", source.Title)
+		assert.Equal(t, "demo on Friday", got.UrgencyOverride.MustGet().Reason.MustGet())
+		assert.Equal(t, apigen.UrgencyLater, got.UrgencyDerived)
+		assert.Equal(t, "v2:default", got.UrgencyRule)
+		assert.Equal(t, version, got.Version, "a link leaves the version")
+	}
 	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", work.Id)
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n, "the derivation records no act of its own")
+	assert.EqualValues(t, 1, n, "the person's act alone")
 
 	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, plain).StatusCode)
-	got = e.get(t, member, "ALPHA", plain.Number).JSON200
-	assert.Equal(t, apigen.UrgencyIcebox, got.Urgency, "without an override the derived value shows")
+	got := e.get(t, member, "ALPHA", plain.Number).JSON200
+	assert.Equal(t, apigen.UrgencyLater, got.Urgency, "an open decision that blocks it leaves it later")
+	assert.True(t, got.UrgencyOverride.IsNull())
 
-	assert.Equal(t, []string{"No override", "Build it"}, e.titles(t, member, e.tenantTickets(), "blocked=true"))
+	assert.Equal(t, []string{"No horizon set", "Build it"}, e.titles(t, member, e.tenantTickets(), "blocked=true"))
 	assert.NotContains(t, e.titles(t, member, e.tenantTickets(), "blocked=false"), "Build it")
 
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
 	del := e.s.do(t, agent, http.MethodDelete, e.linkPath(decision, apigen.LinkTypeBlocks, work), nil)
 	require.Equal(t, http.StatusNoContent, del.StatusCode, "an agent removes an open blocks link: the open gate")
 	got = e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the override still holds")
+	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the horizon still holds")
 	assert.Equal(t, apigen.UrgencyLater, got.UrgencyDerived)
-	assert.Equal(t, "v1:default", got.UrgencyRule)
 }
 
 // docs/adr/0065 D4: a link whose other end the caller cannot see is absent,

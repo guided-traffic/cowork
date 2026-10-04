@@ -226,7 +226,6 @@ the one on the ticket the query reads.
 | `GetWrittenTicket` | the writer's reread of the row it wrote — a reassignment can take a confidential ticket out of the writer's sight, and the answer shows what the write left |
 | `TicketFacts` | the publication of a committed act; the streams filter |
 | `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no |
-| `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation belongs to the ticket, not to the reader ([domain.md](domain.md#urgency)) |
 | `CanSeeProject`, `CanSeeTicket` | whether *another* person sees a project or a ticket: the assignee, the person asked |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |

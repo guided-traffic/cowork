@@ -66,12 +66,15 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **The children, in this order.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
+   - T52 — the horizon (`now`, `release`, `next`, `later`, `icebox`) as a planning category set
+     by a person or an agent in any state, filing into a horizon at a place, an agent tool that
+     re-sorts the backlog, and the project opening on its board
    - T27 — the login's remainder: a token's project by key and the token form's longest lifetime
    - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, a check
      by hand, and its open question on the bundle budget
    - T29 — the end-to-end tier: Playwright against the built images, two identities, both
      schemes, the login's paths and every view's
-   - T30 — the ticket page edits the title, the body, the parent, the urgency override and the
+   - T30 — the ticket page edits the title, the body, the parent, the horizon and the
      confidential flag, and its editors close when the page turns to another ticket
    - T31 — comments edited and withdrawn, an open question's text edited, the prerequisite tree
    - T32 — an upload to a comment, the raster preview, the correction of a time entry, the

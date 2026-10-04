@@ -46,7 +46,7 @@
       [outlined]="true"
       class="now"
       [attr.aria-label]="'Make ' + shortKey() + ' now'"
-      pTooltip="Set its urgency to now; it moves to the column of its state"
+      pTooltip="Move it to the horizon now; it moves to the column of its state"
       [showDelay]="400"
       [attr.data-testid]="'card-now-' + t.key"
       (click)="$event.stopPropagation(); now.emit()"
