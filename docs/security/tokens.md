@@ -230,12 +230,41 @@ can be, is [identity-provider.md](identity-provider.md#the-token-gate) and its H
 
 ## What is recorded
 
-- Every act is an audit row written in the act's transaction; it names the person, the token
-  — none for a browser session — the request id, the agent mark and, for an agent, the
-  capability set that applied ([`store/tx.go`](../../backend/internal/store/tx.go)). Using a
+- Every act is an audit row written in the act's transaction; it names the person, the token —
+  its id and its name, none for a browser session — the request id, the agent mark and, for an
+  agent, the capability set that applied ([`store/tx.go`](../../backend/internal/store/tx.go)). Using a
   token is recorded through its acts, not per request (ADR 0035 D9); creating one is an
   installation-level `created` act of its person, naming its scope, agent flag, capabilities,
   restriction and expiry, never the token.
+- **Every act made through a token shows the token**
+  ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+  D6). Beside the agent mark, the token's id and name are written with the act: on the audit row
+  (`token_name`), on a comment and each edit of it, on a file, on a question as asked
+  (`asked_by_token_*`) and its answer as recorded (`answered_by_token_*`, set or cleared by every
+  answer), on a time entry and each correction of it
+  ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)), and
+  on the ticket as it was filed (`reporter_agent`, `reporter_token_*`) and a stake as it was last
+  set (`agent`, `token_*`, set or cleared by every write of it;
+  [migration 28](../../backend/internal/store/migrations/000028_filing_and_stake_marks.up.sql);
+  `actAgent`, `actToken` in [`api/tickets.go`](../../backend/internal/api/tickets.go)). The name is copied: the
+  tokens policy shows a person their own tokens only, and the token's name never changes — the
+  runtime role may update a token's revocation and last-used day and nothing else — so a revoked
+  token's acts keep it. The API answers such an act with `token`, `{id, name}`, `null` for a browser
+  session; no route answers a token's hash, its plaintext or a part of it, and the integration test
+  holds the answers of a ticket's comments, files, questions and activity free of `cwk_`
+  (`TestEveryActThroughATokenIsMarkedWithIt`). The UI shows a plain token's act as
+  `token <name>` beside the person, an agent's as the agent with the token in its tooltip
+  ([`shared/agent-mark.ts`](../../frontend/src/app/shared/agent-mark.ts)) — on an act of the
+  activity, a comment, a question and its answer, a file, a time entry, the reporter and a stake's
+  holder; only the person's own browser session, without the agent header, acts unmarked. What an
+  agent reads names it as well: the context document says `through the token <name>` where it says
+  `via <agent>` of an agent's act ([`markdown/context.go`](../../backend/internal/markdown/context.go)
+  `via`), and so does the summary `session_start` writes
+  ([`tools/start.go`](../../backend/internal/tools/start.go) `actLine`). The tenant's audit view
+  names the token by `token_name` beside `token_id` in JSON, and in the CSV as its last column, so that
+the columns released before keep their places. The mark tells, it does not bind: a
+  plain token's request without the header is held to its person's role and its own scope and
+  restriction, and to no agent rule ([below](#which-request-is-an-agents)).
 - **The source of a request.** Every audit row written for a request carries `source_hash`, the
   HMAC-SHA-256 of the client's address under a key derived from `COWORK_SESSION_KEY` by HKDF-SHA256
   with the label `cowork audit address v1`
@@ -275,7 +304,9 @@ can be, is [identity-provider.md](identity-provider.md#the-token-gate) and its H
 - A plain token's request becomes an agent's when it sends the header, and then holds every
   capability: the header adds the agent rules and takes nothing away. No header value turns a
   flagged token's request into a person's
-  ([`auth/principal.go`](../../backend/internal/auth/principal.go) `Mark`; ADR 0036 D3).
+  ([`auth/principal.go`](../../backend/internal/auth/principal.go) `Mark`; ADR 0036 D3). Without the
+  header a plain token's request is its person's — no agent rule, no capability set — and its acts
+  still show the token ([above](#what-is-recorded)).
 - A browser session's request becomes an agent's the same way: with the header it holds the
   capabilities its person chose for the chat — the default where the person chose none
   ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)) —, meets every
@@ -411,3 +442,31 @@ confirmed with one computation. The login throttle's hashes have the same proper
 minutes ([trust-boundaries.md](trust-boundaries.md#where-the-credentials-live)). The hash is a
 pseudonym against a copy of the database, not against whoever runs the installation. Mitigation:
 guard the server key as the credential it is, and keep it out of the backups of the database.
+
+<a id="h-49"></a>
+### H-49 — A token's name is readable by everyone who reads its acts
+
+Live by design, the owner's choice
+([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D6). Until it, a token's name was its person's alone: the tokens policy shows a person their own
+tokens. Now every act made through a token carries its name, and whoever reads the act reads it —
+every member who can see the ticket, a viewer included, the tenant's administrators, and the agent
+of any of them that reads the ticket's parts through the API. A name that says more than what the
+token is for — a client, a host, a project nobody else is meant to know of — says it to all of
+them, and keeps saying it after the token is revoked, because the acts keep the name. The token's
+form says so under the name, and the token page says that what a token does is marked with it.
+Mitigation: name a token for its use.
+
+<a id="h-50"></a>
+### H-50 — Some views of an act through a token show the person alone
+
+Live today, in two places. **Rows written before migrations 27 and 28**: an audit row of that time
+names its token's id and not its name, so the activity shows the act as made through a token it
+cannot name; a comment, a file, a question, a time entry, a filing or a stake of that time carries
+no mark, and a plain token's act there reads as its person's — the activity still marks the act,
+except a booking, which the activity leaves out, and the tenant's audit view filters the record by
+token. Nothing is backfilled. **Two fields of the API**: a link's `created_by` and an urgency
+override's `by` name the person whether the person, an agent or a plain token made it; no view of
+the UI shows either, and the act behind each — `linked`, `overridden` — is marked in the activity.
+An image rolled back to the release before migration 27 writes no mark on any of these rows.
+Mitigation: the activity, and the tenant's audit view by token.

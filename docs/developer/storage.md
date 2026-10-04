@@ -9,8 +9,9 @@ storage, the chart's references); the variables are in
 ## Keys and metadata
 
 The metadata is a row of `attachments` (migration `000014_attachments`): ticket, optional
-comment of the same ticket, file name, size, SHA-256, the stored content type, uploader and
-agent mark. It carries no version and never changes. The object key is
+comment of the same ticket, file name, size, SHA-256, the stored content type, uploader, agent
+mark and the token it was uploaded through, its id and name (migration 27, [ADR 0036] D6). It
+carries no version and never changes. The object key is
 `<tenant-id>/<attachment-id>` — `storage.Key`, derived and never stored. The bucket is private;
 the bytes leave only through the backend, so nothing signs a URL (D4).
 
@@ -96,8 +97,10 @@ image the [`Makefile`](../../Makefile) pins by digest, with `server /data` as it
 `localhost:9000` with the development keys `cowork` / `cowork-secret` (`# default`);
 `make minio-down` removes it. `make test-integration` passes `COWORK_TEST_S3_ENDPOINT`,
 `COWORK_TEST_S3_ACCESS_KEY_ID` and `COWORK_TEST_S3_SECRET_ACCESS_KEY`; `TestMain` fails without
-them and creates a bucket of its own per run, `cowork-it-<nanoseconds>`, with `EnsureBucket`. The
-API tests run with a 1 MiB file maximum and five attachments per ticket. CI starts the same image
+them and creates a bucket of its own per run, `cowork-it-<nanoseconds>`, with `EnsureBucket`, and
+empties and removes it when the run ends (`removeBucket` in the test package, minio-go directly:
+the server never removes a bucket). The API tests run with a 1 MiB file maximum and five
+attachments per ticket. CI starts the same image
 with `make minio-up` ([ci-and-release.md](ci-and-release.md)).
 
 `make run` sets no `COWORK_S3_*`, so a local backend refuses uploads unless they are exported,
@@ -105,5 +108,6 @@ and the bucket they name must exist — the server never creates it.
 
 [ADR 0016]: ../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0058]: ../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md
 [ADR 0059]: ../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md

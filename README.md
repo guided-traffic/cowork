@@ -56,7 +56,7 @@ flowchart LR
 - 🏛️ **Administration that leaves nothing behind a token** — members, grants, group mappings, restricted projects and their access lists in the UI; every act that can give access takes a browser session, every act is recorded with the keyed hash of the client's address, and an administrator's change that would leave a tenant without an administrator is refused.
 - 🛡️ **Tenants isolated twice** — every query names its tenant, and forced row-level security under a runtime role that owns nothing backs it; the backend refuses a role that could bypass it.
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
-- 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; `ETag` and `If-Match` keep two writers from overwriting each other.
+- 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
@@ -151,7 +151,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Dex users | `ada@example.com` (`cowork-admins`, `cowork-users`), `bob@example.com` (`cowork-users`, `team-red`), `cyd@example.com` (`cowork-users`), `dan@example.com` (`team-red`), each with the password `dev-only-dex` | every credential of Dex is development-only and public in this repository |
 | Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
 | All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
-| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; the database is dropped at the end, the bucket stays until `make minio-down` |
+| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
 | Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, Dex as the identity provider (allowed `cowork-users`, administrator group `cowork-admins`, the button *Sign in with Dex*), the group mapping `team-red` → `member` in the tenant `dev`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | two ways in: the form as `dev`, or *Sign in with Dex* as one of the four Dex users; state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
 
@@ -647,6 +647,17 @@ full.
   `GET /api/v1/me`, change the password and log out; everything else is
   `403 password_change_required`. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an
   agent's; a token with the agent flag makes it one with or without the header.
+- **Who made an act.** The person is the actor of every act, through a token too. An act made
+  through a token carries the token — `token`, `{"id","name"}`, the name as the token has it, kept
+  after a revocation, never its secret — beside the agent mark: an act of the activity, a comment
+  and a revision of it, a file, a time entry and a revision of it, a stake (`agent`, `token`), a
+  question (`asked_by_token`, `answered_by_token`), the ticket's filing (`reporter_agent`,
+  `reporter_token`); `null` for a browser session. Whoever reads the act reads the token's name;
+  the activity of an act recorded before the name was kept has `"name": null`. The context
+  document says `through the token <name>` where it says `via <agent>` of an agent's act, and the
+  tenant's audit view carries `token_name` beside `token_id` in JSON and as the last column of its CSV
+  ([ADR 0036](docs/adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+  D6, [tokens](docs/security/tokens.md#what-is-recorded)).
 - **Tenants.** A route under `/api/v1/tenants/{tenant}` answers `404 not_found` alike for an
   unknown slug, a tenant the person does not belong to and a token restricted to another. A global
   administrator who holds no role in the tenant reaches, in a browser session no `X-Cowork-Agent`
@@ -687,7 +698,7 @@ full.
 | `GET /api/v1/me` | the calling person and their memberships — each with the effective role and its `origins`, `mapping` and `grant` with their own roles — whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
 | `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
 | `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
-| `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only |
+| `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only. The `name` shows on every act made through the token, to whoever reads the act |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
 | `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, `restricted_project`, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
@@ -775,7 +786,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 |---|---|
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
-| `GET …/audit` | the audit record, newest first, for administrators; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv` |
+| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before |
 | `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
 | `GET …/projects` | the projects the caller can see, by key; `include_archived` |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
@@ -808,10 +819,10 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
 | `GET …/{number}/interest` | who holds a stake in it |
-| `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise |
+| `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
 | `DELETE …/{number}/interest` | remove the caller's own stake |
 | `GET …/{number}/markdown` | its canonical Markdown, `text/markdown`; the `ETag` is its version; every call is recorded |
-| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree, eight levels), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
+| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent — or the token, `(through the token <name>)` —, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree, eight levels), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
 | `GET …/{number}/activity` | every recorded act on it, from the audit record |
 
 </details>

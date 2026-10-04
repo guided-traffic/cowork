@@ -3,8 +3,8 @@ id: T47
 title: phase 4 (OIDC and authorization) was built in one night on provisional decisions — the owner reviews them before the release
 state: in-progress
 severity: medium
-security: hardening
-threat: the remaining phase close would additionally cover development containers that still listen on every interface until they are recreated
+security: none
+threat:
 urgency: release      # rule 2: gates the release — merging the branch releases phase 4
 effort: S
 blocked-by: human
@@ -61,10 +61,7 @@ best knowledge, leave a gate open when in doubt, file what the owner should look
 
 ## Required changes
 
-1. After the merge, when the development data may go: `make postgres-down minio-down dex-down`,
-   then `make dev` — containers made before the loopback rule keep listening on every interface
-   until they are recreated.
-2. Phase close: the remaining items here or in T29/T40, the phase-4 lines
+1. Phase close: the remaining items here or in T29/T40, the phase-4 lines
    of [project-plan.md](../planning/project-plan.md) gone, this ticket archived.
 
 ## Open questions

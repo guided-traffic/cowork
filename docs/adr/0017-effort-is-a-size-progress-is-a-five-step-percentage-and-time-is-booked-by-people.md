@@ -22,6 +22,13 @@ implementation, review — over a bar per board column and over a bar per state,
 done when all three are full, by the done act of
 [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5.
 
+Amended 2026-10-04 by the owner's decision that every act made through a token is shown as such
+([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): D6, an entry and each correction of it record the token they came through. A plain
+token's person books time, no agent does, and the ticket's activity leaves time out
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6), so the entry is
+where a booking through a token shows. Built the same day
+([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
+
 **Built** (phase 2, 2026-10-02): D1–D10 — the progress columns and the derivation
 (`ticket_derived_progress`, migration 8), `time_entries` with their revisions (migration 13),
 booking, correcting, voiding, the lock, the visibility function `app_time_visible`, the
@@ -93,7 +100,9 @@ reopens it, to the state it was in before `done` (ADR 0009 D5). Done by hand and
 leave the stages as they are; a reopen keeps them.
 
 **D6 — Time is booked by people, against a ticket, in minutes.** A time entry is (person,
-ticket, minutes, the day worked, note). An agent never books time: a session's duration is
+ticket, minutes, the day worked, note). *(Amended 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6: and the token it was
+booked through, its id and name, none for a browser session; each correction's previous values
+keep the token the correction came through.)* An agent never books time: a session's duration is
 not a person's working time, and invoicing is a person's statement.
 
 **D7 — An entry is corrected or voided, never deleted.** Its author may edit it; every edit

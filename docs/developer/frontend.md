@@ -14,7 +14,7 @@ frontend/src/app/
 ├── core/         # services: session, projects, tickets, event stream, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar, navigation), the assistant's panel, the tenant scope, the live indicator
 ├── features/     # one folder per page family: home, tenant, project, ticket
-├── shared/       # badges, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting
+├── shared/       # badges, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -416,6 +416,28 @@ in the cache then. The detail page's moves
 ([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts)) and the board use it
 too.
 
+## The mark of an act
+
+[`AgentMark`](../../frontend/src/app/shared/agent-mark.ts), `<app-agent-mark [mark] [token] [agent] />`,
+marks an act made in a person's name by an agent or through one of the person's tokens ([ADR 0036]
+D6) wherever a ticket shows who made something: an act of the activity, a comment, a question as
+asked and its answer as recorded, a file, a time entry, the reporter
+([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) and each stake's
+holder ([`interest-control.ts`](../../frontend/src/app/features/ticket/interest-control.ts)). It is a pill with the agent icon
+`pi-microchip-ai` in `--p-primary-color`, the same for both. An agent's act shows the agent's name —
+the first part of its mark, `agentName` — with the whole mark and the token in the tooltip; an act
+through a token and no agent shows `token <name>`, "Done through the token <name> in this person's
+name". The page leaves the component out where neither is there — the person's own browser
+session — with `@if (item.agent || item.token)`. `agent` is given where the API says by a flag that
+an agent acted, an answer's `recorded_by_agent`; left out, a mark makes the act an agent's, and so
+does the absence of a token, which keeps `<app-agent-mark />` "by an agent". The tooltip opens on
+focus too (`tabindex="0"`, `tooltipEvent="both"`), and a screen reader reads the whole — "by the
+agent claude-code (claude-code/opus/7f3a), through the token claude-laptop", "through the token
+ci-script" — from spans the eye does not see. The template ends the name and the suffix on one line:
+a line break there would put a space into the pill, which is also why prettier's form of it is not
+taken. The token page says that a token's acts carry its name, and the creation form says it under
+the name.
+
 ## The login page
 
 [`login.ts`](../../frontend/src/app/features/auth/login.ts) asks `GET /auth/options` what to offer:
@@ -529,7 +551,8 @@ mapping `team-red` → `member` in the tenant `dev`, the person `dev` with the t
 and a second person (`sam`) from `make dev-seed`, demo data in the tenant `dev` when it has no
 project ([`dev_demo.py`](../../hack/dev_demo.py): three projects, twenty-one tickets in every
 state but `review`, of the three progress stages only implementation set, questions, comments,
-links, agent acts — written with a seeded token straight to the backend), the chat's one provider,
+links, agent acts — written with a seeded token straight to the backend, so its acts show that
+token, `dev-seed`, and the agent acts the agent as well), the chat's one provider,
 `lmstudio`, when LM Studio answers on `:1234` with `COWORK_DEV_CHAT_MODEL`, and `ng serve --ssl` on <https://localhost:4200>. A saved file reloads the page —
 styles without a reload. Ctrl-C stops the backend and the dev server; `make dev-reset` empties
 the database for a fresh seed. The design preview is at `/dev/design`, in development builds only
@@ -579,6 +602,7 @@ coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md
 [ADR 0038]: ../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md

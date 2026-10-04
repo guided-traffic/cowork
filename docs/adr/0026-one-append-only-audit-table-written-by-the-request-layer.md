@@ -8,7 +8,9 @@ installation-level row is read by the person it names; D6: the activity withhold
 reader may not see), 2026-10-03 (D1: the actors and actions of the login) and 2026-10-04 (D1: the
 action `login_refused`, the column `source_hash`, the system actor `system:identity-provider`; after
 the security review, no e-mail address in `before` or `after`; by the owner's answer on the groups,
-no group of a person in them either).
+no group of a person in them either; by the owner's decision that every act made through a token is
+shown as such, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D6, the column `token_name`; D6: the tenant's view shows it beside the token's id).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -32,7 +34,9 @@ global administrator's reading arrive with their routes; D7 needs nothing yet. S
 (2026-10-04) the rows carry `source_hash` and the identity provider's acts
 ([migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql),
 [`store/identity.go`](../../backend/internal/store/identity.go)); the installation-level rows of a
-system actor name no person and are read by no route.
+system actor name no person and are read by no route. Since 2026-10-04 a row carries its token's
+name beside its id ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql),
+`tokenName` in [`store/tx.go`](../../backend/internal/store/tx.go)), and the activity shows it.
 
 ## Context
 
@@ -62,7 +66,7 @@ memberships it derives — is `system:identity-provider`'s, also where an admini
 records it: the derivation that follows a change of a group mapping is the system actor's act in
 the administrator's transaction, and carries the request, not the administrator)* |
 | `agent` | null, or the agent mark from the request (name, model, session) when an agent acted in the person's name; *(added 2026-10-02)* `agent_capabilities` the capability set that applied ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D5) |
-| `token_id` | the personal access token used, or null for a browser session |
+| `token_id` | the personal access token used, or null for a browser session; *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* `token_name` its name as the token has it, copied when the row is written — the activity shows it to readers who may not read the token's row, and a revoked token's acts keep it; null without a token, and on every row written before the column existed, which names the token by its id alone; a system actor's act in a request carries neither |
 | `entity_type`, `entity_id` | what changed |
 | `ticket_id` | the ticket the entity belongs to, denormalised, so a ticket's activity is one index scan; *(added 2026-10-02)* `ticket_key` its key, which survives the ticket's purge |
 | `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* |
@@ -101,7 +105,10 @@ and the Markdown export of a ticket by a token — both mean "data left the syst
 
 **D6 — The record is readable through the API** per ticket (the activity list), per tenant
 for its administrators (filterable by actor, token, action, entity and period, exportable as
-CSV), and per token (what this token did). A global administrator reads installation-level
+CSV; *(amended 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D6)* naming the token by `token_name` beside `token_id` in JSON and as the last column of the CSV, after the
+columns released before), and per token (what
+this token did). A global administrator reads installation-level
 rows the same way. *(Added 2026-10-02:)* the activity list shows an act whose `refs` include a
 ticket the reader cannot see without its `before`, `after`, reason and note, marked as
 withheld; it leaves out time entries ([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)

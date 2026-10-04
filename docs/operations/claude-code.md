@@ -58,7 +58,10 @@ instead.
 
 Make the token in the UI, on **Your tokens** (`<installation>/me/tokens`): only a person in a
 browser session makes a token, and the plaintext is shown once
-([ADR 0035](../adr/0035-personal-access-tokens.md) D1, D5).
+([ADR 0035](../adr/0035-personal-access-tokens.md) D1, D5). Its name shows beside everything it does,
+to everyone who reads the ticket
+([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D6): name it for its use, `claude on my laptop`, not for what others must not read.
 
 | Choice | Recommended | Why |
 |---|---|---|

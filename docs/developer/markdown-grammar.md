@@ -120,7 +120,10 @@ charset=utf-8` without an `ETag`. In order:
 
 1. One line, `<!-- cowork: context of <key>, exported <RFC 3339 UTC> by <person> (via <agent>) —
    not an import format -->`; with it the document does not start with frontmatter, so it is no
-   file of grammar v1.
+   file of grammar v1. A request of a plain token says `(through the token <name>)` instead of
+   `(via <agent>)`, and so does every line below where a token and no agent made the act
+   (`through the token <name>`, `through a token` where the act did not record the name;
+   [ADR 0036] D6, `via` in `context.go`); a person's own act says neither.
 2. The canonical document, exactly as `Render` writes it.
 3. `## Links`: `- <name read from this ticket> <key> — <title> (<state>, <assignee>)`.
 4. `## Prerequisites`: `<open> of <all> open.`, then the tree of the tickets that block it, two
@@ -138,7 +141,8 @@ charset=utf-8` without an `ETag`. In order:
 An empty section says `None.`. A document lists at most 200 links, 200 nodes of the tree and 200
 attachments (`maxContext*` in `context.go`) and does not say when it stops at one.
 `context-full.md` and `context-quiet.md` in `testdata/` are its golden files, `TestRenderContext`
-their test.
+their test; `context-token.md` and `TestRenderContextNamesTheTokenOfAPersonsAct` hold the token's
+lines.
 
 ## Changing the grammar
 
@@ -152,4 +156,5 @@ change of a contract.
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md

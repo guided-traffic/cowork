@@ -320,6 +320,7 @@ A question belongs to a ticket and has a number there, taken under the ticket's 
 | edit (`If-Match`) | the asker, while it is open |
 | answer | the person asked, or any member when it is open in the tenant; a person changes their own answer, with `If-Match` |
 | answer as an agent | needs `record-answer`; the answer stays its person's, `recorded_by_agent` is set, and an agent changes only an answer an agent recorded ([ADR 0066] D8) |
+| answer through a token | the token is `answered_by_token`, an agent's or the person's own; every answer sets or clears it, so a changed answer carries its own ([ADR 0036] D6) |
 | withdraw | the asker; an agent only what an agent asked |
 
 A withdrawn question takes no answer; an answered or withdrawn one no edit.
@@ -329,7 +330,8 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
 [`comments.go`](../../backend/internal/api/comments.go), [ADR 0015]:
 
 - **The thread** is oldest first, `order=desc` reverses it. A comment is written by a person, or
-  by an agent in its person's name with the agent mark.
+  by an agent in its person's name with the agent mark; one written through a token carries the
+  token as well, and so does each revision ([who made an act](#who-made-an-act)).
 - **Edits** keep the previous text in `comment_revisions`. **Withdrawal** keeps the entry and
   hides its text: `body` is `null` in every answer and the revision list is empty. Nothing is
   deleted. A person changes their own comments and those their agents wrote; an agent only those
@@ -353,7 +355,7 @@ ticket's work and shows as `settled` once it is done or dropped ([ADR 0013]). `P
 sets the caller's own (`201` new, `200` changed or unchanged), `DELETE` removes it (`204`, also
 when there is none). `watch` is open to viewers; `need` and `urgent` need a member, and an agent
 needs `interest`; an agent may remove its person's stake. The act is `interest`, with the person
-as entity.
+as entity; the stake carries the mark of the write that set it ([who made an act](#who-made-an-act)).
 
 ## Progress
 
@@ -422,7 +424,35 @@ The stages move the state ([ADR 0009] D5), decided by the pure
   ([data-access.md](data-access.md#visibility-in-sql)); a ticket's list carries the visible sum
   (`total_minutes`), the tenant's list and the report (by ticket, project, person or tenant) answer
   JSON or CSV.
-- Time entries appear neither in a ticket's activity nor on the event stream.
+- Time entries appear neither in a ticket's activity nor on the event stream; an entry and each
+  revision carry the token they came through ([who made an act](#who-made-an-act)), which is where
+  a booking through a token shows.
+
+## Who made an act
+
+[ADR 0036] D1, D6: the actor of an act through a token is its person, and the act says it came
+through the token. Beside the agent mark (`agent`, `asked_by_agent`, `recorded_by_agent`,
+`reporter_agent`), the rows record the token's id and name, copied from the principal when the act
+is written (`actAgent`, `actToken`):
+
+| Row | Token columns | API |
+|---|---|---|
+| `tickets`, the filing | `reporter_token_id`, `reporter_token_name`, beside `reporter_agent` | `Ticket.reporter_agent`, `Ticket.reporter_token` |
+| `ticket_interest`, the stake as last set | `token_id`, `token_name`, beside `agent` | `Interest.agent`, `Interest.token` |
+| `audit_events` | `token_id`, `token_name` | `Activity.token`; the tenant's audit view `token_name` |
+| `comments`, `comment_revisions` | `token_id`, `token_name` | `Comment.token`, `CommentRevision.token` |
+| `attachments` | `token_id`, `token_name` | `Attachment.token` |
+| `questions` | `asked_by_token_id`, `asked_by_token_name`; `answered_by_token_id`, `answered_by_token_name` | `Question.asked_by_token`, `Question.answered_by_token` |
+| `time_entries`, `time_entry_revisions` | `token_id`, `token_name` | `TimeEntry.token`, `TimeEntryRevision.token` |
+
+A session's act — the chat's included — writes none. The name is a copy because a reader may not
+read another person's `tokens` row ([ADR 0021] D6) and must still read it after a revocation; it is
+`null` only on an audit row written before migration 27, which named the token by its id alone.
+A stake's write sets its mark or clears it, so the stake shows who set it as it stands. The context
+document and the summary of `session_start` name a plain token's act `through the token <name>`
+where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A link's creator and an
+urgency override's setter carry no mark of their own — no view of the UI shows them; the activity
+marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
 
 ## Not built
 
@@ -443,11 +473,13 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0014]: ../adr/0014-rank-is-the-decision-score-is-the-warning.md
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
+[ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0022]: ../adr/0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md

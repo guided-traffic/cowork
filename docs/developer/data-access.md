@@ -77,7 +77,7 @@ write query.
 
 Who a transaction acts for is a `store.Caller` in the context
 ([`caller.go`](../../backend/internal/store/caller.go)), put there by the API pipeline after
-authentication: the person or a `system:<name>` actor, the token, the token's project
+authentication: the person or a `system:<name>` actor, the token and its name, the token's project
 restriction, the agent mark, the agent's capabilities and the request id. The person is never a
 call-site argument. `Mutate` refuses a context with neither or both of person and system actor.
 
@@ -173,8 +173,9 @@ an administrator of its tenant, a mapped membership only in a transaction named
 3. A function that recorded no act gets `ErrNoAct`, and nothing commits.
 4. For every act (`Writer.Record(store.Event{…})`) it writes one `audit_events` row with the
    caller's facts — person or system actor, agent mark, the capability set when the request is
-   an agent's, token, request id, the keyed hash of the client's address (`Caller.SourceHash`,
-   none for a job) — and the idempotency key: the keyed request's own, or an
+   an agent's, token and its name (`tokenName`: the name only with the token, [ADR 0036] D6),
+   request id, the keyed hash of the client's address (`Caller.SourceHash`, none for a job) — and
+   the idempotency key: the keyed request's own, or an
    `Event.IdempotencyKey` a client sent where no response is stored. An act with `Event.System`
    set is a system actor's recorded in the request: it carries the request id and the source hash,
    never the caller's person, token or agent mark — the identity provider's derivation in an
@@ -402,6 +403,7 @@ one connection outside the pool on the channel. The rest is [events.md](events.m
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
+[ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md

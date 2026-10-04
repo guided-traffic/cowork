@@ -42,8 +42,10 @@ change.
   token, the chat's turn, its stop and its capabilities, and a global administrator's list of every
   tenant — and a temporary
   password gates everything but its own change;
-  `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it
-  ([api.md](api.md#authentication), [sessions](../security/sessions.md)).
+  `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
+  every act made through a token records and shows the token's id and name beside the agent mark
+  ([api.md](api.md#authentication), [domain.md](domain.md#who-made-an-act),
+  [sessions](../security/sessions.md)).
 - **One tool catalogue, two hosts.** `internal/tools` is the catalogue of workflow tools: `cowork-mcp`
   serves it to Claude Code over stdio with a token, and the chat in the UI runs it inside the backend
   with the person's session marked as its agent, holding the capabilities the person chose — every

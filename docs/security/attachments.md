@@ -37,7 +37,8 @@ like any other SVG — as a download.
 ## The bytes leave only through the backend
 
 - **Where they live.** The metadata — file name, size, SHA-256, detected type, uploader, agent
-  mark, ticket and comment — is a row of `attachments`; the bytes are an object in
+  mark, the token it was uploaded through (its id and name), ticket and comment — is a row of
+  `attachments`; the bytes are an object in
   S3-compatible storage and never enter PostgreSQL (ADR 0016 D1).
 - **The key.** An object's key is `<tenant-id>/<attachment-id>`, both made by the server;
   nothing from the request enters it ([`storage/storage.go`](../../backend/internal/storage/storage.go)
@@ -133,8 +134,9 @@ address another object.
 
 ## What is recorded
 
-- `uploaded`, on the ticket: the file name, size, type and SHA-256, the person, the token and
-  the agent mark.
+- `uploaded`, on the ticket: the file name, size, type and SHA-256, the person, the token — its id
+  and name — and the agent mark; the file shows the token and the mark as well
+  ([tokens.md](tokens.md#what-is-recorded)).
 - `downloaded`: every download that returns bytes, with the file name; a `304` is not one
   ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5).
   The act is written before the bytes are sent, and a download whose act cannot be written

@@ -148,7 +148,12 @@ administrator's view of the installation's clients, which a token of theirs does
   [`identity.go`](../../backend/internal/api/identity.go))
   — `401 not_allowed`. Every `401` carries `WWW-Authenticate: Bearer realm="cowork"`. A dead or
   gated token's use is recorded as an installation-level `refused` act, at most once per token,
-  reason and hour ([ADR 0035] D9).
+  reason and hour ([ADR 0035] D9). The principal carries the token's id and name (`TokenID`,
+  `TokenName`); `callerOf` hands both to the `store.Caller`, whose audit rows record them, and a
+  handler writes them beside the agent mark on the rows that show an act — a comment and its
+  revision, a file, a question asked and its answer, a time entry and its revision — through
+  `actToken` in [`tickets.go`](../../backend/internal/api/tickets.go); `tokenMarkView` answers them
+  as `token`, `{id, name}`, `null` for a session ([ADR 0036] D6).
 - **A session** is the cookie `__Host-cowork-session` (`auth.SessionCookie`): 43 characters of
   base64url, the SHA-256 of which is `sessions.token_hash` (`auth.HashSession`,
   `DB.LookupSession`). Malformed, unknown, ended, past a limit (`sessionLive`: the absolute
@@ -336,7 +341,10 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
   `201` with `res, err := stored(view, headers)` and hands it over with `w.Respond(res)`, and a
   replay comes back as `*store.Result`, decoded
-  with `replayed[T]` and `header`. The same key with another request is
+  with `replayed[T]` and `header`. A required nullable field the stored answer does not carry — one
+  added after the release that stored it, such as an act's `token` — is answered as `null`
+  (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
+  (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
   come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
