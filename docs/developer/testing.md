@@ -5,14 +5,14 @@ that steer the suites. **The rules — what belongs in which tier, what may be s
 what a fix has to prove — are [ADR 0003](../adr/0003-test-and-ci-policy.md) and are not restated
 here.** The Make targets themselves are listed in [build-test-lint.md](build-test-lint.md).
 
-Read against the tree on 2026-10-03.
+Read against the tree on 2026-10-04.
 
 ## The tiers
 
 | Tier | Command | Build tag | Needs | What it is for |
 |---|---|---|---|---|
-| Backend unit | `make test-unit` | none | nothing running | Configuration, the domain rules, tokens and authorization, passwords and sessions, the CSRF rule, the client address, the event hub, the Markdown grammar, the outer handler and the server lifecycle, the command dispatch, the API document's completeness (`TestEveryOperationIsDeclaredCompletely`, which holds the session-only operations to a set of six), and the lints over the migration set and the query files |
-| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL` and an S3 server at `COWORK_TEST_S3_*` (`make postgres-up minio-up` provides both) | What only the database and the whole handler decide: migrations, roles, isolation, the wrappers, every API route, the login with its lockout and sessions, the start-up synchronisation |
+| Backend unit | `make test-unit` | none | nothing running | Configuration, the domain rules, tokens and authorization, passwords and sessions, the sealing, the CSRF rule, the client address, the relying party and the identity provider's routes against an issuer in the test's process, the event hub, the Markdown grammar, the outer handler and the server lifecycle, the command dispatch, the API document's completeness (`TestEveryOperationIsDeclaredCompletely`, which holds the session-only operations to a set of twelve), and the lints over the migration set and the query files |
+| Backend integration | `make test-integration` | `integration` | PostgreSQL 18 at `COWORK_TEST_DATABASE_URL`, an S3 server at `COWORK_TEST_S3_*` and an OpenID Connect issuer at `COWORK_TEST_OIDC_ISSUER` (`make dev-up` provides all three) | What only the database and the whole handler decide: migrations, roles, isolation, the wrappers, every API route, the local login with its lockout and sessions, the login through the identity provider with its gate, refresh and derivation, the administration of members and mappings, the start-up synchronisation |
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
@@ -50,7 +50,7 @@ The lints run in this tier, without a database:
 | `TestEveryReadOfProjectsAndTicketsCarriesTheVisibilityPredicate` ([`queries_test.go`](../../backend/internal/store/queries_test.go)) | the visibility lint ([data-access.md](data-access.md#visibility-in-sql)) |
 | `TestTicketListSelectsWhatTheQueriesSelect` | the list builder's columns and joins equal `GetTicketByNumber`'s |
 | `TestTheBinaryContainsNoTestPackage` ([`main_test.go`](../../backend/cmd/cowork/main_test.go)) | `cmd/cowork` depends on nothing under `backend/test/` |
-| `TestEveryOperationIsDeclaredCompletely` ([`document_test.go`](../../backend/api/document_test.go)) | every operation has an id, a tag, the problem response and a security requirement of one of three shapes: public (empty), the session cookie alone (exactly `logout`, `changeMyPassword`, `createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`), or the bearer token and the session cookie; a public write carries `x-cowork-origin-check` |
+| `TestEveryOperationIsDeclaredCompletely` ([`document_test.go`](../../backend/api/document_test.go)) | every operation has an id, a tag, the problem response and a security requirement of one of three shapes: public (empty: `getVersion`, `getOpenAPI`, `getAuthOptions`, `loginLocal`, `loginOidc`, `oidcCallback`), the session cookie alone (exactly `logout`, `changeMyPassword`, `createMyToken`, `createTenant`, `createAccount`, `resetAccountPassword`, `addMember`, `setMemberGrant`, `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`), or the bearer token and the session cookie; a public write carries `x-cowork-origin-check`, and only `oidcCallback` takes query parameters it does not declare (`x-cowork-open-query`) |
 
 The `run(ctx, args, lookup, stdout, stderr)` tests in `backend/cmd/cowork` cover the command
 dispatch and the configuration errors without a database: `migrate` without
@@ -75,6 +75,28 @@ chain; `FuzzClientAddress` holds that an untrusted peer is always the client —
 the lockout mode, the lifetimes, the base URL as an origin, the bootstrap tenant, the trusted
 proxies as CIDRs and the error that quotes the offending entry only).
 
+The unit tests of the identity provider's pieces run against the fake issuer of
+[`test/fakeissuer`](../../backend/test/fakeissuer/fakeissuer.go), started per test on `httptest`,
+and need nothing else: [`oidc/oidc_test.go`](../../backend/internal/oidc/oidc_test.go) (the code flow
+with PKCE, an ID token that does not verify — another key, another audience, expired, another
+nonce —, the authorized party (`TestAuthorizedParty`), a code without its verifier, the groups from
+UserInfo and as a string, the claim's shapes, the display name, the refresh that reads the groups
+again and rotates the token, every class of the token endpoint's answer — the person's refusal,
+cowork's client refused, the issuer's trouble — with no answer's body in an error
+(`TestRefreshRefusalAndUnreachability`), a refreshed ID token of a rotated, an unpublished or an
+unfetchable key (`TestRefreshedIDTokens`), the end-session URL, a discovery that fails without
+echoing the secret, one that redirects, exceeds 1 MiB, names another issuer, an endpoint over plain
+`http` or no algorithm cowork verifies (`TestDiscoveryHoldsTheIssuerToItsRules`), and the dropped
+end-session endpoint in the log), [`api/oidc_test.go`](../../backend/internal/api/oidc_test.go)
+(both routes without a provider through the whole pipeline, the start and its sealed cookie, the
+callback's refusals before the issuer is asked, the path a failed login keeps, `safeReturnTo`, the
+gate and its issuer check),
+[`auth/seal_test.go`](../../backend/internal/auth/seal_test.go) (a sealed value opens only with its
+key, label and binding), [`config/oidc_test.go`](../../backend/internal/config/oidc_test.go) (the
+defaults, the overrides, every variable refused without the issuer, the issuer rule, the bootstrap
+tenant of the administrator group) and [`store/identity_test.go`](../../backend/internal/store/identity_test.go)
+(`RefreshDue`, `GateDue`).
+
 The rules of the states and the progress stages without a database:
 [`domain_test.go`](../../backend/internal/domain/domain_test.go) (the move matrix, what a write of
 the stages does, which done is by the stages) and
@@ -87,8 +109,10 @@ the done by hand a ticket shows — rows the release before the stages left incl
 [`backend/test/integration/`](../../backend/test/integration/), build tag `integration`.
 `TestMain` ([`main_test.go`](../../backend/test/integration/main_test.go)) prepares one run:
 
-1. `COWORK_TEST_DATABASE_URL` and the three `COWORK_TEST_S3_*` variables are required; a missing
-   one ends the run with exit 1 and the command that sets it. There is no skip.
+1. `COWORK_TEST_DATABASE_URL`, the three `COWORK_TEST_S3_*` variables and
+   `COWORK_TEST_OIDC_ISSUER` are required; a missing one ends the run with exit 1 and the command
+   that sets it, and so does an issuer that does not answer its discovery (`prepareIssuer`). There
+   is no skip.
 2. A bucket of its own on the S3 server, `cowork-it-<nanoseconds>`.
 3. Over the administrative URL: the roles `cowork_it_owner` and `cowork_it_app` (the latter
    `NOSUPERUSER NOBYPASSRLS`) when they are missing, and a database of its own,
@@ -101,14 +125,15 @@ administrative connection only creates and seeds. The tests share the run's data
 apart by unique slugs, so nothing resets between them.
 
 ```
-make postgres-up minio-up             # postgres:18 on :5432, MinIO on :9000
-make test-integration                 # exports COWORK_TEST_DATABASE_URL and COWORK_TEST_S3_* for them
+make dev-up                           # postgres:18 on :5432, MinIO on :9000, Dex on :5556
+make test-integration                 # exports COWORK_TEST_DATABASE_URL, COWORK_TEST_S3_* and COWORK_TEST_OIDC_ISSUER for them
 COWORK_TEST_DATABASE_URL=… make test-integration   # any other PostgreSQL 18, as a role that may create roles and databases
-make postgres-down minio-down
+make postgres-down minio-down dex-down
 ```
 
 `POSTGRES_PORT=55432 make postgres-up test-integration` moves the container off a port that is
-taken; `MINIO_PORT=` does the same for MinIO.
+taken; `MINIO_PORT=` does the same for MinIO, and `DEX_PORT=` for Dex and its issuer, which
+`make test-integration` follows when it is given the same `DEX_PORT=`.
 
 ### Fixtures of the integration tier
 
@@ -130,6 +155,53 @@ taken; `MINIO_PORT=` does the same for MinIO.
 | `simultaneously(sends…)`, `times(n, send)` | `api_helpers_test.go` | Starts requests at the same instant and collects their status codes, for the races a conditional write can lose: the request that comes second must answer as a later one would, never `500`. A send runs in its own goroutine, so it builds nothing with `require` |
 | `ticketEnv`, `newTicketEnv(t)`, `task(…)`, `file(…)` | [`api_tickets_test.go`](../../backend/test/integration/api_tickets_test.go) | A world with its tokens and a running API; a plain ticket body; filing as a caller, with a key for an agent |
 | `openStream`, `next` | [`api_events_test.go`](../../backend/test/integration/api_events_test.go) | An event stream read message by message |
+| `adminWorld`, `newAdminWorld(t)`, `members`, `nextMembership` | [`api_members_test.go`](../../backend/test/integration/api_members_test.go) | A world whose persons have local accounts, tenant A's administrator in a session and an administrator's token beside it; the member list as a map; the next `membership.changed` of a stream |
+
+### The identity provider in the tests
+
+Two issuers, for two purposes ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D3):
+
+- **Dex**, the reference: [`hack/dex/config.yaml`](../../hack/dex/config.yaml) in the container
+  `cowork-dex` of `make dex-up`, at `COWORK_TEST_OIDC_ISSUER`. One static client, `cowork` with the
+  secret `cowork-dev-dex-secret`, whose redirect URIs are `make dev`'s and the tests'
+  `http://cowork.test/auth/callback` — a name that never has to resolve, because the test intercepts
+  the redirect and replays it against its own server. Four static users with the password
+  `dev-only-dex`; under the gate of `make dev` and the tests (`cowork-users` allowed, `cowork-admins`
+  the administrator group, the mapping `team-red` → `member` in the tenant `dev`):
+
+  | User | Groups | Is to cowork |
+  |---|---|---|
+  | `ada@example.com` | `cowork-admins`, `cowork-users` | a global administrator, by the administrator group |
+  | `bob@example.com` | `cowork-users`, `team-red` | behind the gate, a member of `dev` by the mapping |
+  | `cyd@example.com` | `cowork-users` | behind the gate, in no mapped group: needs a grant |
+  | `dan@example.com` | `team-red` | outside the gate: refused, whatever the mapping says |
+
+  Dex keeps nothing: a person a test logged in is a row of the run's database, not of Dex. A
+  person is one per issuer and subject, so a test that logs Dex's users in takes an isolated
+  database of its own (`dexWorld`).
+- **The fake issuer** of [`test/fakeissuer`](../../backend/test/fakeissuer/fakeissuer.go), in the
+  test's process, for what Dex cannot be made to do: sign with a key it does not publish or one it
+  rotated to, take its keys down or pad them beyond 1 MiB, name another or an extra audience and an
+  authorized party, issue an expired token or another nonce, keep the groups in UserInfo only, send a
+  string as the claim, change the groups between a login and a refresh and the address between two
+  logins, refuse a
+  refresh with an OAuth error, answer it with a bare status, drop the connection, send no refresh
+  token, send a refreshed ID token, name an end-session endpoint, redirect or pad its discovery or
+  name other endpoints in it, and hang until the test releases it (`Hang`, `Release`). Its knobs are
+  exported fields a test turns between requests under `Lock`; `Issued` lists every code and token it
+  handed out, for the test that searches the log and the audit record for them
+  (`TestNoIssuerSecretIsLoggedOrRecorded`).
+
+| Fixture | Where | What it gives you |
+|---|---|---|
+| `dexProvider(t)`, `fakeProvider(t, is)` | [`oidc_helpers_test.go`](../../backend/test/integration/oidc_helpers_test.go) | The provider discovered from Dex or from a fake issuer, with the default scopes and claim |
+| `withIdentity(p, allowed, admin)`, `devGate(p)` | `oidc_helpers_test.go` | A server's identity provider and gate on `api.Options`; `devGate` is `make dev`'s: `cowork-users` allowed, `cowork-admins` the administrator group |
+| `browser.oidcLogin(login, returnTo)`, `walkIssuer` | `oidc_helpers_test.go` | A login as a browser makes it: the start sets the state cookie, the issuer's pages are walked — Dex's form filled for `login` — up to the redirect to `testRedirect`, which is replayed against the test server with the browser's cookies; the browser keeps the session cookie |
+| `withState(value)`, `cookieValue(res, name)`, `stateCookieName` | `oidc_helpers_test.go` | The state cookie beside the session's, and what an answer sets |
+| `providerPerson(t, f, issuer, email, verified, groups)` | `oidc_helpers_test.go` | A person of an issuer written over the administrative connection, as their first login would make them |
+| `dexWorld`, `newDexWorld(t)` | [`api_oidc_test.go`](../../backend/test/integration/api_oidc_test.go) | An isolated installation with `make dev`'s shape: the tenant `dev` with the mapping `team-red` → `member` and a local account `root` that administers it |
+| `fakeWorld`, `newFakeWorld(t)` | [`api_oidc_fake_test.go`](../../backend/test/integration/api_oidc_fake_test.go) | A tenant whose mapping makes a group of its own members, a fake issuer whose one person is in that group and behind the gate, and a server with a clock the test moves |
 
 ### Response validation
 
@@ -151,8 +223,12 @@ is not a generated response and is not validated.
 | [`api_login_test.go`](../../backend/test/integration/api_login_test.go) | The login through the whole handler: the session and its cookie, every failure answering identically at the same cost, the lockout in both modes and its window, the per-address throttle — also behind a trusted proxy, where two clients are throttled apart and a spoofed entry moves nobody, and for a peer that is no proxy, whose header is ignored —, the init state, the options, both session limits on a moved clock, a session surviving a restart, logout, the expiry of the login's state |
 | [`api_accounts_test.go`](../../backend/test/integration/api_accounts_test.go) | A temporary password gating the session, a password change counting and ending the other sessions, the account routes per role and across two tenants (what a tenant's administrator manages and does not), a token refused on creating an account and on resetting a password while it still lists, unlocks, deactivates and ends sessions (`TestAccountRoutesAnAdministratorsTokenMayStillCall`), deactivation ending tokens and sessions, a lock not inherited by a new account of the same name, a session's idempotency key scoped to its person |
 | [`api_session_routes_test.go`](../../backend/test/integration/api_session_routes_test.go) | The routes only a session calls: a token created and shown once, its lifetime clamped, its idempotency; a tenant created by a global administrator only; the CSRF refusals (the `Referer` fallback, no origin, a second header, a cookie beside a token); the event stream ending with its session; the cross-tenant harness again with a cookie; no password, cookie or token in the log, the answers or the audit record |
-| [`policy_login_test.go`](../../backend/test/integration/policy_login_test.go) | The policies of the persons, their accounts and their sessions as the runtime role sees them, with no handler in front; the session lookup finds the presented row only |
+| [`policy_login_test.go`](../../backend/test/integration/policy_login_test.go) | The policies of the persons, their accounts and their sessions as the runtime role sees them, with no handler in front — the identity provider's persons, memberships and mappings, and the trigger that keeps a project's restriction to the tenant's administrators, among them; the session lookup finds the presented row only |
 | [`bootstrap_test.go`](../../backend/test/integration/bootstrap_test.go) | The start-up synchronisation on an isolated database: created, left alone, re-hashed with the sessions ended, deactivated and reactivated, taken over from a tenant's account of the same name, four replicas at once |
+| [`api_oidc_test.go`](../../backend/test/integration/api_oidc_test.go) | The login through Dex: its four users through the gate, the mapping and a grant — the person made by issuer and subject, the sealed refresh token, the acts and the source hash —, the first-tenant rule, leaving the allow-list (the sessions end, the token is refused and works again behind a wider gate), a spent refresh token, and the roles that hold: a viewer cannot write, a member of one tenant cannot list another, a member outside a restricted project cannot read it until an administrator puts them on its list |
+| [`api_oidc_fake_test.go`](../../backend/test/integration/api_oidc_fake_test.go) | What only the fake issuer shows: the refresh that follows the groups, an unreachable issuer, a refused refresh token, no refresh token, the logout at an issuer with an end-session endpoint, every failure of the callback, a deactivated person, the mapping editor's own role and `last_admin`, no secret of the issuer in a log line or an audit row, leaving the gate stopping the tokens at once |
+| [`api_members_test.go`](../../backend/test/integration/api_members_test.go) | The administration: a member added by address — any case, never an unverified one, ambiguous, deactivated — or by username, in a session only; grants and the last administrator; mappings that derive at once, change and go; a project's restriction and access list; `membership.changed` reaching its audience; the source hash on every row of a request and none on a job's; the bootstrap tenant of the administrator group |
+| [`api_review_test.go`](../../backend/test/integration/api_review_test.go) | The findings of the security review of 2026-10-04, one test each: a refresh that holds no connection or lock while the issuer hangs, on a pool of two (`TestARefreshWaitsForNoOneElse`); a refresh that read nothing keeping the person's newer groups; the issuer refusing cowork's client; a refreshed ID token that does not verify; a mapping's derivation leaving who cannot act; two administrators removing each other at once (`TestTwoAdministratorsCannotRemoveEachOther`, eight rounds through `simultaneously`); only an administrator who can log in counting for `last_admin`; a person of another issuer outside the gate; no address in an audit row; the address for administrators only; a project-restricted stream hearing only its project |
 | `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_transitions_test.go`, `api_stages_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents; `api_stages_test.go` the state `review`, done by hand and its withdrawal, done by the stages and the reopen, their refusals for persons and agents, a parent's stages, an open ticket whose stages are full, what the release before the stages writes over this schema in a rollback (its statements verbatim), the override that holds, `done_after` and the `review` limit |
 
 ## Frontend unit tests
@@ -173,6 +249,8 @@ reports under `frontend/coverage/frontend/`: `text-summary` on the console, `lco
 | The event stream without a network: a fake `EventSource` through the `EVENT_SOURCE` token, its events pushed by the test | [`event-stream.service.spec.ts`](../../frontend/src/app/core/event-stream.service.spec.ts) |
 | Time: `{ provide: Clock, useValue: { now } }` for what a page shows; `vi.useFakeTimers()` and `vi.advanceTimersByTimeAsync` for debounces, the polling fallback and retries | [`time-report.spec.ts`](../../frontend/src/app/features/time/time-report.spec.ts), [`tickets.service.spec.ts`](../../frontend/src/app/core/tickets.service.spec.ts) |
 | A PrimeNG overlay (a select's panel) asks `matchMedia`, which jsdom lacks: `vi.stubGlobal('matchMedia', …)` in the test that opens one | [`new-token-dialog.spec.ts`](../../frontend/src/app/features/me/new-token-dialog.spec.ts) |
+| A component that provides a service of its own (`TicketRelations`, `AccessList`): the real service over `HttpTestingController`, and `vi.spyOn` on its acts from `fixture.debugElement.injector` — not `TestBed.overrideComponent`, which compiles the component at test time and leaves its template out of the coverage | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
+| A request a test answers later: `fixture.whenStable()` waits for open requests in the zoneless test bed, so until the answer only change detection runs (`fixture.detectChanges()` after a macrotask) | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
 
 ## Container check
 
@@ -197,6 +275,9 @@ which sets all three.
 |---|---|---|
 | `COWORK_TEST_DATABASE_URL` | the integration tier | An administrative URL to PostgreSQL 18 — a role that may create roles and databases and is not held by row-level security; required |
 | `COWORK_TEST_S3_ENDPOINT`, `COWORK_TEST_S3_ACCESS_KEY_ID`, `COWORK_TEST_S3_SECRET_ACCESS_KEY` | the integration tier | The S3 server and its keys; required |
+| `COWORK_TEST_OIDC_ISSUER` | the integration tier | The issuer of Dex, `http://localhost:5556/dex` by `make`'s default; required, and its discovery must answer |
+| `DEX_PORT`, `DEX_IMAGE`, `DEX_CONTAINER` | `make dex-up`, `make test-integration` | Where and what to start locally; the issuer follows the port |
+| `CONTAINER_BIND` | `make postgres-up`, `make minio-up`, `make dex-up` | The address the containers publish their ports on, `127.0.0.1` by default |
 | `CI` | vitest through `ng test` | Non-interactive reporter and no watch |
 | `POSTGRES_PORT`, `POSTGRES_IMAGE`, `POSTGRES_CONTAINER` | `make postgres-up` | Where and what to start locally |
 | `MINIO_PORT`, `MINIO_IMAGE`, `MINIO_CONTAINER`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | `make minio-up`, `make test-integration` | Where and what to start locally, and the keys the tests are given |

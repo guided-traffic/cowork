@@ -41,28 +41,14 @@ moved here from phase 4: the browser never holds a token
 ([ADR 0035](../adr/0035-personal-access-tokens.md) D7), so the UI needs the login first
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)).
 
-## Phase 4 — OIDC and authorization
+## Phase 4 — OIDC and authorization (built 2026-10-04)
 
 **Goal:** people log in through the identity provider; only allowed groups get in; roles hold.
-
-**Needs:** the sessions and CSRF of phase 3.
-
-**Delivers:** the OIDC code flow with PKCE (ADR 0029); the groups snapshot and its refresh in
-the sessions of phase 3 (ADR 0031 D1); the group gate, the group → tenant/role mapping and the
-manual grant (ADR 0030), and the administrator group's members in the init state (ADR 0032 D5);
-the source-address hash of [ADR 0035](../adr/0035-personal-access-tokens.md) D2; the
-administration of memberships, roles and a restricted project's list, with `membership.changed`
-on the event stream; `make dev-up` with PostgreSQL, MinIO and a minimal Dex, and the login
-through Dex in the end-to-end tier; the security page for the identity provider. The role checks
-on every endpoint and the project restriction's predicate exist since phase 2; the local login
-since phase 3.
-
-**Verified when:** a user outside the allowed groups is refused with a test that proves it; a
-person whose group left the allow-list is logged out at the next refresh; a viewer cannot
-write; a member of one tenant cannot list another; a member outside a restricted project cannot
-read it.
-
-**Effort:** M.
+The phase became a family ticket in [docs/tickets/](../tickets/README.md) when it started
+([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D2) and was built in the same change, on decisions the owner reviews before the release; what it
+built is in the Status sections of ADR 0029–0035 and in
+[identity-provider.md](../security/identity-provider.md).
 
 ## Phase 5 — The LLM interface, the VS Code workflow and the chat in the UI
 

@@ -8,8 +8,8 @@ a setting; it never restates the reference tables, which live in the README and 
 
 | Page | Read it when |
 |---|---|
-| [installation.md](installation.md) | You are installing cowork from the checked-out chart: the database and its two roles, the Secrets, the object storage, how the schema is migrated, exposing it through an Ingress, upgrading or uninstalling |
-| [runtime.md](runtime.md) | You want to know what happens when the pods start, how the schema migration runs and how a failed one is repaired, what the probes answer, which limits hold a request, what nginx answers itself, how the event stream behaves behind an Ingress, how the processes shut down and what they log |
+| [installation.md](installation.md) | You are installing cowork from the checked-out chart: the database and its two roles, the Secrets, the local administrator, the identity provider and its Dex reference fixture, the object storage, how the schema is migrated, exposing it through an Ingress, upgrading or uninstalling |
+| [runtime.md](runtime.md) | You want to know what happens when the pods start, how the schema migration runs and how a failed one is repaired, what the probes answer, what a failed login shows — the local one and the identity provider's — and how a session keeps up with the provider's groups, which limits hold a request, what nginx answers itself, how the event stream behaves behind an Ingress, how the processes shut down and what they log |
 
 ## The other documentation
 

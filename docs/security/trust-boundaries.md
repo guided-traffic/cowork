@@ -1,20 +1,22 @@
 # Trust boundaries of the two containers
 
-What the backend, its migration init container and the frontend trust, whom they answer, and
-where the credentials they hold live, as built on 2026-10-03. Once a request is inside a
-tenant, how it is kept from other tenants and from what it may not see is
-[tenancy.md](tenancy.md); what a token or an agent may do is [tokens.md](tokens.md); how a
+What the backend, its migration init container and the frontend trust — the identity provider
+among it — whom they answer, and where the credentials they hold live, as built on 2026-10-04.
+Once a request is inside a tenant, how it is kept from other tenants and from what it may not see
+is [tenancy.md](tenancy.md); what a token or an agent may do is [tokens.md](tokens.md); how a
 person logs in, what a session is and what keeps another site from writing with one is
-[local-accounts.md](local-accounts.md), [sessions.md](sessions.md) and [csrf.md](csrf.md);
-what an upload may do is [attachments.md](attachments.md).
+[local-accounts.md](local-accounts.md), [identity-provider.md](identity-provider.md),
+[sessions.md](sessions.md) and [csrf.md](csrf.md); what an upload may do is
+[attachments.md](attachments.md).
 
 ## Components and what they trust
 
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's database URL, the server key, the object storage's access key | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options` and `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
-| The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the frontend pods, and with `networkPolicy.enabled=false` or a network plugin that does not enforce it anything else in the cluster that reaches the backend Service — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
+| The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
 | The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
 | The frontend (nginx) | `BACKEND_URL` from its environment; every TCP peer that reaches it, which through an Ingress is the internet. It proxies `/api/` and `/auth/` for anyone and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing | [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) |
 | The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
@@ -26,8 +28,12 @@ what an upload may do is [attachments.md](attachments.md).
 
 Without a credential: the UI shell, nginx's `/healthz`, the version (`/api/v1/version`), the
 API document (`/api/v1/openapi.json`), what the login page offers (`GET /auth/options`: whether
-an active local account exists) and the login itself (`POST /auth/local`), which answers every
-failure alike and counts and locks by the username it was given ([local-accounts.md](local-accounts.md)).
+an active local account exists, whether the identity provider is offered and its display name,
+the minimum password length), the login itself (`POST /auth/local`), which answers every
+failure alike and counts and locks by the username it was given ([local-accounts.md](local-accounts.md)),
+and the identity provider's start and callback (`GET /auth/oidc/login`, `GET /auth/callback`),
+which answer redirects and make a session only out of a code the issuer gave for the browser's own
+sealed state ([identity-provider.md](identity-provider.md)).
 Through the backend Service, from inside the cluster, additionally the backend's `/healthz` and
 `/readyz`; `/readyz` says whether the database answers and nothing more — the ping's error,
 which can name the host and the user, goes to the log only
@@ -71,6 +77,31 @@ kubelet's probes — is always allowed. Not verified against a cluster: the poli
 rendered and linted, not enforced; and `kubectl port-forward`, which reaches the pod through
 its own network namespace, is not expected to be blocked either.
 
+## The identity provider
+
+With `COWORK_OIDC_ISSUER` set, the backend is a relying party of one issuer, and the issuer is
+trusted for what it is asked: who a person is (the issuer and the subject), which groups they are
+in — which decides whether they get in, whether they administer the installation, and through the
+tenants' mappings which tenants they belong to in which role — their name, their e-mail address and
+whether the issuer verified it ([identity-provider.md](identity-provider.md)). Whoever can change a
+person's groups at the issuer changes what they may do in cowork, from their next login or refresh;
+whoever controls the issuer's signing keys or its token endpoint can be anybody.
+
+What is checked rather than trusted: the discovery document's `issuer` against the configured string,
+exactly; an ID token's signature against the keys the issuer publishes, with an asymmetric algorithm,
+its issuer, its audience, its authorized party, its expiry and its nonce; that UserInfo and a
+refreshed ID token speak of the same subject; the `state` the browser brings back against the sealed
+cookie the login began with. The issuer is reached over TLS — `http://` only on a loopback host —
+and so is every endpoint its discovery names, or the start is refused; an end-session endpoint that
+fails the rule is dropped. The backend's client follows no redirect of the issuer's, reads at most
+1 MiB of any answer, and writes no answer's body into an error
+([`oidc/client.go`](../../backend/internal/oidc/client.go)). The backend calls out to the issuer at
+every start (discovery), at a login (the token endpoint, the keys, UserInfo) and at every groups
+refresh; the chart's NetworkPolicy restricts no egress, and a policy of the installation's own must
+admit the issuer
+([installation.md](../operations/installation.md#the-identity-provider)). The issuer never calls
+the backend: everything it sends comes through the browser, to `/auth/callback`.
+
 ## Where the credentials live
 
 | Credential | Source in the chart | Held by |
@@ -80,6 +111,9 @@ its own network namespace, is not expected to be blocked either.
 | The server key, `COWORK_SESSION_KEY` | `session.existingSecret` only; the chart fails without it | the serving container |
 | The storage access key, `COWORK_S3_ACCESS_KEY_ID` and `COWORK_S3_SECRET_ACCESS_KEY` | `storage.existingSecret` only, required with `storage.endpoint` | the serving container |
 | The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
+| The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container, which sends it to the issuer's token endpoint |
+| The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
+| A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
 | Local passwords | not in the chart (but the local administrator's); the database holds Argon2id hashes ([local-accounts.md](local-accounts.md)) | the person, and the administrator who set a temporary one |
@@ -90,21 +124,35 @@ frontend container holds none of them. With an `existingSecret` the chart never 
 value. The inline `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password` put the credential in plain text
 into a release Secret and into `helm get values`; the chart notes warn at install time
-([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The server key signs the list
-cursors with a key derived from it ([`backend/internal/api/cursor.go`](../../backend/internal/api/cursor.go)):
-whoever holds it can forge a cursor, which moves a page's position inside a list its caller
-reads anyway, under the same predicates. Rotating the key invalidates the cursors clients
-hold. A second key derived from it, under a label of its own, hashes the client address of a
-login for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`):
-whoever holds the server key can test a guessed address against the hashes in the database,
-which hold nothing else of it. It signs no session: a session is a random value and a row.
+([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The identity provider's client
+secret has no inline path at all.
+
+The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
+label of its own, so no two uses share a key:
+
+| Use | Label | Whoever holds the server key |
+|---|---|---|
+| signing the list cursors ([`api/cursor.go`](../../backend/internal/api/cursor.go)) | `cowork cursor v1` | forges a cursor, which moves a page's position inside a list its caller reads anyway, under the same predicates |
+| sealing a rank position in a cursor | `cowork cursor position v1`, `cowork cursor nonce v1` | reads a rank key the cursor carries |
+| keying the fingerprint of an idempotent request ([`api/server.go`](../../backend/internal/api/server.go) `newFingerprintKey`) | `cowork idempotency fingerprint v1` | tests a guessed request body — a temporary password among them — against a fingerprint kept for a day |
+| hashing a login's client address for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`) | `cowork login address v1` | tests a guessed address against `login_attempts`, which keeps its rows fifteen minutes |
+| hashing the client address of an audit row (`newSourceKey`) | `cowork audit address v1` | reverses every IPv4 hash in the record ([tokens.md](tokens.md#h-30) H-30) |
+| sealing a login's state cookie and a session's refresh token ([`auth/seal.go`](../../backend/internal/auth/seal.go)) | `cowork oidc login v1`, `cowork oidc refresh token v1` | opens the stored refresh tokens ([identity-provider.md](identity-provider.md#h-27) H-27) |
+
+It signs no session: a session is a random value and a row. There is one key and no previous one
+kept beside it, so rotating it invalidates the cursors clients hold and the stored fingerprints,
+fails the logins in flight, gives every address another hash, and ends each session of the identity
+provider that holds a refresh token at its next refresh — a session of the local login, and one
+without a refresh token, stays.
 
 The backend does not log a credential. An error about a secret variable names the variable,
 never its value ([`config.go`](../../backend/internal/config/config.go) `Load`); the request
 log carries method, path, status, duration and request id — no header, so no token, no body
 and no query ([`server.go`](../../backend/internal/httpserver/server.go) `requestLog`); a
 refused dead token is logged by its id and the reason, never the token
-([`authn.go`](../../backend/internal/api/authn.go) `recordRefusal`). golang-migrate is handed
+([`authn.go`](../../backend/internal/api/authn.go) `recordRefusal`); a login through the identity
+provider logs no code and no token of the issuer, and stores none but the sealed refresh token
+([identity-provider.md](identity-provider.md#what-is-recorded-and-logged)). golang-migrate is handed
 an open connection, never the URL ([`migrate.go`](../../backend/internal/store/migrate.go)
 `applyMigrations`). A pgx connection error can name the host and the user, not the password;
 a malformed URL is reported by pgx with its password masked on a best-effort basis, and pgx
@@ -180,12 +228,21 @@ The trust rule of [ADR 0035](../adr/0035-personal-access-tokens.md) D2 decides w
 does with that: `X-Forwarded-For` is read only when the TCP peer is inside
 `COWORK_TRUSTED_PROXIES`, from the right, up to the first address that is not a proxy of ours,
 and nothing to the left of it is ever read ([local-accounts.md](local-accounts.md) "The client
-address"). The login's throttle is the one reader. The request log carries no address, and the
-audit record carries no address hash: the rule exists now, and the hash in the audit row stays
-with the phase that builds the identity provider. Where the rule is wrong — an empty list, a
-list too narrow or too wide, a policy that is not enforced — what it costs is
-[local-accounts.md](local-accounts.md) H-17; `X-Forwarded-Proto` and `X-Real-IP` are read by
+address"). Two readers use what it finds: the login's throttle and the keyed hash every audit row
+of a request carries ([tokens.md](tokens.md#what-is-recorded)). The request log carries no
+address. Where the rule is wrong — an empty list, a list too narrow or too wide, a policy that is
+not enforced — what it costs is [local-accounts.md](local-accounts.md) H-17, and an audit row's
+hash names the wrong client in the same way; `X-Forwarded-Proto` and `X-Real-IP` are read by
 nothing.
+
+### The identity provider's own controls
+
+How a person proves who they are to the issuer — a second factor, a password policy, a lockout —
+who is in which group and who may change that, how long the issuer's own session and its refresh
+tokens live, and how it signs its tokens are the issuer's and its operators'; cowork takes the
+issuer's word ([above](#the-identity-provider)) and verifies none of it. Where the issuer has a
+second factor, a person who logs in through it has one; the local login has none
+([local-accounts.md](local-accounts.md#h-16) H-16).
 
 ### The database's own controls
 

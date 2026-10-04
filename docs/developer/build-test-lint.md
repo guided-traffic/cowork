@@ -10,9 +10,9 @@ the backend and the frontend locally and the two images together. The tiers and 
 |---|---|---|
 | Go | 1.27 (`backend/go.mod`: 1.27.1; the toolchain downloads it if yours is older) | the backend, its generators and tools |
 | Node.js + npm | 26 (`NODE_VERSION` in the workflow's frontend job; `node:26-alpine` in the Containerfile); the workflow's release jobs use the current LTS | the frontend and the release tooling |
-| Docker | any recent | `make postgres-up`, `make minio-up`, `make docker-build` |
+| Docker | any recent | `make postgres-up`, `make minio-up`, `make dex-up`, `make docker-build` |
 | Helm | 3 or 4 | `make helm-lint`, `make helm-template` |
-| `openssl`, `curl` | any | `make run` draws a throw-away server key with `openssl rand`; `make minio-up` waits for MinIO with `curl` |
+| `openssl`, `curl` | any | `make run` draws a throw-away server key with `openssl rand`; `make minio-up` and `make dex-up` wait for their servers with `curl` |
 | `python3` | 3 | `make coverage-json`, `make verify-phase-2` |
 
 The Go tools (`golangci-lint`, `gocyclo`, `gosec`, `govulncheck`, `sqlc`, `oapi-codegen`)
@@ -37,7 +37,9 @@ same toolchain builds them.
 | | `make test-unit-coverage` | — | `coverage/unit.out` |
 | | `make postgres-up` / `postgres-down` | Docker | `postgres:18` on `localhost:5432` (`POSTGRES_PORT=` to move it) with the development database `cowork` and its roles `cowork_owner` and `cowork_app` |
 | | `make minio-up` / `minio-down` | Docker | MinIO on `localhost:9000` (`MINIO_PORT=`), the attachment tests' S3 server |
-| | `make test-integration` | PostgreSQL 18 and S3 | `COWORK_TEST_DATABASE_URL` and `COWORK_TEST_S3_*` default to the two containers ([testing.md](testing.md#environment-variables-the-suites-read)) |
+| | `make dex-up` / `dex-down` | Docker | Dex on `localhost:5556` (`DEX_PORT=`, which moves the issuer with it), configured from [`hack/dex/config.yaml`](../../hack/dex/config.yaml): the identity provider of `make dev` and of the login tests ([testing.md](testing.md#the-identity-provider-in-the-tests)); it keeps nothing, so `dex-down` loses nothing, and `dex-down dex-up` loads a changed configuration |
+| | `make dev-up` | Docker | `postgres-up`, `minio-up` and `dex-up` together |
+| | `make test-integration` | PostgreSQL 18, S3 and Dex | `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_*` and `COWORK_TEST_OIDC_ISSUER` default to the three containers ([testing.md](testing.md#environment-variables-the-suites-read)) |
 | | `make test-integration-coverage` | the same | `coverage/integration.out` |
 | Frontend | `make frontend-install` | npm | `npm ci` when `frontend/package-lock.json` changed |
 | | `make frontend-lint` | | `ng lint` |
@@ -61,7 +63,12 @@ same toolchain builds them.
 | Coverage | `make coverage-merge`, `make coverage-json` | the two profiles | `coverage/combined.*`, `.github/badges/coverage.json` |
 
 `VERSION=`, `GIT_COMMIT=` and `BUILD_TIME=` override what the linker bakes into the binary
-and what the images carry as labels.
+and what the images carry as labels. `CONTAINER_BIND=` (`127.0.0.1` `# default`) is the address
+the PostgreSQL, MinIO and Dex containers publish their ports on: their credentials are development
+values and PostgreSQL's superuser is `postgres`/`postgres`, so they are not reachable from the
+network the machine is on
+([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+D4). A container made before the rule keeps its binding until it is removed and made again.
 
 ## Generated code
 
@@ -79,18 +86,25 @@ Code Linting job — fails on the difference. The pipeline is [api.md](api.md#th
 **The whole stack, to watch the UI while it is built:**
 
 ```bash
-make dev                      # PostgreSQL, MinIO, the backend, demo data, the UI on https://localhost:4200 — Ctrl-C stops it
+make dev                      # PostgreSQL, MinIO, Dex, the backend, demo data, the UI on https://localhost:4200 — Ctrl-C stops it
 make dev-reset                # empties the development database; the next make dev seeds it again
 ```
 
 `make dev` ([`hack/dev.sh`](../../hack/dev.sh)) refuses to start when `:8080` or `:4200` is in
-use, logs the backend to `.dev/backend.log`, and keeps the demo data's token in `.dev/token` and
-a stable server key in `.dev/session-key` (all untracked). Sign in as `dev` with the
-development-only password `dev-only-cowork`; the browser asks once about the dev server's
-self-signed certificate (HTTPS, because Safari stores no `Secure` cookie from
-`http://localhost`). A saved frontend file reloads the page; a backend change needs a restart. The PrimeUI license key goes into `.dev/primeui-license`
-([frontend.md](frontend.md#the-primeui-license-key)). How it works:
-[frontend.md](frontend.md#the-development-loop).
+use, starts the three containers (`make dev-up`), runs the backend on `127.0.0.1:8080` with the
+local administrator `dev` and Dex as its identity provider — `cowork-users` allowed,
+`cowork-admins` the administrator group, the button *Sign in with Dex* — logs it to
+`.dev/backend.log`, maps the group `team-red` to `member` in the tenant `dev` through a session of
+the local administrator, and keeps the demo data's token in `.dev/token` and a stable server key in
+`.dev/session-key` (all untracked). Two ways in: the form as `dev` with the development-only
+password `dev-only-cowork`, or *Sign in with Dex* as `ada@example.com`, `bob@example.com`,
+`cyd@example.com` or `dan@example.com` with `dev-only-dex` (what each is:
+[testing.md](testing.md#the-identity-provider-in-the-tests)). The browser asks once about the dev
+server's self-signed certificate (HTTPS, because Safari stores no `Secure` cookie from
+`http://localhost`, and Dex knows `https://localhost:4200/auth/callback` as the redirect URI). A
+saved frontend file reloads the page; a backend change needs a restart. The PrimeUI license key
+goes into `.dev/primeui-license` ([frontend.md](frontend.md#the-primeui-license-key)). How it
+works: [frontend.md](frontend.md#the-development-loop).
 
 **The parts by hand:**
 
@@ -104,14 +118,17 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/me   # TOKEN: th
 
 `make run` takes `COWORK_DATABASE_URL`, `COWORK_DATABASE_OWNER_URL` and `COWORK_SESSION_KEY`
 from the environment when they are set, else the development values; a throw-away key
-invalidates the list cursors at every restart. It sets no `COWORK_S3_*`, so uploads answer
-`501 uploads_disabled` ([storage.md](storage.md#the-test-server)). Every other `COWORK_*`
-variable of the shell reaches the backend as it is, which is how the real login is tried: with
+invalidates the list cursors at every restart — and fails a login through Dex begun before it. It
+sets no `COWORK_S3_*`, so uploads answer `501 uploads_disabled`
+([storage.md](storage.md#the-test-server)). Every other `COWORK_*` variable of the shell reaches
+the backend as it is, which is how the real logins are tried by hand: with
 `COWORK_LOCAL_ADMIN_USERNAME`, `COWORK_LOCAL_ADMIN_PASSWORD` and
 `COWORK_BASE_URL=http://localhost:4200` set, the backend creates the administrator at start and
-`/auth/local` logs in ([README, run it locally](../../README.md#run-it-locally)). Neither `make run`
-nor `make dev` sets them for you, and `make dev` keeps the proxy's token until the UI has its
-login page.
+`/auth/local` logs in; with `make dex-up` and the `COWORK_OIDC_*` variables `hack/dev.sh` sets —
+the base URL then `https://localhost:4200`, the redirect URI Dex knows, and the UI from
+`make frontend-serve NG_SERVE_FLAGS=--ssl` — the browser logs in through Dex
+([README, run it locally](../../README.md#run-it-locally)). `make run` sets none of them; `make dev`
+sets all of them.
 
 `make dev-seed` reuses the person `dev` and the tenant `dev` and mints a fresh token on every
 run. The token is an agent's — write scope, every capability — so its `POST`s need an
@@ -156,6 +173,7 @@ stay manual.
 | Go tools, sqlc, oapi-codegen | `*_VERSION` in the `Makefile` with `# renovate:` comments | Renovate (custom regex manager) |
 | PostgreSQL test image | `POSTGRES_IMAGE` in the `Makefile`, the service in `release.yml` | Renovate, held on the 18 line: the Makefile manager captures the tag without the image name, so the hold rule sees `18` |
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |
+| Dex test image | `DEX_IMAGE` in the `Makefile`, `ghcr.io/dexidp/dex:v2.45.1` pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the same regex manager — its pattern matches the line; no Renovate run has confirmed it |
 
 The two Makefile managers in `renovate.json` were matched against the `Makefile` locally; no
 Renovate run has confirmed them yet.

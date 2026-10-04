@@ -33,9 +33,12 @@ Two jobs need more explanation than their targets:
 - **`integration-tests`** has a `postgres:18` service container, whose `cowork` superuser is the
   administrative URL in `COWORK_TEST_DATABASE_URL`. The S3 server is started by `make minio-up`
   on the job's Docker daemon, because a service container takes no command and the Chainguard
-  MinIO image needs `server /data`; `make test-integration-coverage` reads `COWORK_TEST_S3_*` from
-  the Makefile's defaults, and `make minio-down` runs `if: always()`. Both variables are required
-  by the tests, so a job that loses one fails instead of passing on zero tests.
+  MinIO image needs `server /data`; the identity provider by `make dex-up`, because Dex needs
+  [`hack/dex/config.yaml`](../../hack/dex/config.yaml), which the target copies into the container
+  and a service container cannot take. `make test-integration-coverage` reads `COWORK_TEST_S3_*`
+  and `COWORK_TEST_OIDC_ISSUER` from the Makefile's defaults, and `make dex-down` and
+  `make minio-down` run `if: always()`. Every one of these variables is required by the tests, so a
+  job that loses one fails instead of passing on zero tests.
 
 **"Release Docker & Helm"** ([`build.yml`](../../.github/workflows/build.yml)) runs on the
 published release: builds and pushes `guidedtraffic/cowork-backend:<version>` and

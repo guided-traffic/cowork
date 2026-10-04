@@ -10,7 +10,9 @@ clients. The rules of D5–D8 were put to the owner with the question and not ob
 Amended 2026-10-02 (D1: the split files are bundled before generation; D2: the event stream
 is served outside the generated server; D4: the validator leaves the security requirements to
 the pipeline; D8: a Go test instead of `spectral`) and 2026-10-03 (D1: the families of the
-login; D6, D8: the three forms of an operation's security requirement). `oapi-codegen`
+login; D6, D8: the three forms of an operation's security requirement) and 2026-10-04 (D1: the
+family `members.yaml` and the identity provider's paths; D6, D8: twelve session-only operations,
+and the one operation that takes query parameters it does not declare). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -47,7 +49,9 @@ and security schemes. A change to the API is a change to these files first. *(Am
 and the server embeds and serves.)* *(Added 2026-10-03: `auth.yaml` and `accounts.yaml`; the
 paths of the login — `/auth/options`, `/auth/local`, `/auth/logout` — are outside `/api/v1`, as
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5
-names them.)*
+names them.)* *(Added 2026-10-04: `members.yaml` — the members and their grants, the group
+mappings, a project's restriction and access list — and, in `auth.yaml`, the identity provider's
+start and callback, `/auth/oidc/login` and `/auth/callback`.)*
 
 **D2 — `oapi-codegen` generates the Go server interface and the Go client.** Handlers
 implement the generated strict server interface; the MCP server and the integration tests use
@@ -84,10 +88,14 @@ function), request and response examples, and its error responses declared throu
 `components/responses`. Security schemes `sessionCookie` and `bearerToken` are declared and
 applied per operation, so the document says which routes a token may call. *(Built 2026-10-03:
 an operation has one of three forms — both schemes, which is the default; `sessionCookie` alone,
-for the six routes a token must not call; or none, for the public ones — and the pipeline reads
+for the ~~six~~ routes a token must not call *(amended 2026-10-04: twelve —
+[ADR 0035](0035-personal-access-tokens.md) D5)*; or none, for the public ones — and the pipeline reads
 the credentials an operation takes from its own requirement. A public write carries the
 extension `x-cowork-origin-check: true`, which makes the pipeline hold it to the origin check of
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5.)*
+*(Added 2026-10-04: the extension `x-cowork-open-query: true` lets an operation take query
+parameters the document does not declare; only the identity provider's callback carries it, for
+the parameters an issuer adds of its own, such as `iss` and `session_state`.)*
 
 **D7 — Versioning is in the path.** `/api/v1` is the first; a breaking change opens `/api/v2`
 beside it and the old family stays until its clients are gone; there is no version header
@@ -100,8 +108,10 @@ it), run in `make lint`~~ *(amended 2026-10-02)* test failure: a unit test over 
 document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) requires an
 `operationId`, the bearer requirement (or an explicit empty one on the public operations), the
 problem response and a tag on every operation. *(Amended 2026-10-03: the requirement is either
-credential, the session cookie alone for exactly the six session-only operations, or an explicit
-empty one on the public operations, which as writes also carry `x-cowork-origin-check`.)*
+credential, the session cookie alone for exactly the ~~six~~ session-only operations *(amended
+2026-10-04: twelve)*, or an explicit empty one on the public operations, which as writes also carry
+`x-cowork-origin-check`.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
+callback alone.)*
 
 ## Consequences
 

@@ -53,7 +53,10 @@ reach inner parts with `:host ::ng-deep`. `p-inputicon` takes its icon as `class
 is named with `ariaLabelledBy` or `ariaLabel`, because its focusable element is a combobox span a
 wrapping `<label>` cannot name. A `<form>` that holds a `p-selectbutton` is `ngNoForm` and handles
 `(submit)` itself: the select button keeps an `ngModel` per option in its own template, which
-cannot register with an `NgForm` of the page and warns (NG01354) in development builds. Without the license key PrimeNG logs `[PrimeUI] PrimeUI license
+cannot register with an `NgForm` of the page and warns (NG01354) in development builds. A
+confirmation is [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts),
+`<app-confirm-dialog />`, over the `ConfirmationService` the page provides, never
+`<p-confirmdialog>` itself: its message is text, never markup, whatever it quotes. Without the license key PrimeNG logs `[PrimeUI] PrimeUI license
 is not configured` and shows a notice — see [the key](#the-primeui-license-key).
 
 ## Where state lives
@@ -63,18 +66,19 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships), the current tenant from the route (`enter(slug)`), the membership's role |
-| `ProjectsService` | The current tenant's projects, every page of them |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; `me` loads again on `membership.changed`, a `resync` and a `poll` |
+| `ProjectsService` | The current tenant's projects, every page of them; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
 | `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view |
-| `EventStreamService` | The tenant's `EventSource`, its status, and the events as an Observable |
+| `EventStreamService` | The tenant's `EventSource`, its status, and the events as an Observable: the ticket events and `membership.changed` |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
 | `ThemeService` | The colour scheme |
-| `MembersService` | The current tenant's members, every page of them, for pickers and the member list |
+| `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on `membership.changed`, a `resync` and a `poll` |
+| `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`) and time entries |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the urgency override and its withdrawal (a `412` is written over once while the urgency is unchanged); every answer goes into the cache |
 | `Conversation` | Comments, questions and answers, links, the person's stake |
-| `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout`, the password change — the session cookie is `HttpOnly`, no script sees it |
+| `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` again so the new membership shows |
@@ -102,7 +106,11 @@ generator makes `max(24, password_min_length)` characters from `/auth/options`.
 ([`HARD_NAVIGATION`](../../frontend/src/app/core/hard-navigation.ts), `window.location.assign`):
 the services are root singletons that keep the last person's tokens, accounts and cached tickets,
 and a router navigation would leave them for whoever signs in next in the same tab. The target is
-always `/login` or a path `safeReturn` has checked.
+`/login`, a path `safeReturn` has checked, the start of the identity provider's login
+(`/auth/oidc/login?return_to=` with such a path), or the provider's logout that `POST /auth/logout`
+names (`end_session_url`), which `webAddress` in
+[`auth.service.ts`](../../frontend/src/app/core/auth.service.ts) follows only as an `https:` or
+`http:` URL: a `javascript:` URL from a provider's discovery would run in the page.
 
 **A creating form holds one `Idempotency-Key` per content** where a lost answer must not become a
 second creation: the first tenant and a new local account keep a key in a `linkedSignal` over
@@ -125,10 +133,28 @@ never `reload()` alone.** A resource refuses `reload()` while it loads, and the 
 may predate the change; `refresh` reloads once more when that load ends. Lists, the detail page's
 parts and the project list after a write all use it.
 
+**A load again that fails keeps what is shown.** The person, the projects, the members, the group
+mappings, an access list, the ticket lists of `TicketsService` and the parts of the detail page
+([`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts)) load again on
+events, a `resync` and a `poll`; their loaders go through
+[`keepShown`](../../frontend/src/app/core/refresh.ts), which answers a failed reload with the value
+the resource holds — an outage, a timeout or a `5xx` leaves the navigation, the lists, a ticket's
+comments and a project's settings form being typed into as they were, and the polling fallback is
+there for the outage. Only a `401`, `403` or `404` (`gone`) says the value is gone for the person
+and empties it, as `TicketsService` drops a cached ticket on a `403` or `404`. A first load, and a
+load for another tenant, have nothing to keep and fail.
+
 The tenant comes from the path: [`TenantScope`](../../frontend/src/app/layout/tenant-scope.ts)
 is the parent route of `/t/:tenant`, calls `session.enter(slug)` and `stream.connect(slug)`, and
 both get `null` when the person leaves the tenant's pages. A tenant switch empties the ticket
-cache (ADR 0053 D4).
+cache (ADR 0053 D4). **A question belongs to the tenant it was asked in.** A page whose path
+changes only in `:tenant` is reused, and a question answered after the switch would act in the
+tenant shown now — a grant of the same person id there, the project of the same key. The members
+and the group mappings close an open question when the tenant changes and drop the role it held on
+a select, the accounts close theirs, a project's settings close the archive's question when the
+tenant or the project changes, and a ticket's page closes its question when the ticket's canonical
+key does, which would otherwise write onto the next ticket. A project's access section goes with
+the project while another tenant's projects load, its question with it.
 
 ## How a change reaches the screen
 
@@ -141,6 +167,16 @@ EventStreamService.events ─► TicketsService: cached and older? GET the ticke
 TicketRelations (detail page): comment/question/link of its key ─► that part and the activity reload
 ```
 
+```
+an administrator's act, or the identity provider's groups ─► SSE: event membership.changed {person_id | project_id | mapping_id}
+        │
+        ▼
+EventStreamService.events ─► SessionService: GET /api/v1/me ─► the role, the navigation, the controls a page offers
+                         ├─► MembersService, GroupMappingsService, an open AccessList: load again
+                         └─► a project_id, or the person's own person_id: ProjectsService loads again,
+                             TicketsService refetches what is shown and reloads the open lists
+```
+
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
 board, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
 moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); the board holds
@@ -148,7 +184,9 @@ itself while a card is dragged ([the board](#the-board)). `comment.changed` and 
 ticket — its version counts its own fields only ([ADR 0050] D1) — while `question.changed` and
 `link.changed` do, because they re-derive its urgency. `resync` (the stream could not replay a
 gap) and the fallback's `poll` reload every open list and refetch the tickets a detail view
-shows. While the tab is hidden, events wait and arrive merged when it is visible (ADR 0054 D8).
+shows; they load the views of `membership.changed` again as well, because the gap may have hidden
+one. While the tab is hidden, events wait and arrive merged when it is visible (ADR 0054 D8): the
+latest event of each ticket, then the membership events as they came.
 
 **The fallback** (ADR 0054 D7): three `EventSource` errors in a row, a `CLOSED` source, or
 `event: unavailable` switch to polling — a `poll` every 15 s and a new stream every 60 s; the
@@ -348,6 +386,59 @@ in the cache then. The detail page's moves
 ([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts)) and the board use it
 too.
 
+## The login page
+
+[`login.ts`](../../frontend/src/app/features/auth/login.ts) asks `GET /auth/options` what to offer:
+the identity provider's button, *Sign in with* `oidc_name` (`single sign-on` where the backend names
+none), while `oidc` is true; the local form while `local` is; a line between the two when there are
+both; a notice when there is neither. The page says *sign in* throughout. The button is a navigation through `HARD_NAVIGATION` to
+`/auth/oidc/login?return_to=` with the way back of `?return=` as `safeReturn` has it — the backend
+checks it again and keeps it in its state cookie. A failed way back from the provider lands on
+`/login?error=<code>`: the `error` input turns `not_allowed`, `not_initialised`, `oidc_failed` and
+`oidc_unavailable` into a sentence of [`providerRefusals`](../../frontend/src/app/features/auth/login.ts)
+and any other value into one generic sentence, never the value itself; it goes once the person
+tries the local form.
+
+## The tenant's administration
+
+The members, the group mappings and a project's access list ([ADR 0030], [ADR 0034] D3, D7, D8)
+share one shape: a page lists, its administrators change a row in place, and a refusal the page can
+explain is its own message above the list (`p-message`) — `last_admin` (the tenant would be left
+without an administrator), `person_not_found` (the person left the tenant), a mapping that changed
+meanwhile — while anything else is a toast. The roles, their meanings and the origins' badges are
+[`roles.ts`](../../frontend/src/app/features/tenant/roles.ts).
+
+**A row's select shows its write.** NgModel writes a value back into a control only when the bound
+value changes, so a select bound to the list would keep a refused choice on screen. The page binds a
+`pending` value over the list's instead: set when the choice is made, the select disabled meanwhile,
+dropped when the write ends — the service has put the answer into its list by then, or the select
+goes back to the list's value. The restriction switch does the same with `restricting`, which it
+holds while the restriction's question is open as well.
+
+**The keyboard.** PrimeNG's dialogs do not give the focus back when they close; the pages do, with
+[`refocus`](../../frontend/src/app/shared/refocus.ts) after the next render: to the control the
+dialog came from — *Add member*, *New mapping*, the row's select or its removal — or, where the act
+takes that control away, to where it leaves something to work on: the row's select where the row
+stays, the select of the row that takes its place (the next one, else the one before), and the
+page's heading (`tabindex="-1"`) where no row is left or where administrators give up their own
+role, whose controls go with it. A refused act gives the focus back to its control. The tables keep
+a row by its id (`rowTrackBy`), so that a list that loads again does not take the focus out of a
+row. The meaning of a role, of an origin's badge and of the mark of the editor's own groups is a
+tooltip under the pointer and on focus (`tooltipEvent="both"`; the badges take the focus with
+`tabindex="0"`), and their accessible description: `aria-describedby` names a hidden element of the
+page that holds the meaning, each meaning once.
+
+| Page | What it does |
+|---|---|
+| [`members.ts`](../../frontend/src/app/features/tenant/members.ts), `/t/:tenant/members` | Every member: name — for administrators with the e-mail address under it, which tells two persons of one name apart —, username, the effective role, and each origin as a badge — `mapping` and `grant` with their roles, `local account` where the person has one — a username and a password of their own, wherever the account was made. For administrators: *Add member* ([`add-member-dialog.ts`](../../frontend/src/app/features/tenant/add-member-dialog.ts), by e-mail address or username, the refusals `person_not_found`, `person_ambiguous` and `grant_exists` under the field), the grant as a select in the row (`PUT …/grant`), and its removal, which asks first and says what stays — the mapped role, or nothing. A change that takes the administrator's own administrator role away asks first. Anybody else sees the list without the controls |
+| [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and its removal; *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)) sends the group as typed, without the spaces around it. A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
+| [`project-access.ts`](../../frontend/src/app/features/project/project-access.ts), in the project's settings | For administrators: the restriction switch (`PUT …/restriction` with the project's `If-Match`; a `412` says so and reloads the projects) and the access list of [`AccessList`](../../frontend/src/app/features/project/access-list.ts), which the section provides, so it lives as long as the page. A restriction asks first with its own [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), saying how many people are on the list — or, when nobody is, that only the tenant's administrators will see the project, and no number while the list is not loaded; opening asks as well, saying that the project and its tickets become visible to every member of the tenant, a confidential ticket excepted ([ADR 0065] D1). The list shows whether the project is restricted or not, because it may be filled before the restriction so that nobody on it loses the project in between: a tenant member is added with `member` or `viewer`, changed in the row, taken off. A row shows the person's e-mail address under the name, and the picker offers each member as *name (address)* where the member list has one, the label its options are named by and its filter searches. A row's select and its removal are disabled while the row's change or removal is out, and a removal takes the entry out of the list at once. The section starts again — its choice, an open question and its message gone — only for another project's key: the projects load again on events and hand in a new object for the same project |
+
+The settings form of a project starts again from the list only when another project or another
+value of its own fields arrives: the list loads again on events, and the restriction raises the
+version without touching them, so neither takes back what is being typed; a save sends the newest
+version.
+
 ## The generated client
 
 `make frontend-generate` runs ng-openapi-gen ([`ng-openapi-gen.json`](../../frontend/ng-openapi-gen.json))
@@ -362,7 +453,9 @@ protocol-relative (`//api/v1/…`).
 Every request carries `X-Requested-With: cowork` ([`http.ts`](../../frontend/src/app/core/http.ts),
 [ADR 0037] D4), and a `401` from `/api/` sends the browser to `/login?return=<where it was>`; the
 login page only goes back to a path of this application, never to another site
-([`login.ts`](../../frontend/src/app/features/auth/login.ts) `safeReturn`).
+([`login.ts`](../../frontend/src/app/features/auth/login.ts) `safeReturn`): one that starts with a
+single slash, holds no control character and no backslash anywhere and is at most 2048 bytes long,
+the rule of the backend's `safeReturnTo`; anything else is the start page.
 
 **Transitions** mirror the server's matrix ([`transitions.ts`](../../frontend/src/app/shared/transitions.ts)
 against `backend/internal/domain/transition.go`): forward one step up to `review`, back with a
@@ -375,9 +468,10 @@ event refetches nothing, because the write put that version into the cache alrea
 
 ## The development loop
 
-`make dev` ([`hack/dev.sh`](../../hack/dev.sh)) runs everything in one terminal: PostgreSQL and
-MinIO containers, the migration, the backend built from source on `:8080` (log in
-`.dev/backend.log`) with the local administrator `dev`, the person `dev` with the tenant `dev`
+`make dev` ([`hack/dev.sh`](../../hack/dev.sh)) runs everything in one terminal: PostgreSQL, MinIO
+and Dex containers (`make dev-up`), the migration, the backend built from source on `:8080` (log in
+`.dev/backend.log`) with the local administrator `dev` and Dex as its identity provider, the group
+mapping `team-red` → `member` in the tenant `dev`, the person `dev` with the tenant `dev`
 and a second person (`sam`) from `make dev-seed`, demo data in the tenant `dev` when it has no
 project ([`dev_demo.py`](../../hack/dev_demo.py): three projects, twenty-one tickets in every
 state but `review`, of the three progress stages only implementation set, questions, comments,
@@ -389,7 +483,10 @@ list in production).
 
 **The browser logs in like on an installation**: as `dev` with the development-only password
 `dev-only-cowork` ([ADR 0038] D2, D4; `COWORK_DEV_ADMIN` and `COWORK_DEV_ADMIN_PASSWORD` change
-them). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) holds no
+them), or with *Sign in with Dex* as one of the four users of
+[`hack/dex/config.yaml`](../../hack/dex/config.yaml) — `ada`, `bob`, `cyd` and `dan` at
+`example.com`, with `dev-only-dex` — which show the administrator group, a mapped member, a person
+in no tenant and a refusal at the gate ([testing.md](testing.md#the-identity-provider-in-the-tests)). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) holds no
 credential; it forwards `/api` and `/auth`, and the session cookie travels as it does through
 nginx. **HTTPS**, with the Angular CLI's self-signed certificate the browser asks about once,
 because Safari stores no `Secure` cookie from `http://localhost` and the session cookie is
@@ -418,7 +515,9 @@ coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
+[ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
+[ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md
 [ADR 0038]: ../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
@@ -428,3 +527,4 @@ coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
 [ADR 0053]: ../adr/0053-signals-and-services-no-store-framework.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0055]: ../adr/0055-english-only-browser-locale-for-dates-and-numbers.md
+[ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

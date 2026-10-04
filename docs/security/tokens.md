@@ -2,10 +2,12 @@
 
 What a personal access token is, how a request presenting one is checked, what it may then do
 — through its scope, its person's role, its restriction and, for an agent, the capabilities
-and the hard-off list — how a dead token is answered and what is recorded, as built on
-2026-10-03. Which tenants, projects and tickets a person can see at all is
+and the hard-off list — what only a browser session may do instead, how a dead token and a token
+of a person outside the identity provider's gate are answered, and what is recorded, as built on
+2026-10-04. Which tenants, projects and tickets a person can see at all is
 [tenancy.md](tenancy.md); how a token comes to exist — its person, in a browser session — is
-below and in [sessions.md](sessions.md).
+below and in [sessions.md](sessions.md); the identity provider whose groups a token's person is
+held to is [identity-provider.md](identity-provider.md).
 
 ## A token is a bearer secret, stored as a hash
 
@@ -59,13 +61,11 @@ below and in [sessions.md](sessions.md).
   ([migration 4](../../backend/internal/store/migrations/000004_tokens.up.sql)). The runtime
   role may insert a token for its own person alone (the policy of
   [migration 15](../../backend/internal/store/migrations/000015_local_accounts.up.sql)).
-- **What a leaked token cannot leave behind.** Creating a token, a tenant or a local account and
-  resetting a password take a browser session ([sessions.md](sessions.md)): each would hand
-  whoever held a leaked token something that outlives the token's revocation — a token nobody
-  thought to revoke, a tenant, an account, a password only its setter knows. An `admin`-scope
-  token of a tenant administrator still lists the tenant's local accounts and unlocks,
-  deactivates and ends the sessions of them: acts that remove or restrict access
-  ([local-accounts.md](local-accounts.md)).
+- **What a leaked token cannot leave behind.** Creating a token, a tenant or a local account,
+  resetting a password and every administration act that can give access take a browser session
+  ([below](#what-only-a-session-does)): each would hand whoever held a leaked token something
+  that outlives the token's revocation. An `admin`-scope token of a tenant administrator still
+  makes the acts that only remove or restrict access.
 - **Development.** `make dev` mints a plain `admin`-scope token with the fixture and keeps it in
   the untracked `.dev/token` (mode 600 in a directory of mode 700) for the demo data, which it
   writes straight to the backend; nothing in the browser path holds a token — the browser logs in
@@ -92,9 +92,43 @@ reaches further than its person does at that moment.
 
 | Scope | Reaches |
 |---|---|
-| `read` | every read of what the person may see; for a tenant administrator also the tenant's audit view |
+| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings and a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts that exist: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), and for the local accounts the tenant manages listing them, unlocking, deactivating and ending their sessions — not creating one or resetting a password, which are a session's alone ([local-accounts.md](local-accounts.md)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+
+## What only a session does
+
+Twelve operations take a browser session only, and answer a token — whatever its scope, an
+administrator's `admin` token included — `403 session_required` before anything is written. The API
+document declares them with the session cookie alone, and a unit test over the document holds the
+set to exactly these twelve ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+`sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
+
+| Operation | Route | What a leaked token would leave behind |
+|---|---|---|
+| `createMyToken` | `POST /api/v1/me/tokens` | a token nobody thought to revoke |
+| `createTenant` | `POST /api/v1/tenants` | a tenant, administered by the token's person |
+| `createAccount` | `POST …/accounts` | an account, with a password its maker knows |
+| `resetAccountPassword` | `PUT …/accounts/{username}/password` | a password only its setter knows |
+| `addMember` | `POST …/members` | a person's grant into the tenant |
+| `setMemberGrant` | `PUT …/members/{person_id}/grant` | a role |
+| `createGroupMapping` | `POST …/group-mappings` | a role for everyone in a group of the issuer |
+| `updateGroupMapping` | `PATCH …/group-mappings/{mapping_id}` | the same, raised |
+| `setProjectRestriction` | `PUT …/projects/{project}/restriction` | a restricted project opened to every member |
+| `setProjectAccess` | `PUT …/projects/{project}/access/{person_id}` | a person's way into a restricted project |
+| `changeMyPassword` | `PUT /api/v1/me/password` | a password the person no longer knows |
+| `logout` | `POST /auth/logout` | — a token has no session to end |
+
+**The rule: an act that can give access, or make something that outlives the token's revocation,
+takes a session; an act that only takes access away does not.** A route that does both — a grant
+or a mapping raised or lowered, a project restricted or opened — takes a session for both. What
+stays open to an administrator's `admin`-scope token removes or restricts access and leaves nothing
+behind: listing, unlocking, deactivating a local account and ending its sessions
+([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person
+from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMappingsDeriveAtOnce`,
+`TestProjectRestrictionAndAccessList`). No agent makes any administration act: an agent token's
+scope is at most `write`, and a plain token marked by the header meets the hard-off rule
+"administration".
 
 ## Restrictions
 
@@ -103,7 +137,10 @@ reaches further than its person does at that moment.
 - A token restricted to a project — always inside its tenant restriction — carries the
   project into the visibility predicate. It reaches its project's routes, the project list,
   the tenant-wide ticket list, the key resolver and the event stream, each narrowed to the
-  project, and answers `404` on every other tenant route ([`api/tenant.go`](../../backend/internal/api/tenant.go)
+  project — the stream's `membership.changed` to the events that name the project, or the token's
+  own person and no project
+  ([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)) —
+  and answers `404` on every other tenant route ([`api/tenant.go`](../../backend/internal/api/tenant.go)
   `tenantWideForProjectTokens`; [tenancy.md](tenancy.md) "The project restriction"). It is the
   token a repository binding wants (ADR 0035 D3).
 - The person's own routes under `/api/v1/me` name no tenant, so the boundary does not run for
@@ -116,11 +153,14 @@ reaches further than its person does at that moment.
 
 - **Answers.** An unknown or malformed token: `401 unauthenticated`. A revoked token, or one
   whose person is deactivated: `401 token_revoked`. An expired token: `401 token_expired` with
-  the date. Revocation is checked first. Every `401` carries
+  the date. A token of a person of the identity provider whom its gate no longer admits:
+  `401 not_allowed` ([below](#the-identity-providers-gate)). Revocation is checked first, then
+  expiry, then the gate. Every `401` carries
   `WWW-Authenticate: Bearer realm="cowork"` ([`api/authn.go`](../../backend/internal/api/authn.go)).
-- **Refusals.** Every use of a revoked or expired token is logged with the token's id and the
-  reason, never the token. It is also recorded as an installation-level `refused` act of the
-  token's person, unless one with the same token and reason was recorded within the past hour
+- **Refusals.** Every use of a revoked, expired or gated token is logged with the token's id and
+  the reason, never the token. It is also recorded as an installation-level `refused` act of the
+  token's person — reason `revoked`, `expired` or `not_allowed` — unless one with the same token and
+  reason was recorded within the past hour
   (ADR 0035 D9), so a forgotten configuration that retries with a dead token cannot grow the
   append-only record without bound. The count and the insert are not serialised: two
   refusals in the same instant can both be recorded
@@ -139,9 +179,9 @@ reaches further than its person does at that moment.
   built. A person's deactivation revokes every token they hold — an administrator's
   `PUT …/accounts/{username}/deactivation` on an account their tenant manages, and the
   start-up synchronisation for the local administrator — a `NULL` `revoked_by` meaning a
-  system act ([local-accounts.md](local-accounts.md)); a password reset does not. Not built
-  either: an administrator's view and revocation of their members' tokens (ADR 0035 D5) and the
-  allow-list check of ADR 0035 D8.
+  system act ([local-accounts.md](local-accounts.md)); a password reset does not. No route
+  deactivates a person of the identity provider. Not built either: an administrator's view and
+  revocation of their members' tokens (ADR 0035 D5).
 - **Last use.** The last-used day is written at most once per token and UTC day — a note per
   replica and a conditional update — as bookkeeping, not as an act (ADR 0035 D2).
 - **Open streams.** An event stream is not a next request: at every heartbeat it checks the
@@ -151,6 +191,24 @@ reaches further than its person does at that moment.
   `stillAdmitted`; [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
   D5) — H-7.
 
+## The identity provider's gate
+
+A token of a person of the identity provider is held to the gate its person's login is held to
+([ADR 0035](../adr/0035-personal-access-tokens.md) D8; `tokenGate` in
+[`api/identity.go`](../../backend/internal/api/identity.go)). A person who is not the configured
+issuer's — another issuer's, or anyone's of a provider no longer configured — is refused at every
+request (`TestAPersonOfAnotherIssuerIsOutsideTheGate`). Otherwise, on the first request after the
+person's last check plus `COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes), the person's groups as of
+their last login or the last session refresh that read them are judged against
+`COWORK_OIDC_ALLOWED_GROUPS` and `COWORK_ADMIN_GROUP` as configured at that moment. Admitted, the
+check is stamped and the request goes on; outside, it is `401 not_allowed` and the token is refused,
+not revoked: it works again once the person is admitted. A refresh that reads groups outside the gate,
+or a login refused at the gate, clears the stamp, so the person's tokens are refused at their very
+next request (`TestLeavingTheGateStopsTheTokensAtOnce`, `TestLeavingTheAllowList`). A local account
+meets no gate. The mechanism, and why the groups a token
+is judged by can be old, is [identity-provider.md](identity-provider.md#the-token-gate) and its
+H-23.
+
 ## What is recorded
 
 - Every act is an audit row written in the act's transaction; it names the person, the token
@@ -159,6 +217,24 @@ reaches further than its person does at that moment.
   token is recorded through its acts, not per request (ADR 0035 D9); creating one is an
   installation-level `created` act of its person, naming its scope, agent flag, capabilities,
   restriction and expiry, never the token.
+- **The source of a request.** Every audit row written for a request carries `source_hash`, the
+  HMAC-SHA-256 of the client's address under a key derived from `COWORK_SESSION_KEY` by HKDF-SHA256
+  with the label `cowork audit address v1`
+  ([`api/login.go`](../../backend/internal/api/login.go) `sourceHash`;
+  [ADR 0035](../adr/0035-personal-access-tokens.md) D2;
+  [migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)). The
+  address is the client's under the rule of the trusted proxies
+  ([local-accounts.md](local-accounts.md#the-client-address)), in its canonical form and whole —
+  an IPv6 address too, where the login throttle counts its /64. The acts of a session and of a
+  token carry it, and so do the rows of the login, of a token's refusal and of the identity
+  provider's decisions in a request; the rows of the jobs and of the start-up, and every row
+  written before this release, carry none. No route shows it — the tenant's audit view leaves it
+  out — and the address itself is in no row (`TestAuditRowsCarryTheSourceHash`: two acts of one
+  client, one hash; a job's rows, none). It tells one client's rows apart from another's under one
+  server key; a new key gives the same address another hash, so rows from before a rotation do not
+  compare with rows after it. With `COWORK_TRUSTED_PROXIES` empty, every browser's request through
+  the frontend has the frontend pod's address, and the hash tells nobody apart. Whoever holds the
+  key reverses it ([H-30](#h-30)).
 - Reads are not recorded, with two exceptions that mean data left the system (ADR 0026 D5):
   every download of an attachment's bytes — a `304` is not one — and every Markdown export of
   a ticket, which is never answered with `304`
@@ -212,7 +288,7 @@ and back, and the acts of H-6. An agent's urgency override needs a reason as wel
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
 |---|---|
-| administration | the tenant's settings, archiving a project |
+| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list |
 | booking time | booking, editing and voiding time entries — refused before the `Idempotency-Key` is looked at |
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
@@ -288,3 +364,18 @@ stream whose token was revoked or expired, whose session ended, whose person lef
 or whose person lost a project still receives the events its filter admitted at the last
 heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
 makes with the dead token or session is refused at once; the window is the stream's alone.
+
+<a id="h-30"></a>
+### H-30 — With the server key, an audit row's address hash gives the address back
+
+Live today, on every row that carries a source hash. The hash keeps the client's address out of the
+record against whoever reads the database, a dump or a backup alone. Whoever also holds
+`COWORK_SESSION_KEY` derives the key and computes the hash of any address they guess: an IPv4
+address is one of 2^32, a search one machine works through, so every IPv4 hash in the record
+reverses — and the record keeps its rows for good
+([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D7). An IPv6
+address lies beyond trying them all, but a guessed one — an office's network, a known client — is
+confirmed with one computation. The login throttle's hashes have the same property and live fifteen
+minutes ([trust-boundaries.md](trust-boundaries.md#where-the-credentials-live)). The hash is a
+pseudonym against a copy of the database, not against whoever runs the installation. Mitigation:
+guard the server key as the credential it is, and keep it out of the backups of the database.

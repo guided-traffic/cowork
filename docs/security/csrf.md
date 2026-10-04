@@ -37,11 +37,13 @@ runs it through the whole server and asserts that a refused write changed nothin
 | `GET`, `HEAD`, `OPTIONS` | no | a read never mutates (D2) — see [H-22](#h-22) |
 | a token's request | no | an `Authorization` header makes it a token's; it carries no cookie, and a page of another site cannot set that header without a preflight the backend does not answer ([ADR 0035](../adr/0035-personal-access-tokens.md) D7) |
 | `POST /auth/local` | the origin half only | no session yet carries the check, so the `Origin` or `Referer` must still be `COWORK_BASE_URL` — a cross-site login attempt is refused (D5); the custom header is not required, because the login is public and not a write of a session |
+| `GET /auth/oidc/login`, `GET /auth/callback` | no | the identity provider's browser navigations, which carry no session (D5): the callback makes one only when the `state` the issuer returns is the one sealed in the browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set, so a page of another site cannot log a person in as someone else — a link to the start logs a person in as themselves at most ([identity-provider.md](identity-provider.md#the-login)) |
 | `POST /auth/logout` | both halves | a page must not be able to log a person out (D5) |
 
 **The check fails closed.** Without a `COWORK_BASE_URL` there is no origin to compare with, so
 no write of a cookie and no login passes — `403 csrf` naming the variable; the backend refuses
-to start without it while the local administrator is configured (D6). Reads still work.
+to start without it while the local administrator or an identity provider is configured (D6).
+Reads still work.
 
 **There is no CORS.** The backend sends no `Access-Control-*` header and no configuration turns
 one on (D3). A cross-origin `fetch` that sets `X-Requested-With` triggers a preflight nobody

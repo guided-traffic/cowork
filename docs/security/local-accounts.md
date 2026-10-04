@@ -15,8 +15,10 @@ A local account is a person with a row in `local_accounts`
 D1, D2): the Argon2id hash of the password, whether it is temporary
 (`password_change_required`), where the account comes from (`origin`) and which tenant manages
 it (`managing_tenant_id`). Its identity is `local:<username>`; the username is the person's
-`users.username`, unique in the installation. A person without such a row — a fixture person,
-and later an identity from the provider — cannot log in with a password.
+`users.username`, unique in the installation. A person without such a row — a fixture person, or a
+person of the identity provider, who has no username at all
+([identity-provider.md](identity-provider.md#the-identity-is-issuer-and-subject)) — cannot log in
+with a password.
 
 | Origin | Made by | Managed by | Is |
 |---|---|---|---|
@@ -295,8 +297,8 @@ and the rule is only as sound as `COWORK_TRUSTED_PROXIES` is right:
   botnet — has a bucket for each and is slowed by this limit only that much; the lockout of
   the username is what bounds the guesses against one account, at the price of H-18.
 
-The audit record carries no address hash either: ADR 0035 D2 has its rule now, and the hash in
-the audit row stays with the phase that builds the identity provider. Rate limits at the
+The keyed address hash every audit row of a request carries is found by the same rule and is as
+good as the list in the same way ([tokens.md](tokens.md#what-is-recorded)). Rate limits at the
 Ingress, which sees the real client, do what this limit cannot;
 `COWORK_LOGIN_ADDRESS_LIMIT=0` switches the throttle off.
 
@@ -343,3 +345,25 @@ Not built: a way for a person to recover their own password without an administr
 is no e-mail flow ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)); a
 route that creates an account for no tenant or lists the accounts of other tenants for a global
 administrator; the reactivation of a deactivated person.
+
+<a id="h-32"></a>
+### H-32 — Deactivating an account does not ask whether it is a tenant's last administrator
+
+Live in every tenant one of whose administrators is a local account. The `last_admin` rule holds a
+change of a grant or of a mapping to leaving the tenant an administrator who can log in, under the
+tenant's lock ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); the deactivation
+(`PUT …/accounts/{username}/deactivation`, `DeactivateAccount` in
+[`api/accounts.go`](../../backend/internal/api/accounts.go)) takes no lock and counts no
+administrator. Two ways it leaves a tenant without one:
+
+- **Two administrators deactivate each other at the same moment.** Each act writes another person's
+  row, neither sees the other's before it commits, and both succeed.
+- **The account administers another tenant.** Any tenant's administrator grants a role to a local
+  account by its username, so an account one tenant manages may be the only administrator of
+  another; the managing tenant's administrators deactivate it without seeing that.
+
+Read from the code; no test runs either. The tenant is then where
+[identity-provider.md](identity-provider.md#h-29) H-29 leaves one: no route gives it an
+administrator, and no route reactivates a person. Mitigation: give every tenant an administrator
+whose account it manages itself, or a person of the identity provider, so no other tenant can
+deactivate its last one.

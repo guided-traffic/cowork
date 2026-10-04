@@ -8,7 +8,8 @@ over hand-written `pgx`, over an ORM, and over a query builder for the list endp
 rules of D6–D8 were put to the owner with the question and not objected to.
 
 Amended 2026-10-02 (D2, D3: the wrappers' shape as built; D5: a transaction-level lock; D7:
-`sqlc compile` and the visibility lint) and 2026-10-03 (D3: the writes that are no acts). The first implementation found that a session-level
+`sqlc compile` and the visibility lint), 2026-10-03 (D3: the writes that are no acts) and
+2026-10-04 (D3: the identity provider's transactions; D5: the tenant's and the person's locks). The first implementation found that a session-level
 advisory lock outlives the job on an idle pooled connection, that `sqlc vet` needs a database
 the lint job does not have, and that the mutation wrapper is also where idempotency and the
 event publication belong.
@@ -65,7 +66,17 @@ per token and day), a session's idle clock (`TouchSession`, at most one a minute
 attempt count (`RecordLoginAttempt`, which still writes the audit rows of a failure, a lock or a
 refusal, as `system:login`, through the same `Writer`, and commits without an act when it has
 none to record). Each opens its own transaction with the settings its policies read, so none
-writes past row-level security.
+writes past row-level security. *(Added 2026-10-04:)* what the identity provider decides has
+store methods of its own outside `Mutate` too — `CompleteOIDCLogin`, `ApplySessionRefresh`,
+`CheckTokenGate` and `EndProviderSessions` in
+[`store/identity.go`](../../backend/internal/store/identity.go): each one transaction of the system
+actor `system:identity-provider` under an advisory lock of the person, writing its acts through the
+same `Writer` tenant by tenant, because one decision about a person changes their memberships in
+every tenant; a token's gate check that admits nobody writes nothing. `ClaimSessionRefresh` is
+bookkeeping like the session's idle clock: one short transaction as the person that writes a
+refresh's lease and no act, so that the issuer is asked with no transaction open. The derivation
+that follows an administrator's change of a group mapping runs inside that administrator's
+`Mutate`, and records its acts as the system actor's.
 
 **D4 — Dynamic list filters are the one place sqlc is not enough, and they get a small,
 typed builder of their own,** used only by the list endpoints, producing SQL that runs inside
@@ -80,7 +91,11 @@ rollback — a session-level lock would outlive the job on an idle pooled connec
 2026-10-02:)* writes whose integrity check reads committed rows of other transactions — a
 re-parenting, a new `blocks` link, a question's number — take a transaction-level advisory
 lock of their own first (per project, per tenant, per ticket), so two of them cannot pass the
-check together.
+check together. *(Added 2026-10-04:)* so do the changes of who administers a tenant — a grant's
+role or removal, a group mapping's creation, change or removal — which take the tenant's lock
+first, so the check that the tenant keeps an administrator reads what the change before committed;
+what the identity provider decides about a person takes the person's lock; and no transaction takes
+a tenant's lock after a person's.
 
 **D6 — `golang-migrate` stays for migrations; `database/sql` appears nowhere else.** The
 `pgx` stdlib adapter is used by the migration run only ([`migrate.go`](../../backend/internal/store/migrate.go)).

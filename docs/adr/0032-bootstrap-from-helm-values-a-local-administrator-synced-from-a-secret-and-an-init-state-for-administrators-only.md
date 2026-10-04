@@ -3,9 +3,11 @@
 ## Status
 
 Accepted, amended 2026-10-01 (D3: the minimum length is the configurable one of
-[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D3) and
+[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D3),
 2026-10-03 (D1, D2, D3, D5–D7 made concrete by the first implementation, which has no identity
-provider yet). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
+provider yet) and 2026-10-04 (D1: every view names a local account by its plain username; D5: the
+administrator group in the init state; D6: the bootstrap tenant needs the local administrator or an
+administrator group, whose mapping is seeded). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
 the first administrator and the first tenant come to exist?", reshaped by the owner's
 requirements: no command-line step — pure Helm values must yield a usable installation — and
 a local administrator account that exists without OIDC and is kept in step with a Kubernetes
@@ -19,9 +21,15 @@ tenant — [`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go)
 ([docs/security/local-accounts.md](../security/local-accounts.md),
 [docs/operations/installation.md](../operations/installation.md)); in the UI, the start page
 offers a global administrator without a membership the form that creates the first tenant
-([`features/home/first-tenant.ts`](../../frontend/src/app/features/home/first-tenant.ts)). Not built, because they
+([`features/home/first-tenant.ts`](../../frontend/src/app/features/home/first-tenant.ts)). ~~Not built, because they
 belong to the identity provider that does not exist yet: the administrator group of D5, and the
-group mapping D6 seeds.
+group mapping D6 seeds.~~
+
+**Built** (phase 4, 2026-10-04): the administrator group of D5 in the init state of the identity
+provider's login ([`store/identity.go`](../../backend/internal/store/identity.go)
+`CompleteOIDCLogin`), and the group mapping D6 seeds
+([`bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `keepTenant`); the configuration and
+the chart take a bootstrap tenant with the administrator group alone.
 
 ## Context
 
@@ -43,11 +51,15 @@ existing Secret (`localAdmin.existingSecret`, keys configurable) or rendered fro
 as `database.url`). The account is a global administrator ([ADR 0004](0004-cowork-is-a-team-product.md)
 D4) and a **full account**: it may be a member of tenants and work with tickets like any
 person; its identity is `local:<username>`, distinct from any OIDC identity. *(Amended
-2026-10-03: `local:<username>` is how an API view names the identity; the stored value is the
+2026-10-03: ~~`local:<username>` is how an API view names the identity;~~ the stored value is the
 plain `username`, unique in the installation. The account is a global administrator through
 `users.global_admin`, which the start-up synchronisation sets and no route does, and no tenant's
 administrator can manage it or reset its password
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D1).)*
+*(Amended 2026-10-04: no view writes `local:` — every view names a local account by its plain
+`username`, and a person of the identity provider by none; `POST …/members` takes the identity with
+or without `local:`. The flag `users.global_admin` is set by the identity provider as well, for the
+members of the administrator group, and by nothing else besides the synchronisation.)*
 
 **D2 — The account is synchronised at every start, after the migrations, under an advisory
 lock.** Both variables set: the account is created or updated; a password that differs from
@@ -90,7 +102,11 @@ The local administrator and the members of the administrator group log in and ar
 "create the first tenant". *(Amended 2026-10-03: built for the local login as
 `403 not_initialised` and no session. It is answered only after the password was verified, so
 an attempt with a wrong password is the `401` every failure is and the state is not learnt
-without a password. The administrator group arrives with the identity provider.)*
+without a password. ~~The administrator group arrives with the identity provider.~~)* *(Amended
+2026-10-04: built for the identity provider. A login whose ID token verified and whose groups pass
+the gate but hold no `COWORK_ADMIN_GROUP` is sent back to the login page with `not_initialised`,
+recorded as `login_refused`, and makes no person; the members of the administrator group are global
+administrators and log in, and create the first tenant as the local administrator does.)*
 
 **D6 — An optional bootstrap tenant from values.** `COWORK_BOOTSTRAP_TENANT_SLUG` and
 `COWORK_BOOTSTRAP_TENANT_NAME` (chart: `bootstrap.tenant.slug`, `.name`). When set and no
@@ -100,10 +116,16 @@ configured, and gives the local administrator a marked manual grant as `admin` o
 (ADR 0030 D3) when one is configured. When a tenant already exists the variables do nothing,
 whatever they say; the operations page says so. Both the tenant and the grants are audit rows
 with the actor `system:bootstrap` ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
-*(Amended 2026-10-03: built without the group mapping, which no mapping store exists for yet.
+*(Amended 2026-10-03: ~~built without the group mapping, which no mapping store exists for yet.
 The bootstrap tenant needs the local administrator — a tenant without an administrator cannot
-come to exist (D7) — and the configuration refuses the start without it. The rows are two
+come to exist (D7) — and the configuration refuses the start without it.~~ The rows are two
 installation-level `created` acts of `system:bootstrap`: the tenant and the marked grant.)*
+*(Amended 2026-10-04: the mapping is seeded — `COWORK_ADMIN_GROUP` → (tenant, `admin`), a
+`group_mapping` `created` act of `system:bootstrap` — when an administrator group is configured, and
+the grant when a local administrator is. The bootstrap tenant needs one of the two: a tenant without
+an administrator cannot come to exist (D7), and the configuration and the chart refuse a bootstrap
+tenant with neither. With the group alone no grant is made, and the group's members administer the
+tenant from their first login, when their membership is derived from the mapping.)*
 
 **D7 — Whoever creates a tenant becomes its first administrator,** by a marked grant,
 recorded. This holds for the bootstrap routine and for the UI and the API alike; a tenant

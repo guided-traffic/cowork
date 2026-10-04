@@ -24,15 +24,17 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 |---|---|---|
 | A PostgreSQL 18 (or newer) database with two roles | yes | the runtime role's URL and the owner role's URL, each from a Secret |
 | The server key | yes | a Secret; there is no inline value |
-| A local administrator and the public URL | yes, to log in at all — without them nobody can | a Secret with its username and password, and `backend.config.baseURL` ([below](#the-local-administrator)) |
+| A local administrator, an identity provider, or both, and the public URL | yes, to log in at all — without one of the two nobody can | the administrator's username and password from a Secret ([below](#the-local-administrator)); the provider's issuer and client id as values, its client secret from a Secret ([below](#the-identity-provider)); `backend.config.baseURL` for either |
 | An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values, the key from a Secret, a private authority from a ConfigMap |
 
 Rendering fails, naming the missing value, without a database URL, without an owner URL while
 `backend.config.migrateOnStart` is `true` (the default), without `session.existingSecret`, with
 a `storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`, with a local
-administrator but no `backend.config.baseURL`, and with half of what belongs together —
+administrator or an `auth.oidc.issuer` but no `backend.config.baseURL`, with an issuer but no
+client id or no client secret, with a group in `auth.oidc.allowedGroups` that holds a comma, and
+with half of what belongs together —
 `localAdmin.username` without `.password`, `bootstrap.tenant.slug` without `.name`, a bootstrap
-tenant without a local administrator.
+tenant with neither a local administrator nor `auth.oidc.adminGroup`.
 
 ## The database and its two roles
 
@@ -119,6 +121,8 @@ kubectl -n cowork create secret generic cowork-session \
   --from-literal=sessionKey="$(openssl rand -base64 32)"
 kubectl -n cowork create secret generic cowork-local-admin \
   --from-literal=username=admin --from-literal=password="$(openssl rand -base64 24)"
+kubectl -n cowork create secret generic cowork-oidc \
+  --from-literal=clientSecret='CHANGE-ME'     # with an identity provider: the secret it issued for cowork's client
 ```
 
 | Secret | Values naming it | Key `# default` | Read by |
@@ -127,14 +131,20 @@ kubectl -n cowork create secret generic cowork-local-admin \
 | the owner role's URL | `database.owner.existingSecret` | `database.owner.existingSecretKey`: `databaseUrl` | the `migrate` init container, nothing else |
 | the server key | `session.existingSecret` | `session.keys.key`: `sessionKey` | the backend container |
 | the local administrator | `localAdmin.existingSecret` | `localAdmin.keys.username`: `username`, `localAdmin.keys.password`: `password` | the backend container; the account follows it at every start |
+| the identity provider's client | `auth.oidc.existingSecret` | `auth.oidc.keys.clientSecret`: `clientSecret`; `auth.oidc.keys.clientId`: empty — set, it reads the client id from the Secret too, in place of `auth.oidc.clientId` | the backend container |
 | the storage access key | `storage.existingSecret` | `storage.keys.accessKeyId`: `accessKeyId`, `storage.keys.secretAccessKey`: `secretAccessKey` | the backend container |
 
 **The server key** is standard base64 of at least 32 random bytes; `openssl rand -base64 32`
-makes one. It signs the list cursors and keys the hash of a login's source address, so every
-replica must hold the same key — they read the same Secret. Rotating it invalidates the cursors
-clients hold: the next page they ask for is `400 invalid_cursor`, and they start the list over.
-It does not log anybody out: a session is a row in the database, signed by nothing. The chart
-has no inline path for it.
+makes one. It signs the list cursors, keys the hashes of a client's address — the login
+throttle's and the audit rows' — and seals the identity provider's login state and refresh tokens,
+so every replica must hold the same key — they read the same Secret. Rotating it invalidates the
+cursors clients hold: the next page they ask for is `400 invalid_cursor`, and they start the list
+over. A session is a row in the database, signed by nothing, so a rotation logs nobody out of the
+local login; a session of the identity provider that holds a refresh token ends at its next groups
+refresh, because its sealed token no longer opens — cowork keeps no previous key to open it with —
+and a login through the provider that is under way at the moment fails
+([trust-boundaries.md](../security/trust-boundaries.md#where-the-credentials-live)).
+The chart has no inline path for it.
 
 **The owner's credential reaches only the init container.** The serving container gets the
 runtime URL alone and `COWORK_MIGRATE_ON_START=false`. An installation that hands the owner URL
@@ -143,7 +153,10 @@ server process the power to switch row-level security off.
 
 **The inline values**, `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password`, render the Secrets `<fullname>-database`, `<fullname>-database-owner` and
-`<fullname>-local-admin` for you. Use them for a throw-away installation only: the values are
+`<fullname>-local-admin` for you; the identity provider's client secret has no inline value and
+comes from `auth.oidc.existingSecret` only
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). Use them for
+a throw-away installation only: the values are
 stored in plain text in the Helm release Secret and shown by `helm get values`, and the chart
 prints a warning in its notes for each. When a Secret reference and its inline value are both
 set, the reference wins and the value is ignored.
@@ -212,6 +225,177 @@ where it comes from: `PUT /api/v1/me/password` is refused for it (`403`, naming
 To switch the account off, empty the Secret's values and restart; the account is deactivated.
 Where an identity provider with a second factor does the work, keep it switched off: a local
 account has no second factor ([H-16](../security/local-accounts.md#h-16)).
+
+## The identity provider
+
+cowork logs people in through any OpenID Connect provider as a standard relying party: the
+authorization code flow with PKCE, the provider's discovery document, the ID token's signature
+checked against the provider's published keys, `state` and `nonce` checked
+([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D1). Nothing provider-specific is assumed but the name of the claim that carries the groups. One
+installation has one provider (D5); the local administrator can work beside it, or be switched
+off ([above](#the-local-administrator)). What cowork checks of the provider, what its groups
+decide and what that leaves open is
+[docs/security/identity-provider.md](../security/identity-provider.md).
+
+**At the provider**, register a confidential client — one with a client secret; a public client
+is not supported — for the authorization code flow, with this redirect URI, exactly as the browser
+shows the UI (scheme, host, port):
+
+```
+https://cowork.example.com/auth/callback       # example: <backend.config.baseURL>/auth/callback
+```
+
+The frontend proxies `/auth/` to the backend, so the Ingress rule of [Expose it](#expose-it)
+carries the callback. The provider must be reachable from the backend pods: the backend fetches
+the discovery document, the keys, the tokens and UserInfo from it. The chart's NetworkPolicy
+restricts nothing outgoing; a policy of your own that does must admit the provider.
+
+**In cowork**, the client secret goes into a Secret ([the Secrets](#the-secrets)), the rest into
+values:
+
+```yaml
+backend:
+  config:
+    baseURL: https://cowork.example.com             # example; required with an issuer
+auth:
+  oidc:
+    issuer: https://login.example.com/realms/acme    # example; setting it turns the login on
+    clientId: cowork                                 # example
+    existingSecret: cowork-oidc                      # example; key auth.oidc.keys.clientSecret, default clientSecret
+    allowedGroups: [cowork-users]                    # example: the gate
+    adminGroup: cowork-admins                        # example: the global administrators
+    displayName: Acme SSO                            # example: the login page offers "Sign in with Acme SSO"
+    scopes: openid profile email groups offline_access   # default
+    groupsClaim: groups                              # default
+    groupsRefresh: 15m                               # default
+```
+
+Each value is one `COWORK_OIDC_*` variable (`adminGroup` is `COWORK_ADMIN_GROUP`), rendered only
+while `auth.oidc.issuer` is set; the list is
+[README.md, Helm chart values](../../README.md#helm-chart-values). The issuer must be written as
+the provider names itself in its discovery document (`issuer`), trailing slash and all: every ID
+token carries that string and is checked against it.
+
+**A provider that cannot be reached refuses the start.** The backend fetches
+`<issuer>/.well-known/openid-configuration` at every start and does not start without it, as with
+an invalid setting: the pod exits and is restarted with back-off (ADR 0029 D4). An outage of the
+provider leaves the running pods serving and stops every pod that starts during it — a rolling
+upgrade, a rescheduled pod. The local administrator is no way around that, because a backend that
+does not start serves nobody. To run without the provider, empty `auth.oidc.issuer` and upgrade:
+the other `auth.oidc` values may stay, they are rendered only with an issuer, and the local
+administrator and the local accounts are then the only way in. Every person of the provider is
+outside the gate from then on: their sessions end at their next request and their tokens are
+refused, until the same issuer is configured again.
+
+**The discovery must hold to cowork's rules**, or the start is refused the same way: the document
+at that URL answers `200` directly — a redirect is not followed — and within 1 MiB; its
+authorization, token, keys and UserInfo endpoints are `https`, or `http` on a loopback host as for a
+development issuer; and it names a signature algorithm cowork verifies, an asymmetric one, or none,
+which means `RS256`. An `end_session_endpoint` over plain `http` on another host is dropped with a
+warning, and a logout then ends no session at the provider. The error in the log names the issuer
+and the rule it failed.
+
+**The groups claim.** The gate and the group mappings work on group names, read from the claim
+`auth.oidc.groupsClaim` — in the ID token, or in the UserInfo answer when the token has none; a
+claim that is one string is one group (ADR 0029 D2). A name is matched exactly, case and all, so
+it is whatever the provider writes there: a name, a path, an id. Look at a token of your provider
+before you write the allow-list. A provider that leaves the claim out — some do for a person in
+many groups — leaves that person without groups, and so outside the gate; have the provider send
+the groups cowork needs. A group whose name holds a comma cannot be in the allow-list: the comma
+separates the groups in `COWORK_OIDC_ALLOWED_GROUPS`, and the chart refuses it.
+
+**The allow-list and the administrator group** are the gate
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D1): a person logs in through the provider only when their groups include one of
+`auth.oidc.allowedGroups` or `auth.oidc.adminGroup`, whatever the tenants map. Both empty admits
+nobody (D8): the login page shows no provider button, and the chart's notes warn. The members of
+`auth.oidc.adminGroup` are global administrators — they create tenants, each of which they then
+administer by a grant, and hold no role in a tenant they were not given; no route lets them grant
+themselves into an existing tenant or delete one yet
+([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2) — so whoever may change that group at the provider administers the installation. Which
+tenant a person belongs to, and in which role, is not configuration: a tenant's administrators
+map groups to roles and grant roles to people by hand, in the UI (ADR 0030 D2, D3, D7).
+
+**The first tenant.** While no tenant exists, only global administrators log in — the local
+administrator and the members of `auth.oidc.adminGroup`; anyone else behind the gate is sent back
+to the login page as "not initialised"
+([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D5). With `bootstrap.tenant` and `auth.oidc.adminGroup` set, the start creates the tenant and maps
+the administrator group to its `admin` role, so the installation needs no local administrator at
+all (D6).
+
+**`offline_access`, and why the default asks for it.** A browser session re-reads the person's
+groups from the provider every `auth.oidc.groupsRefresh` and applies the gate and the mappings
+again (ADR 0030 D5): a person who left the allowed groups is logged out at their next request
+after that, and a person who left a mapped group loses what it gave. The refresh needs a refresh
+token, and providers commonly issue one only to a client that asks for `offline_access` — the Dex
+below does exactly that. Without one, a session never reads the groups anew: it is judged on the
+groups of the person's last login until it ends, and the backend logs a warning. While the
+provider cannot be reached, a session is served on the groups it has and the refresh is tried
+again a minute later; when the provider refuses the refresh token, the session ends. When it
+refuses cowork's own client — a client secret rotated at the provider and not yet in the Secret —
+the sessions are served as during an outage and the log says so at error level, so put the new
+secret into the Secret, and restart, as soon as the provider has it. A personal access token is checked against the groups of its
+person's last login or session refresh, not against the provider: removing a person from a group
+at the provider reaches their tokens at their next browser login or session refresh, and not at
+all while they use only tokens ([H-23](../security/identity-provider.md#h-23)). Behind the gate,
+which tenants a person belongs to follows their groups at every login and refresh as well: a
+person in no mapped group logs in to no tenant until an administrator grants them one. What the
+operator sees of all this is [runtime.md](runtime.md#the-login-through-the-identity-provider).
+
+**Logging out** ends the cowork session. When the provider's discovery document names an
+`end_session_endpoint` that passed the rule above, the browser is sent there as well, with
+`post_logout_redirect_uri=<backend.config.baseURL>/login` — register that URI at the provider if
+it asks for post-logout redirect URIs. Dex names none.
+
+### The reference fixture: a minimal Dex
+
+The login is developed and tested against Dex — the release `DEX_IMAGE` in the
+[`Makefile`](../../Makefile) pins — in its minimal configuration,
+[`hack/dex/config.yaml`](../../hack/dex/config.yaml): one static client, four static users with
+their groups, no connectors, nothing stored beyond the process (ADR 0029 D3). `make dex-up` runs
+it on `localhost:5556`, published on the loopback address only (`CONTAINER_BIND`); `make dev` and
+the integration tier log in through it. It is the proof
+that the flow works with a standard provider, not a recommendation for running one: its client
+secret and passwords are public in this repository, and it forgets every token when it stops.
+The parts the values above meet:
+
+```yaml
+issuer: http://localhost:5556/dex              # = auth.oidc.issuer
+oauth2:
+  skipApprovalScreen: true                     # no consent page between the login and the redirect
+staticClients:
+  - id: cowork                                 # = auth.oidc.clientId
+    secret: cowork-dev-dex-secret              # = the client secret; development-only
+    redirectURIs:
+      - https://localhost:4200/auth/callback   # = <backend.config.baseURL>/auth/callback of make dev
+staticPasswords:
+  - email: ada@example.com
+    groups: [cowork-admins, cowork-users]      # what the groups claim carries
+```
+
+**Verified on 2026-10-04** against that Dex, v2.45.1, with a script that plays the browser:
+discovery; the code flow with PKCE through Dex's login form; an ID token with `email`, `name` and
+`groups` (and no `preferred_username`), the same groups in UserInfo; a refresh token only when
+`offline_access` is asked for, replaced at every refresh; an unregistered redirect URI refused; no
+`end_session_endpoint`. The chart's half — the environment, the Secret reference, the
+refusals and the notes — was rendered and linted. The backend's half is what the integration tier
+asserts against that Dex and against an issuer in the test's own process, which can be made to do
+what Dex cannot: the gate and its four users (`TestLoginThroughDex`), the first-tenant rule
+(`TestInitStateThroughDex`), leaving the allow-list (`TestLeavingTheAllowList`), the refresh, its
+refusals, an unreachable issuer, a refused client and a refresh that holds no connection while it
+waits (`TestRefreshFollowsTheIssuersGroups`, `TestARefusedRefreshTokenEndsTheSession`,
+`TestAnUnreachableIssuerLeavesTheSessionServed`, `TestAClientTheIssuerRefusesIsTheConfigurationsError`,
+`TestARefreshWaitsForNoOneElse`), a person of another issuer
+(`TestAPersonOfAnotherIssuerIsOutsideTheGate`), the logout at an issuer that names an end-session
+endpoint (`TestLogoutAtTheIssuer`) and the bootstrap tenant of the administrator group
+(`TestBootstrapSeedsTheAdministratorGroupsMapping`); the refusal to start on an issuer that cannot
+be discovered, or whose discovery breaks the rules above, is a unit test (`TestDiscoveryFailure`,
+`TestDiscoveryHoldsTheIssuerToItsRules`).
+**Not verified here:** an issuer other than Dex and the test's own; the start's refusal through the
+chart, on a cluster; the login page in a real browser — there is no end-to-end tier yet.
 
 ## Object storage
 
@@ -309,12 +493,14 @@ kubectl -n cowork port-forward svc/cowork-backend 8081:8080 &
 curl -s localhost:8081/readyz           # {"status":"ready"} — the backend and its database
 ```
 
-**Log in.** Without a local administrator nobody can: an installation answers the health
-endpoints, the version, the API document, what the login page offers and the login, and
-`401 unauthenticated` on every other route. With one ([above](#the-local-administrator)), the
-`POST /auth/local` of [README, API](../../README.md#api-backend) starts a session; the UI's
-login page comes with the frontend work. `make dev-seed` creates a person, a tenant and a token
-in the development database and is never an installation step
+**Log in.** Without a local administrator or an identity provider nobody can: an installation
+answers the health endpoints, the version, the API document, what the login page offers and the
+login, and `401 unauthenticated` on every other route. The UI's login page shows the form while
+an active local account exists — the local administrator ([above](#the-local-administrator)) and
+the accounts tenants create, `POST /auth/local` of [README, API](../../README.md#api-backend) —
+and "Sign in with" the provider's `auth.oidc.displayName` while a provider is configured and its
+gate names a group ([the identity provider](#the-identity-provider)). `make dev-seed` creates a
+person, a tenant and a token in the development database and is never an installation step
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
 D7).
 
@@ -492,8 +678,9 @@ helm uninstall cowork -n cowork
 ```
 
 The release leaves the database and the bucket untouched. The Secrets and the ConfigMap you
-created stay; the Secrets the chart rendered from `database.url`, `database.owner.url` and the
-inline local administrator are removed with the release.
+created stay; the Secrets the chart rendered from `database.url`, `database.owner.url`, the
+inline local administrator are removed with the release. The client
+at the identity provider stays registered until you remove it there.
 
 ## Resources and scheduling
 

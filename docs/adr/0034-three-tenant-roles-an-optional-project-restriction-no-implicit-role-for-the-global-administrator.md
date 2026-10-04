@@ -3,7 +3,12 @@
 ## Status
 
 Accepted, amended 2026-10-02 (D1, D9: creating a project is a member act unless the tenant
-reserves it to administrators). Date: 2026-10-01. Decided by the owner as the answer to the
+reserves it to administrators) and 2026-10-04 (D1: no change leaves a tenant without an
+administrator; D3, D7: the administration built, and a restricted project's entries on its own
+access list, not in the member list), and again on 2026-10-04 after the security review (D1: only
+an administrator who can log in counts, and the changes take the tenant's lock; D3: a trigger holds
+the restriction to the tenant's administrators; D7: the address shown to administrators only).
+Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "roles?": three tenant roles with an optional per-project restriction, over tenant roles
 alone, over a configurable permission matrix, and over an additional project-lead role. The
 rules of D6–D8 were put to the owner with the question and not objected to. D9 is the
@@ -31,6 +36,18 @@ rows, the deletion of a tenant and the route by which a global administrator gra
 role in an existing tenant; the `memberships` policy admits a global administrator's own grant as
 `admin`, which the creation of a tenant uses.
 
+**Built** (phase 4, 2026-10-04): D7's acts — a member's grant added by address or username, its
+role changed and removed, the group mappings of
+[ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md),
+a project's restriction and its access list — in
+[`api/members.go`](../../backend/internal/api/members.go) and the UI, every one recorded and
+announced as `membership.changed`; the writes of the restriction's list held to the tenant's
+administrators in the data layer by restrictive policies
+([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql));
+D1's refusal to leave a tenant without an administrator (`409 last_admin`). The members of the
+identity provider's administrator group are global administrators too (ADR 0030 D1). Still not
+built: D2's parts named above.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) made cowork a team product and put the question
@@ -56,6 +73,18 @@ in-tenant leak this record avoids by deciding it now.
 | `member` | everything of the working day: create and edit tickets, transition them, comment, link, register any interest, ask questions and answer those asked of them or open in the tenant, book time, upload and download attachments, drag the rank; *(added 2026-10-02)* create projects while the tenant allows it (D9) |
 | `admin` | all of `member`, plus: members, mappings and grants, local accounts of the tenant, projects (~~create,~~ archive, restrict; *(amended 2026-10-02)* create always, D9), delete, restore and purge tickets, the time-period lock, the tenant's settings, read every time entry |
 
+*(Added 2026-10-04:)* A tenant always has an administrator. A change of a grant or of a group
+mapping that would leave no ~~active~~ person holding `admin` in the tenant, mapped or granted, is
+refused with `409 last_admin` and changes nothing — the administrator's own grant and the mapping
+that makes them administrator included. A derivation from the identity provider's groups at a
+login, a refresh or a token's gate check is the issuer's word and is not refused
+([docs/security/identity-provider.md](../security/identity-provider.md) H-29). *(Amended after the
+security review, 2026-10-04: only a person who can log in counts — active, and a local account or a
+person of the configured issuer whom the gate admitted at their last login, refresh or check — and
+each such change takes the tenant's lock before any person's, so two administrators who take each
+other's role away at once are decided one after the other. Not held to the rule: the deactivation of
+a local account ([docs/security/local-accounts.md](../security/local-accounts.md) H-32).)*
+
 **D2 — The global administrator has no implicit role in any tenant.** A global administrator
 creates and deletes tenants, reads installation-level audit rows and the allow-list, and in
 a tenant's pages sees its administration (members, mappings, settings) — but no tickets,
@@ -67,7 +96,15 @@ it.** A restricted project carries a list of (person, `member` or `viewer`) entr
 person's effective role in it is the lower of their tenant role and their entry; a person
 with no entry does not see the project, its tickets, its board, its tiles, its search hits,
 or any notification about it. Tenant administrators always see every project. Restriction
-and its list are recorded acts.
+and its list are recorded acts. *(Built 2026-10-04: `PUT …/projects/{project}/restriction` with
+the project's `If-Match`, and `PUT`/`DELETE …/projects/{project}/access/{person_id}` for a member of
+the tenant, an entry `member` or `viewer`; restricting, opening and putting a person on the list take
+a browser session, taking a person off it an administrator's token as well
+([ADR 0035](0035-personal-access-tokens.md) D5). The list may be written before the project is
+restricted, so nobody on it loses the project in between.)* *(Amended after the security review,
+2026-10-04: the restriction is the tenant's administrators' in the data layer too — a trigger,
+`projects_restriction_guard`, refuses a change of `restricted` by anyone else, because a member may
+change the project's other settings and a policy cannot tell the columns apart.)*
 
 **D4 — The restriction is one predicate, carried by the data layer, not by call sites.** The
 wrapper of ADR 0027 D2 knows the person and their tenant role; every generated query on
@@ -85,8 +122,16 @@ permission record names what an agent may never do; the role says what the perso
 agent gets the intersection.
 
 **D7 — Role changes are recorded acts, and roles are visible.** The member list shows role,
-origin (mapping, grant, local account) and project entries; a change of role or of a project
+origin (mapping, grant, local account) ~~and project entries~~; a change of role or of a project
 list is an audit row ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
+*(Amended 2026-10-04: a restricted project's entries are on the project's own access list,
+`GET …/projects/{project}/access`, which the tenant's administrators read, and not in the member
+list: every member, a viewer included, reads the member list, and an entry there would name a
+restricted project to members who must not learn it exists (D3). The member list shows the effective
+role, every origin with its own role — the mapping, the grant — and whether the person has a local
+account.)* *(Amended after the security review, 2026-10-04: and, to the tenant's administrators only,
+the person's e-mail address, which tells two persons of one name apart; everyone else reads `null`.
+The access list shows it too, being the administrators' to read.)*
 
 **D8 — What a `viewer` cannot do is as fixed as what a `member` can.** A `viewer` answers no
 question, books no time, uploads nothing, moves nothing; the UI hides what the role forbids

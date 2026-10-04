@@ -1,10 +1,13 @@
 # Tenant isolation and visibility inside a tenant
 
-How one tenant's data stays out of another tenant's reach, and who inside a tenant sees which
-project, ticket, act, event and time entry, as built on 2026-10-03. What a token or an agent
-may do with what it can see is [tokens.md](tokens.md); how a request reaches the backend at
-all, and where the database credentials live, is [trust-boundaries.md](trust-boundaries.md);
-what becomes of an upload's bytes is [attachments.md](attachments.md).
+How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
+role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
+ticket, act, event and time entry, as built on 2026-10-04. What a token or an agent may do with
+what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
+database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
+come from, and when a mapped membership follows them, is
+[identity-provider.md](identity-provider.md); what becomes of an upload's bytes is
+[attachments.md](attachments.md).
 
 ## Two lines
 
@@ -63,20 +66,26 @@ restricted token sees only its tenant's membership and itself there ([tokens.md]
 | runtime | nothing | only what the migrations grant it; the migration run names it in the session setting `cowork.runtime_role` | `cowork serve` |
 
 The runtime role's grants are narrow: `UPDATE` only where the API changes something — column
-by column on the tenants, projects, tokens, tickets, questions, comments, stakes, time
-entries, persons, local accounts and sessions, table-wide on `ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
-`ticket_interest`, `idempotency_keys`, `sessions`, `login_attempts` and `login_locks`, and only
+by column on the tenants, projects (their restriction among them), tokens, tickets, questions,
+comments, stakes, time entries, persons (the identity provider's columns among them), local
+accounts, sessions (the groups refresh's among them), memberships and group mappings (a role and a
+version each) and a project's access list (its role), table-wide on `ticket_counters`, `idempotency_keys` and
+`login_locks` — `DELETE` only on `ticket_links`, `ticket_interest`, `idempotency_keys`, `sessions`,
+`login_attempts`, `login_locks`, `memberships`, `group_mappings` and `project_access`, and only
 `INSERT` and `SELECT` on `audit_events`, which makes the audit record append-only by grant
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3).
 `TestTheAuditRecordIsAppendOnly` shows that `UPDATE`, `DELETE`, `TRUNCATE` and switching
 row-level security off are refused, and that a grant to itself grants nothing. The role
-inserts a tenant, a person, a membership, a token, a session or a local account only where a
-policy of migrations
-[15](../../backend/internal/store/migrations/000015_local_accounts.up.sql) and
-[16](../../backend/internal/store/migrations/000016_sessions.up.sql) admits it — an
-administrator of the current tenant, a global administrator creating a tenant, the person for
-their own token and session, or a named system actor — and updates only the columns those
-grants list (`TestPoliciesOfThePersonsAndTheirAccounts`, `TestPoliciesOfTheSessions`).
+inserts a tenant, a person, a membership, a token, a session, a local account, a group mapping or
+an entry of an access list only where a policy of migrations
+[15](../../backend/internal/store/migrations/000015_local_accounts.up.sql),
+[16](../../backend/internal/store/migrations/000016_sessions.up.sql) and
+[20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)–[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql)
+admits it — an administrator of the current tenant, a global administrator creating a tenant, the
+person for their own token and session, or a named system actor: the login, the start-up
+synchronisation, the identity provider — and updates only the columns those grants list
+(`TestPoliciesOfThePersonsAndTheirAccounts`, `TestPoliciesOfTheSessions`). A policy reads settings
+the process itself writes, so these policies hold a defect, not a compromised process (below).
 
 `cowork migrate` refuses a runtime role that is the owner role by name, and checks the
 runtime role from the owner's connection before and after the run
@@ -111,9 +120,9 @@ which have no tenant at all:
 
 | Table | Its policy admits |
 |---|---|
-| `tenants` | the row inside its own tenant's transaction, and to its members; updates only inside its own transaction; read by the login and the start-up synchronisation named in `app.job`, so the login can ask whether any tenant exists; inserted by a global administrator or the synchronisation |
-| `users` | the person, everyone who shares the current tenant with them, and the login and the synchronisation; inserted by an administrator of the current tenant (never a global administrator) or the synchronisation, updated by the administrators of the accounts their tenant manages and by the synchronisation |
-| `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a marked grant inserted by an administrator into their own tenant, by a global administrator for themselves as `admin`, or by the synchronisation |
+| `tenants` | the row inside its own tenant's transaction, and to its members; updates only inside its own transaction; read by the login, the start-up synchronisation and the identity provider named in `app.job`, so a login can ask whether any tenant exists; inserted by a global administrator or the synchronisation |
+| `users` | the person, everyone who shares the current tenant with them, the login and the synchronisation, and the identity provider every person; a tenant's administrator also the persons a lookup by address or username names (`app.person_lookup`, below); inserted by an administrator of the current tenant (never a global administrator, never a person of the identity provider), by the synchronisation, or by the identity provider (only a person of the provider, without a username); updated by the administrators of the accounts their tenant manages, by the synchronisation, and by the identity provider (only its own persons) |
+| `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a grant inserted by an administrator into their own tenant, by a global administrator for themselves as `admin`, or by the synchronisation, and changed and removed by an administrator of the tenant; a mapped membership inserted, changed and removed by the identity provider alone |
 | `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; inserted for the person's own account only |
 | `idempotency_keys` | the person's own rows, and every row to the expiry job named in `app.job` |
 | `audit_events` | a tenant's rows inside that tenant, an installation-level row to the person it names; a row is inserted only into the context it belongs to |
@@ -121,11 +130,29 @@ which have no tenant at all:
 | `sessions` | the person's own rows, the one row whose hash the transaction names in `app.session_hash`, the administrators of a managed account, a global administrator for reading, and the two jobs that end sessions; inserted for the person's own only |
 | `login_attempts`, `login_locks` | the login, its expiry job and the synchronisation; the administrators of a managed account read and clear the rows of its username |
 
+Two tenant-bound tables carry policies beside `tenant_isolation`. `group_mappings` is read across
+tenants by the identity provider, which derives a person's memberships in every tenant at once, and
+the bootstrap tenant's mapping is inserted by the synchronisation
+([migration 21](../../backend/internal/store/migrations/000021_group_mappings.up.sql)). On it and
+on `project_access` a write needs an administrator of the current tenant in the data layer as well
+as in the handler: `AS RESTRICTIVE` policies, which a write must pass in addition to whatever a
+permissive policy admits — `group_mappings_admin_insert`, `…_update`, `…_delete` (the bootstrap's
+insert excepted) and `project_access_admin_insert`, `…_update`, `…_delete`
+([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql)).
+A project's restriction is held the same way, by a trigger, because a policy sees the row and not
+the column and a member may rename a project: `projects_restriction_guard`, `BEFORE UPDATE OF
+restricted`, refuses a change of `restricted` unless the caller is an administrator of the tenant
+(SQLSTATE `42501`) — a superuser, whom row-level security does not bind either, excepted
+(`TestPoliciesOfThePersonsAndTheirAccounts`).
+
 At the start of every transaction the store sets `app.tenant_id`, `app.user_id`,
 `app.restricted_project_id`, `app.job` and `app.session_hash` — the hash of the session cookie
 a request presented, which is how a request finds its own session row — with
 `set_config(…, true)`, which dies with the
-transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). The person
+transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). One transaction
+sets one more: the lookup of a person a tenant's administrator grants a role to names the address
+or username in `app.person_lookup`, read through `app_person_lookup()`
+([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`). The person
 is the authenticated caller, carried in the context and never a call site's argument
 ([`store/caller.go`](../../backend/internal/store/caller.go)); the tenant is the one the
 boundary admitted, which every handler passes on. The policies read the settings through
@@ -140,8 +167,9 @@ Every query on cowork's data runs inside one of the store's wrappers — `InTena
 `Installation`, which are read-only transactions; `Mutate`, which commits a write only
 together with an audit row per act; `RunJob`, a background job under a system actor — or in
 the token and session lookups, the last-used write and the session's idle clock, the login's
-reads and the transaction that counts and decides a login attempt, which set their own
-context. The connection pool is
+reads, the transaction that counts and decides a login attempt, the person lookup, the claim of a
+groups refresh, and the identity provider's transactions — a login, the application of a refresh's
+answer, a token's gate check — which set their own context. The connection pool is
 unexported; outside the wrappers the store reads only the schema version and the role catalog
 for its start-up checks, and holds the listener connection of the event stream
 ([`store/store.go`](../../backend/internal/store/store.go)).
@@ -231,14 +259,102 @@ parent or a ticket a block waits on that the caller cannot see is left out of th
 hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
 a ticket's `open_prerequisites` count only the blockers the caller sees.
 
+## Members, grants and group mappings
+
+Who belongs to a tenant is `memberships`, and a person has up to two rows in a tenant, one per
+source ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D2–D4; [`api/members.go`](../../backend/internal/api/members.go)):
+
+- **A mapped membership** is derived by the identity provider from the person's groups and the
+  tenant's group mappings — the highest role the mappings give — at a login, a groups refresh, a
+  token's gate check, and at once when an administrator makes, changes or removes a mapping, for
+  every person of the configured issuer whose stored groups hold the group, who is active and whom
+  the gate admitted at their last login, refresh or check
+  ([identity-provider.md](identity-provider.md#memberships-follow-the-groups);
+  `TestGroupMappingsDeriveAtOnce`, `TestARederivationLeavesWhoCannotAct`). Nothing is derived for
+  a person outside the gate, who keeps the memberships they had. Nothing else writes one: the policies
+  admit its insert, change and removal to the identity provider's transactions alone. An
+  administrator takes a person's mapped membership away only through the mapping, which applies to
+  everyone in the group, or at the issuer.
+- **A grant** is an administrator's, marked as such: added for a person who exists
+  (`POST …/members`), its role set (`PUT …/members/{person_id}/grant`) or removed
+  (`DELETE …/grant`). No derivation touches it, and it touches no mapped membership.
+- **The effective role** is the higher of the two. The member list shows every source with its own
+  role (`origins`) and whether the person has a local account, to every member of the tenant
+  ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+  D7; `TestLoginThroughDex`); the person's e-mail address, which tells two persons of one name apart,
+  to the tenant's administrators only — `null` to everyone else, and for a person without one
+  (`addressFor`; `TestAdministratorsSeeTheAddress`).
+
+**A group mapping** gives the members of a group of the issuer a role in one tenant: the name
+matched exactly, case and all, against the groups claim; one mapping per group and tenant
+(`409 mapping_exists`); several matched groups give the highest role. A change of its role takes
+`If-Match`. `includes_caller` tells the editor whether their own groups, as of their last login or
+refresh, hold it (`TestTheMappingEditorsOwnRole`). A tenant's administrator may map any group name
+the issuer could send, `admin` included: everyone behind the gate whose stored groups hold it holds
+the role at once, and whoever joins the group at the issuer from their next login — the mapping is
+the tenant's word, the group the issuer's ([H-31](#h-31)).
+
+**The person lookup.** `POST …/members` names the person by an e-mail address — a value with `@`,
+compared without regard to case with the address the issuer asserted at the person's last login,
+never one the issuer marked unverified, and only among the persons of the configured issuer, so
+that without a provider an address finds nobody — or by a local account's username, with or without
+`local:`, normalised as the login normalises it. The person must exist and be active: one who never
+logged in through the issuer and has no local account is `404 person_not_found`; an address two
+active persons share is `409 person_ambiguous`, and nobody is granted; a grant that exists is
+`409 grant_exists`. The lookup runs in the administrator's transaction in their tenant and names the
+key in `app.person_lookup`: the `users` policy admits the persons that match it and no other person
+of the installation ([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`;
+`TestAddMemberByAddressOrUsername`). How far the issuer's address can be trusted is
+[identity-provider.md](identity-provider.md#h-26) H-26; what the lookup and a mapping tell an
+administrator about persons beyond their tenant is [H-31](#h-31).
+
+**Who may.** The tenant's administrators, never an agent — the hard-off rule "administration"
+([tokens.md](tokens.md)). Every act that can give access takes a browser session: adding a member,
+setting a grant, making or changing a mapping, restricting or opening a project, putting a person on
+its access list. Removing a grant, a mapping or an access entry only takes access away, and an
+administrator's `admin`-scope token may do it too ([tokens.md](tokens.md#what-only-a-session-does)).
+The mappings and a project's access list are read by the tenant's administrators — with a token's
+`read` scope — and the member list by every member.
+
+**`409 last_admin`.** A change of a grant or of a mapping that would leave the tenant without an
+administrator who can log in — mapped or granted, active, and a local account or a person of the
+configured issuer whom the gate admitted at their last login, refresh or check — is refused and
+changes nothing, the administrator's own grant and their own mapping included (`lastAdmin`;
+`TestGrantsAndTheLastAdministrator`, `TestTheMappingEditorsOwnRole`,
+`TestTheLastAdministratorMustBeAbleToAct`). Each of these changes takes the tenant's lock first
+(`LockTenant`), so two administrators who take each other's role away at the same moment are
+decided one after the other, and the second meets `last_admin`
+(`TestTwoAdministratorsCannotRemoveEachOther`). Adding a member and the access list take no lock and
+meet no check: they take no administrator away. A derivation at a login, a refresh or a token's gate
+check is never refused ([identity-provider.md](identity-provider.md#h-29) H-29), and a deactivation
+is not held to the rule ([local-accounts.md](local-accounts.md#h-32) H-32).
+
+**Every change is recorded** — a grant, a mapping, a restriction and an access entry by the
+administrator; the memberships a mapping's change derives by `system:identity-provider` with the
+cause `mapping`, in the same transaction — and announced as `membership.changed`
+([below](#the-event-stream-carries-what-its-subscriber-could-read)).
+
 ## The project restriction
 
-A restricted project is visible to the tenant's administrators and to the persons on its list
-(`project_access`), each with the lower of their tenant role and their entry
-([`projects.go`](../../backend/internal/api/projects.go) `projectRole`; ADR 0034 D3). No
-route restricts a project or writes its list: the runtime role may not update
-`projects.restricted` and may only read `project_access`. Today the restriction therefore
-applies only to projects and lists written past the API, the way the test fixture writes them.
+A restricted project is visible to the tenant's administrators and to the persons on its access
+list (`project_access`), each with the lower of their tenant role and their entry, `member` or
+`viewer` ([`projects.go`](../../backend/internal/api/projects.go) `projectRole`; ADR 0034 D3). An
+administrator restricts or opens a project with `PUT …/projects/{project}/restriction` — `If-Match`
+on the project's version, a browser session only, recorded as the project's `updated` — and keeps its
+list with `GET`, `PUT` and `DELETE …/projects/{project}/access/{person_id}`: the person must be a
+member of the tenant (`404 person_not_found`), putting a person on the list or changing their entry
+takes a session, taking one off a token as well (`TestProjectRestrictionAndAccessList`,
+`TestRolesFromTheIdentityProviderHold`). The list may be written before the project is restricted,
+so nobody on it loses the project in between; its entries count while the project is restricted.
+The runtime role may change `projects.restricted` and nothing else of a project's restriction, the
+trigger lets only a tenant administrator change it, and writing the list needs a tenant
+administrator in the data layer as well (above). An entry shows the person's e-mail address: the
+list is the administrators' to read.
+
+**The entries are on the project's list, not in the member list.** Every member, a viewer included,
+reads the member list, and an entry there would name a restricted project to members who must not
+learn it exists; the access list is read by the tenant's administrators alone (ADR 0034 D7).
 
 A token restricted to a project carries the project into `app.restricted_project_id`, which
 narrows `app_project_visible` to it. At the boundary it reaches only the routes with
@@ -310,6 +426,20 @@ the predicates again
 ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
 D2, D3). A replay after a reconnect is filtered the same way. `TestEventStream` checks the
 tenant, the project restriction and the confidential rule.
+
+**`membership.changed`.** An act on who belongs to the tenant or who sees a project — a grant, a
+derived membership, a mapping, a project's restriction, an entry of an access list — is published
+in its transaction as well, with the keys of what changed and an audience, and sent as
+`{person_id, project_id, mapping_id}`, each where it applies, never content
+([`store/notify.go`](../../backend/internal/store/notify.go) `MembershipChange`). A membership and a
+restriction reach every member of the tenant: the member list is theirs to read, and a project
+restricted or opened was visible to them at one of the two moments. A mapping reaches the tenant's
+administrators, who alone read the mappings. An access entry reaches the administrators and the
+person it names, never the members who do not see the project (`Filter.Admits`;
+`TestMembershipAudiences`, `TestMembershipEventsReachTheirAudience`). The stream of a token
+restricted to a project hears, of these, only the events that name its project, or name its own
+person and no project: the token knows nothing of the tenant beyond its project
+(`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`).
 
 The filter follows the person: every twenty seconds the heartbeat checks the token and the
 membership again ([tokens.md](tokens.md) H-7) and recomputes the visible projects with the
@@ -397,8 +527,8 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
 Each reveals at most that such a ticket or project exists — for the rank, at most that hidden
 tickets were moved or filed — and who acted on it when — never its content. Live as soon as a
 tenant has a confidential ticket, which a ticket classified `live` or `boundary` is until an
-administrator lifts the flag; a restricted project only the test fixture can make today. A
-tenant with neither has nothing to reveal.
+administrator lifts the flag, or a restricted project, which a tenant's administrator makes in a
+browser session. A tenant with neither has nothing to reveal.
 
 <a id="h-4"></a>
 ### H-4 — The event channel is readable by any role that can connect to the database
@@ -428,6 +558,29 @@ record: the API and the audit record have every act, and a refetch goes through 
 predicates. What is lost is the stream's continuity: a client that ignores `resync` shows a
 stale view.
 
+<a id="h-31"></a>
+### H-31 — A tenant's administrator can bring any group's people into their tenant, and learn who exists
+
+Live in an installation with several tenants whose people log in through one identity provider, or
+hold local accounts. Every tenant shares the issuer's one namespace of groups, and a person belongs
+to the installation, not to a tenant. A tenant's administrator may map any group
+([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+D7 as decided), and the **mapping** derives at once a membership for every person of the configured
+issuer behind the gate whose stored groups hold it, whichever tenants they belong to: mapping a group
+every person holds, or a guessed department's, brings them all into the administrator's tenant —
+their names and e-mail addresses in its member list, the tenant in their own list of tenants — with
+the mapped role until the mapping goes; removing it takes the memberships away again, and the record
+keeps both. The **person lookup** answers whether an address or a username names an active person of
+the installation: a `201` that grants them, `404 person_not_found`, or `409 person_ambiguous`, which
+tells without granting anybody that two persons share an address. Both acts are an administrator's,
+take a browser session, and are recorded with the administrator as actor — the derived memberships
+as `system:identity-provider` in the same request — but neither asks the persons, or the tenants
+they belong to. That crosses the line between clients
+[ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) draws between
+tenants. Mitigation: tenants whose administrators must not learn about each other's people belong in
+installations of their own; within one installation nothing keeps an administrator to the groups of
+their own people.
+
 ### The owner credential in the serving process
 
 The split of the two roles protects against a compromised serving process only while that
@@ -442,9 +595,13 @@ installation keeps the split against defects, not against a compromise.
 
 Row-level security constrains the forgotten filter, never the deliberate one (ADR 0021 D7).
 The runtime role sets its own context, so a process that runs SQL of an attacker's choosing as
-that role reads and writes every tenant's rows within the role's grants. What it still cannot
-do is what the grants withhold: change a policy or switch `FORCE` off, rewrite or delete the
-audit record, create a tenant, a person, a membership or a token, or change a token's scope,
-restriction, agent flag, capabilities or expiry, or clear a token's revocation — the owner's
+that role reads and writes every tenant's rows within the role's grants. The policies that admit
+a system actor — the login, the start-up synchronisation, the identity provider — admit whoever
+names it in `app.job`, and a person's own rows whoever names the person: such a process also
+creates tenants, persons, global administrators, memberships, group mappings, sessions and tokens
+for any person, and changes any person's groups and administrator flag. What it still cannot do
+is what the grants withhold: change a policy or switch `FORCE` off, rewrite or delete the audit
+record, change a token's scope, restriction, agent flag, capabilities or expiry, bind a person to
+another username or another identity of the issuer, or clear a token's revocation — the owner's
 trigger `tokens_revocation_is_final` refuses that, and the runtime role can neither drop nor
 disable it. It can revoke any token.

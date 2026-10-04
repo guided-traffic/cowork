@@ -5,7 +5,10 @@
 Accepted, amended 2026-10-02 (D1: system actors, the ticket's key, the capabilities, the
 named other tickets, comment texts kept out; D2: an act is required and published; D4: an
 installation-level row is read by the person it names; D6: the activity withholds what a
-reader may not see) and 2026-10-03 (D1: the actors and actions of the login). Date: 2026-10-01. Decided by the owner as the answer to the catalog
+reader may not see), 2026-10-03 (D1: the actors and actions of the login) and 2026-10-04 (D1: the
+action `login_refused`, the column `source_hash`, the system actor `system:identity-provider`; after
+the security review, no e-mail address in `before` or `after`).
+Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
 owner with the question and not objected to.
@@ -24,7 +27,11 @@ runtime role, which owns nothing.
 **Built** (phase 2, 2026-10-02): D1–D6 — migration 5, `store.Mutate` and the routes of the
 tenant's audit view, a ticket's activity and the downloads and exports. D3's `SECURITY
 DEFINER` functions arrive with the purge and the tenant deletion; D6's per-token view and the
-global administrator's reading arrive with their routes; D7 needs nothing yet.
+global administrator's reading arrive with their routes; D7 needs nothing yet. Since phase 4
+(2026-10-04) the rows carry `source_hash` and the identity provider's acts
+([migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql),
+[`store/identity.go`](../../backend/internal/store/identity.go)); the installation-level rows of a
+system actor name no person and are read by no route.
 
 ## Context
 
@@ -48,17 +55,22 @@ write it.
 | `tenant_id` | the tenant, or null for installation-level acts (a tenant created or deleted, a global administrator granted) |
 | `actor_user_id` | the person; ~~never null~~ *(amended 2026-10-02: null exactly when `actor_system` names a background job's system actor, `system:<name>`; a CHECK holds one of the two)* *(amended
 2026-10-03: the login's own transaction, where no person is known yet, acts as `system:login`,
-and the start-up synchronisation as `system:bootstrap`)* |
+and the start-up synchronisation as `system:bootstrap`)* *(amended 2026-10-04: what the identity
+provider decides — a login through it, a session's groups refresh, a token's gate check, the
+memberships it derives — is `system:identity-provider`'s, also where an administrator's request
+records it: the derivation that follows a change of a group mapping is the system actor's act in
+the administrator's transaction, and carries the request, not the administrator)* |
 | `agent` | null, or the agent mark from the request (name, model, session) when an agent acted in the person's name; *(added 2026-10-02)* `agent_capabilities` the capability set that applied ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D5) |
 | `token_id` | the personal access token used, or null for a browser session |
 | `entity_type`, `entity_id` | what changed |
 | `ticket_id` | the ticket the entity belongs to, denormalised, so a ticket's activity is one index scan; *(added 2026-10-02)* `ticket_key` its key, which survives the ticket's purge |
-| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* |
-| `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it |
+| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* |
+| `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it; *(amended after the security review, 2026-10-04)* never an e-mail address, which no append-only row could erase on request — a changed address is recorded as `email_changed: true`; a person's group lists are recorded |
 | `refs` *(added 2026-10-02)* | the other tickets the payload names — a link's other end, the ticket a block waits on, the prerequisites a close overrode, a parent; D6 withholds the payload from a reader who cannot see one of them |
 | `reason`, `note` | the transition's reason or verification note, the override's reason |
 | `explained_by_comment_id` | the comment written in the same request (ADR 0015 D2) |
 | `idempotency_key`, `request_id` | the request's keys |
+| `source_hash` *(added 2026-10-04)* | the keyed hash of the client address of the request the row was written for ([ADR 0035](0035-personal-access-tokens.md) D2); null for the rows of jobs and of the start-up, and for every row written before the column existed; shown by no route |
 | `created_at` | the time |
 
 **D2 — The request layer writes the row, in the same transaction as the mutation.** No

@@ -15,12 +15,15 @@ the mechanics are [api.md](api.md)).
    `Location` headers from `components/headers.yaml`, and `default:
    $ref: './components/responses.yaml#/Problem'`. The default security takes either credential,
    the bearer token or the session cookie; an operation has one of three shapes and no other
-   (`TestEveryOperationIsDeclaredCompletely`): the default, `[{sessionCookie: []}]` alone for the
-   rare route a token must not call — it is added to the test's `sessionOnly` set and to
-   [ADR 0035](../adr/0035-personal-access-tokens.md) D5 — or `security: []` for what a client
+   (`TestEveryOperationIsDeclaredCompletely`): the default; `[{sessionCookie: []}]` alone for a
+   route that can give access or make something that outlives a leaked token — the rule of
+   [tokens.md](../security/tokens.md#what-only-a-session-does); one that only takes access away
+   keeps the default — added to the test's `sessionOnly` set and to
+   [ADR 0035](../adr/0035-personal-access-tokens.md) D5; or `security: []` for what a client
    reads or does before it authenticates, which as a write also carries `x-cowork-origin-check:
-   true`. A creating `POST` takes the `IdempotencyKey` parameter, an overwriting write `IfMatch`,
-   a list `Cursor` and `Limit`.
+   true`. Only the identity provider's callback takes query parameters it does not declare
+   (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
+   write `IfMatch`, a list `Cursor` and `Limit`.
 2. **`make generate`.** The build now fails until `Server` implements the new method of
    `apigen.StrictServerInterface`.
 3. **The handler**, a method of `Server` in the family's file under
@@ -31,7 +34,11 @@ the mechanics are [api.md](api.md)).
    write that changes nothing; errors as `problem.*`, never ad-hoc JSON. A route that names no
    tenant — the person's own, the login — reads `principal(ctx)` instead of `tenantFrom(ctx)`, and
    a handler never reads the cookie or the `Authorization` header itself: `authenticate` has
-   resolved them ([api.md](api.md)).
+   resolved them ([api.md](api.md)). An act that changes who belongs to a tenant or who sees a
+   project sets `Event.Membership` with the keys it changes and its audience, so the streams hear
+   it as `membership.changed` ([events.md](events.md#publication)); one that can change a tenant's
+   administrators takes the tenant's lock first (`w.LockTenant`) and checks `lastAdmin` before it
+   commits ([data-access.md](data-access.md#advisory-locks)).
 4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
    the visibility predicate or naming its exemption ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
@@ -62,7 +69,9 @@ the mechanics are [api.md](api.md)).
    matches the text. A table without a tenant goes on the named list there and in
    [ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D6, with a
    policy of its own that reads settings only through `app_tenant_id()`, `app_user_id()` or a
-   `NULLIF`.
+   `NULLIF`. A table whose writes only a tenant's administrators may make gets them in the data
+   layer as well, through `AS RESTRICTIVE` policies on `app_is_tenant_admin()`, as
+   `group_mappings` and `project_access` do ([data-access.md](data-access.md#the-settings-the-policies-read)).
 3. The grants in a `DO` block to `current_setting('cowork.runtime_role')`: `SELECT`, `INSERT`,
    `UPDATE` on the columns a route changes, `DELETE` only where rows are really removed.
 4. Every query that reads it from a ticket or a project joins that ticket and calls
@@ -121,10 +130,15 @@ the mechanics are [api.md](api.md)).
    expose it: the value under `backend.config` in [`values.yaml`](../../deploy/helm/cowork/values.yaml),
    the `env` entry in [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml),
    and the line in the README's values block. A secret comes from an existing Secret with a
-   configurable key (`existingSecret` and `keys.…`, as `session`, `storage` and `localAdmin` do)
+   configurable key (`existingSecret` and `keys.…`, as `session`, `storage`, `localAdmin` and
+   `auth.oidc` do)
    ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3);
    an inline value is for a throw-away installation only — the database URLs and the local
-   administrator have one — and the chart says so when it is used.
+   administrator have one, the server key and the identity provider's client secret none — and the
+   chart says so when it is used. A variable that belongs to a switch, as every `COWORK_OIDC_*`
+   belongs to `COWORK_OIDC_ISSUER`, is an error without it (`oidcVariables` in
+   [`config/oidc.go`](../../backend/internal/config/oidc.go)) and is rendered by the chart only with
+   it.
 4. A limit nginx must stay above also moves the computation in
    [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl).
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).

@@ -6,7 +6,10 @@ Accepted, amended 2026-10-02 (D2: a separate owner role is mandatory; D1, D3, D6
 concrete by the first implementation: the guarded setting functions, the settings besides the
 tenant, the policy of every named table) and 2026-10-03 (D3, D6: the settings and the policies
 of the sessions and of the local login; D1: a migration that rewrites rows lifts the force for
-its own transaction only, written when the rank's migration needed it). Date: 2026-09-30.
+its own transaction only, written when the rank's migration needed it) and 2026-10-04 (D3: the
+job `identity-provider` and the setting `app.person_lookup`; D6: the identity provider's policies
+and the restrictive policies of the administration, and — after the security review — the trigger
+that holds a project's restriction to the tenant's administrators). Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
 over application filtering alone, over a schema per tenant, and over a database per tenant.
@@ -38,7 +41,10 @@ add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_lo
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
 them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force
 on `tickets` for its backfill, a unit test holds every lifted force to its restore in the same
-file, and the integration tier reads the force back after the run.
+file, and the integration tier reads the force back after the run. Migrations 20 to 22 (phase 4,
+2026-10-04) widen the policies of `users`, `tenants` and `memberships` for the identity provider,
+add `group_mappings` with the canonical policy and three more, and hold the writes of
+`group_mappings` and `project_access` to a tenant's administrators with restrictive policies.
 
 ## Context
 
@@ -114,7 +120,14 @@ actors more — `login` (the login's own transaction, where no person is known y
 [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md))
 — and the policies of the tables they write admit them by that name. A policy that asks whether
 the person is a global administrator reads the flag through `app_is_global_admin()`, of the
-person in `app.user_id`.
+person in `app.user_id`. *(Amended 2026-10-04:)* `app.job` names one actor more,
+`identity-provider`: the identity provider's own transactions — a login through it, a session's
+groups refresh *(amended after the security review: the transaction that applies its answer; the
+short one that claims it runs as the person and names no job)*, a token's gate check — and, inside an administrator's transaction, the derivation
+that follows a change of a group mapping, which names the job for that part only and clears it
+after. A seventh setting, `app.person_lookup`, carries the e-mail address or username a tenant's
+administrator adds a member by, in that lookup's transaction alone, read through
+`app_person_lookup()`.
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the
@@ -156,7 +169,23 @@ and the bootstrap job, which revoke tokens when they deactivate an account. What
 administrators manage is decided in one place, `local_accounts.managing_tenant_id` — the tenant
 that created the account — through `app_manages_account()` and `app_manages_username()`. A
 global administrator still reads only the tenants they are a member of; the reading of all
-tenants is not built.
+tenants is not built. *(Made concrete 2026-10-04:)* the identity provider reads every person —
+the derivation of a mapping finds the persons whose groups hold its group — and inserts and updates
+only the persons of the provider (`oidc_issuer` set, no username), never a local account; it reads
+whether any tenant exists; it reads every tenant's `group_mappings`; and it alone inserts, changes
+and removes a `mapping` membership, while a `grant` membership is changed and removed by an
+administrator of its tenant alone. A tenant's administrator reads, besides the persons who share the
+tenant, the persons the lookup in `app.person_lookup` names. `group_mappings` carries `tenant_id`
+and the canonical policy; the bootstrap inserts the administrator group's mapping. On
+`group_mappings` and `project_access` every write must also pass an `AS RESTRICTIVE` policy that
+names an administrator of the current tenant (the bootstrap's insert excepted): a restrictive policy
+is ANDed with the permissive ones, so no later permissive policy widens who writes them. *(Added
+after the security review, 2026-10-04:)* a rule on one column, which a policy cannot state because
+it sees rows, is a `BEFORE UPDATE OF` trigger: `projects_restriction_guard`
+([migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql))
+refuses a change of `projects.restricted` unless the caller is an administrator of the tenant, while
+a member still changes the project's other settings; a superuser, whom no policy binds either, is
+left to it.
 
 **D7 — Widening the boundary is a migration, and this record says how.** When the product
 needs a cross-tenant view, the policy of the tables concerned is amended
@@ -221,3 +250,4 @@ policy, not a bypass.
 - [ADR 0004](0004-cowork-is-a-team-product.md) D4 — no bypass for the administrator
 - [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D5 — the migration run this record leaves as it is
 - [`backend/internal/store/migrations/000001_tenants.up.sql`](../../backend/internal/store/migrations/000001_tenants.up.sql) — the first table that gets its policy
+- [migrations 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)–[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql) — the identity provider's and the administration's policies

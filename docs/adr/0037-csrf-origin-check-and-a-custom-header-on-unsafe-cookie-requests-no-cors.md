@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, amended 2026-10-03 (D1, D5, D6 made concrete by the first implementation). Date:
+Accepted, amended 2026-10-03 (D1, D5, D6 made concrete by the first implementation) and
+2026-10-04 (D5, D6: the identity provider's callback and its base URL built). Date:
 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
@@ -13,8 +14,11 @@ with the question and not objected to.
 request — and the backend's check is built with the sessions: D1–D3, D5 for the local login and
 the logout, and D6
 ([`api/session.go`](../../backend/internal/api/session.go) `csrf`,
-[docs/security/csrf.md](../security/csrf.md)). Not built: the OIDC callback of D5, which waits
-for the identity provider.
+[docs/security/csrf.md](../security/csrf.md)). ~~Not built: the OIDC callback of D5, which waits
+for the identity provider.~~ **Built** (phase 4, 2026-10-04): the OIDC callback of D5, protected
+by the `state` and the `nonce` of
+[ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md) D1
+in a sealed cookie ([docs/security/identity-provider.md](../security/identity-provider.md)).
 
 ## Context
 
@@ -63,7 +67,11 @@ still subject to the origin check of D1 (a cross-site login attempt is refused).
 carries no session, so what it is held to is the origin half of D1 — the `Origin`, or without
 one the `Referer`, must be `COWORK_BASE_URL` — and not the custom header. The API document marks
 such a route `x-cowork-origin-check`, and the unit test over the document requires the mark on
-every public write. Logout is held to both halves.)*
+every public write. Logout is held to both halves.)* *(Amended 2026-10-04: the callback is built
+as D5 says, and so is its start, `GET /auth/oidc/login`: both are `GET`s without a session and
+outside D1; the start decides nothing a forged link could use, and the callback makes a session only
+when the returned `state` is the one sealed — with the nonce and the PKCE verifier — in the
+browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set.)*
 
 **D6 — `COWORK_BASE_URL` is required whenever a cookie login exists** (an issuer or a local
 account configured), and it must be the origin the browser sees — behind the Ingress, the
@@ -72,7 +80,8 @@ when every write answers `403 csrf`. *(Built 2026-10-03: the backend refuses to 
 `COWORK_BASE_URL` while the local administrator is configured, and a value with a path, a query,
 a fragment or a user is refused at start. The check fails closed: without an origin to compare
 with, no write of a cookie and no login passes — `403 csrf` naming the variable — and reads
-still work.)*
+still work.)* *(Built 2026-10-04 for the issuer as well: the backend refuses to start without
+`COWORK_BASE_URL` while `COWORK_OIDC_ISSUER` is set, whose redirect URI it is.)*
 
 ## Consequences
 
