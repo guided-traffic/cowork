@@ -680,8 +680,10 @@ full.
   `POST` safe to retry for 24 hours — the same request replays the stored answer, another one
   is `422`; an agent's creating `POST` must carry one.
 - **Lists.** `limit` (default 50, clamped to `COWORK_MAX_PAGE_SIZE`) and `cursor`, from the
-  previous page's `next_cursor`. The ticket lists and the tenant's time entries also take
-  numbered pages, `page` and `per_page` (`25`, `50`, `100`), with a total, up to row 10 000;
+  previous page's `next_cursor`. The ticket lists, the tenant's time entries, the audit record,
+  the members, the person's tokens and the projects also take numbered pages, `page` and
+  `per_page` (`25`, `50`, `100`; `50` without it, clamped like `limit`), answered with `total`,
+  `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
   the ticket lists answer `304` to an unchanged page's weak `ETag` in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
   `404`.
@@ -708,7 +710,7 @@ full.
 | `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` — or, for a session of the identity provider whose discovery names an `end_session_endpoint`, `200 {"end_session_url"}`: that endpoint with `client_id` and `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, for the browser to go to; cowork does not call it |
 | `GET /api/v1/me` | the calling person and their memberships — each with the effective role and its `origins`, `mapping` and `grant` with their own roles — whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
 | `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
-| `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only: a restriction names its tenant by slug (`restricted_tenant`) and its project by key (`restricted_project`, `null` where the person no longer sees the project or belongs to its tenant — the token reaches nothing then); `restricted_project_id`, the project's id, is deprecated and kept in `/api/v1` |
+| `GET /api/v1/me/tokens` | the person's tokens, newest first, revoked and expired ones included, numbered pages with a total — metadata only: a restriction names its tenant by slug (`restricted_tenant`) and its project by key (`restricted_project`, `null` where the person no longer sees the project or belongs to its tenant — the token reaches nothing then); `restricted_project_id`, the project's id, is deprecated and kept in `/api/v1` |
 | `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only. The `name` shows on every act made through the token, to whoever reads the act |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
 | `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
@@ -761,7 +763,7 @@ announced on the event stream as `membership.changed`.
 
 | Method and path | Does |
 |---|---|
-| `GET …/members` | every member reads it, and a global administrator without a role in the tenant, in a session: the members by person id, each with the effective role — the higher of the mapped and the granted one — every origin with its own role (`mapping`, `grant`), `local` for a person with a local account, and `email`: the person's address for the tenant's administrators, `null` for everyone else and for a person without one |
+| `GET …/members` | every member reads it, and a global administrator without a role in the tenant, in a session: the members by person id, each with the effective role — the higher of the mapped and the granted one — every origin with its own role (`mapping`, `grant`), `local` for a person with a local account, and `email`: the person's address for the tenant's administrators, `null` for everyone else and for a person without one; numbered pages with a total |
 | `POST …/members` | a session only: `{"person","role"}` grants a role to a person who exists — an e-mail address, compared without regard to case with the address the identity provider asserted at the person's last login — only one it marked verified, or, with `COWORK_OIDC_EMAIL_TRUSTED=true`, one it said nothing about; never one it marked unverified — among the persons of the configured issuer, or a local account's username, with or without `local:`; `201` with the member; `404 person_not_found`, `409 person_ambiguous` (an address several persons share), `409 grant_exists`; takes an `Idempotency-Key` |
 | `PUT …/members/{person_id}/grant` | a session only: `{"role"}` creates the member's grant or changes its role; the mapped membership is never touched; `404 person_not_found` for a person who is no member. A global administrator who does not hold `admin` in the tenant — no role there, or a lower one — sets their own grant here, their own id and any role: a marked grant made or its role changed, recorded in the tenant with them as its actor, never `409 last_admin`; a grant to anybody else is `403 forbidden` |
 | `DELETE …/members/{person_id}/grant` | removes the grant; a mapped membership stays; `204`, also when there was none |
@@ -797,9 +799,9 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 |---|---|
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
-| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before |
+| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; numbered pages with a total; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before — a CSV page carries no cursor, so a client reads several as numbered pages with `to` held at the moment it began |
 | `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
-| `GET …/projects` | the projects the caller can see, by key; `include_archived` |
+| `GET …/projects` | the projects the caller can see, by key; `include_archived`; numbered pages with a total |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
 | `GET …/projects/{project}` | one project |
 | `PATCH …/projects/{project}` | change its name, its description or its advisory WIP limits per state — `analysed`, `decided`, `in-progress`, `review`, `blocked` — a member with `write`, an agent too; `If-Match` |

@@ -1133,10 +1133,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -2310,10 +2321,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -2665,10 +2687,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -4300,10 +4333,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -4777,7 +4821,7 @@
     },
     "/api/v1/me/tokens": {
       "get": {
-        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with\na total (docs/adr/0048 D2).\n",
         "operationId": "listMyTokens",
         "parameters": [
           {
@@ -4785,6 +4829,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5324,7 +5374,7 @@
     },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
-        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe.\n",
+        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
         "operationId": "listAudit",
         "parameters": [
           {
@@ -5389,6 +5439,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5763,7 +5819,7 @@
     },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
-        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2).\n",
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2). Paged by cursor, or by number\nwith a total (docs/adr/0048 D2).\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -5771,6 +5827,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5931,6 +5993,7 @@
     },
     "/api/v1/tenants/{tenant}/projects": {
       "get": {
+        "description": "By key, paged by cursor, or by number with a total (docs/adr/0048 D2).\n",
         "operationId": "listProjects",
         "parameters": [
           {
@@ -5946,6 +6009,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {

@@ -26,6 +26,12 @@ export interface ListProjects$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+ */
+  page?: number;
+  per_page?: 25 | 50 | 100;
 }
 
 export function listProjects(http: HttpClient, rootUrl: string, params: ListProjects$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectList>> {
@@ -35,6 +41,8 @@ export function listProjects(http: HttpClient, rootUrl: string, params: ListProj
     rb.query('include_archived', params.include_archived, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.query('page', params.page, {});
+    rb.query('per_page', params.per_page, {});
   }
 
   return http.request(

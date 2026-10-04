@@ -47,6 +47,12 @@ export interface ListAudit$Csv$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+ */
+  page?: number;
+  per_page?: 25 | 50 | 100;
 }
 
 export function listAudit$Csv(http: HttpClient, rootUrl: string, params: ListAudit$Csv$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
@@ -61,6 +67,8 @@ export function listAudit$Csv(http: HttpClient, rootUrl: string, params: ListAud
     rb.query('to', params.to, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.query('page', params.page, {});
+    rb.query('per_page', params.per_page, {});
   }
 
   return http.request(

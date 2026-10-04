@@ -220,22 +220,37 @@ func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestO
 	}
 	const op = "listMembers"
 	scope := t.ID.String()
-	after, perr := s.uuidCursor(op, scope, req.Params.Cursor)
+	q := req.Params
+	lp, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
 	if perr != nil {
 		return nil, perr
 	}
-	size := s.h.pageSize(req.Params.Limit)
+	var after *uuid.UUID
+	if !lp.numbered {
+		if after, perr = s.uuidCursor(op, scope, q.Cursor); perr != nil {
+			return nil, perr
+		}
+	}
 	var rows []readq.ListMembersRow
+	var total int64
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		var err error
-		rows, err = r.ListMembers(ctx, readq.ListMembersParams{TenantID: t.ID, After: after, PageSize: limitArg(size)})
+		rows, err = r.ListMembers(ctx, readq.ListMembersParams{TenantID: t.ID, After: after, PageSize: lp.limit(), PageOffset: lp.offset()})
+		if err != nil || !lp.numbered {
+			return err
+		}
+		total, err = r.CountMembers(ctx, t.ID)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	rows, next := page(s.h, rows, size, op, scope, func(m readq.ListMembersRow) string { return m.ID.String() })
+	var next *string
+	if !lp.numbered {
+		rows, next = page(s.h, rows, lp.size, op, scope, func(m readq.ListMembersRow) string { return m.ID.String() })
+	}
 	out := apigen.ListMembers200JSONResponse{Items: []apigen.Member{}, NextCursor: nullableString(next)}
+	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	admin := t.Role == domain.RoleAdmin
 	for _, m := range rows {
 		out.Items = append(out.Items, memberView(m.ID, m.Username, m.DisplayName, m.Email, admin, m.Role, m.Sources, m.Roles, m.Local))
@@ -268,36 +283,51 @@ func (s *Server) ListAudit(ctx context.Context, req apigen.ListAuditRequestObjec
 	}
 	const op = "listAudit"
 	scope := t.ID.String()
-	before, perr := s.uuidCursor(op, scope, req.Params.Cursor)
+	q := req.Params
+	lp, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
 	if perr != nil {
 		return nil, perr
 	}
-	size := s.h.pageSize(req.Params.Limit)
+	var before *uuid.UUID
+	if !lp.numbered {
+		if before, perr = s.uuidCursor(op, scope, q.Cursor); perr != nil {
+			return nil, perr
+		}
+	}
 	params := readq.ListAuditForTenantParams{
-		TenantID: &t.ID, Actor: req.Params.Actor, Token: req.Params.Token, EntityType: req.Params.EntityType,
-		FromTime: req.Params.From, ToTime: req.Params.To, Before: before, PageSize: limitArg(size),
+		TenantID: &t.ID, Actor: q.Actor, Token: q.Token, EntityType: q.EntityType,
+		FromTime: q.From, ToTime: q.To, Before: before, PageSize: lp.limit(), PageOffset: lp.offset(),
 		Actions: []string{},
 	}
-	if req.Params.Action != nil {
-		for _, a := range *req.Params.Action {
+	if q.Action != nil {
+		for _, a := range *q.Action {
 			params.Actions = append(params.Actions, string(a))
 		}
 	}
 	var rows []readq.ListAuditForTenantRow
+	var total int64
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		var err error
-		rows, err = r.ListAuditForTenant(ctx, params)
+		if rows, err = r.ListAuditForTenant(ctx, params); err != nil || !lp.numbered {
+			return err
+		}
+		total, err = r.CountAuditForTenant(ctx, readq.CountAuditForTenantParams{TenantID: &t.ID, Actor: q.Actor, Token: q.Token,
+			EntityType: q.EntityType, FromTime: q.From, ToTime: q.To, Actions: params.Actions})
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	rows, next := page(s.h, rows, size, op, scope, func(a readq.ListAuditForTenantRow) string { return a.ID.String() })
+	var next *string
+	if !lp.numbered {
+		rows, next = page(s.h, rows, lp.size, op, scope, func(a readq.ListAuditForTenantRow) string { return a.ID.String() })
+	}
 	if wantsCSV(ctx) {
 		body := auditCSV(rows)
 		return apigen.ListAudit200TextcsvResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))}, nil
 	}
 	out := apigen.ListAudit200JSONResponse{Items: []apigen.AuditEvent{}, NextCursor: nullableString(next)}
+	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	for _, a := range rows {
 		out.Items = append(out.Items, auditView(a))
 	}

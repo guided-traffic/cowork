@@ -260,6 +260,10 @@ TokenList:
         $ref: '#/Token'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
@@ -361,6 +365,10 @@ MemberList:
         $ref: '#/Member'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 MemberAdd:
   type: object
   additionalProperties: false
@@ -498,6 +506,10 @@ AuditList:
         $ref: '#/AuditEvent'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 WipLimits:
   type: object
   additionalProperties: false
@@ -560,6 +572,10 @@ ProjectList:
         $ref: '#/Project'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 ProjectRestrictionSet:
   type: object
   additionalProperties: false

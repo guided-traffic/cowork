@@ -12,6 +12,45 @@ import (
 	"github.com/google/uuid"
 )
 
+const countAuditForTenant = `-- name: CountAuditForTenant :one
+SELECT count(*)::bigint AS events
+FROM audit_events a
+WHERE a.tenant_id = $1
+  AND ($2::uuid IS NULL OR a.actor_user_id = $2::uuid)
+  AND ($3::uuid IS NULL OR a.token_id = $3::uuid)
+  AND (cardinality($4::text[]) = 0 OR a.action::text = ANY ($4::text[]))
+  AND ($5::text IS NULL OR a.entity_type = $5::text)
+  AND ($6::timestamptz IS NULL OR a.created_at >= $6::timestamptz)
+  AND ($7::timestamptz IS NULL OR a.created_at < $7::timestamptz)
+`
+
+type CountAuditForTenantParams struct {
+	TenantID   *uuid.UUID
+	Actor      *uuid.UUID
+	Token      *uuid.UUID
+	Actions    []string
+	EntityType *string
+	FromTime   *time.Time
+	ToTime     *time.Time
+}
+
+// The rows of the tenant's audit record the filters select, for a numbered
+// page's total.
+func (q *Queries) CountAuditForTenant(ctx context.Context, arg CountAuditForTenantParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuditForTenant,
+		arg.TenantID,
+		arg.Actor,
+		arg.Token,
+		arg.Actions,
+		arg.EntityType,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	var events int64
+	err := row.Scan(&events)
+	return events, err
+}
+
 const listAuditForTenant = `-- name: ListAuditForTenant :many
 SELECT a.id, a.created_at, a.actor_user_id, a.actor_system, a.agent, a.agent_capabilities,
        a.token_id, a.token_name, a.entity_type, a.entity_id, a.ticket_key, a.action::text AS action, a.before,
@@ -28,7 +67,7 @@ WHERE a.tenant_id = $1
   AND ($7::timestamptz IS NULL OR a.created_at < $7::timestamptz)
   AND ($8::uuid IS NULL OR a.id < $8::uuid)
 ORDER BY a.id DESC
-LIMIT $9
+LIMIT $10 OFFSET $9
 `
 
 type ListAuditForTenantParams struct {
@@ -40,6 +79,7 @@ type ListAuditForTenantParams struct {
 	FromTime   *time.Time
 	ToTime     *time.Time
 	Before     *uuid.UUID
+	PageOffset int32
 	PageSize   int32
 }
 
@@ -66,7 +106,8 @@ type ListAuditForTenantRow struct {
 	ActorDisplayName  *string
 }
 
-// The tenant's audit record, newest first (docs/adr/0026 D6). Each filter is
+// The tenant's audit record, newest first (docs/adr/0026 D6): by id after a
+// cursor, or a numbered page by offset (docs/adr/0048 D1, D2). Each filter is
 // optional; actions combine with OR, the filters with AND.
 func (q *Queries) ListAuditForTenant(ctx context.Context, arg ListAuditForTenantParams) ([]ListAuditForTenantRow, error) {
 	rows, err := q.db.Query(ctx, listAuditForTenant,
@@ -78,6 +119,7 @@ func (q *Queries) ListAuditForTenant(ctx context.Context, arg ListAuditForTenant
 		arg.FromTime,
 		arg.ToTime,
 		arg.Before,
+		arg.PageOffset,
 		arg.PageSize,
 	)
 	if err != nil {

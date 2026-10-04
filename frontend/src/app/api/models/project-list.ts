@@ -4,5 +4,16 @@
 import { Project } from '../models/project';
 export interface ProjectList {
   items: Array<Project>;
+
+  /**
+   * The cursor of the next page; null at the end, and on a numbered page
+   */
   next_cursor: (string | null);
+  page?: number;
+  per_page?: number;
+
+  /**
+   * With page and per_page only
+   */
+  total?: number;
 }

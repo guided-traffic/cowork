@@ -38,10 +38,13 @@ members:
       address that tells two persons of one name apart, for the tenant's
       administrators; everyone else reads null — a global administrator who
       holds no role in the tenant and reads the list as part of its
-      administration too (docs/adr/0034 D2).
+      administration too (docs/adr/0034 D2). Paged by cursor, or by number
+      with a total (docs/adr/0048 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
     responses:
       '200':
         description: A page of members, by person id

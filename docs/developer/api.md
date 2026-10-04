@@ -396,10 +396,15 @@ list answers that `invalid_cursor`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
-- `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
-  `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
-  per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
-  `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
+- The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
+  `listMembers`, `listMyTokens` and `listProjects` — also take numbered pages: `page` with
+  `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
+  and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
+  beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
+  is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or `per_page` without `page`,
+  is `400 validation_failed` ([ADR 0048] D2). `tablePage` in [`cursor.go`](../../backend/internal/api/cursor.go)
+  reads both modes for every table but the two ticket lists, whose `paging` in
+  [`ticketlist.go`](../../backend/internal/api/ticketlist.go) also seals the rank's cursor.
 - The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
   them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank

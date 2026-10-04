@@ -62,29 +62,41 @@ func (s *Server) ListProjects(ctx context.Context, req apigen.ListProjectsReques
 	}
 	const op = "listProjects"
 	scope := t.ID.String()
-	size := s.h.pageSize(req.Params.Limit)
-	params := readq.ListProjectsParams{TenantID: t.ID, PageSize: limitArg(size)}
-	if req.Params.IncludeArchived != nil {
-		params.IncludeArchived = *req.Params.IncludeArchived
+	q := req.Params
+	lp, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
+	if perr != nil {
+		return nil, perr
 	}
-	if req.Params.Cursor != nil {
-		after, perr := s.cursors.decode(op, scope, *req.Params.Cursor)
+	params := readq.ListProjectsParams{TenantID: t.ID, PageSize: lp.limit(), PageOffset: lp.offset()}
+	if q.IncludeArchived != nil {
+		params.IncludeArchived = *q.IncludeArchived
+	}
+	if !lp.numbered && q.Cursor != nil {
+		after, perr := s.cursors.decode(op, scope, *q.Cursor)
 		if perr != nil {
 			return nil, perr
 		}
 		params.After = &after
 	}
 	var rows []readq.ListProjectsRow
+	var total int64
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		var err error
-		rows, err = r.ListProjects(ctx, params)
+		if rows, err = r.ListProjects(ctx, params); err != nil || !lp.numbered {
+			return err
+		}
+		total, err = r.CountProjects(ctx, readq.CountProjectsParams{TenantID: t.ID, IncludeArchived: params.IncludeArchived})
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	rows, next := page(s.h, rows, size, op, scope, func(p readq.ListProjectsRow) string { return p.Key })
+	var next *string
+	if !lp.numbered {
+		rows, next = page(s.h, rows, lp.size, op, scope, func(p readq.ListProjectsRow) string { return p.Key })
+	}
 	out := apigen.ListProjects200JSONResponse{Items: []apigen.Project{}, NextCursor: nullableString(next)}
+	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	for _, p := range rows {
 		out.Items = append(out.Items, projectView(project(p)))
 	}

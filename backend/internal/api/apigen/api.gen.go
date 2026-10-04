@@ -971,6 +971,90 @@ func (e PerPage) Valid() bool {
 	}
 }
 
+// Defines values for ListMyTokensParamsPerPage.
+const (
+	ListMyTokensParamsPerPageN100 ListMyTokensParamsPerPage = 100
+	ListMyTokensParamsPerPageN25  ListMyTokensParamsPerPage = 25
+	ListMyTokensParamsPerPageN50  ListMyTokensParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListMyTokensParamsPerPage enum.
+func (e ListMyTokensParamsPerPage) Valid() bool {
+	switch e {
+	case ListMyTokensParamsPerPageN100:
+		return true
+	case ListMyTokensParamsPerPageN25:
+		return true
+	case ListMyTokensParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAuditParamsPerPage.
+const (
+	ListAuditParamsPerPageN100 ListAuditParamsPerPage = 100
+	ListAuditParamsPerPageN25  ListAuditParamsPerPage = 25
+	ListAuditParamsPerPageN50  ListAuditParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListAuditParamsPerPage enum.
+func (e ListAuditParamsPerPage) Valid() bool {
+	switch e {
+	case ListAuditParamsPerPageN100:
+		return true
+	case ListAuditParamsPerPageN25:
+		return true
+	case ListAuditParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMembersParamsPerPage.
+const (
+	ListMembersParamsPerPageN100 ListMembersParamsPerPage = 100
+	ListMembersParamsPerPageN25  ListMembersParamsPerPage = 25
+	ListMembersParamsPerPageN50  ListMembersParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListMembersParamsPerPage enum.
+func (e ListMembersParamsPerPage) Valid() bool {
+	switch e {
+	case ListMembersParamsPerPageN100:
+		return true
+	case ListMembersParamsPerPageN25:
+		return true
+	case ListMembersParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListProjectsParamsPerPage.
+const (
+	ListProjectsParamsPerPageN100 ListProjectsParamsPerPage = 100
+	ListProjectsParamsPerPageN25  ListProjectsParamsPerPage = 25
+	ListProjectsParamsPerPageN50  ListProjectsParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListProjectsParamsPerPage enum.
+func (e ListProjectsParamsPerPage) Valid() bool {
+	switch e {
+	case ListProjectsParamsPerPageN100:
+		return true
+	case ListProjectsParamsPerPageN25:
+		return true
+	case ListProjectsParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListProjectTicketsParamsPerPage.
 const (
 	ListProjectTicketsParamsPerPageN100 ListProjectTicketsParamsPerPage = 100
@@ -1251,8 +1335,15 @@ type AuditEvent struct {
 
 // AuditList defines model for AuditList.
 type AuditList struct {
-	Items      []AuditEvent              `json:"items"`
+	Items []AuditEvent `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // AuthOptions defines model for AuthOptions.
@@ -1783,8 +1874,15 @@ type MemberGrantSet struct {
 
 // MemberList defines model for MemberList.
 type MemberList struct {
-	Items      []Member                  `json:"items"`
+	Items []Member `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // Membership defines model for Membership.
@@ -1910,8 +2008,15 @@ type ProjectCreate struct {
 
 // ProjectList defines model for ProjectList.
 type ProjectList struct {
-	Items      []Project                 `json:"items"`
+	Items []Project `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // ProjectPatch defines model for ProjectPatch.
@@ -2538,8 +2643,15 @@ type TokenCreated struct {
 
 // TokenList defines model for TokenList.
 type TokenList struct {
-	Items      []Token                   `json:"items"`
+	Items []Token `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // TokenMark The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act
@@ -2784,7 +2896,14 @@ type ListMyTokensParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                      `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListMyTokensParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
+
+// ListMyTokensParamsPerPage defines parameters for ListMyTokens.
+type ListMyTokensParamsPerPage int
 
 // CreateMyTokenParams defines parameters for CreateMyToken.
 type CreateMyTokenParams struct {
@@ -2853,7 +2972,14 @@ type ListAuditParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                   `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListAuditParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
+
+// ListAuditParamsPerPage defines parameters for ListAudit.
+type ListAuditParamsPerPage int
 
 // ListGroupMappingsParams defines parameters for ListGroupMappings.
 type ListGroupMappingsParams struct {
@@ -2885,7 +3011,14 @@ type ListMembersParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                     `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListMembersParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
+
+// ListMembersParamsPerPage defines parameters for ListMembers.
+type ListMembersParamsPerPage int
 
 // AddMemberParams defines parameters for AddMember.
 type AddMemberParams struct {
@@ -2903,7 +3036,14 @@ type ListProjectsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                      `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListProjectsParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
+
+// ListProjectsParamsPerPage defines parameters for ListProjects.
+type ListProjectsParamsPerPage int
 
 // CreateProjectParams defines parameters for CreateProject.
 type CreateProjectParams struct {
@@ -3647,7 +3787,8 @@ type ClientInterface interface {
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6).
+	// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+	// a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 	ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3921,8 +4062,12 @@ type ClientInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
-	// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-	// cell that could start a formula prefixed with an apostrophe.
+	// `action` with OR. Newest first, paged by cursor, or by number with a total
+	// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+	// cell that could start a formula prefixed with an apostrophe. A CSV answer
+	// carries no cursor: a client that reads more than one page as CSV asks for
+	// numbered pages, with `to` held at the moment it began, so that a newer
+	// row does not move the rows between two pages.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4053,7 +4198,8 @@ type ClientInterface interface {
 	// address that tells two persons of one name apart, for the tenant's
 	// administrators; everyone else reads null — a global administrator who
 	// holds no role in the tenant and reads the list as part of its
-	// administration too (docs/adr/0034 D2).
+	// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+	// with a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 	ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4150,6 +4296,8 @@ type ClientInterface interface {
 	SetMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjects The projects the caller can see
+	//
+	// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects (the `ListProjects` operationId).
 	ListProjects(ctx context.Context, tenant TenantSlug, params *ListProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5319,7 +5467,8 @@ func (c *Client) GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) 
 // ListMyTokens The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6).
+// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+// a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 func (c *Client) ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5793,8 +5942,12 @@ func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, user
 // ListAudit The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
-// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-// cell that could start a formula prefixed with an apostrophe.
+// `action` with OR. Newest first, paged by cursor, or by number with a total
+// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+// cell that could start a formula prefixed with an apostrophe. A CSV answer
+// carries no cursor: a client that reads more than one page as CSV asks for
+// numbered pages, with `to` held at the moment it began, so that a newer
+// row does not move the rows between two pages.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6015,7 +6168,8 @@ func (c *Client) UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mapp
 // address that tells two persons of one name apart, for the tenant's
 // administrators; everyone else reads null — a global administrator who
 // holds no role in the tenant and reads the list as part of its
-// administration too (docs/adr/0034 D2).
+// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+// with a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 func (c *Client) ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6172,6 +6326,8 @@ func (c *Client) SetMemberGrant(ctx context.Context, tenant TenantSlug, personId
 }
 
 // ListProjects The projects the caller can see
+//
+// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects (the `ListProjects` operationId).
 func (c *Client) ListProjects(ctx context.Context, tenant TenantSlug, params *ListProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8268,6 +8424,30 @@ func NewListMyTokensRequest(server string, params *ListMyTokensParams) (*http.Re
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -9085,6 +9265,30 @@ func NewListAuditRequest(server string, tenant TenantSlug, params *ListAuditPara
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -9471,6 +9675,30 @@ func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembers
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -9704,6 +9932,30 @@ func NewListProjectsRequest(server string, tenant TenantSlug, params *ListProjec
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -14779,7 +15031,8 @@ type ClientWithResponsesInterface interface {
 	// ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6).
+	// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+	// a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15073,8 +15326,12 @@ type ClientWithResponsesInterface interface {
 	// ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
-	// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-	// cell that could start a formula prefixed with an apostrophe.
+	// `action` with OR. Newest first, paged by cursor, or by number with a total
+	// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+	// cell that could start a formula prefixed with an apostrophe. A CSV answer
+	// carries no cursor: a client that reads more than one page as CSV asks for
+	// numbered pages, with `to` held at the moment it began, so that a newer
+	// row does not move the rows between two pages.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15215,7 +15472,8 @@ type ClientWithResponsesInterface interface {
 	// address that tells two persons of one name apart, for the tenant's
 	// administrators; everyone else reads null — a global administrator who
 	// holds no role in the tenant and reads the list as part of its
-	// administration too (docs/adr/0034 D2).
+	// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+	// with a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15316,6 +15574,8 @@ type ClientWithResponsesInterface interface {
 	SetMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error)
 
 	// ListProjectsWithResponse The projects the caller can see
+	//
+	// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22026,7 +22286,8 @@ func (c *ClientWithResponses) GetMyTokenWithResponse(ctx context.Context, reqEdi
 // ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6).
+// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+// a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -22440,8 +22701,12 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 // ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
-// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-// cell that could start a formula prefixed with an apostrophe.
+// `action` with OR. Newest first, paged by cursor, or by number with a total
+// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+// cell that could start a formula prefixed with an apostrophe. A CSV answer
+// carries no cursor: a client that reads more than one page as CSV asks for
+// numbered pages, with `to` held at the moment it began, so that a newer
+// row does not move the rows between two pages.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -22636,7 +22901,8 @@ func (c *ClientWithResponses) UpdateGroupMappingWithResponse(ctx context.Context
 // address that tells two persons of one name apart, for the tenant's
 // administrators; everyone else reads null — a global administrator who
 // holds no role in the tenant and reads the list as part of its
-// administration too (docs/adr/0034 D2).
+// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+// with a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -22773,6 +23039,8 @@ func (c *ClientWithResponses) SetMemberGrantWithResponse(ctx context.Context, te
 }
 
 // ListProjectsWithResponse The projects the caller can see
+//
+// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29707,6 +29975,32 @@ func (siw *ServerInterfaceWrapper) ListMyTokens(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyTokens(w, r, params)
 	}))
@@ -30343,6 +30637,32 @@ func (siw *ServerInterfaceWrapper) ListAudit(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAudit(w, r, tenant, params)
 	}))
@@ -30649,6 +30969,32 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r, tenant, params)
 	}))
@@ -30833,6 +31179,32 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
 		}
 		return
 	}

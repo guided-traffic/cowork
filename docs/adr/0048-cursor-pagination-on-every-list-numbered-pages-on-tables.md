@@ -23,9 +23,11 @@ session use the server key gets later.
 **Partly built** (phase 2, 2026-10-02): D1, D3, D5–D7 on every list route, the project's
 tickets in its rank since 2026-10-03, the unranked after the ranked by number
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
-D2's numbered pages on the two ticket lists and the tenant's time entries — the audit view,
-members, tokens and projects carry the cursor only so far; D4's markings and client helpers
-arrive with the generated frontend client.
+D2's numbered pages on the two ticket lists and the tenant's time entries — ~~the audit view,
+members, tokens and projects carry the cursor only so far~~ *(built 2026-10-04: the audit view,
+the members, the person's tokens and the projects take them as well,
+[`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`)*; D4's markings and client helpers arrive with the generated frontend
+client.
 
 ## Context
 
