@@ -33,7 +33,9 @@ const (
 // one after the other, each on what the one before committed.
 // tenantLockNamespace, "cowt", orders the changes of who administers a tenant
 // (LockTenant). The order is the tenant's lock first, then the persons' locks
-// by ascending id: no transaction takes a tenant's lock after a person's.
+// by ascending id: no transaction takes a tenant's lock after a person's. A
+// transaction takes the lock of its own tenant and of no other, so the
+// tenants' locks need no order among themselves.
 const (
 	identityLockNamespace int32 = 0x636f7769
 	tenantLockNamespace   int32 = 0x636f7774
@@ -41,7 +43,8 @@ const (
 
 // LockTenant takes the lock that orders the changes of the tenant's
 // memberships until the transaction ends (the security review of 2026-10-04,
-// m4): two administrators who each take the other's admin role away decide one
+// m4): two administrators who each take the other's admin role away — by a
+// grant, a mapping or the deactivation of the other's account — decide one
 // after the other, and the second meets last_admin. It is taken before any
 // person's lock.
 func (w *Writer) LockTenant(ctx context.Context) error {

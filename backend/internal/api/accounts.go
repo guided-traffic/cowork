@@ -293,13 +293,23 @@ func (s *Server) UnlockAccount(ctx context.Context, req apigen.UnlockAccountRequ
 
 // DeactivateAccount deactivates the account's person: no login, every token
 // revoked, every session ended (docs/adr/0024 D5). The person, their
-// memberships and everything they did stay.
+// memberships and everything they did stay. A deactivated person counts for no
+// tenant as an administrator, so the deactivation is a change of who
+// administers the managing tenant: it takes the tenant's lock first and is
+// refused with last_admin when it would leave the tenant without an
+// administrator who can log in (docs/adr/0034 D1) — two administrators who
+// deactivate each other at once are decided one after the other. The other
+// tenants the person administers are not asked: their rows are outside this
+// tenant's transaction (docs/security/local-accounts.md H-32).
 func (s *Server) DeactivateAccount(ctx context.Context, req apigen.DeactivateAccountRequestObject) (apigen.DeactivateAccountResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
 	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
 		return nil, perr
 	}
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
+		if err := w.LockTenant(ctx); err != nil {
+			return err
+		}
 		target, err := managedAccount(ctx, w, t, req.Username)
 		if err != nil {
 			return err
@@ -313,6 +323,9 @@ func (s *Server) DeactivateAccount(ctx context.Context, req apigen.DeactivateAcc
 		}
 		if changed == 0 {
 			return store.ErrNoChange
+		}
+		if err := s.lastAdmin(ctx, w, t.ID); err != nil {
+			return err
 		}
 		revoked, err := w.RevokeTokensOfUser(ctx, writeq.RevokeTokensOfUserParams{UserID: target.ID, RevokedBy: &p.PersonID})
 		if err != nil {

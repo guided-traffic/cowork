@@ -40,7 +40,8 @@ var adminRead = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeRead}
 // lastAdmin refuses a change that leaves the tenant without an administrator
 // who can log in, mapped or granted (docs/adr/0034 D1; the security review of
 // 2026-10-04, m5): the change of an administrator's own grant or of a mapping
-// included. A derivation at a login or a refresh is the identity provider's
+// included, and the deactivation of an account the tenant manages
+// (DeactivateAccount). A derivation at a login or a refresh is the identity provider's
 // truth and is never refused. The caller holds the tenant's lock (m4), so two
 // changes cannot each leave the other's administrator as the last one.
 func (s *Server) lastAdmin(ctx context.Context, w *store.Writer, tenantID uuid.UUID) error {
