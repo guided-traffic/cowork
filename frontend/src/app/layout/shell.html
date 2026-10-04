@@ -25,6 +25,26 @@
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
+    <a
+      pButton
+      class="bell"
+      routerLink="/me/inbox"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
+      pTooltip="Inbox"
+      tooltipPosition="bottom"
+      [iconOnly]="true"
+      [attr.aria-label]="bellLabel()"
+      data-testid="bell"
+    >
+      <i class="pi pi-bell"></i>
+      @if (inbox.count() > 0) {
+        <span class="badge tabular" aria-hidden="true" data-testid="bell-count">{{
+          unread()
+        }}</span>
+      }
+    </a>
     @if (chat.available()) {
       <button
         pButton
@@ -77,6 +97,27 @@
   </header>
 
   <nav class="sidebar" aria-label="Main" (focusin)="closeOverPage()">
+    <!-- The person-level pages, across every tenant of the person (docs/adr/0023 D4). -->
+    <div class="section">
+      <div class="heading">For you</div>
+      <a class="item" routerLink="/me/inbox" routerLinkActive="active" data-testid="nav-inbox"
+        ><i class="pi pi-inbox"></i>Inbox
+        @if (inbox.count() > 0) {
+          <span class="count tabular" data-testid="nav-inbox-count">{{ unread() }}</span>
+        }
+      </a>
+      <a class="item" routerLink="/me/assigned" routerLinkActive="active" data-testid="nav-assigned"
+        ><i class="pi pi-user"></i>Assigned to me</a
+      >
+      <a
+        class="item"
+        routerLink="/me/decisions"
+        routerLinkActive="active"
+        data-testid="nav-decisions"
+        ><i class="pi pi-question-circle"></i>Open decisions</a
+      >
+    </div>
+
     @if (session.tenant(); as tenant) {
       <div class="section">
         <a

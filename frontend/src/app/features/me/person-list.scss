@@ -1,0 +1,148 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 72rem;
+  padding: 2rem;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  p {
+    margin: 0.25rem 0 0;
+  }
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  overflow: hidden;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.group-head,
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+}
+
+.group-head {
+  border-bottom: 1px solid var(--p-app-border);
+}
+
+.row {
+  color: var(--p-text-color);
+  border-bottom: 1px solid var(--p-app-border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.tenant {
+  flex: none;
+  max-width: 12rem;
+  padding: 0.125rem 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--p-app-hover);
+}
+
+.ticket {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--p-text-color);
+
+  &:hover {
+    text-decoration: none;
+
+    .ticket-title {
+      text-decoration: underline;
+    }
+  }
+}
+
+.ticket-key {
+  flex: none;
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+}
+
+.ticket-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 1rem;
+  font-size: 0.875rem;
+
+  .dot {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+  }
+
+  &.unread .dot {
+    background: var(--p-primary-color);
+  }
+}
+
+.what {
+  flex: 1;
+}
+
+.question {
+  flex: 2;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.when {
+  flex: none;
+  font-size: 0.8125rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

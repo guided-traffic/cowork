@@ -26,6 +26,19 @@ export const routes: Routes = [
         path: 'me/tokens',
         loadComponent: () => import('./features/me/tokens').then((m) => m.Tokens),
       },
+      // The person-level pages, across the person's tenants (docs/adr/0018 D3).
+      {
+        path: 'me/inbox',
+        loadComponent: () => import('./features/me/inbox').then((m) => m.Inbox),
+      },
+      {
+        path: 'me/assigned',
+        loadComponent: () => import('./features/me/assigned').then((m) => m.Assigned),
+      },
+      {
+        path: 'me/decisions',
+        loadComponent: () => import('./features/me/decisions').then((m) => m.Decisions),
+      },
       {
         path: 't/:tenant',
         component: TenantScope,

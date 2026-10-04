@@ -895,6 +895,14 @@ describe('TicketsService', () => {
       },
     );
 
+    it("are not reloaded by an event of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next(changed('question.changed', 'globex/OPS-1', 1));
+      await wait(10 * listReloadDelay);
+
+      http.expectNone(projectUrl);
+      http.expectNone(tenantUrl);
+    });
+
     it('reload once for a whole burst, counted from its first event', async () => {
       stream.next(changed('ticket.changed', 'acme/VKO-1', 2));
       await wait(100);

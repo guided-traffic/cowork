@@ -14,6 +14,9 @@ import { ChangePassword } from './features/auth/change-password';
 import { Login } from './features/auth/login';
 import { Home } from './features/home/home';
 import { NotFound } from './features/home/not-found';
+import { Assigned } from './features/me/assigned';
+import { Decisions } from './features/me/decisions';
+import { Inbox } from './features/me/inbox';
 import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
@@ -47,6 +50,9 @@ const pages: [string, Type<unknown>][] = [
   ['password', ChangePassword],
   ['', Home],
   ['me/tokens', Tokens],
+  ['me/inbox', Inbox],
+  ['me/assigned', Assigned],
+  ['me/decisions', Decisions],
   ['t/:tenant', TenantOverview],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],

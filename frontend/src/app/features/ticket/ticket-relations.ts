@@ -125,6 +125,7 @@ export class TicketRelations {
     }
     if (
       event.name === 'membership.changed' ||
+      event.name === 'inbox.changed' ||
       event.key !== `${at.tenant}/${at.project}-${at.number}`
     ) {
       return;
