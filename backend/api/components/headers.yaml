@@ -4,8 +4,20 @@ ETag:
 Location:
   description: The new entity's URL
   schema: {type: string}
+Redirect:
+  description: Where the browser goes next
+  required: true
+  schema: {type: string}
 SetCookie:
   description: |
     The session cookie `__Host-cowork-session`: `HttpOnly; Secure; SameSite=Lax;
     Path=/`, no `Domain` (docs/adr/0031 D2). A logout clears it with `Max-Age=0`.
+  schema: {type: string}
+SetOidcCookie:
+  description: |
+    The login's state cookie `__Host-cowork-oidc`: `HttpOnly; Secure;
+    SameSite=Lax; Path=/; Max-Age=600`. It holds the `state`, the `nonce`, the
+    PKCE verifier, `return_to` and the time, sealed with AES-256-GCM under a key
+    derived from `COWORK_SESSION_KEY` (docs/adr/0029 D1); the callback reads it
+    once and clears it.
   schema: {type: string}

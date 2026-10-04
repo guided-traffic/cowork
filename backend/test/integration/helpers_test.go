@@ -152,6 +152,8 @@ func seedEveryTenantTable(t *testing.T, w world) {
 		require.NoError(t, f.Exec(ctx,
 			`INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')
 			 ON CONFLICT DO NOTHING`, s.tenant, s.project, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO group_mappings (tenant_id, group_name, role) VALUES ($1, 'seed-group', 'member')
+			ON CONFLICT DO NOTHING`, s.tenant))
 		first, _, err := f.Ticket(ctx, s.tenant, s.project, s.person, "seed")
 		require.NoError(t, err)
 		second, _, err := f.Ticket(ctx, s.tenant, s.project, s.person, "seed 2")

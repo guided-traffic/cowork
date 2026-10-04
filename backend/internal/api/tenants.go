@@ -208,8 +208,8 @@ func pick(values map[string]any, keys []string) map[string]any {
 	return out
 }
 
-// ListMembers lists the tenant's members with their roles
-// (docs/adr/0034 D7).
+// ListMembers lists the tenant's members with their roles and where each comes
+// from (docs/adr/0034 D7, docs/adr/0030 D4).
 func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestObject) (apigen.ListMembersResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
@@ -233,11 +233,9 @@ func (s *Server) ListMembers(ctx context.Context, req apigen.ListMembersRequestO
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(m readq.ListMembersRow) string { return m.ID.String() })
 	out := apigen.ListMembers200JSONResponse{Items: []apigen.Member{}, NextCursor: nullableString(next)}
+	admin := t.Role == domain.RoleAdmin
 	for _, m := range rows {
-		out.Items = append(out.Items, apigen.Member{
-			Person: apigen.Person{Id: m.ID, Username: nullableOf(m.Username), DisplayName: m.DisplayName},
-			Role:   apigen.Role(m.Role),
-		})
+		out.Items = append(out.Items, memberView(m.ID, m.Username, m.DisplayName, m.Email, admin, m.Role, m.Sources, m.Roles, m.Local))
 	}
 	return out, nil
 }

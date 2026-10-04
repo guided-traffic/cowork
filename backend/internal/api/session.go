@@ -38,6 +38,20 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 	if !h.sessionLive(rec.Session.ExpiresAt, rec.Session.LastSeenAt, now) || rec.Person.DeactivatedAt != nil {
 		return auth.Principal{}, dead
 	}
+	if rec.Session.Method == store.MethodOIDC {
+		ended, err := h.checkProviderSession(ctx, rec, hash[:], now)
+		if err != nil {
+			h.logger.Error("the session's groups refresh failed", "request_id", requestid.From(ctx), "error", err)
+			return auth.Principal{}, problem.New(problem.Internal, "internal error")
+		}
+		if ended {
+			return auth.Principal{}, dead
+		}
+		// A refresh may have changed the person's administrator flag.
+		if rec, err = h.opts.DB.LookupSession(ctx, hash); err != nil {
+			return auth.Principal{}, dead
+		}
+	}
 	if err := h.opts.DB.TouchSession(ctx, rec, now); err != nil {
 		h.logger.Error("touching the session failed", "request_id", requestid.From(ctx), "error", err)
 	}
@@ -46,6 +60,8 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 		DisplayName:            rec.Person.DisplayName,
 		Session:                true,
 		SessionHash:            hash[:],
+		SessionMethod:          rec.Session.Method,
+		Provider:               rec.Person.Provider,
 		Scope:                  domain.ScopeAdmin,
 		GlobalAdmin:            rec.Person.GlobalAdmin,
 		PasswordChangeRequired: rec.Person.PasswordChangeRequired,

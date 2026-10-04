@@ -46,6 +46,57 @@ func TestFilter(t *testing.T) {
 	assert.True(t, flt.Admits(e), "an administrator")
 }
 
+// docs/adr/0054 D2, docs/adr/0034 D3: a membership act reaches its audience —
+// every member, the administrators, or the administrators and the person an
+// access entry names — and never through the project filter, which a
+// restricted project's own announcement would not pass.
+func TestMembershipAudiences(t *testing.T) {
+	f := newFixtures()
+	member := f.filter()
+	admin := f.filter()
+	admin.Admin = true
+	named := f.filter()
+	named.Person = f.other
+	event := func(audience string, person *uuid.UUID) Event {
+		return Event{Notification: store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Project: f.hidden,
+			Entity: store.EntityMembership, Action: "updated", Person: person, Audience: audience}}
+	}
+	everyone := event(store.AudienceMembers, &f.other)
+	assert.Equal(t, "membership.changed", everyone.Name())
+	assert.True(t, member.Admits(everyone), "a project the stream does not see does not hold it back")
+	mapping := event(store.AudienceAdmins, nil)
+	assert.False(t, member.Admits(mapping))
+	assert.True(t, admin.Admits(mapping))
+	entry := event(store.AudienceAdminsAndPerson, &f.other)
+	assert.False(t, member.Admits(entry), "a member who does not see the project hears nothing of its list")
+	assert.True(t, admin.Admits(entry))
+	assert.True(t, named.Admits(entry), "the person the entry names")
+}
+
+// The security review of 2026-10-04, m10: a project-restricted token's stream
+// hears of a membership act only when it names the token's project, or names
+// the token's person and no other project.
+func TestMembershipEventsOfAProjectRestrictedStream(t *testing.T) {
+	f := newFixtures()
+	bound := f.filter()
+	bound.Admin = true
+	bound.RestrictedProject = f.project
+	event := func(person *uuid.UUID, project uuid.UUID, audience string) Event {
+		return Event{Notification: store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Project: project,
+			Entity: store.EntityMembership, Action: "updated", Person: person, Audience: audience}}
+	}
+	assert.True(t, bound.Admits(event(nil, f.project, store.AudienceMembers)), "its project's restriction")
+	assert.True(t, bound.Admits(event(&f.other, f.project, store.AudienceAdminsAndPerson)), "an entry on its project")
+	assert.True(t, bound.Admits(event(&f.person, uuid.Nil, store.AudienceMembers)), "its own person's membership")
+	assert.False(t, bound.Admits(event(&f.other, uuid.Nil, store.AudienceMembers)), "another person's membership")
+	assert.False(t, bound.Admits(event(nil, f.hidden, store.AudienceMembers)), "another project's restriction")
+	assert.False(t, bound.Admits(event(&f.person, f.hidden, store.AudienceAdminsAndPerson)), "its person's entry on another project")
+	assert.False(t, bound.Admits(event(nil, uuid.Nil, store.AudienceAdmins)), "a mapping")
+	unbound := bound
+	unbound.RestrictedProject = uuid.Nil
+	assert.True(t, unbound.Admits(event(&f.other, uuid.Nil, store.AudienceMembers)), "an unrestricted stream hears every member's")
+}
+
 func TestPublishReplayAndWindow(t *testing.T) {
 	f := newFixtures()
 	h := New(time.Minute, 0)

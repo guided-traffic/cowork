@@ -102,13 +102,16 @@ type NewSession struct {
 	// it (docs/adr/0031 D5). Nil when the request presented none.
 	Replaces  []byte
 	RequestID uuid.UUID
+	// SourceHash is the keyed hash of the login's client address, which its
+	// audit row carries (docs/adr/0035 D2).
+	SourceHash []byte
 }
 
 // CreateSession ends the session the login presented, if any, stores the new
 // one and records the login as an act of its person — in one transaction. The
 // session's id and cookie appear in no audit row (docs/adr/0031 D7).
 func (db *DB) CreateSession(ctx context.Context, in NewSession) error {
-	ctx = WithCaller(ctx, Caller{UserID: in.PersonID, SessionHash: in.Replaces, RequestID: in.RequestID})
+	ctx = WithCaller(ctx, Caller{UserID: in.PersonID, SessionHash: in.Replaces, RequestID: in.RequestID, SourceHash: in.SourceHash})
 	_, err := db.Mutate(ctx, uuid.Nil, func(w *Writer) error {
 		if len(in.Replaces) > 0 {
 			if _, err := w.DeleteSessionByHash(ctx, in.Replaces); err != nil {
@@ -117,11 +120,11 @@ func (db *DB) CreateSession(ctx context.Context, in NewSession) error {
 		}
 		if err := w.InsertSession(ctx, writeq.InsertSessionParams{
 			UserID: in.PersonID, TokenHash: in.Hash[:], UserAgentHash: in.UserAgentHash,
-			CreatedAt: in.Now, ExpiresAt: in.Expires,
+			CreatedAt: in.Now, ExpiresAt: in.Expires, Method: MethodLocal,
 		}); err != nil {
 			return fmt.Errorf("store the session: %w", err)
 		}
-		w.Record(Event{EntityType: "user", EntityID: in.PersonID, Action: "logged_in"})
+		w.Record(Event{EntityType: entityUser, EntityID: in.PersonID, Action: "logged_in"})
 		return nil
 	})
 	return err

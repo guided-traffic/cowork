@@ -37,6 +37,10 @@ type Caller struct {
 	Capabilities []string
 	// RequestID is the request's id (docs/adr/0047 D2).
 	RequestID uuid.UUID
+	// SourceHash is the keyed hash of the request's client address, which
+	// every audit row written for the request carries (docs/adr/0035 D2); nil
+	// for a job.
+	SourceHash []byte
 }
 
 type callerKey struct{}

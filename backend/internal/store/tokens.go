@@ -57,8 +57,8 @@ func (db *DB) LookupToken(ctx context.Context, hash [sha256.Size]byte) (TokenRec
 // revocation (docs/adr/0035 D9): an installation-level act of the token's
 // person, at most once per token, reason and hour; every refusal stays in
 // the request log either way.
-func (db *DB) RecordTokenRefusal(ctx context.Context, rec TokenRecord, reason string, requestID uuid.UUID) error {
-	ctx = WithCaller(ctx, Caller{UserID: rec.Token.UserID, TokenID: rec.Token.ID, RequestID: requestID})
+func (db *DB) RecordTokenRefusal(ctx context.Context, rec TokenRecord, reason string, requestID uuid.UUID, sourceHash []byte) error {
+	ctx = WithCaller(ctx, Caller{UserID: rec.Token.UserID, TokenID: rec.Token.ID, RequestID: requestID, SourceHash: sourceHash})
 	_, err := db.Mutate(ctx, uuid.Nil, func(w *Writer) error {
 		n, err := w.CountRecentRefusals(ctx, readq.CountRecentRefusalsParams{TokenID: &rec.Token.ID, Reason: &reason})
 		if err != nil {

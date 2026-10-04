@@ -52,6 +52,12 @@ type Principal struct {
 	// is recorded nowhere (docs/adr/0031 D7).
 	Session     bool
 	SessionHash []byte
+	// SessionMethod is how the session's person logged in, local or oidc
+	// (docs/adr/0031 D1); empty for a token.
+	SessionMethod string
+	// Provider says the person is one of the identity provider, whom the gate
+	// holds (docs/adr/0030 D1, docs/adr/0035 D8).
+	Provider bool
 	// Scope is the token's scope. A session has no scope of its own: it
 	// acts with the person's full role, which is what the scope admin
 	// leaves to the role (docs/adr/0035 D3).

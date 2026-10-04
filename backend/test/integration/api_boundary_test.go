@@ -49,7 +49,7 @@ func tenantRoutes(t *testing.T) []tenantRoute {
 			for k, v := range params {
 				url = strings.ReplaceAll(url, k, v)
 			}
-			for _, id := range []string{"{comment}", "{entry}", "{attachment}", "{token_id}"} {
+			for _, id := range []string{"{comment}", "{entry}", "{attachment}", "{token_id}", "{person_id}", "{mapping_id}"} {
 				url = strings.ReplaceAll(url, id, uuid.Must(uuid.NewV7()).String())
 			}
 			sessionOnly := op.Security != nil && len(*op.Security) == 1

@@ -21,6 +21,9 @@ me:
               memberships:
                 - tenant: {slug: acme, name: Acme}
                   role: admin
+                  origins:
+                    - source: grant
+                      role: admin
       default:
         $ref: './components/responses.yaml#/Problem'
 tokens:

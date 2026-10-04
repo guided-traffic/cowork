@@ -93,6 +93,9 @@ func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.E
 		return auth.Principal{}, unauthenticated(problem.TokenExpired, "the token expired on "+rec.Token.ExpiresAt.UTC().Format("2006-01-02"))
 	}
 
+	if perr := h.tokenGate(r, rec, now); perr != nil {
+		return auth.Principal{}, perr
+	}
 	header := ""
 	if v := r.Header.Get(auth.AgentHeader); v != "" {
 		parsed, err := auth.ParseAgentHeader(v)
@@ -111,6 +114,7 @@ func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.E
 		Scope:        rec.Token.Scope,
 		Agent:        agent,
 		Capabilities: capabilities,
+		Provider:     rec.Person.Provider,
 	}
 	if rec.Token.RestrictedTenantID != nil {
 		p.RestrictedTenantID = *rec.Token.RestrictedTenantID
@@ -144,7 +148,7 @@ func unauthenticated(code problem.Code, detail string) *problem.Error {
 func (h *handler) recordRefusal(r *http.Request, rec store.TokenRecord, reason string) {
 	ctx := r.Context()
 	h.logger.Info("token refused", "request_id", requestid.From(ctx), "token_id", rec.Token.ID, "reason", reason)
-	if err := h.opts.DB.RecordTokenRefusal(ctx, rec, reason, requestid.UUID(ctx)); err != nil {
+	if err := h.opts.DB.RecordTokenRefusal(ctx, rec, reason, requestid.UUID(ctx), h.sourceHash(clientFrom(ctx).Client)); err != nil {
 		h.logger.Error("recording a token refusal failed", "request_id", requestid.From(ctx), "error", err)
 	}
 }

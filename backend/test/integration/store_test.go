@@ -502,9 +502,9 @@ func TestTokenRefusalsAreBounded(t *testing.T) {
 	require.NoError(t, err)
 
 	for range 5 {
-		require.NoError(t, db.RecordTokenRefusal(ctx, rec, "revoked", uuid.Must(uuid.NewV7())))
+		require.NoError(t, db.RecordTokenRefusal(ctx, rec, "revoked", uuid.Must(uuid.NewV7()), nil))
 	}
-	require.NoError(t, db.RecordTokenRefusal(ctx, rec, "expired", uuid.Must(uuid.NewV7())))
+	require.NoError(t, db.RecordTokenRefusal(ctx, rec, "expired", uuid.Must(uuid.NewV7()), nil))
 	n, err := f.QueryCount(ctx, `SELECT count(*) FROM audit_events WHERE token_id = $1 AND action = 'refused'`, id)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, n, "one row per reason within the hour")

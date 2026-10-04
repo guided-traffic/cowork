@@ -381,7 +381,7 @@ func TestInitStateAdmitsGlobalAdministratorsOnly(t *testing.T) {
 
 	options := s.browser(t).get("/auth/options")
 	require.Equal(t, http.StatusOK, options.StatusCode)
-	assert.Equal(t, map[string]any{"local": true, "oidc": false, "password_min_length": float64(12)}, decode[map[string]any](t, options))
+	assert.Equal(t, map[string]any{"local": true, "oidc": false, "oidc_name": nil, "password_min_length": float64(12)}, decode[map[string]any](t, options))
 
 	b := s.browser(t)
 	res := b.login("plain", testPassword)
@@ -416,7 +416,7 @@ func TestAuthOptions(t *testing.T) {
 	iso := newIsolated(t)
 	s := newAPI(t, withLogin, iso.option)
 	got := decode[map[string]any](t, s.browser(t).get("/auth/options"))
-	assert.Equal(t, map[string]any{"local": false, "oidc": false, "password_min_length": float64(12)}, got, "no account: the login page says it is not configured")
+	assert.Equal(t, map[string]any{"local": false, "oidc": false, "oidc_name": nil, "password_min_length": float64(12)}, got, "no account: the login page says it is not configured")
 
 	longer := newAPI(t, withLogin, iso.option, func(o *api.Options) { o.PasswordMinLength = 20 })
 	got = decode[map[string]any](t, longer.browser(t).get("/auth/options"))

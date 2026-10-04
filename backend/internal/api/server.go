@@ -52,6 +52,7 @@ const (
 const (
 	actionCreated    = "created"
 	actionUpdated    = "updated"
+	actionDeleted    = "deleted"
 	actionLinked     = "linked"
 	actionUnlinked   = "unlinked"
 	actionOverridden = "overridden"

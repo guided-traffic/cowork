@@ -24,13 +24,15 @@ import (
 
 // clientFacts are what the login handlers need of the connection and the
 // headers, which a strict handler does not see: the address of the client, the
-// session cookie the request presented, and its User-Agent.
+// session cookie the request presented, the state cookie of a login through
+// the identity provider, and the User-Agent.
 type clientFacts struct {
 	// Client is the client's address under the rule of docs/adr/0035 D2: the
 	// TCP peer, or — behind the trusted proxies of COWORK_TRUSTED_PROXIES — the
 	// first address of X-Forwarded-For, from the right, that is not one of them.
 	Client    string
 	Cookie    string
+	OIDCState string
 	UserAgent string
 }
 
@@ -40,6 +42,9 @@ func withClient(ctx context.Context, r *http.Request, trusted trustedProxies) co
 	c := clientFacts{Client: trusted.clientAddress(r.RemoteAddr, r.Header.Values("X-Forwarded-For")), UserAgent: r.UserAgent()}
 	if cookie, err := r.Cookie(auth.SessionCookie); err == nil {
 		c.Cookie = cookie.Value
+	}
+	if cookie, err := r.Cookie(oidcStateCookie); err == nil {
+		c.OIDCState = cookie.Value
 	}
 	return context.WithValue(ctx, clientKey{}, c)
 }
@@ -58,6 +63,27 @@ func newAddressKey(sessionKey []byte) []byte {
 		panic(err) // only an impossible key length fails
 	}
 	return key
+}
+
+// newSourceKey derives the key that hashes the client address an audit row
+// carries (docs/adr/0035 D2), under a label of its own.
+func newSourceKey(sessionKey []byte) []byte {
+	key, err := hkdf.Key(sha256.New, sessionKey, nil, "cowork audit address v1", sha256.Size)
+	if err != nil {
+		panic(err) // only an impossible key length fails
+	}
+	return key
+}
+
+// sourceHash is the keyed hash of the client address an audit row written for
+// the request carries (docs/adr/0035 D2): the whole address, unlike the
+// throttle's, which counts an IPv6 client by its /64. clientAddress has already
+// unmapped it and dropped its zone and port. A remote that is no address — a
+// test's — is hashed as it is.
+func (h *handler) sourceHash(client string) []byte {
+	mac := hmac.New(sha256.New, h.sourceKey)
+	mac.Write([]byte(client))
+	return mac.Sum(nil)
 }
 
 // addressHash is the keyed hash of a client address: what the throttle counts
@@ -87,13 +113,21 @@ func (h *handler) addressHash(client string) []byte {
 	return mac.Sum(nil)
 }
 
-// GetAuthOptions answers what the login page offers (docs/adr/0033 D8).
+// GetAuthOptions answers what the login page offers (docs/adr/0033 D8): the
+// identity provider's button while one is configured and its gate admits
+// somebody (docs/adr/0030 D8).
 func (s *Server) GetAuthOptions(ctx context.Context, _ apigen.GetAuthOptionsRequestObject) (apigen.GetAuthOptionsResponseObject, error) {
 	local, err := s.db.LocalLoginAvailable(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetAuthOptions200JSONResponse{Local: local, Oidc: false, PasswordMinLength: s.h.opts.PasswordMinLength}, nil
+	o := s.h.opts.OIDC
+	out := apigen.GetAuthOptions200JSONResponse{Local: local, Oidc: s.h.oidcOffered(), OidcName: nullableOf[string](nil),
+		PasswordMinLength: s.h.opts.PasswordMinLength}
+	if o.Provider != nil {
+		out.OidcName = nullableOf(&o.DisplayName)
+	}
+	return out, nil
 }
 
 func invalidCredentials() *problem.Error {
@@ -192,6 +226,7 @@ func (s *Server) attempt(ctx context.Context, username string, acc store.LoginAc
 		Sticky:      s.h.opts.LoginLockout == config.LockoutAdmin,
 		Context:     what,
 		RequestID:   requestid.UUID(ctx),
+		SourceHash:  s.h.sourceHash(clientFrom(ctx).Client),
 	}
 }
 
@@ -204,7 +239,8 @@ func (s *Server) startSession(ctx context.Context, acc store.LoginAccount, c cli
 		return nil, err
 	}
 	expires := now.Add(s.h.opts.SessionLifetime)
-	session := store.NewSession{PersonID: acc.UserID, Hash: hash, Now: now, Expires: expires, RequestID: requestid.UUID(ctx)}
+	session := store.NewSession{PersonID: acc.UserID, Hash: hash, Now: now, Expires: expires, RequestID: requestid.UUID(ctx),
+		SourceHash: s.h.sourceHash(c.Client)}
 	if c.UserAgent != "" {
 		ua := sha256.Sum256([]byte(c.UserAgent))
 		session.UserAgentHash = ua[:]
@@ -224,7 +260,9 @@ func (s *Server) startSession(ctx context.Context, acc store.LoginAccount, c cli
 }
 
 // Logout ends the session of the request (docs/adr/0031 D4) and clears its
-// cookie. A session another request ended first is no error.
+// cookie. A session another request ended first is no error. A session of the
+// identity provider whose issuer names an end_session_endpoint answers where
+// the browser ends its session at the issuer too.
 func (s *Server) Logout(ctx context.Context, _ apigen.LogoutRequestObject) (apigen.LogoutResponseObject, error) {
 	p := principal(ctx)
 	_, err := s.db.Mutate(ctx, uuid.Nil, func(w *store.Writer) error {
@@ -242,5 +280,11 @@ func (s *Server) Logout(ctx context.Context, _ apigen.LogoutRequestObject) (apig
 		return nil, err
 	}
 	cleared := clearedSessionCookie()
+	if provider := s.h.opts.OIDC.Provider; provider != nil && p.SessionMethod == store.MethodOIDC {
+		if end := provider.EndSessionURL(s.h.opts.BaseOrigin + "/login"); end != "" {
+			return apigen.Logout200JSONResponse{Body: apigen.LogoutResult{EndSessionUrl: end},
+				Headers: apigen.Logout200ResponseHeaders{SetCookie: &cleared}}, nil
+		}
+	}
 	return apigen.Logout204Response{Headers: apigen.Logout204ResponseHeaders{SetCookie: &cleared}}, nil
 }

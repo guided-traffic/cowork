@@ -1,10 +1,11 @@
 //go:build integration
 
-// Package integration holds the tests that need a running PostgreSQL 18 and
-// an S3-compatible server. `make test-integration` provides
-// COWORK_TEST_DATABASE_URL, an administrative URL, and COWORK_TEST_S3_*; the
-// variables are required, not optional, so a misconfigured job fails instead
-// of passing on zero tests (docs/adr/0003 D3).
+// Package integration holds the tests that need a running PostgreSQL 18, an
+// S3-compatible server and an OpenID Connect issuer. `make test-integration`
+// provides COWORK_TEST_DATABASE_URL, an administrative URL, COWORK_TEST_S3_*
+// and COWORK_TEST_OIDC_ISSUER, the Dex of `make dex-up` (docs/adr/0029 D3);
+// the variables are required, not optional, so a misconfigured job fails
+// instead of passing on zero tests (docs/adr/0003 D3).
 //
 // TestMain gives the package a database of its own, as an installation has
 // it (docs/adr/0021 D2, docs/adr/0058 D5): an owner role that owns the
@@ -25,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/config"
+	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
@@ -35,6 +37,7 @@ const (
 	envTestS3Endpoint        = "COWORK_TEST_S3_ENDPOINT"
 	envTestS3AccessKeyID     = "COWORK_TEST_S3_ACCESS_KEY_ID"
 	envTestS3SecretAccessKey = "COWORK_TEST_S3_SECRET_ACCESS_KEY"
+	envTestOIDCIssuer        = "COWORK_TEST_OIDC_ISSUER"
 )
 
 // The roles the harness creates when they are missing. They exist only on a
@@ -56,6 +59,9 @@ var env struct {
 	Migrated store.MigrateResult
 	// Storage is the bucket of this run on the test S3 server.
 	Storage config.Storage
+	// OIDCIssuer is the Dex the login through the identity provider is
+	// proven against.
+	OIDCIssuer string
 }
 
 func TestMain(m *testing.M) {
@@ -71,6 +77,10 @@ func runMain(m *testing.M) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if err := prepareStorage(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "integration setup: %v\n", err)
+		return 1
+	}
+	if err := prepareIssuer(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "integration setup: %v\n", err)
 		return 1
 	}
@@ -151,6 +161,19 @@ func withUserAndDatabase(base, user, password, database string) (string, error) 
 	}
 	u.Path = "/" + database
 	return u.String(), nil
+}
+
+// prepareIssuer checks that the test issuer answers its discovery: a missing
+// variable or an issuer that is not up fails the run, never skips it.
+func prepareIssuer(ctx context.Context) error {
+	env.OIDCIssuer = os.Getenv(envTestOIDCIssuer)
+	if env.OIDCIssuer == "" {
+		return fmt.Errorf("%s is required: `make dex-up` starts the test issuer and `make test-integration` sets it", envTestOIDCIssuer)
+	}
+	if _, err := oidc.Discover(ctx, dexConfig()); err != nil {
+		return fmt.Errorf("the test issuer at %s does not answer its discovery; `make dex-up` starts it: %w", env.OIDCIssuer, err)
+	}
+	return nil
 }
 
 // prepareStorage gives the run a bucket of its own on the test S3 server.

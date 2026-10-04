@@ -13,10 +13,13 @@ info:
     Every route that names a person is authenticated with one of two
     credentials. A personal access token, `Authorization: Bearer cwk_…`
     (docs/adr/0035), is for scripts and agents; the session cookie of a
-    browser login (docs/adr/0031, `POST /auth/local`) is for the UI. Each
+    browser login (docs/adr/0031 — `POST /auth/local`, or the identity
+    provider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each
     operation says which it takes: most take either, a few — creating a token,
-    a tenant or a local account, resetting or changing a password, logging out
-    — a session only. A request
+    a tenant or a local account, resetting or changing a password, logging out,
+    and the administration acts that give access: adding a member, setting a
+    grant, making or changing a group mapping, restricting or opening a
+    project, putting a person on its access list — a session only. A request
     of a session that writes must come from the installation's origin and
     carry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an
     agent's — by the token's agent flag, or by an `X-Cowork-Agent:
@@ -50,6 +53,10 @@ paths:
     $ref: './auth.yaml#/options'
   /auth/local:
     $ref: './auth.yaml#/local'
+  /auth/oidc/login:
+    $ref: './auth.yaml#/oidcLogin'
+  /auth/callback:
+    $ref: './auth.yaml#/callback'
   /auth/logout:
     $ref: './auth.yaml#/logout'
   /api/v1/me:
@@ -75,7 +82,13 @@ paths:
   /api/v1/tenants/{tenant}/accounts/{username}/sessions:
     $ref: './accounts.yaml#/accountSessions'
   /api/v1/tenants/{tenant}/members:
-    $ref: './tenants.yaml#/members'
+    $ref: './members.yaml#/members'
+  /api/v1/tenants/{tenant}/members/{person_id}/grant:
+    $ref: './members.yaml#/memberGrant'
+  /api/v1/tenants/{tenant}/group-mappings:
+    $ref: './members.yaml#/groupMappings'
+  /api/v1/tenants/{tenant}/group-mappings/{mapping_id}:
+    $ref: './members.yaml#/groupMapping'
   /api/v1/tenants/{tenant}/audit:
     $ref: './tenants.yaml#/audit'
   /api/v1/tenants/{tenant}/projects:
@@ -84,6 +97,12 @@ paths:
     $ref: './tenants.yaml#/project'
   /api/v1/tenants/{tenant}/projects/{project}/archive:
     $ref: './tenants.yaml#/projectArchive'
+  /api/v1/tenants/{tenant}/projects/{project}/restriction:
+    $ref: './members.yaml#/projectRestriction'
+  /api/v1/tenants/{tenant}/projects/{project}/access:
+    $ref: './members.yaml#/projectAccessList'
+  /api/v1/tenants/{tenant}/projects/{project}/access/{person_id}:
+    $ref: './members.yaml#/projectAccess'
   /api/v1/tenants/{tenant}/events:
     $ref: './events.yaml#/events'
   /api/v1/tenants/{tenant}/tickets:
@@ -159,16 +178,20 @@ components:
         request as an agent's; a token with the agent flag is an agent's
         with or without it, and no header removes the flag (docs/adr/0036).
         A request that carries an `Authorization` header is a token's, and
-        its cookie, if any, is not looked at.
+        its cookie, if any, is not looked at. A token of a person the identity
+        provider's groups no longer admit is refused with `401 not_allowed`,
+        checked against the person's groups as of their last login or groups
+        refresh, at most `COWORK_OIDC_GROUPS_REFRESH` apart (docs/adr/0035 D8).
     sessionCookie:
       type: apiKey
       in: cookie
       name: __Host-cowork-session
       description: |
         The session of a browser login: an opaque id of 256 random bits, set
-        by `POST /auth/local` as `HttpOnly; Secure; SameSite=Lax; Path=/`
-        (docs/adr/0031 D2). A session acts as its person with no agent flag
-        and with the whole of the person's role: it has no scope of its own.
+        by `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;
+        SameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its
+        person with no agent flag and with the whole of the person's role: it
+        has no scope of its own.
         Its writes are held to the CSRF check of docs/adr/0037 D1: `Origin`
         (or `Referer`) equal to the installation's `COWORK_BASE_URL` and
         `X-Requested-With: cowork`.

@@ -13,18 +13,32 @@ import (
 
 // public are the operations that answer without a credential: the build's
 // version, the document itself (docs/adr/0046 D5), what the login page offers
-// and the login itself (docs/adr/0033 D8, docs/adr/0031 D1).
-var public = map[string]bool{"getVersion": true, "getOpenAPI": true, "getAuthOptions": true, "loginLocal": true}
+// and the logins themselves — the local one and the identity provider's two
+// browser navigations (docs/adr/0033 D8, docs/adr/0031 D1, docs/adr/0029 D1).
+var public = map[string]bool{
+	"getVersion": true, "getOpenAPI": true, "getAuthOptions": true, "loginLocal": true,
+	"loginOidc": true, "oidcCallback": true,
+}
+
+// openQuery are the operations that take query parameters the document does
+// not name: the identity provider's callback, to which the issuer may add its
+// own (docs/adr/0029 D1). Every other operation refuses an unknown parameter
+// (docs/adr/0049 D4).
+var openQuery = map[string]bool{"oidcCallback": true}
 
 // sessionOnly are the operations a personal access token cannot call: it
 // answers `403 session_required` (docs/adr/0035 D5, docs/adr/0033 D1, D4, D5,
-// docs/adr/0005 D5, docs/adr/0031 D4). The document says so with a single
-// requirement, `sessionCookie`; every other operation takes either credential.
-// What a leaked token must not be able to make — a token, a tenant, an
-// account, a password the administrator knows — outlives its revocation.
+// docs/adr/0005 D5, docs/adr/0031 D4, docs/adr/0030 D2, D3, docs/adr/0034 D3).
+// The document says so with a single requirement, `sessionCookie`; every other
+// operation takes either credential. What a leaked token must not be able to
+// make — a token, a tenant, an account, a password the administrator knows, a
+// role, a mapping, a person's way into a restricted project — outlives its
+// revocation; what only takes access away stays open to a token.
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true,
 	"createAccount": true, "resetAccountPassword": true,
+	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
+	"setProjectRestriction": true, "setProjectAccess": true,
 }
 
 // The document is part of the security documentation (docs/adr/0046 D8):
@@ -32,7 +46,8 @@ var sessionOnly = map[string]bool{
 // session cookie alone where a token may not call, or an explicit empty one on
 // the public operations — and the problem response for its errors
 // (docs/adr/0047 D1). A public route that writes is origin-checked, because
-// no session carries the CSRF check for it (docs/adr/0037 D5).
+// no session carries the CSRF check for it (docs/adr/0037 D5), and only the
+// identity provider's callback takes query parameters it does not declare.
 func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromData(Document)
@@ -73,6 +88,8 @@ func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 			}
 			assert.NotNil(t, op.Responses.Default(), "%s answers its errors with the problem response", where)
 			assert.NotEmpty(t, op.Tags, "%s has a tag", where)
+			open, _ := op.Extensions["x-cowork-open-query"].(bool)
+			assert.Equal(t, openQuery[op.OperationID], open, "%s takes unknown query parameters only where the document allows it", where)
 		}
 	}
 	for id := range sessionOnly {

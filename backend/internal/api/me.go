@@ -46,8 +46,9 @@ func (s *Server) GetMe(ctx context.Context, _ apigen.GetMeRequestObject) (apigen
 				continue
 			}
 			out.Memberships = append(out.Memberships, apigen.Membership{
-				Tenant: apigen.TenantRef{Slug: m.Slug, Name: m.Name},
-				Role:   apigen.Role(m.Role),
+				Tenant:  apigen.TenantRef{Slug: m.Slug, Name: m.Name},
+				Role:    apigen.Role(m.Role),
+				Origins: originsOf(m.Sources, m.Roles),
 			})
 		}
 		return nil

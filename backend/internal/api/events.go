@@ -115,7 +115,8 @@ func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.
 // caller now, which a project-restricted token narrows to its own, and the
 // confidential rule (docs/adr/0054 D3, docs/adr/0065 D5).
 func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Principal) (events.Filter, error) {
-	f := events.Filter{Person: p.PersonID, Admin: t.Role == domain.RoleAdmin, Projects: map[uuid.UUID]bool{}}
+	f := events.Filter{Person: p.PersonID, Admin: t.Role == domain.RoleAdmin, Projects: map[uuid.UUID]bool{},
+		RestrictedProject: p.RestrictedProjectID}
 	err := h.opts.DB.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		ids, err := r.ListVisibleProjectIDs(ctx, t.ID)
 		for _, id := range ids {
@@ -127,11 +128,11 @@ func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Princi
 }
 
 // stillAdmitted checks at every heartbeat what a new request would: the
-// token is usable — or the session is, neither limit passed — and the person
-// still belongs to the tenant (docs/adr/0035 D6, docs/adr/0031 D3, D4). An
-// open stream does not extend the session's idle time: a forgotten tab must
-// log out. It returns the tenant as the person holds it now, their role
-// included.
+// token is usable — or the session is, neither limit passed — the identity
+// provider still admits the person, and the person still belongs to the tenant
+// (docs/adr/0035 D6, D8, docs/adr/0031 D3, D4, docs/adr/0030 D5). An open
+// stream does not extend the session's idle time: a forgotten tab must log
+// out. It returns the tenant as the person holds it now, their role included.
 func (h *handler) stillAdmitted(ctx context.Context, t tenantScope, p auth.Principal) (tenantScope, bool) {
 	usable := false
 	err := h.opts.DB.Installation(ctx, func(r *store.Reader) error {
@@ -145,7 +146,7 @@ func (h *handler) stillAdmitted(ctx context.Context, t tenantScope, p auth.Princ
 		usable, err = r.TokenStillUsable(ctx, readq.TokenStillUsableParams{TokenID: p.TokenID, UserID: p.PersonID})
 		return err
 	})
-	if err != nil || !usable {
+	if err != nil || !usable || !h.streamStillAdmitted(ctx, p) {
 		return tenantScope{}, false
 	}
 	now, perr := h.boundary(ctx, t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
@@ -160,8 +161,23 @@ type eventData struct {
 	Kind    string `json:"kind"`
 }
 
+// membershipData is what membership.changed tells: the keys of what changed,
+// each where it applies (the API document, the event stream).
+type membershipData struct {
+	PersonID  *uuid.UUID `json:"person_id,omitempty"`
+	ProjectID *uuid.UUID `json:"project_id,omitempty"`
+	MappingID *uuid.UUID `json:"mapping_id,omitempty"`
+}
+
 func writeEvent(w http.ResponseWriter, e events.Event) {
 	data, _ := json.Marshal(eventData{Key: e.Key, Version: e.Version, Kind: e.Action})
+	if e.Entity == store.EntityMembership {
+		m := membershipData{PersonID: e.Person, MappingID: e.Mapping}
+		if e.Project != uuid.Nil {
+			m.ProjectID = &e.Project
+		}
+		data, _ = json.Marshal(m)
+	}
 	// #nosec G705 -- text/event-stream of a uuid, a fixed event name and JSON the server encodes; no HTML
 	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Name(), data)
 }

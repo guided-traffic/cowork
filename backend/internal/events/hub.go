@@ -44,6 +44,8 @@ func (e Event) Name() string {
 		return "link.changed"
 	case "interest":
 		return "interest.changed"
+	case store.EntityMembership:
+		return "membership.changed"
 	}
 	return "ticket.changed"
 }
@@ -56,10 +58,21 @@ type Filter struct {
 	Person   uuid.UUID
 	Admin    bool
 	Projects map[uuid.UUID]bool
+	// RestrictedProject is the project a project-restricted token's stream is
+	// bound to (docs/adr/0035 D3); uuid.Nil for every other stream.
+	RestrictedProject uuid.UUID
 }
 
-// Admits reports whether the stream's person may see the event.
+// Admits reports whether the stream's person may see the event. A
+// membership act reaches its audience whatever project it names
+// (store.MembershipChange) — but a project-restricted token's stream only one
+// that names its project, or names its own person and no other project (the
+// security review of 2026-10-04, m10): the token knows nothing of the tenant
+// beyond its project.
 func (f Filter) Admits(e Event) bool {
+	if e.Entity == store.EntityMembership {
+		return f.admitsMembership(e)
+	}
 	if !f.Projects[e.Project] {
 		return false
 	}
@@ -67,6 +80,20 @@ func (f Filter) Admits(e Event) bool {
 		return true
 	}
 	return e.Assignee != nil && *e.Assignee == f.Person
+}
+
+func (f Filter) admitsMembership(e Event) bool {
+	names := e.Person != nil && *e.Person == f.Person
+	if f.RestrictedProject != uuid.Nil && e.Project != f.RestrictedProject && (e.Project != uuid.Nil || !names) {
+		return false
+	}
+	switch e.Audience {
+	case store.AudienceAdmins:
+		return f.Admin
+	case store.AudienceAdminsAndPerson:
+		return f.Admin || names
+	}
+	return true
 }
 
 // Stream is one subscriber. Its events arrive on C; Done closes when the hub

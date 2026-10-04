@@ -53,6 +53,7 @@ const (
 	AuditActionPasswordReset      AuditAction = "password_reset"
 	AuditActionDeactivated        AuditAction = "deactivated"
 	AuditActionReactivated        AuditAction = "reactivated"
+	AuditActionLoginRefused       AuditAction = "login_refused"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -702,6 +703,7 @@ type AuditEvent struct {
 	IdempotencyKey       *uuid.UUID
 	RequestID            *uuid.UUID
 	CreatedAt            time.Time
+	SourceHash           []byte
 }
 
 type Comment struct {
@@ -727,6 +729,17 @@ type CommentRevision struct {
 	EditedBy  uuid.UUID
 	Agent     *string
 	CreatedAt time.Time
+}
+
+type GroupMapping struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	GroupName string
+	Role      domain.Role
+	Version   int32
+	CreatedBy *uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type IdempotencyKey struct {
@@ -827,13 +840,18 @@ type Question struct {
 }
 
 type Session struct {
-	ID            uuid.UUID
-	UserID        uuid.UUID
-	TokenHash     []byte
-	UserAgentHash []byte
-	CreatedAt     time.Time
-	LastSeenAt    time.Time
-	ExpiresAt     time.Time
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	TokenHash          []byte
+	UserAgentHash      []byte
+	CreatedAt          time.Time
+	LastSeenAt         time.Time
+	ExpiresAt          time.Time
+	Method             string
+	Groups             []string
+	GroupsRefreshedAt  *time.Time
+	RefreshTokenSealed []byte
+	RefreshRetryAt     *time.Time
 }
 
 type Tenant struct {
@@ -972,4 +990,11 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	GlobalAdmin   bool
+	OidcIssuer    *string
+	OidcSubject   *string
+	Email         *string
+	EmailVerified *bool
+	OidcGroups    []string
+	OidcGroupsAt  *time.Time
+	GateCheckedAt *time.Time
 }

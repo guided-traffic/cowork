@@ -1,19 +1,23 @@
-# The browser's login flows (docs/adr/0031, 0033, 0037 D5). Their paths are
+# The browser's login flows (docs/adr/0029, 0031, 0033, 0037 D5). Their paths are
 # outside /api/v1, as ADR 0037 D5 names them: the frontend's nginx and the
 # development proxy send /auth/ to the backend beside /api/. They are in this
 # document so the pipeline validates them, the generated clients know them and
 # the document tells which route needs which credential; the session cookie
 # they set is the credential of every other route that declares `sessionCookie`.
+# The identity provider's two routes are browser navigations, not calls: they
+# answer redirects, and their failures are redirects to the login page too.
 options:
   get:
     operationId: getAuthOptions
     tags: [auth]
     summary: What the login page offers
     description: |
-      The local form is offered when at least one active local account exists,
-      the identity provider's button when one is configured (docs/adr/0033 D8).
-      No identity provider exists yet, so `oidc` is always false. The minimum
-      password length is the policy every password form follows (D3).
+      The local form is offered when at least one active local account exists
+      (docs/adr/0033 D8); the identity provider's button, "Sign in with
+      `oidc_name`", when one is configured and its gate admits somebody —
+      `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
+      (docs/adr/0030 D1, D8). The minimum password length is the policy every
+      password form follows (docs/adr/0033 D3).
     security: []
     responses:
       '200':
@@ -24,7 +28,8 @@ options:
               $ref: './components/schemas.yaml#/AuthOptions'
             example:
               local: true
-              oidc: false
+              oidc: true
+              oidc_name: Acme SSO
               password_min_length: 12
       default:
         $ref: './components/responses.yaml#/Problem'
@@ -32,7 +37,7 @@ local:
   post:
     operationId: loginLocal
     tags: [auth]
-    summary: Log in with a local account
+    summary: Sign in with a local account
     description: |
       Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;
       SameSite=Lax; Path=/`) and answers whether the password is temporary
@@ -81,6 +86,123 @@ local:
               password_change_required: false
       default:
         $ref: './components/responses.yaml#/Problem'
+oidcLogin:
+  get:
+    operationId: loginOidc
+    tags: [auth]
+    summary: Start a login through the identity provider
+    description: |
+      A navigation of the browser — the login page's button sets
+      `window.location` here — and never a call: the answer is a redirect
+      (docs/adr/0029 D1). With an identity provider configured it is `302` to
+      the issuer's authorization endpoint, for the authorization code flow
+      with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
+      `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+      Without one, or while its gate admits nobody — the cases in which
+      `GET /auth/options` answers `oidc: false` — it is `303` to
+      `/login?error=oidc_unavailable&return=<return_to>`.
+
+      `return_to` is where the browser lands after the login: a path of this
+      installation that starts with `/`, not with `//` or `/\`, holds no
+      control character and is at most 2048 characters long. Anything else,
+      or none, is `/`; it is never refused, so a bad link still leads to a
+      login.
+
+      No credential: whoever comes here has none yet. Nothing is decided here
+      that a forged link could abuse — the session is made by the callback,
+      and only for the browser that holds the state cookie this answer set.
+    security: []
+    parameters:
+      - name: return_to
+        in: query
+        description: The path to land on after the login, and the `return` of a refusal's redirect to the login page; anything that is not a path of this installation is `/`
+        schema: {type: string}
+    responses:
+      '302':
+        description: To the issuer's authorization endpoint; the state cookie is set
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Redirect'
+          Set-Cookie:
+            $ref: './components/headers.yaml#/SetOidcCookie'
+      '303':
+        description: To `/login?error=oidc_unavailable&return=<return_to>` — no identity provider is configured, or its gate admits nobody
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Redirect'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+callback:
+  get:
+    operationId: oidcCallback
+    tags: [auth]
+    summary: The identity provider's return
+    description: |
+      Where the issuer sends the browser back: `COWORK_BASE_URL` +
+      `/auth/callback`, the redirect URI registered with the identity
+      provider (docs/adr/0029 D4). The UI never calls it.
+
+      The state cookie of `GET /auth/oidc/login` must be present, younger than
+      ten minutes, and hold the `state` the issuer returned. The code is
+      exchanged with the PKCE verifier; the ID token's signature, issuer,
+      audience, expiry and nonce are verified (D1); the groups are read from
+      `COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —
+      and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
+      is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
+      issuer and subject, or made (docs/adr/0029 D5), and their memberships
+      are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+      session is made as the local login makes it — a new cookie, and the
+      session the request presented ended (docs/adr/0031 D5) — the state
+      cookie is cleared, and the answer is `303` to `return_to`.
+
+      Every failure is `303` to `/login?error=<code>&return=<return_to>`, the
+      state cookie cleared and no session made. `return` is the path the login
+      began with, for the page's next attempt: it is there when the state
+      cookie still opens, stale or not, and the path is not `/`, the page's
+      default. The codes: `oidc_failed` — the state cookie is missing, stale
+      or does not match, the exchange or the verification failed, or the
+      issuer answered with `error`; `not_allowed` — the person is outside the
+      gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+      exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
+      `oidc_unavailable` — no identity provider is configured. A refused
+      login is recorded (docs/adr/0026); the reason reaches the log, never the
+      page, and neither ever holds a code or a token.
+
+      The issuer may add parameters this document does not name, such as `iss`
+      (RFC 9207) or `session_state`: the route takes them and reads none of
+      them (`x-cowork-open-query`).
+    security: []
+    x-cowork-open-query: true
+    parameters:
+      - name: code
+        in: query
+        description: The authorization code
+        schema: {type: string}
+      - name: state
+        in: query
+        description: The `state` of the login, as the issuer returns it
+        schema: {type: string}
+      - name: error
+        in: query
+        description: The issuer's error, sent instead of `code` (RFC 6749 4.1.2.1)
+        schema: {type: string}
+      - name: error_description
+        in: query
+        schema: {type: string}
+    responses:
+      '303':
+        description: To `return_to`, logged in, or to `/login?error=<code>&return=<return_to>`
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Redirect'
+          Set-Cookie:
+            description: |
+              Two cookies: the state cookie `__Host-cowork-oidc` cleared with
+              `Max-Age=0`, and after a login the session cookie
+              `__Host-cowork-session` (docs/adr/0031 D2).
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'
 logout:
   post:
     operationId: logout
@@ -90,9 +212,28 @@ logout:
       Deletes the session's row and clears the cookie (docs/adr/0031 D4). A
       write of a session, so the CSRF check applies: a page of another site
       cannot log a person out (docs/adr/0037 D5).
+
+      A session the identity provider made, whose issuer names an
+      `end_session_endpoint` in its discovery, answers `200` with
+      `end_session_url`: the issuer's logout with `client_id` and
+      `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the
+      browser goes next to end its session at the issuer as well (D4). The
+      ID token was not kept (D1), so the URL carries no `id_token_hint`. Every
+      other logout answers `204`.
     security:
       - sessionCookie: []
     responses:
+      '200':
+        description: Logged out; the cookie is cleared, and the issuer's logout follows
+        headers:
+          Set-Cookie:
+            $ref: './components/headers.yaml#/SetCookie'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/LogoutResult'
+            example:
+              end_session_url: https://login.example.com/oidc/logout?client_id=cowork&post_logout_redirect_uri=https%3A%2F%2Fcowork.example.com%2Flogin
       '204':
         description: Logged out; the cookie is cleared
         headers:

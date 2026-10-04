@@ -89,25 +89,6 @@ tenant:
               $ref: './components/schemas.yaml#/Tenant'
       default:
         $ref: './components/responses.yaml#/Problem'
-members:
-  parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
-  get:
-    operationId: listMembers
-    tags: [tenants]
-    summary: The tenant's members and their roles (docs/adr/0034 D7)
-    parameters:
-      - $ref: './components/parameters.yaml#/Cursor'
-      - $ref: './components/parameters.yaml#/Limit'
-    responses:
-      '200':
-        description: A page of members
-        content:
-          application/json:
-            schema:
-              $ref: './components/schemas.yaml#/MemberList'
-      default:
-        $ref: './components/responses.yaml#/Problem'
 audit:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'

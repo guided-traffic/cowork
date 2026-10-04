@@ -44,6 +44,7 @@ var (
 	Unauthenticated        = Code{"unauthenticated", http.StatusUnauthorized, "Unauthenticated", "No token or session, a malformed one, or one cowork does not know; a session that expired or was ended answers the same"}
 	TokenExpired           = Code{"token_expired", http.StatusUnauthorized, "Token expired", "The token is past its expiry (docs/adr/0035 D4)"}
 	TokenRevoked           = Code{"token_revoked", http.StatusUnauthorized, "Token revoked", "The token was revoked, or its person deactivated (docs/adr/0035 D6)"}
+	NotAllowed             = Code{"not_allowed", http.StatusUnauthorized, "Not allowed", "The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8)"}
 	InvalidCredentials     = Code{"invalid_credentials", http.StatusUnauthorized, "Invalid credentials", "The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6)"}
 	Forbidden              = Code{"forbidden", http.StatusForbidden, "Forbidden", "The person's role does not allow the act (docs/adr/0034)"}
 	InsufficientScope      = Code{"insufficient_scope", http.StatusForbidden, "Insufficient scope", "The token's scope does not reach the act (docs/adr/0035 D3)"}
@@ -53,10 +54,15 @@ var (
 	NotInitialised         = Code{"not_initialised", http.StatusForbidden, "Not initialised", "The installation has no tenant yet and the person is not a global administrator (docs/adr/0032 D5)"}
 	Csrf                   = Code{"csrf", http.StatusForbidden, "CSRF check failed", "A cookie-authenticated write, or the login, did not come from COWORK_BASE_URL or lacks `X-Requested-With: cowork` (docs/adr/0037 D1)"}
 	NotFound               = Code{"not_found", http.StatusNotFound, "Not found", "No such route, or a tenant, project or ticket the caller cannot see — the answer does not say which (docs/adr/0047 D5)"}
+	PersonNotFound         = Code{"person_not_found", http.StatusNotFound, "Person not found", "No active person has this e-mail address or username — nobody logged in with it through the identity provider and no local account has it — or the person named is not a member of the tenant (docs/adr/0030 D3)"}
 	MethodNotAllowed       = Code{"method_not_allowed", http.StatusMethodNotAllowed, "Method not allowed", "The path exists with other methods; `Allow` names them"}
 	UsernameTaken          = Code{"username_taken", http.StatusConflict, "Username taken", "The installation has a person with this username; usernames are unique (docs/adr/0033 D2)"}
 	TenantSlugTaken        = Code{"tenant_slug_taken", http.StatusConflict, "Tenant slug taken", "The installation has a tenant with this slug; slugs are never reused (docs/adr/0005 D4)"}
 	ProjectKeyTaken        = Code{"project_key_taken", http.StatusConflict, "Project key taken", "The tenant has a project with this key; keys are never reused (docs/adr/0007 D4)"}
+	PersonAmbiguous        = Code{"person_ambiguous", http.StatusConflict, "Person ambiguous", "Several persons have this e-mail address, which is a display attribute and not an identity (docs/adr/0029 D5); nobody was granted"}
+	GrantExists            = Code{"grant_exists", http.StatusConflict, "Grant exists", "The person holds a grant in this tenant already; change its role with `PUT …/members/{person_id}/grant` (docs/adr/0030 D3)"}
+	MappingExists          = Code{"mapping_exists", http.StatusConflict, "Mapping exists", "The tenant maps this group already; change that mapping's role instead (docs/adr/0030 D2)"}
+	LastAdmin              = Code{"last_admin", http.StatusConflict, "Last administrator", "The change would leave the tenant without an administrator who can sign in: nobody active and admitted by the gate would hold the admin role, mapped or granted (docs/adr/0034 D1)"}
 	ProjectArchived        = Code{"project_archived", http.StatusConflict, "Project archived", "An archived project refuses new tickets (docs/adr/0006 D4)"}
 	StateConflict          = Code{"state_conflict", http.StatusConflict, "State conflict", "The ticket is not in the state the request assumed, or its state does not allow the change; `errors[]` names the current state (docs/adr/0045 D2)"}
 	ParentCycle            = Code{"parent_cycle", http.StatusConflict, "Parent cycle", "The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2)"}
@@ -83,9 +89,11 @@ var (
 // Catalogue lists every code; the generators read it.
 var Catalogue = []Code{
 	ValidationFailed, IdempotencyKeyRequired, InvalidCursor, PageTooDeep,
-	Unauthenticated, TokenExpired, TokenRevoked, InvalidCredentials,
+	Unauthenticated, TokenExpired, TokenRevoked, NotAllowed, InvalidCredentials,
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
-	NotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
+	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken,
+	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,
+	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
 	PreconditionFailed, PayloadTooLarge,
 	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts,
 	Internal, NotReady, Timeout, BackendUnreachable,

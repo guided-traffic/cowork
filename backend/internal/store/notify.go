@@ -31,6 +31,36 @@ type Notification struct {
 	Confidential bool       `json:"confidential"`
 	Assignee     *uuid.UUID `json:"assignee,omitempty"`
 	Reporter     uuid.UUID  `json:"reporter"`
+	// Person and Mapping are the keys of a membership act besides Project;
+	// Audience says who of the tenant may hear of it (MembershipChange).
+	Person   *uuid.UUID `json:"person,omitempty"`
+	Mapping  *uuid.UUID `json:"mapping,omitempty"`
+	Audience string     `json:"audience,omitempty"`
+}
+
+// EntityMembership is the entity of every notification of a membership act:
+// a grant, a derived membership, a group mapping, a project's restriction or
+// access list (docs/adr/0054 D2).
+const EntityMembership = "membership"
+
+// The audiences of a membership act. Every member of the tenant hears of a
+// membership or a project's restriction — the member list is theirs to read
+// anyway, and a project that is restricted or opened was visible to them at
+// one of the two moments; only the administrators hear of a mapping, which
+// only they read; and an access entry reaches the administrators and the
+// person it names, never the members who do not see the project
+// (docs/adr/0034 D3).
+const (
+	AudienceMembers         = "members"
+	AudienceAdmins          = "admins"
+	AudienceAdminsAndPerson = "admins-and-person"
+)
+
+// MembershipChange is what a membership act announces: the keys of what
+// changed, uuid.Nil where one does not apply, and who may hear of it.
+type MembershipChange struct {
+	Person, Project, Mapping uuid.UUID
+	Audience                 string
 }
 
 // silent are the acts a stream does not carry: data leaving the system
@@ -38,10 +68,13 @@ type Notification struct {
 // (docs/adr/0026 D5, docs/adr/0034 D5).
 var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
 
-// publish notifies the listeners of a ticket's act. NOTIFY inside the
-// transaction is delivered when it commits and never when it rolls back
-// (docs/adr/0054 D4).
+// publish notifies the listeners of a ticket's act or of a membership act of
+// a tenant. NOTIFY inside the transaction is delivered when it commits and
+// never when it rolls back (docs/adr/0054 D4).
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
+	if tenantID != uuid.Nil && e.Membership != nil {
+		return w.notify(ctx, membershipNotification(tenantID, id, e))
+	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil
 	}
@@ -49,9 +82,26 @@ func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) e
 	if err != nil {
 		return fmt.Errorf("read the published ticket: %w", err)
 	}
-	payload, err := json.Marshal(Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
+	return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
 		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
 		Assignee: facts.AssigneeID, Reporter: facts.ReporterID})
+}
+
+func membershipNotification(tenantID, id uuid.UUID, e Event) Notification {
+	m := e.Membership
+	n := Notification{ID: id, Tenant: tenantID, Project: m.Project, Entity: EntityMembership, Action: e.Action,
+		Audience: m.Audience}
+	if m.Person != uuid.Nil {
+		n.Person = &m.Person
+	}
+	if m.Mapping != uuid.Nil {
+		n.Mapping = &m.Mapping
+	}
+	return n
+}
+
+func (w *Writer) notify(ctx context.Context, n Notification) error {
+	payload, err := json.Marshal(n)
 	if err != nil {
 		return fmt.Errorf("encode the notification: %w", err)
 	}

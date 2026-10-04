@@ -18,6 +18,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
+	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
@@ -119,12 +120,25 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 
+	// The identity provider is discovered before anything else is kept: a
+	// configured issuer that cannot be discovered refuses the start, like an
+	// invalid configuration value (docs/adr/0029 D4).
+	identity, err := discoverIssuer(ctx, cfg, logger)
+	if err != nil {
+		logger.Error("identity provider discovery failed", "error", err)
+		return 1
+	}
+
 	// The configured administrator and bootstrap tenant, after the migrations and
 	// before the first request (docs/adr/0032 D2, D8).
-	if err := bootstrap.Sync(ctx, db, bootstrap.Params{
+	params := bootstrap.Params{
 		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
 		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
-	}, logger); err != nil {
+	}
+	if cfg.OIDC != nil {
+		params.AdminGroup = cfg.OIDC.AdminGroup
+	}
+	if err := bootstrap.Sync(ctx, db, params, logger); err != nil {
 		logger.Error("bootstrap failed", "error", err)
 		return 1
 	}
@@ -169,6 +183,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		TokenDefaultLifetime: cfg.TokenDefaultLifetime,
 		TokenMaxLifetime:     cfg.TokenMaxLifetime,
 		TrustedProxies:       cfg.TrustedProxies,
+		OIDC:                 identity,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
@@ -184,6 +199,33 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// discoverIssuer discovers the configured identity provider (docs/adr/0029 D1,
+// D4), or returns the zero options when none is configured. A gate that admits
+// nobody is said once at the start: the login page then offers no button
+// (docs/adr/0030 D8).
+func discoverIssuer(ctx context.Context, cfg config.Config, logger *slog.Logger) (api.OIDCOptions, error) {
+	o := cfg.OIDC
+	if o == nil {
+		return api.OIDCOptions{}, nil
+	}
+	discoverCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	provider, err := oidc.Discover(discoverCtx, oidc.Config{
+		Issuer: o.Issuer, ClientID: o.ClientID, ClientSecret: o.ClientSecret, RedirectURL: cfg.BaseOrigin + "/auth/callback",
+		Scopes: o.Scopes, GroupsClaim: o.GroupsClaim, Logger: logger,
+	})
+	if err != nil {
+		return api.OIDCOptions{}, err
+	}
+	if !o.Admits() {
+		logger.Warn("the identity provider's gate admits nobody: name a group in COWORK_OIDC_ALLOWED_GROUPS or COWORK_ADMIN_GROUP")
+	}
+	logger.Info("identity provider discovered", "issuer", o.Issuer, "allowed_groups", len(o.AllowedGroups),
+		"administrator_group", o.AdminGroup != "", "groups_refresh", o.GroupsRefresh)
+	return api.OIDCOptions{Provider: provider, AllowedGroups: o.AllowedGroups, AdminGroup: o.AdminGroup,
+		GroupsRefresh: o.GroupsRefresh, DisplayName: o.DisplayName}, nil
 }
 
 // requireForServe checks what only `cowork serve` needs: the server key, and

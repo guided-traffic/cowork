@@ -138,6 +138,9 @@ type LoginAttempt struct {
 	// "password change".
 	Context   string
 	RequestID uuid.UUID
+	// SourceHash is the keyed hash of the client address the audit rows of the
+	// attempt carry (docs/adr/0035 D2).
+	SourceHash []byte
 }
 
 // LoginOutcome is what RecordLoginAttempt decided.
@@ -173,7 +176,7 @@ func (db *DB) RecordLoginAttempt(ctx context.Context, in LoginAttempt) (LoginOut
 		return LoginFailed, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	caller := Caller{System: systemLogin, RequestID: in.RequestID}
+	caller := Caller{System: systemLogin, RequestID: in.RequestID, SourceHash: in.SourceHash}
 	if err := setContext(ctx, tx, uuid.Nil, caller, "login"); err != nil {
 		return LoginFailed, err
 	}
@@ -201,7 +204,7 @@ func (w *Writer) decideAttempt(ctx context.Context, in LoginAttempt) (LoginOutco
 	if err != nil {
 		return LoginFailed, err
 	}
-	entity := Event{EntityType: "user", EntityID: in.Account.UserID, Note: in.Context}
+	entity := Event{EntityType: entityUser, EntityID: in.Account.UserID, Note: in.Context}
 	attempt := writeq.InsertLoginAttemptParams{Username: in.Username, Address: in.Address, CreatedAt: in.Now}
 	switch {
 	case locked:

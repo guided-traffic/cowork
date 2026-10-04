@@ -119,11 +119,16 @@ func (b *browser) request(method, path string, body any, opts ...reqOpt) *http.R
 	for _, o := range opts {
 		o(req)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := browserClient.Do(req)
 	require.NoError(b.t, err)
 	b.t.Cleanup(func() { _ = res.Body.Close() })
 	return res
 }
+
+// browserClient does not follow redirects: a test looks at where the login
+// through the identity provider sends the browser, and walks the issuer
+// itself.
+var browserClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // login posts the credentials and, on 200, keeps the cookie it sets.
 func (b *browser) login(username, password string, opts ...reqOpt) *http.Response {

@@ -184,8 +184,58 @@ func TestPoliciesOfThePersonsAndTheirAccounts(t *testing.T) {
 		denied(t, global, grant, w.B, w.MemberA, "admin", "grant")
 		denied(t, global, grant, w.B, boss, "member", "grant")
 		affects(t, 1, bootstrapJob, grant, w.B, boss, "admin", "grant")
-		denied(t, adminA, `UPDATE memberships SET role = 'admin' WHERE user_id = $1`, w.MemberA)
-		denied(t, adminA, `DELETE FROM memberships WHERE user_id = $1`, w.MemberA)
+		// An administrator changes and removes the grants of their own tenant
+		// and no other membership (docs/adr/0030 D3): a mapped one is the
+		// identity provider's alone.
+		change := `UPDATE memberships SET role = 'admin' WHERE user_id = $1 AND tenant_id = $2`
+		affects(t, 1, adminA, change, w.MemberA, w.A)
+		affects(t, 0, adminA, change, w.MemberB, w.B)
+		affects(t, 0, memberA, change, w.ViewerA, w.A)
+		affects(t, 1, adminA, `DELETE FROM memberships WHERE user_id = $1 AND tenant_id = $2`, w.ViewerA, w.A)
+		affects(t, 0, asAdminB, `DELETE FROM memberships WHERE user_id = $1 AND tenant_id = $2`, w.ViewerA, w.A)
+		denied(t, adminA, `UPDATE memberships SET user_id = $2 WHERE user_id = $1`, w.MemberA, w.ViewerA)
+	})
+
+	t.Run("the identity provider: its own persons, the memberships it derives, every tenant's mappings", func(t *testing.T) {
+		identity := settings{"app.job": "identity-provider"}
+		person := `INSERT INTO users (id, display_name, global_admin, oidc_issuer, oidc_subject) VALUES (uuidv7(), 'x', $1, 'https://issuer.test', $2)`
+		affects(t, 1, identity, person, true, uniqueSlug("sub"))
+		denied(t, adminA, person, false, uniqueSlug("sub"))
+		denied(t, identity, `INSERT INTO users (id, username, display_name) VALUES (uuidv7(), $1, 'x')`, uniqueSlug("pol"))
+		affects(t, 0, identity, `UPDATE users SET global_admin = true WHERE id = $1`, w.MemberA)
+
+		mapped := `INSERT INTO memberships (tenant_id, user_id, role, source) VALUES ($1, $2, 'member', 'mapping')`
+		affects(t, 1, identity, mapped, w.B, w.MemberA)
+		denied(t, adminA, mapped, w.A, boss)
+		affects(t, 0, adminA, `UPDATE memberships SET role = 'admin' WHERE tenant_id = $1 AND source = 'mapping'`, w.A)
+
+		group := uniqueSlug("group")
+		for _, tenant := range []uuid.UUID{w.A, w.B} {
+			require.NoError(t, f.Exec(ctx, `INSERT INTO group_mappings (tenant_id, group_name, role) VALUES ($1, $2, 'member')`, tenant, group))
+		}
+		read := `SELECT count(*) FROM group_mappings WHERE group_name = $1`
+		assert.EqualValues(t, 2, count(t, identity, read, group), "the derivation reads every tenant's mappings")
+		assert.EqualValues(t, 1, count(t, adminA, read, group), "an administrator their own tenant's")
+		assert.EqualValues(t, 0, count(t, nobody, read, group))
+		insertMapping := `INSERT INTO group_mappings (tenant_id, group_name, role) VALUES ($1, $2, 'admin')`
+		affects(t, 1, adminA, insertMapping, w.A, uniqueSlug("g"))
+		denied(t, memberA, insertMapping, w.A, uniqueSlug("g"))
+		denied(t, adminA, insertMapping, w.B, uniqueSlug("g"))
+		denied(t, identity, insertMapping, w.A, uniqueSlug("g"))
+		affects(t, 0, memberA, `UPDATE group_mappings SET role = 'admin' WHERE group_name = $1`, group)
+		affects(t, 0, memberA, `DELETE FROM group_mappings WHERE group_name = $1`, group)
+		affects(t, 1, adminA, `DELETE FROM group_mappings WHERE group_name = $1`, group)
+	})
+
+	// The security review of 2026-10-04, item 14: a project's restriction is
+	// its tenant's administrators' to set or lift, in the data layer too; its
+	// other settings stay a member's.
+	t.Run("projects: only an administrator restricts or opens a project", func(t *testing.T) {
+		restrict := `UPDATE projects SET restricted = NOT restricted WHERE id = $1`
+		denied(t, memberA, restrict, w.ProjectA)
+		affects(t, 1, adminA, restrict, w.ProjectA)
+		affects(t, 1, memberA, `UPDATE projects SET name = 'Renamed' WHERE id = $1`, w.ProjectA)
+		affects(t, 0, asAdminB, restrict, w.ProjectA)
 	})
 
 	t.Run("tenants: a global administrator or the synchronisation creates one", func(t *testing.T) {

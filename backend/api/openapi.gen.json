@@ -13,8 +13,21 @@
           "type": "string"
         }
       },
+      "Redirect": {
+        "description": "Where the browser goes next",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
       "SetCookie": {
         "description": "The session cookie `__Host-cowork-session`: `HttpOnly; Secure; SameSite=Lax;\nPath=/`, no `Domain` (docs/adr/0031 D2). A logout clears it with `Max-Age=0`.\n",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SetOidcCookie": {
+        "description": "The login's state cookie `__Host-cowork-oidc`: `HttpOnly; Secure;\nSameSite=Lax; Path=/; Max-Age=600`. It holds the `state`, the `nonce`, the\nPKCE verifier, `return_to` and the time, sealed with AES-256-GCM under a key\nderived from `COWORK_SESSION_KEY` (docs/adr/0029 D1); the callback reads it\nonce and clears it.\n",
         "schema": {
           "type": "string"
         }
@@ -248,6 +261,16 @@
           "type": "string"
         }
       },
+      "GroupMappingID": {
+        "description": "The group mapping's id",
+        "in": "path",
+        "name": "mapping_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
       "IdempotencyKey": {
         "description": "A UUID the client generates per act and repeats on every retry of it; an\nagent's POST requires one (docs/adr/0045 D3, D4).\n",
         "in": "header",
@@ -368,6 +391,16 @@
             100
           ],
           "type": "integer"
+        }
+      },
+      "PersonID": {
+        "description": "A person's id",
+        "in": "path",
+        "name": "person_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
         }
       },
       "ProgressMax": {
@@ -1078,8 +1111,15 @@
             "type": "boolean"
           },
           "oidc": {
-            "description": "An identity provider is configured; none is built yet, so false",
+            "description": "The login page shows the identity provider's button: one is configured,\nand `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group —\nwithout either nobody may log in through it (docs/adr/0030 D1, D8)\n",
             "type": "boolean"
+          },
+          "oidc_name": {
+            "description": "The provider's name on the button, \"Sign in with \u003coidc_name\u003e\", `COWORK_OIDC_DISPLAY_NAME`; null without a provider",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password_min_length": {
             "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
@@ -1090,6 +1130,7 @@
         "required": [
           "local",
           "oidc",
+          "oidc_name",
           "password_min_length"
         ],
         "type": "object"
@@ -1387,6 +1428,99 @@
         ],
         "type": "object"
       },
+      "GroupMapping": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "group": {
+            "description": "The group's name, matched exactly and case-sensitively against the groups claim (docs/adr/0029 D2)",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "includes_caller": {
+            "description": "The calling person's groups, as of their last login or groups refresh,\ninclude the group: changing or removing the mapping changes their own\nrole (docs/adr/0030 D2)\n",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "group",
+          "role",
+          "includes_caller",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "GroupMappingCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "description": "The group's name as the identity provider's claim carries it, case and all, with no white space at either end",
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^\\S(.*\\S)?$",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "group",
+          "role"
+        ],
+        "type": "object"
+      },
+      "GroupMappingList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GroupMapping"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "GroupMappingPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
       "Interest": {
         "properties": {
           "note": {
@@ -1575,6 +1709,18 @@
         ],
         "type": "object"
       },
+      "LogoutResult": {
+        "properties": {
+          "end_session_url": {
+            "description": "The issuer's `end_session_endpoint` with `client_id` and\n`post_logout_redirect_uri`; the browser navigates there to end its\nsession at the identity provider too (docs/adr/0031 D4)\n",
+            "type": "string"
+          }
+        },
+        "required": [
+          "end_session_url"
+        ],
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "display_name": {
@@ -1620,7 +1766,26 @@
         "type": "object"
       },
       "Member": {
+        "description": "A member with the effective role, the higher of the mapped and the granted one (docs/adr/0030 D4)",
         "properties": {
+          "email": {
+            "description": "The address the identity provider asserted at the person's last login, which tells two\npersons of one name apart: for the tenant's administrators; null for anyone else, and for a\nperson without one, such as a local account\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "local": {
+            "description": "The person has a local account — a username and a password of their own — rather than an identity of the identity provider (docs/adr/0033)",
+            "type": "boolean"
+          },
+          "origins": {
+            "description": "Every source of the membership with its own role, the mapping before the grant (docs/adr/0034 D7)",
+            "items": {
+              "$ref": "#/components/schemas/MembershipOrigin"
+            },
+            "type": "array"
+          },
           "person": {
             "$ref": "#/components/schemas/Person"
           },
@@ -1630,6 +1795,40 @@
         },
         "required": [
           "person",
+          "email",
+          "role",
+          "origins",
+          "local"
+        ],
+        "type": "object"
+      },
+      "MemberAdd": {
+        "additionalProperties": false,
+        "properties": {
+          "person": {
+            "description": "An e-mail address — a value with `@`, compared without regard to case\nwith the address the identity provider asserted at the person's last\nlogin — or a local account's username, with or without `local:`;\ntrimmed, and a username lower-cased (docs/adr/0030 D3, docs/adr/0033 D2)\n",
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "person",
+          "role"
+        ],
+        "type": "object"
+      },
+      "MemberGrantSet": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
           "role"
         ],
         "type": "object"
@@ -1657,6 +1856,13 @@
       },
       "Membership": {
         "properties": {
+          "origins": {
+            "description": "Where the role comes from, each source with its own role; `role` is the\nhigher of them (docs/adr/0030 D4)\n",
+            "items": {
+              "$ref": "#/components/schemas/MembershipOrigin"
+            },
+            "type": "array"
+          },
           "role": {
             "$ref": "#/components/schemas/Role"
           },
@@ -1666,9 +1872,33 @@
         },
         "required": [
           "tenant",
+          "role",
+          "origins"
+        ],
+        "type": "object"
+      },
+      "MembershipOrigin": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MembershipSource"
+          }
+        },
+        "required": [
+          "source",
           "role"
         ],
         "type": "object"
+      },
+      "MembershipSource": {
+        "description": "How a membership came to be: derived from the person's groups by a group\nmapping, or granted by an administrator (docs/adr/0030 D2, D3)\n",
+        "enum": [
+          "mapping",
+          "grant"
+        ],
+        "type": "string"
       },
       "PasswordChange": {
         "additionalProperties": false,
@@ -1701,7 +1931,7 @@
             "type": "string"
           },
           "username": {
-            "description": "The local identity's username, `local:\u003cusername\u003e` (docs/adr/0033 D2)",
+            "description": "A local account's username as it is stored, without the `local:` that names the identity\n(docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider\n",
             "type": [
               "string",
               "null"
@@ -1762,6 +1992,7 @@
           "unauthenticated",
           "token_expired",
           "token_revoked",
+          "not_allowed",
           "invalid_credentials",
           "forbidden",
           "insufficient_scope",
@@ -1771,10 +2002,15 @@
           "not_initialised",
           "csrf",
           "not_found",
+          "person_not_found",
           "method_not_allowed",
           "username_taken",
           "tenant_slug_taken",
           "project_key_taken",
+          "person_ambiguous",
+          "grant_exists",
+          "mapping_exists",
+          "last_admin",
           "project_archived",
           "state_conflict",
           "parent_cycle",
@@ -1850,6 +2086,76 @@
         ],
         "type": "object"
       },
+      "ProjectAccessEntry": {
+        "description": "A person on a project's access list; their role in the project is the lower of their tenant role and the entry's (docs/adr/0034 D3)",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "The address the identity provider asserted at the person's last login, which tells two\npersons of one name apart; null for a person without one, such as a local account. The\naccess list is the tenant's administrators' to read.\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ProjectAccessRole"
+          }
+        },
+        "required": [
+          "person",
+          "email",
+          "role",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ProjectAccessList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectAccessEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "ProjectAccessRole": {
+        "description": "The most a person on a restricted project's access list may do in it (docs/adr/0034 D3)",
+        "enum": [
+          "viewer",
+          "member"
+        ],
+        "type": "string"
+      },
+      "ProjectAccessSet": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ProjectAccessRole"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1914,6 +2220,19 @@
             "$ref": "#/components/schemas/WipLimits"
           }
         },
+        "type": "object"
+      },
+      "ProjectRestrictionSet": {
+        "additionalProperties": false,
+        "properties": {
+          "restricted": {
+            "description": "True restricts the project to the administrators and its access list, false opens it to every member (docs/adr/0034 D3)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restricted"
+        ],
         "type": "object"
       },
       "Question": {
@@ -3280,12 +3599,12 @@
     },
     "securitySchemes": {
       "bearerToken": {
-        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\nA request that carries an `Authorization` header is a token's, and\nits cookie, if any, is not looked at.\n",
+        "description": "A personal access token, `cwk_` and 43 base62 characters\n(docs/adr/0035 D1). `X-Cowork-Agent: name/model/session` marks the\nrequest as an agent's; a token with the agent flag is an agent's\nwith or without it, and no header removes the flag (docs/adr/0036).\nA request that carries an `Authorization` header is a token's, and\nits cookie, if any, is not looked at. A token of a person the identity\nprovider's groups no longer admit is refused with `401 not_allowed`,\nchecked against the person's groups as of their last login or groups\nrefresh, at most `COWORK_OIDC_GROUPS_REFRESH` apart (docs/adr/0035 D8).\n",
         "scheme": "bearer",
         "type": "http"
       },
       "sessionCookie": {
-        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` as `HttpOnly; Secure; SameSite=Lax; Path=/`\n(docs/adr/0031 D2). A session acts as its person with no agent flag\nand with the whole of the person's role: it has no scope of its own.\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
+        "description": "The session of a browser login: an opaque id of 256 random bits, set\nby `POST /auth/local` or `GET /auth/callback` as `HttpOnly; Secure;\nSameSite=Lax; Path=/` (docs/adr/0031 D2). A session acts as its\nperson with no agent flag and with the whole of the person's role: it\nhas no scope of its own.\nIts writes are held to the CSRF check of docs/adr/0037 D1: `Origin`\n(or `Referer`) equal to the installation's `COWORK_BASE_URL` and\n`X-Requested-With: cowork`.\n",
         "in": "cookie",
         "name": "__Host-cowork-session",
         "type": "apiKey"
@@ -3293,7 +3612,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031, `POST /auth/local`) is for the UI. Each\noperation says which it takes: most take either, a few — creating a token,\na tenant or a local account, resetting or changing a password, logging out\n— a session only. A request\nof a session that writes must come from the installation's origin and\ncarry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an\nagent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few — creating a token,\na tenant or a local account, resetting or changing a password, logging out,\nand the administration acts that give access: adding a member, setting a\ngrant, making or changing a group mapping, restricting or opening a\nproject, putting a person on its access list — a session only. A request\nof a session that writes must come from the installation's origin and\ncarry `X-Requested-With: cowork` (docs/adr/0037). A request marked as an\nagent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -3313,6 +3632,12 @@
                   "local": true,
                   "memberships": [
                     {
+                      "origins": [
+                        {
+                          "role": "admin",
+                          "source": "grant"
+                        }
+                      ],
                       "role": "admin",
                       "tenant": {
                         "name": "Acme",
@@ -3959,7 +4284,7 @@
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3). A reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -3998,8 +4323,179 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/group-mappings": {
+      "get": {
+        "description": "Each mapping gives its role to every person whose groups include its\ngroup; several matches yield the highest role (docs/adr/0030 D2).\n`includes_caller` says the calling person is one of them, so the editor\ncan warn before a change takes the editor's own role away.\n",
+        "operationId": "listGroupMappings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMappingList"
+                }
+              }
+            },
+            "description": "A page of mappings"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's group mappings, by group",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "The group is matched exactly, case and all, against the groups the\nidentity provider's claim carries (docs/adr/0029 D2). The mapping applies\nat once to every person whose groups, as of their last login or groups\nrefresh, include it: their memberships are derived in the same\ntransaction, recorded with the cause `mapping`. Everyone else is caught\nup at their next login or groups refresh (docs/adr/0030 D5). A group the\ntenant maps already is `409 mapping_exists`.\n",
+        "operationId": "createGroupMapping",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "group": "team-red",
+                "role": "member"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/GroupMappingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMapping"
+                }
+              }
+            },
+            "description": "The mapping",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Map a group of the identity provider to a role",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/group-mappings/{mapping_id}": {
+      "delete": {
+        "description": "The memberships it derived go at once, or fall to the highest of the\nperson's other mapped groups; grants stay (docs/adr/0030 D3).\nIdempotent: removing a mapping that does not exist answers 204 as well.\n",
+        "operationId": "deleteGroupMapping",
+        "responses": {
+          "204": {
+            "description": "The mapping is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a mapping",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/GroupMappingID"
+        }
+      ],
+      "patch": {
+        "description": "`If-Match` is required (docs/adr/0050 D3). The memberships the mapping\nderives change at once, as at its creation.\n",
+        "operationId": "updateGroupMapping",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "role": "viewer"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/GroupMappingPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMapping"
+                }
+              }
+            },
+            "description": "The changed mapping",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a mapping's role",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null.\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -4018,7 +4514,7 @@
                 }
               }
             },
-            "description": "A page of members"
+            "description": "A page of members, by person id"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -4033,7 +4529,137 @@
         {
           "$ref": "#/components/parameters/TenantSlug"
         }
-      ]
+      ],
+      "post": {
+        "description": "A manual grant, marked as such (docs/adr/0030 D3), for a person who\nexists: who has logged in through the identity provider once, or has a\nlocal account. Nobody active by that address or name is\n`404 person_not_found`; an address several persons share is\n`409 person_ambiguous`, since an e-mail address is a display attribute\nand not an identity (docs/adr/0029 D5); a person who holds a grant here\nalready is `409 grant_exists` — change it with\n`PUT …/members/{person_id}/grant`. A person with a mapped membership gets\nthe grant beside it, and the higher role of the two applies (D4).\n",
+        "operationId": "addMember",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "person": "bob@example.com",
+                "role": "member"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/MemberAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "email": "bob@example.com",
+                  "local": false,
+                  "origins": [
+                    {
+                      "role": "member",
+                      "source": "grant"
+                    }
+                  ],
+                  "person": {
+                    "display_name": "Bob Example",
+                    "id": "0199a3c2-1d2e-7f00-8000-000000000002",
+                    "username": null
+                  },
+                  "role": "member"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            },
+            "description": "The member, with the grant among the origins"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Grant a role to a person, by e-mail address or username",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/members/{person_id}/grant": {
+      "delete": {
+        "description": "The mapped membership, if any, stays; without one the person is no\nlonger a member (docs/adr/0030 D3). Idempotent: removing a grant that\ndoes not exist answers 204 as well.\n",
+        "operationId": "removeMemberGrant",
+        "responses": {
+          "204": {
+            "description": "The person holds no grant in the tenant"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a member's grant",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/PersonID"
+        }
+      ],
+      "put": {
+        "description": "Creates the member's manual grant with the role, or changes the role of\nthe one they hold; repeating it changes nothing (docs/adr/0045 D1). The\nmapped membership is never touched: it holds until the mapping or the\ngroups change (docs/adr/0030 D3). The person must be a member of the\ntenant, else `404 person_not_found` — a person who is not one yet is\nadded by e-mail address or username.\n",
+        "operationId": "setMemberGrant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "role": "admin"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/MemberGrantSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            },
+            "description": "The member as the grant leaves them"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Give a member a grant, or change its role",
+        "tags": [
+          "tenants"
+        ]
+      }
     },
     "/api/v1/tenants/{tenant}/projects": {
       "get": {
@@ -4211,6 +4837,117 @@
         ]
       }
     },
+    "/api/v1/tenants/{tenant}/projects/{project}/access": {
+      "get": {
+        "description": "The people a restricted project admits besides the tenant's\nadministrators, each with the most they may do in it, `member` or\n`viewer`; a person's role in the project is the lower of their tenant\nrole and their entry (docs/adr/0034 D3).\n",
+        "operationId": "listProjectAccess",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAccessList"
+                }
+              }
+            },
+            "description": "A page of entries, by person id"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The project's access list",
+        "tags": [
+          "projects"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}": {
+      "delete": {
+        "description": "On a restricted project the person no longer sees it, unless they\nadminister the tenant. Idempotent: removing an entry that does not exist\nanswers 204 as well.\n",
+        "operationId": "removeProjectAccess",
+        "responses": {
+          "204": {
+            "description": "The person is not on the list"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Take a person off the access list",
+        "tags": [
+          "projects"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/PersonID"
+        }
+      ],
+      "put": {
+        "description": "The person must be a member of the tenant, else `404 person_not_found`.\nRepeating it changes nothing (docs/adr/0045 D1).\n",
+        "operationId": "setProjectAccess",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "role": "viewer"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ProjectAccessSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAccessEntry"
+                }
+              }
+            },
+            "description": "The entry"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Put a member on the access list, or change their entry",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/projects/{project}/archive": {
       "parameters": [
         {
@@ -4244,6 +4981,67 @@
           }
         },
         "summary": "Archive a project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/restriction": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "put": {
+        "description": "A restricted project is visible to the tenant's administrators and the\npeople on its access list only, each with at most the role of their\nentry; anyone else does not see it, its tickets, its board or its search\nhits (docs/adr/0034 D3, D4). The restriction is a project setting:\n`If-Match` is required (docs/adr/0050 D3), and the version rises. The\naccess list may be written before the project is restricted, so nobody\non it loses the project in between; its entries count while the project\nis restricted.\n",
+        "operationId": "setProjectRestriction",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "restricted": true
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRestrictionSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "The project",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Restrict a project to its access list, or open it",
         "tags": [
           "projects"
         ]
@@ -6489,6 +7287,70 @@
         ]
       }
     },
+    "/auth/callback": {
+      "get": {
+        "description": "Where the issuer sends the browser back: `COWORK_BASE_URL` +\n`/auth/callback`, the redirect URI registered with the identity\nprovider (docs/adr/0029 D4). The UI never calls it.\n\nThe state cookie of `GET /auth/oidc/login` must be present, younger than\nten minutes, and hold the `state` the issuer returned. The code is\nexchanged with the PKCE verifier; the ID token's signature, issuer,\naudience, expiry and nonce are verified (D1); the groups are read from\n`COWORK_OIDC_GROUPS_CLAIM` — in the ID token, else from UserInfo (D2) —\nand must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or\nis `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by\nissuer and subject, or made (docs/adr/0029 D5), and their memberships\nare derived from the tenants' group mappings (docs/adr/0030 D2). Then the\nsession is made as the local login makes it — a new cookie, and the\nsession the request presented ended (docs/adr/0031 D5) — the state\ncookie is cleared, and the answer is `303` to `return_to`.\n\nEvery failure is `303` to `/login?error=\u003ccode\u003e\u0026return=\u003creturn_to\u003e`, the\nstate cookie cleared and no session made. `return` is the path the login\nbegan with, for the page's next attempt: it is there when the state\ncookie still opens, stale or not, and the path is not `/`, the page's\ndefault. The codes: `oidc_failed` — the state cookie is missing, stale\nor does not match, the exchange or the verification failed, or the\nissuer answered with `error`; `not_allowed` — the person is outside the\ngate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant\nexists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);\n`oidc_unavailable` — no identity provider is configured. A refused\nlogin is recorded (docs/adr/0026); the reason reaches the log, never the\npage, and neither ever holds a code or a token.\n\nThe issuer may add parameters this document does not name, such as `iss`\n(RFC 9207) or `session_state`: the route takes them and reads none of\nthem (`x-cowork-open-query`).\n",
+        "operationId": "oidcCallback",
+        "parameters": [
+          {
+            "description": "The authorization code",
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The `state` of the login, as the issuer returns it",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The issuer's error, sent instead of `code` (RFC 6749 4.1.2.1)",
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error_description",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "To `return_to`, logged in, or to `/login?error=\u003ccode\u003e\u0026return=\u003creturn_to\u003e`",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Redirect"
+              },
+              "Set-Cookie": {
+                "description": "Two cookies: the state cookie `__Host-cowork-oidc` cleared with\n`Max-Age=0`, and after a login the session cookie\n`__Host-cowork-session` (docs/adr/0031 D2).\n",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "The identity provider's return",
+        "tags": [
+          "auth"
+        ],
+        "x-cowork-open-query": true
+      }
+    },
     "/auth/local": {
       "post": {
         "description": "Sets the session cookie `__Host-cowork-session` (`HttpOnly; Secure;\nSameSite=Lax; Path=/`) and answers whether the password is temporary\nand must be changed before anything else (docs/adr/0033 D4). A new\nsession is made at every login, and the one the request presented is\nended (docs/adr/0031 D5).\n\nEvery failure is the same `401 invalid_credentials` in the same time —\nan unknown username, a wrong password, a locked or a deactivated\naccount — so neither the answer nor the lockout says whether an account\nexists (docs/adr/0033 D6). `COWORK_LOGIN_MAX_FAILURES` (5) failures of one\nusername within fifteen minutes lock it; more attempts from one client\naddress within a minute than `COWORK_LOGIN_ADDRESS_LIMIT` (20) allows are\n`429 too_many_attempts` — the client being the TCP peer, or behind\n`COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the\nright, that is not one of them (docs/adr/0035 D2). While no\ntenant exists, only a global administrator may log in: anyone else, with\nthe right password, gets `403 not_initialised` and no session\n(docs/adr/0032 D5).\n\nThere is no session yet to carry a CSRF check, so the request must come\nfrom `COWORK_BASE_URL`: its `Origin`, or without one its `Referer`, has\nto equal it, else `403 csrf` (docs/adr/0037 D5).\n",
@@ -6531,7 +7393,7 @@
           }
         },
         "security": [],
-        "summary": "Log in with a local account",
+        "summary": "Sign in with a local account",
         "tags": [
           "auth"
         ],
@@ -6540,9 +7402,27 @@
     },
     "/auth/logout": {
       "post": {
-        "description": "Deletes the session's row and clears the cookie (docs/adr/0031 D4). A\nwrite of a session, so the CSRF check applies: a page of another site\ncannot log a person out (docs/adr/0037 D5).\n",
+        "description": "Deletes the session's row and clears the cookie (docs/adr/0031 D4). A\nwrite of a session, so the CSRF check applies: a page of another site\ncannot log a person out (docs/adr/0037 D5).\n\nA session the identity provider made, whose issuer names an\n`end_session_endpoint` in its discovery, answers `200` with\n`end_session_url`: the issuer's logout with `client_id` and\n`post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, where the\nbrowser goes next to end its session at the issuer as well (D4). The\nID token was not kept (D1), so the URL carries no `id_token_hint`. Every\nother logout answers `204`.\n",
         "operationId": "logout",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "end_session_url": "https://login.example.com/oidc/logout?client_id=cowork\u0026post_logout_redirect_uri=https%3A%2F%2Fcowork.example.com%2Flogin"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResult"
+                }
+              }
+            },
+            "description": "Logged out; the cookie is cleared, and the issuer's logout follows",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetCookie"
+              }
+            }
+          },
           "204": {
             "description": "Logged out; the cookie is cleared",
             "headers": {
@@ -6566,9 +7446,54 @@
         ]
       }
     },
+    "/auth/oidc/login": {
+      "get": {
+        "description": "A navigation of the browser — the login page's button sets\n`window.location` here — and never a call: the answer is a redirect\n(docs/adr/0029 D1). With an identity provider configured it is `302` to\nthe issuer's authorization endpoint, for the authorization code flow\nwith PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie\n`__Host-cowork-oidc` that holds them with `return_to` for the callback.\nWithout one, or while its gate admits nobody — the cases in which\n`GET /auth/options` answers `oidc: false` — it is `303` to\n`/login?error=oidc_unavailable\u0026return=\u003creturn_to\u003e`.\n\n`return_to` is where the browser lands after the login: a path of this\ninstallation that starts with `/`, not with `//` or `/\\`, holds no\ncontrol character and is at most 2048 characters long. Anything else,\nor none, is `/`; it is never refused, so a bad link still leads to a\nlogin.\n\nNo credential: whoever comes here has none yet. Nothing is decided here\nthat a forged link could abuse — the session is made by the callback,\nand only for the browser that holds the state cookie this answer set.\n",
+        "operationId": "loginOidc",
+        "parameters": [
+          {
+            "description": "The path to land on after the login, and the `return` of a refusal's redirect to the login page; anything that is not a path of this installation is `/`",
+            "in": "query",
+            "name": "return_to",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To the issuer's authorization endpoint; the state cookie is set",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Redirect"
+              },
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetOidcCookie"
+              }
+            }
+          },
+          "303": {
+            "description": "To `/login?error=oidc_unavailable\u0026return=\u003creturn_to\u003e` — no identity provider is configured, or its gate admits nobody",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Redirect"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "Start a login through the identity provider",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists,\nthe identity provider's button when one is configured (docs/adr/0033 D8).\nNo identity provider exists yet, so `oidc` is always false. The minimum\npassword length is the policy every password form follows (D3).\n",
+        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3).\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -6576,7 +7501,8 @@
               "application/json": {
                 "example": {
                   "local": true,
-                  "oidc": false,
+                  "oidc": true,
+                  "oidc_name": "Acme SSO",
                   "password_min_length": 12
                 },
                 "schema": {
