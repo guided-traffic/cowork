@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   model,
   output,
   signal,
@@ -76,6 +77,25 @@ export class NewTicketDialog {
   protected readonly saving = signal(false);
   protected readonly errors = signal<Record<string, string>>({});
   protected readonly needsThreat = computed(() => this.security() !== 'none');
+
+  /**
+   * The Idempotency-Key of the ticket this form is filing: one for each content it holds and each
+   * project it files in, so a retry of a lost answer is answered again instead of filing the ticket
+   * twice; any change, and a ticket filed, make a new one (docs/adr/0045 D3).
+   */
+  private readonly key = linkedSignal(() => {
+    this.tenant();
+    this.project();
+    this.title();
+    this.type();
+    this.severity();
+    this.security();
+    this.threat();
+    this.effort();
+    this.assignee();
+    this.body();
+    return crypto.randomUUID();
+  });
   protected readonly canSave = computed(
     () =>
       this.title().trim() !== '' &&
@@ -95,16 +115,21 @@ export class NewTicketDialog {
     this.saving.set(true);
     this.errors.set({});
     try {
-      const ticket = await this.actions.create(this.tenant(), this.project(), {
-        title: this.title().trim(),
-        type: this.type(),
-        severity: this.severity(),
-        security: this.security(),
-        effort: this.effort(),
-        ...(this.needsThreat() ? { threat: this.threat().trim() } : {}),
-        ...(this.assignee() ? { assignee: this.assignee() as string } : {}),
-        ...(this.body().trim() ? { body: this.body() } : {}),
-      });
+      const ticket = await this.actions.create(
+        this.tenant(),
+        this.project(),
+        {
+          title: this.title().trim(),
+          type: this.type(),
+          severity: this.severity(),
+          security: this.security(),
+          effort: this.effort(),
+          ...(this.needsThreat() ? { threat: this.threat().trim() } : {}),
+          ...(this.assignee() ? { assignee: this.assignee() as string } : {}),
+          ...(this.body().trim() ? { body: this.body() } : {}),
+        },
+        this.key(),
+      );
       this.filed.emit(ticket);
       this.reset();
       this.visible.set(false);

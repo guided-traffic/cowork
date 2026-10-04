@@ -70,11 +70,15 @@ export class ProjectsService {
     return this.list().find((project) => project.key === key);
   }
 
-  /** Each write reloads the list itself. */
-  async create(body: ProjectCreate): Promise<Project> {
+  /**
+   * Each write reloads the list itself. The key of a creation is the form's, one for each content
+   * it holds, so a retry of a lost answer is answered again instead of being refused as a key that
+   * is taken (docs/adr/0045 D3).
+   */
+  async create(body: ProjectCreate, idempotencyKey: string): Promise<Project> {
     const project = await this.api.invoke(createProject, {
       tenant: this.session.tenant() as string,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     refresh(this.projects, this.injector);

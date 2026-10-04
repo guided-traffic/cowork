@@ -14,18 +14,29 @@ import { routeOf } from './ticket-actions.service';
 export class TicketRecords {
   private readonly api = inject(Api);
 
-  attach(key: string, file: File): Promise<Attachment> {
+  /**
+   * Uploads a file. The idempotency key is the card's, one for each file it sends, so a retry of a
+   * lost answer is answered again instead of storing the file twice (docs/adr/0045 D3); so is the
+   * one of a booking, one for each content of the form.
+   */
+  attach(key: string, file: File, idempotencyKey: string): Promise<Attachment> {
     return this.api.invoke(uploadAttachment, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: { file },
     });
   }
 
-  book(key: string, day: string, minutes: number, note: string): Promise<TimeEntry> {
+  book(
+    key: string,
+    day: string,
+    minutes: number,
+    note: string,
+    idempotencyKey: string,
+  ): Promise<TimeEntry> {
     return this.api.invoke(bookTime, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: { day, minutes, ...(note.trim() ? { note: note.trim() } : {}) },
     });
   }

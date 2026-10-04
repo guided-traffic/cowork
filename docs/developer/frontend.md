@@ -120,10 +120,17 @@ way the person came — the identity provider's way back runs no code of the log
 has shown nobody yet stays, and where the browser has no `BroadcastChannel` the other tabs keep
 what they hold.
 
-**A creating form holds one `Idempotency-Key` per content** where a lost answer must not become a
-second creation: the first tenant and a new local account keep a key in a `linkedSignal` over
-their fields, reuse it on a retry and make a new one when a field changes (ADR 0045 D3). The other
-creating calls still send a fresh key per call.
+**A creating form holds one `Idempotency-Key` per content**, so that a lost answer does not
+become a second creation (ADR 0045 D3): the first tenant, a new local account, a member's grant, a
+group mapping, a ticket, a comment, a question, a project and a booking of time keep a key in a
+`linkedSignal` over their fields — and over the place they write to, the tenant, the project or the
+ticket — reuse it when the same content is sent again and make a new one when a field changes,
+which a reset after a success is. The services take the key from the form
+(`TicketActions.create`, `Conversation.comment` and `ask`, `ProjectsService.create`,
+`TicketRecords.attach` and `book`). The files card keeps the key of an upload whose answer did not
+come, by ticket, file name, size and modification time, so the same file picked again is sent
+with it and a successful upload forgets it. A new token takes a new key per act on purpose: a
+repeated answer carries no plaintext (ADR 0045 D6).
 
 **A form dialog stays open while its request runs**: no cross, no click beside it, Cancel disabled,
 and [`keepOpenWhile`](../../frontend/src/app/shared/keep-open.ts) stops Escape in the capture phase,

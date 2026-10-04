@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
@@ -78,12 +86,23 @@ export class CommentComposer {
   protected readonly text = signal('');
   protected readonly busy = signal(false);
 
+  /**
+   * The Idempotency-Key of the comment this form is writing: one for each text and ticket, so a
+   * retry of a lost answer is answered again instead of commenting twice; any change, and a comment
+   * written, make a new one (docs/adr/0045 D3).
+   */
+  private readonly key = linkedSignal(() => {
+    this.ticketKey();
+    this.text();
+    return crypto.randomUUID();
+  });
+
   protected async send(): Promise<void> {
     const text = this.text().trim();
     if (
       text &&
       (await guarded(this.busy, this.problems, () =>
-        this.conversation.comment(this.ticketKey(), text),
+        this.conversation.comment(this.ticketKey(), text, this.key()),
       ))
     ) {
       this.text.set('');
@@ -206,14 +225,32 @@ export class AskQuestion {
   protected readonly askedOf = signal<string | null>(null);
   protected readonly busy = signal(false);
 
+  /**
+   * The Idempotency-Key of the question this form is asking: one for each content and ticket, so a
+   * retry of a lost answer is answered again instead of asking twice; any change, and a question
+   * asked, make a new one (docs/adr/0045 D3).
+   */
+  private readonly key = linkedSignal(() => {
+    this.ticketKey();
+    this.question();
+    this.options();
+    this.recommendation();
+    this.askedOf();
+    return crypto.randomUUID();
+  });
+
   protected async send(): Promise<void> {
     const ok = await guarded(this.busy, this.problems, () =>
-      this.conversation.ask(this.ticketKey(), {
-        question: this.question().trim(),
-        ...(this.options().trim() ? { options: this.options().trim() } : {}),
-        ...(this.recommendation().trim() ? { recommendation: this.recommendation().trim() } : {}),
-        ...(this.askedOf() ? { asked_of: this.askedOf() as string } : {}),
-      }),
+      this.conversation.ask(
+        this.ticketKey(),
+        {
+          question: this.question().trim(),
+          ...(this.options().trim() ? { options: this.options().trim() } : {}),
+          ...(this.recommendation().trim() ? { recommendation: this.recommendation().trim() } : {}),
+          ...(this.askedOf() ? { asked_of: this.askedOf() as string } : {}),
+        },
+        this.key(),
+      ),
     );
     if (ok) {
       this.question.set('');

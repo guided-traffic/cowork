@@ -141,15 +141,28 @@ export class AttachmentsCard {
     return ago(iso, this.clock.now());
   }
 
+  /**
+   * The upload whose answer did not come: the ticket and the file, and the Idempotency-Key it was
+   * sent with. The same file picked again for the same ticket is sent with the same key, so a lost
+   * answer is answered again instead of storing the file twice; another file, another ticket, or an
+   * upload that went through make a new one (docs/adr/0045 D3).
+   */
+  private unanswered: { upload: string; key: string } | null = null;
+
   protected async upload(picker: HTMLInputElement): Promise<void> {
     const file = picker.files?.[0];
     picker.value = '';
     if (!file) {
       return;
     }
+    const upload = [this.ticketKey(), file.name, file.size, file.lastModified].join('\n');
+    if (this.unanswered?.upload !== upload) {
+      this.unanswered = { upload, key: crypto.randomUUID() };
+    }
     this.busy.set(true);
     try {
-      await this.records.attach(this.ticketKey(), file);
+      await this.records.attach(this.ticketKey(), file, this.unanswered.key);
+      this.unanswered = null;
     } catch (error) {
       this.problems.report(error);
     } finally {
@@ -322,13 +335,28 @@ export class TimeCard {
   protected readonly busy = signal(false);
   protected readonly duration = duration;
 
+  /**
+   * The Idempotency-Key of the booking this form is making: one for each ticket, day, duration and
+   * note, so a retry of a lost answer is answered again instead of booking the time twice; any
+   * change, and a booking made, make a new one (docs/adr/0045 D3).
+   */
+  private readonly key = linkedSignal(() => {
+    this.ticketKey();
+    this.day();
+    this.minutes();
+    this.note();
+    return crypto.randomUUID();
+  });
+
   protected async book(): Promise<void> {
     const minutes = this.minutes();
     if (minutes === null) {
       return;
     }
     if (
-      await this.write(() => this.records.book(this.ticketKey(), this.day(), minutes, this.note()))
+      await this.write(() =>
+        this.records.book(this.ticketKey(), this.day(), minutes, this.note(), this.key()),
+      )
     ) {
       this.text.set('');
       this.note.set('');

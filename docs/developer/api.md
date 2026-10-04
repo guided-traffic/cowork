@@ -346,7 +346,8 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
   (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
-  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  come from the client: the browser's creating forms hold one per content
+  ([frontend.md](frontend.md#where-state-lives)), `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A

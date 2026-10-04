@@ -60,7 +60,8 @@ const transitionUrl = `${route}/transitions`;
 const rankUrl = `${route}/rank`;
 const overrideUrl = `${route}/urgency-override`;
 const readUrl = '/api/v1/tickets/acme/VKO-12';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
 const problem = (status: number, extra: object = {}) => ({
   type: 'about:blank',
@@ -184,7 +185,7 @@ describe('TicketActions', () => {
     };
 
     it('posts the ticket to its project, puts the answer into the cache and hands it back', async () => {
-      const done = actions.create('acme', 'VKO', body);
+      const done = actions.create('acme', 'VKO', body, formKey);
 
       const sent = request(createUrl);
       expect(sent.request.method).toBe('POST');
@@ -196,24 +197,16 @@ describe('TicketActions', () => {
       expect(tickets.cache.etag(key)).toBe('"1"');
     });
 
-    it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-      const first = actions.create('acme', 'VKO', body);
-      const firstKey = request(createUrl);
-      firstKey.flush(ticket('acme/VKO-1'));
-      await first;
-      const second = actions.create('acme', 'VKO', body);
-      const secondKey = request(createUrl);
-      secondKey.flush(ticket('acme/VKO-2'));
-      await second;
-
-      const keys = [firstKey, secondKey].map((r) => r.request.headers.get('Idempotency-Key'));
-      expect(keys[0]).toMatch(uuid);
-      expect(keys[1]).toMatch(uuid);
-      expect(keys[0]).not.toBe(keys[1]);
+    it("sends the form's Idempotency-Key, one for each content it holds (docs/adr/0045 D3)", async () => {
+      const done = actions.create('acme', 'VKO', body, formKey);
+      const sent = request(createUrl);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      sent.flush(ticket('acme/VKO-1'));
+      await done;
     });
 
     it('rejects with the HTTP error and leaves the cache alone', async () => {
-      const outcome = rejection(actions.create('acme', 'VKO', body));
+      const outcome = rejection(actions.create('acme', 'VKO', body, formKey));
 
       request(createUrl).flush(problem(422), failed(422, 'Unprocessable Entity'));
       const error = await outcome;
@@ -223,7 +216,7 @@ describe('TicketActions', () => {
     });
 
     it('is not followed by a refetch when its own event arrives', async () => {
-      const done = actions.create('acme', 'VKO', body);
+      const done = actions.create('acme', 'VKO', body, formKey);
       request(createUrl).flush(ticket(key, 1));
       await done;
 
