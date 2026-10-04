@@ -1,9 +1,10 @@
 # The development and test issuer of cowork (docs/adr/0029 D3): a plain Dex in its minimal
 # configuration — one static client, four static users with their groups, no connectors, and
 # nothing kept beyond the process. `make dex-up` copies this file into the container `cowork-dex`
-# (and moves the issuer's port with DEX_PORT); `make dev` logs the browser in through it, and the
-# integration tier reaches it at COWORK_TEST_OIDC_ISSUER. It is the fixture the login is proven
-# against, not a recommendation for running an identity provider.
+# (and moves the issuer's port with DEX_PORT); `make dev` logs the browser in through it, the
+# integration tier reaches it at COWORK_TEST_OIDC_ISSUER, and `make e2e` (hack/e2e.sh) starts a
+# Dex of its own from it. It is the fixture the login is proven against, not a recommendation for
+# running an identity provider.
 #
 # EVERY CREDENTIAL IN THIS FILE IS DEVELOPMENT-ONLY. The client secret and the passwords are
 # public in this repository and protect nothing: never point an installation at this issuer, and
@@ -39,6 +40,9 @@ staticClients:
       # The integration tier: the test intercepts the redirect and replays it against its own
       # server, so the name never has to resolve.
       - http://cowork.test/auth/callback
+      # The end-to-end tier (hack/e2e.sh): the Ingress stand-in, which terminates TLS on E2E_PORT;
+      # the script moves the port here when E2E_PORT moves it there.
+      - https://localhost:18443/auth/callback
 
 enablePasswordDB: true
 

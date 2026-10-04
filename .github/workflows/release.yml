@@ -670,6 +670,19 @@ jobs:
           severity: 'CRITICAL,HIGH'
           scanners: 'vuln,secret,misconfig'
 
+      # The end-to-end job runs the image this job built and scanned (docs/adr/0056 D4). It leaves
+      # as an artefact: the image is removed below, and the e2e job may run on another runner.
+      - name: Save the image for the end-to-end tests
+        run: docker save cowork-${{ matrix.component }}:scan-${{ github.sha }} | gzip > e2e-image-${{ matrix.component }}.tar.gz
+
+      - name: Upload the image for the end-to-end tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-image-${{ matrix.component }}
+          path: e2e-image-${{ matrix.component }}.tar.gz
+          retention-days: 1
+          compression-level: 0
+
       - name: Run Trivy scan (SARIF output)
         if: always()
         uses: aquasecurity/trivy-action@master
@@ -690,6 +703,72 @@ jobs:
       - name: Cleanup scan image
         if: always()
         run: docker rmi cowork-${{ matrix.component }}:scan-${{ github.sha }} || true
+
+  # The end-to-end tier (docs/adr/0056): the two images the container scan built and scanned,
+  # behind the Ingress stand-in with TLS, with a PostgreSQL, a MinIO and a Dex of its own on the
+  # job's Docker daemon (hack/e2e.sh), driven by Playwright in Chromium and WebKit, both colour
+  # schemes. Ten minutes are its budget (D4); a trace, a video and the containers' logs of a
+  # failed test are its artefact.
+  e2e:
+    name: End-to-End Tests
+    runs-on: self-hosted
+    needs: [container-malware-scan]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # make, curl and openssl for hack/e2e.sh; libatomic1 for the Node 26 binary, installed
+      # before setup-node (docs/adr/0061 D5).
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make libatomic1 curl openssl
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make frontend-install
+
+      - name: Install the browsers and their system packages
+        run: make e2e-browsers PLAYWRIGHT_INSTALL_FLAGS=--with-deps
+
+      - name: Download the backend image
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-image-backend
+
+      - name: Download the frontend image
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-image-frontend
+
+      - name: Load the images
+        run: |
+          docker load -i e2e-image-backend.tar.gz
+          docker load -i e2e-image-frontend.tar.gz
+
+      - name: Run the end-to-end suite
+        run: make e2e BACKEND_IMG=cowork-backend:scan-${{ github.sha }} FRONTEND_IMG=cowork-frontend:scan-${{ github.sha }}
+
+      - name: Upload the traces, videos and logs of the failed tests
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: |
+            frontend/e2e/test-results/
+            frontend/e2e/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # make e2e removes its stack itself; this is for a run the budget cut short.
+      - name: Remove the end-to-end stack
+        if: always()
+        run: make e2e-down
 
   # Proves on every PR that the semantic-release dependency set can still render
   # release notes; the release job is the only other place these packages run.
@@ -719,7 +798,7 @@ jobs:
 
   semantic-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [malware-scan, container-malware-scan, gosec, govulncheck, linter, cyclomatic-complexity, unit-tests, integration-tests, frontend, helm, coverage-report, release-tooling]
+    needs: [malware-scan, container-malware-scan, gosec, govulncheck, linter, cyclomatic-complexity, unit-tests, integration-tests, frontend, helm, coverage-report, e2e, release-tooling]
     name: Semantic Release
     runs-on: self-hosted
     permissions:

@@ -302,6 +302,32 @@ test: test-unit frontend-test ## Run the backend unit tests and the frontend tes
 test-release-tooling: ## Verify the semantic-release dependency set renders release notes (needs node+npm, run npm ci first).
 	node hack/verify-release-tooling.mjs
 
+# The end-to-end tier (docs/adr/0056, hack/e2e.sh): BACKEND_IMG and FRONTEND_IMG of one commit
+# behind the Ingress stand-in with TLS on E2E_PORT, with a PostgreSQL, a MinIO and a Dex of its
+# own (Dex on E2E_DEX_PORT), and the Playwright suite of frontend/e2e/ in Chromium and WebKit.
+# E2E_ARGS reaches `playwright test`, e.g. E2E_ARGS="--project=chromium-dark board.spec.ts".
+E2E_PORT ?= 18443
+E2E_DEX_PORT ?= 5557
+E2E_ENV = E2E_PORT=$(E2E_PORT) E2E_DEX_PORT=$(E2E_DEX_PORT) BACKEND_IMG=$(BACKEND_IMG) FRONTEND_IMG=$(FRONTEND_IMG) \
+	INGRESS_IMAGE=$(INGRESS_IMAGE) POSTGRES_IMAGE=$(POSTGRES_IMAGE) MINIO_IMAGE=$(MINIO_IMAGE) DEX_IMAGE=$(DEX_IMAGE) \
+	CONTAINER_BIND=$(CONTAINER_BIND)
+
+.PHONY: e2e
+e2e: frontend-install ## Run the end-to-end suite against the built images (make docker-build first) and remove its stack afterwards.
+	$(E2E_ENV) hack/e2e.sh run $(E2E_ARGS)
+
+.PHONY: e2e-up
+e2e-up: ## Start the end-to-end stack and keep it, to run the suite against it while it is written (cd frontend && npx playwright test -c e2e).
+	$(E2E_ENV) hack/e2e.sh up
+
+.PHONY: e2e-down
+e2e-down: ## Remove the end-to-end stack: its containers and its network.
+	hack/e2e.sh down
+
+.PHONY: e2e-browsers
+e2e-browsers: frontend-install ## Install the browsers of the end-to-end suite, Chromium and WebKit; PLAYWRIGHT_INSTALL_FLAGS=--with-deps adds their system packages.
+	cd $(FRONTEND_DIR) && npx playwright install $(PLAYWRIGHT_INSTALL_FLAGS) chromium webkit
+
 .PHONY: postgres-up
 postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
 	@if docker inspect $(POSTGRES_CONTAINER) >/dev/null 2>&1; then echo "$(POSTGRES_CONTAINER) already exists" && docker start $(POSTGRES_CONTAINER) >/dev/null; else \
