@@ -274,7 +274,7 @@ reports under `frontend/coverage/frontend/`: `text-summary` on the console, `lco
 |---|---|
 | `provideHttpClient()` + `provideHttpClientTesting()`, `HttpTestingController.expectOne(url).flush(...)`, `http.verify()` in `afterEach` | [`app.spec.ts`](../../frontend/src/app/app.spec.ts), [`version.service.spec.ts`](../../frontend/src/app/core/version.service.spec.ts) |
 | `await fixture.whenStable()` after flushing, then read the DOM | `app.spec.ts` — the application is zoneless; `whenStable` settles the signal that `toSignal` feeds |
-| `data-testid` attributes for assertions | [`app.html`](../../frontend/src/app/app.html) |
+| `data-testid` attributes for assertions | [`layout/shell.html`](../../frontend/src/app/layout/shell.html) |
 | A service against the generated client: the real `Api`, `HttpTestingController` answering each URL the client calls | [`tickets.service.spec.ts`](../../frontend/src/app/core/tickets.service.spec.ts), [`auth.service.spec.ts`](../../frontend/src/app/core/auth.service.spec.ts) |
 | A component against mocked services: `{ provide: <Service>, useValue: {...} }` with signals and `vi.fn()` | [`ticket-detail.spec.ts`](../../frontend/src/app/features/ticket/ticket-detail.spec.ts) |
 | The event stream without a network: a fake `EventSource` through the `EVENT_SOURCE` token, its events pushed by the test | [`event-stream.service.spec.ts`](../../frontend/src/app/core/event-stream.service.spec.ts) |

@@ -11,8 +11,9 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 3 — the UI on the core domain — released as `0.2.0`; phase 4 — the login through
-> an identity provider — and phase 5 — the LLM interface — being built on this branch.** Tenants,
+> **Status: phase 3 — the UI on the core domain — in progress, its first part released as `0.2.0`;
+> phase 4 — the login through an identity provider — and phase 5 — the LLM interface — built on
+> this branch.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
 > JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
