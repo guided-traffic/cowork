@@ -51,21 +51,21 @@ func (q *Queries) InsertNotifications(ctx context.Context, arg InsertNotificatio
 	return err
 }
 
-const listBlockedTickets = `-- name: ListBlockedTickets :many
+const listTicketsBlockedBy = `-- name: ListTicketsBlockedBy :many
 SELECT l.target_id FROM ticket_links l
 WHERE l.tenant_id = $1 AND l.source_id = $2 AND l.type = 'blocks'
 ORDER BY l.target_id
 `
 
-type ListBlockedTicketsParams struct {
+type ListTicketsBlockedByParams struct {
 	TenantID uuid.UUID
 	TicketID uuid.UUID
 }
 
 // The tickets a ticket blocks (docs/adr/0012 D1): the watchers of each hear
 // when it reaches done or dropped (docs/adr/0020 D2).
-func (q *Queries) ListBlockedTickets(ctx context.Context, arg ListBlockedTicketsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listBlockedTickets, arg.TenantID, arg.TicketID)
+func (q *Queries) ListTicketsBlockedBy(ctx context.Context, arg ListTicketsBlockedByParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listTicketsBlockedBy, arg.TenantID, arg.TicketID)
 	if err != nil {
 		return nil, err
 	}

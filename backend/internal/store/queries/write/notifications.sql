@@ -24,7 +24,7 @@ SELECT q.asked_of FROM questions q
 WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.ticket_id = sqlc.arg(ticket_id) AND q.status = 'open'
   AND q.asked_of IS NOT NULL;
 
--- name: ListBlockedTickets :many
+-- name: ListTicketsBlockedBy :many
 -- The tickets a ticket blocks (docs/adr/0012 D1): the watchers of each hear
 -- when it reaches done or dropped (docs/adr/0020 D2).
 SELECT l.target_id FROM ticket_links l

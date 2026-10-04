@@ -71,7 +71,7 @@ func (w *Writer) deliver(ctx context.Context, tenantID, auditID uuid.UUID, calle
 		about := []uuid.UUID{e.TicketID}
 		if n.Blocked {
 			var err error
-			if about, err = w.ListBlockedTickets(ctx, writeq.ListBlockedTicketsParams{TenantID: tenantID, TicketID: e.TicketID}); err != nil {
+			if about, err = w.ListTicketsBlockedBy(ctx, writeq.ListTicketsBlockedByParams{TenantID: tenantID, TicketID: e.TicketID}); err != nil {
 				return fmt.Errorf("read the tickets a ticket blocks: %w", err)
 			}
 		}
