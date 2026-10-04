@@ -213,6 +213,75 @@ func TestStreamFollowsAccess(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// docs/adr/0054 D3: a stream recomputes what it admits on the act that
+// changes it, before it filters the next event — a ticket filed in a project
+// created after the stream opened, in a project opened for everyone, or in one
+// whose access list took the person in, arrives within a second; the
+// heartbeat, an hour here, plays no part.
+func TestTheStreamAdmitsWhatAnActOpensAtOnce(t *testing.T) {
+	e := newTicketEnv(t)
+	names := withAccounts(t, e.world)
+	srv := newAPI(t, withLogin, func(o *api.Options) { o.Heartbeat = time.Hour })
+	admin := srv.browser(t)
+	admin.mustLogin(names["adminA"], testPassword)
+	adminToken := caller{Token: e.tk.AdminA}
+	s := e.openStream(t, srv, caller{Token: e.tk.MemberA}, e.SlugA, "")
+	tenant := "/api/v1/tenants/" + e.SlugA
+
+	// A project created after the stream opened: its creation is no event a client hears.
+	res := srv.do(t, adminToken, http.MethodPost, tenant+"/projects", map[string]any{"key": "LATE", "name": "Late"})
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	start := time.Now()
+	filed := e.file(t, adminToken, "LATE", task("Filed in a new project"))
+	m, ok := s.next(t, time.Second)
+	require.True(t, ok, "the ticket of a project created after the stream opened arrives within a second")
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, "ticket.changed", m.Event)
+	assert.Equal(t, filed.Key, eventKey(t, m))
+
+	// A restricted project opened for every member.
+	for _, key := range []string{"SHUT", "LISTED"} {
+		id, err := fixtures(t).Project(e.ctx, e.A, key, key)
+		require.NoError(t, err)
+		require.NoError(t, fixtures(t).Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", id))
+	}
+	restricted := e.openStream(t, srv, caller{Token: e.tk.MemberA}, e.SlugA, "")
+	project := tenant + "/projects/SHUT"
+	res = admin.request(http.MethodPut, project+"/restriction", map[string]bool{"restricted": false},
+		withHeader("If-Match", admin.get(project).Header.Get("ETag")))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	opened := e.file(t, adminToken, "SHUT", task("Filed in an opened project"))
+	m, ok = restricted.next(t, time.Second)
+	require.True(t, ok)
+	assert.Equal(t, "membership.changed", m.Event, "the restriction lifted, heard by every member")
+	m, ok = restricted.next(t, time.Second)
+	require.True(t, ok, "the ticket of the opened project arrives within a second")
+	assert.Equal(t, opened.Key, eventKey(t, m))
+
+	// A restricted project whose access list takes the person in.
+	res = admin.request(http.MethodPut, tenant+"/projects/LISTED/access/"+e.MemberA.String(), map[string]string{"role": "viewer"})
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	listed := e.file(t, adminToken, "LISTED", task("Filed in a project the person was let into"))
+	m, ok = restricted.next(t, time.Second)
+	require.True(t, ok)
+	assert.Equal(t, "membership.changed", m.Event, "the entry, heard by the person it names")
+	m, ok = restricted.next(t, time.Second)
+	require.True(t, ok, "the ticket of the project the person was let into arrives within a second")
+	assert.Equal(t, listed.Key, eventKey(t, m))
+
+	// The first stream heard all of it as well, and nothing of a project it does not see.
+	for range 4 {
+		_, ok = s.next(t, time.Second)
+		require.True(t, ok)
+	}
+	hidden, err := fixtures(t).Project(e.ctx, e.A, "HIDDEN", "Hidden")
+	require.NoError(t, err)
+	require.NoError(t, fixtures(t).Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", hidden))
+	e.file(t, adminToken, "HIDDEN", task("Behind the restriction"))
+	_, ok = s.next(t, 300*time.Millisecond)
+	assert.False(t, ok, "a recomputed filter still holds the restriction")
+}
+
 // docs/adr/0054 D5: a reconnect inside the window replays the gap, one
 // beyond it starts with resync.
 func TestEventReplay(t *testing.T) {

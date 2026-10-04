@@ -21,7 +21,9 @@ the chat in the UI (D9: the shutdown ends the chat's turns as well; built the sa
 `TestTheChatsTurnLimitAndShutdown`), and on 2026-10-04 by the owner's decision on the routing
 recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3 (D6: the Ingress routes the stream to the backend and the frontend's nginx has no location for
-it; built the same day).
+it; built the same day), and on 2026-10-04 for the events a stream dropped until its next heartbeat
+(D3: the stream recomputes what it admits on every act that changes it, before the next event;
+built the same day).
 
 **Partly built** (phase 2, 2026-10-02): D1 without `?me=true` (the person-level events arrive
 with the inbox), D2 without `inbox.changed` and ~~`membership.changed` (no route changes a
@@ -37,6 +39,11 @@ list the client loads again answers a weak `ETag` and `304`, and the client send
 page it holds — [`core/conditional.ts`](../../frontend/src/app/core/conditional.ts))*. Measured on 2026-10-03
 through the Angular dev server's proxy: a comment's event reached an open stream 29 ms after the
 write began.
+
+**Built** (phase 3, 2026-10-04): D3's recomputation on the acts that change what a stream admits —
+[`events/hub.go`](../../backend/internal/events/hub.go) `Hub.Changes`, `Hub.Refilter`,
+[`api/events.go`](../../backend/internal/api/events.go) `refilter`; a project's creation is
+published as `store.EntityProject` and refused by every filter.
 
 **Built** (phase 4, 2026-10-04): `membership.changed` of D2, published by every act on who belongs
 to a tenant or who sees a project — an administrator's and the identity provider's alike
@@ -86,12 +93,20 @@ subscription knows the person's visible projects (computed at connect, recompute
 role, so a project gained or lost by a change no event announces counts within one
 heartbeat)* and drops events of projects the person may not see, so not even the
 existence of a key in a restricted project leaks. *(Amended 2026-10-04: the server recomputes at
-the heartbeat, not on `membership.changed`, and a membership event is judged by its audience alone,
+the heartbeat, ~~not on `membership.changed`~~ *(and on it since the amendment below)*, and a
+membership event is judged by its audience alone,
 whatever project it names ~~— the stream of a project-restricted token included, which therefore
 hears the tenant's membership changes~~.)* *(Amended after the security review, 2026-10-04: except
 on the stream of a project-restricted token, which knows nothing of the tenant beyond its project and
 hears a membership event only when it names that project, or names the token's own person and no
-project ([docs/security/tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).)* Events never cross tenants: a subscription
+project ([docs/security/tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).)*
+*(Amended again 2026-10-04, the fix decided on 2026-10-03 for events dropped until the next
+heartbeat: the server recomputes on every act that changes what a stream may admit as well — a
+project created, and every membership act: a grant, a derived membership, a mapping, a project's
+restriction, an access entry — before it filters the next event, so a ticket filed in a project
+created, opened or let into a moment ago reaches the stream, and one restricted away a moment ago
+does not; the heartbeat stays, for a change made past the API. A project's creation is published
+for this and sent to no client.)* Events never cross tenants: a subscription
 is to one tenant, and the person-level `?me=true` events are addressed to the person.
 
 **D4 — Publication is `NOTIFY` at commit.** The mutation wrapper of ADR 0027 D3 issues

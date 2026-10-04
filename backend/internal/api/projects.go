@@ -204,7 +204,7 @@ func insertProject(ctx context.Context, w *store.Writer, t tenantScope, body api
 		}
 		after[fieldRepository], after[fieldPath], after[fieldRemote] = repo.identity, repo.path, repo.remote
 	}
-	w.Record(store.Event{EntityType: entityProject, EntityID: row.ID, Action: actionCreated, After: after})
+	w.Record(store.Event{EntityType: entityProject, EntityID: row.ID, Action: actionCreated, After: after, NewProject: row.ID})
 	res, err := stored(projectView(*out), map[string]string{
 		headerETag: *etag(out.Version), headerLocation: projectURL(t, out.Key)})
 	if err != nil {

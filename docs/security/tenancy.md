@@ -552,11 +552,19 @@ restricted to a project hears, of these, only the events that name its project, 
 person and no project: the token knows nothing of the tenant beyond its project
 (`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`).
 
-The filter follows the person: every twenty seconds the heartbeat checks the token and the
-membership again ([tokens.md](tokens.md) H-7) and recomputes the visible projects with the
-person's current role (`Hub.Refilter`). A project restricted away from the person, a lowered
-role or a project created after the stream opened counts within one heartbeat — a change made
-in the database as well as one through the API (`TestStreamFollowsAccess`).
+The filter follows the person. An act that can change what a stream admits — a project
+created, a grant, a derived membership, a mapping, a project's restriction, an entry of an access
+list — makes every stream of the tenant compute its filter again, with the person's role as the
+boundary reads it then and the projects they see, before it lets the next event through: until it
+has, the hub hands the stream every event unjudged and the stream judges them itself, so neither a
+project the person gains nor one they lose waits for a heartbeat (`Hub.Changes`, `Hub.Refilter`,
+`refilter` in [`api/events.go`](../../backend/internal/api/events.go);
+`TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters`,
+`TestTheStreamAdmitsWhatAnActOpensAtOnce`). A project's creation is published for that and sent to
+no client. A person the boundary no longer admits at that moment loses the stream. Every twenty
+seconds the heartbeat checks the token and the membership again ([tokens.md](tokens.md) H-7) and
+recomputes the filter too, which catches a change made in the database past the API within one
+heartbeat (`TestStreamFollowsAccess`).
 
 ## Time follows its own rule
 

@@ -200,6 +200,7 @@ an administrator of its tenant, a mapped membership only in a transaction named
 | `IdempotencyKey` | a key recorded, not stored ([ADR 0045] D7) |
 | `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
 | `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
+| `NewProject` | the project the act created, published so that the streams admit its events at once and sent to no client ([events.md](events.md#publication)); `uuid.Nil` for every other act |
 
 ## Visibility in SQL
 
@@ -386,8 +387,8 @@ too — key `4`, `system:bootstrap` — run once at start, and retried until the
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
 written — by `Mutate` and by the identity provider's transactions alike — that belongs to a tenant
-and either carries an `Event.Membership` or names a ticket, except the actions `downloaded` and
-`exported` and the entity `time_entry`. A ticket's act reads the ticket's project, version and
+and carries an `Event.Membership`, carries an `Event.NewProject` or names a ticket, except the
+actions `downloaded` and `exported` and the entity `time_entry`. A ticket's act reads the ticket's project, version and
 confidential facts (`TicketFacts`); a membership act sends the keys of its `MembershipChange` and
 its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
