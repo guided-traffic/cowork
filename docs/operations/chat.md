@@ -10,7 +10,7 @@ Without a provider there is no chat and nothing changes. The variables are
 leaves open is [docs/security/chat.md](../security/chat.md).
 
 ```
-browser ── POST /api/v1/tenants/<slug>/chat (the session, a provider id) ──► frontend nginx ──► backend ──► the provider picked
+browser ── POST /api/v1/tenants/<slug>/chat (the session, a provider id) ──► the Ingress ──► backend ──► the provider picked
         ◄── text/event-stream: text, tool calls, results ────────────────────────────────┘   │        (COWORK_CHAT_<ID>_URL)
         ── DELETE /api/v1/tenants/<slug>/chat/turns (Stop) ──────────────────────────────────►│
                                                                                               └─► the tools: the API
@@ -179,18 +179,19 @@ receives what the chat reads in every tenant. `COWORK_CHAT_TURNS_PER_PERSON` has
 chart: set it through `backend.extraEnv`, and only together with a provider — without one the backend
 refuses to start on it.
 
-**The NetworkPolicy restricts no egress.** The chart's policy admits the frontend's pods to the
-backend and nothing else coming in; what the backend reaches is not limited, and it reaches the
-providers directly. A namespace that blocks egress by a policy of its own must admit the backend's
-pods to each provider's address and port and to DNS.
+**The chart restricts no egress.** It ships no NetworkPolicy; what the backend reaches is the
+cluster's to limit, and it reaches the providers directly. A namespace that blocks egress by a
+policy of the cluster's must admit the backend's pods to each provider's address and port and to
+DNS.
 
 **Behind an Ingress, a turn is a stream.** A turn is a `POST` answered with `text/event-stream`,
 which lasts up to `COWORK_CHAT_TURN_TIMEOUT` and stays open through a model's long silences by a
-`: keep-alive` comment every ten seconds. The frontend's nginx passes it unbuffered, because the
-backend answers `X-Accel-Buffering: no`, and its read timeout for `/api/` — `requestTimeout` plus ten
-seconds — stays above the comments' interval. An Ingress or a load balancer in front must not buffer
-it either: the annotations of [runtime.md, behind an Ingress](runtime.md#behind-an-ingress) for the
-event stream serve the chat too. A proxy that buffers shows as answers that arrive whole at the end
+`: keep-alive` comment every ten seconds. The Ingress routes it to the backend like any `/api/`
+path: a controller that honours the backend's `X-Accel-Buffering: no` — nginx does — passes it
+unbuffered, and the comments keep it inside any read timeout above ten seconds. A controller that
+does not honour the header, or a load balancer in front, must not buffer it either:
+what [runtime.md, behind an Ingress](runtime.md#behind-an-ingress) says for the event stream serves
+the chat too. A proxy that buffers shows as answers that arrive whole at the end
 of a turn, or not at all; one that closes a response after a few seconds of silence cuts turns.
 
 ## Stop

@@ -4,7 +4,10 @@
 
 Accepted, amended 2026-10-03 (D1, D4, D5, D6, D8 made concrete by the first implementation; D1,
 D5 and D6 again by the owner's answers of the same day, below; D6 once more the same day: an
-IPv6 client counts by its /64). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "local
+IPv6 client counts by its /64), amended 2026-10-04 (D6: behind the Ingress the TCP peer is a
+controller pod, since the Ingress routes `/api/` and `/auth/` to the backend,
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "local
 accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -16,7 +19,8 @@ local account and resetting its password take a browser session only (D1, D5), o
 open to an administrator's token — a leaked `admin`-scope token must not become access that
 survives its revocation —; and the login throttle counts the client address, found by walking
 `X-Forwarded-For` from the right through configured trusted proxies (D6), over counting the TCP
-peer, which behind the frontend is nginx, and over trusting the header as it comes.
+peer, which ~~behind the frontend is nginx~~ *(since 2026-10-04 behind the Ingress is a controller
+pod)*, and over trusting the header as it comes.
 
 **Partly built** (phase 3, 2026-10-03): D1–D8 for the browser login — `local_accounts`,
 `login_attempts` and `login_locks` (migration 15), Argon2id
@@ -129,9 +133,10 @@ address is the client's**, found under the trust rule of
 `COWORK_TRUSTED_PROXIES`, a list of CIDRs that is empty by default — the first address of
 `X-Forwarded-For`, from the right, that is not a trusted proxy; entries to its left are never
 read. It is hashed with a key derived from `COWORK_SESSION_KEY` and never stored. With the list
-empty, behind the frontend's nginx, the peer is nginx and the throttle is one for the whole
-installation; a list that is too wide lets a client choose its address (open gap H-17 of the
-security page). The failed and locked attempts, the locks and the unlocks are audit rows of the
+empty, ~~behind the frontend's nginx, the peer is nginx and the throttle is one for the whole
+installation~~ *(amended 2026-10-04: behind the Ingress the peer is a controller pod, and the
+throttle is one for every browser behind it)*; a list that is too wide lets a client choose its
+address (open gap H-17 of the security page). The failed and locked attempts, the locks and the unlocks are audit rows of the
 system actor `system:login`, without the attempted password and without a username that names no
 account.)*
 

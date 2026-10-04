@@ -150,9 +150,9 @@ and building from a checkout with `make build-mcp`.
 
 Live today. `GET /api/v1/me/repositories/lookup?remote=…&path=…` carries the repository's remote
 URLs — private repository names among them — in the query, as ADR 0066 D2 shapes the route. The
-backend's request log carries no query, and the frontend's access log writes the path without
-it; an Ingress controller or another proxy in front may log whole request lines, and nginx's
-error log does for a request it fails itself ([trust-boundaries.md](trust-boundaries.md) H-14).
+backend's request log carries no query, and the frontend never sees the API; an Ingress
+controller or another proxy in front may log whole request lines, which ingress-nginx does by
+default ([trust-boundaries.md](trust-boundaries.md) H-14).
 Credentials are removed before the request is built. Mitigation: treat the proxies' logs as
 holding repository names, as they hold search terms already.
 

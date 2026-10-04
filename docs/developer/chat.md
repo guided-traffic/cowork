@@ -10,7 +10,7 @@ running it is [docs/operations/chat.md](../operations/chat.md); what it leaves o
 against the tree on 2026-10-04.
 
 ```
-ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► nginx /api/ ─► httpserver ─► api pipeline
+ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► Ingress ─────► httpserver ─► api pipeline
    │                                                                                (session, CSRF, boundary,
    │                                                                                 body limit, validation)
    ◄──── text/event-stream: text, tool_call, ui, tool_result, error, done ─────────┐   │
@@ -52,7 +52,7 @@ ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► ng
 | [`frontend/src/app/core/chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts) | `EventStreamParser`, `chatEvent`, `chatEvents`: the stream of a `fetch` read as it arrives |
 | [`frontend/src/app/layout/chat-panel.ts`](../../frontend/src/app/layout/chat-panel.ts), `.html`, `.scss` | `ChatPanel`; the toggle and the deferred panel in [`shell.html`](../../frontend/src/app/layout/shell.html) |
 | [`frontend/src/app/shared/capabilities.ts`](../../frontend/src/app/shared/capabilities.ts) | `capabilityMeanings`, `assisted` — shared with the token page |
-| [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template), [`frontend/angular.json`](../../frontend/angular.json) | the shell's policy; `"inlineCritical": false` |
+| [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf), [`frontend/angular.json`](../../frontend/angular.json) | the shell's policy; `"inlineCritical": false` |
 
 ## A turn
 
@@ -254,14 +254,15 @@ Escape and the focus moving into the page beneath close it.
 
 ## The content-security policy
 
-The template keeps the policy in one nginx variable, `$ui_csp`, and adds it with `always` in each of
+The frontend's nginx configuration keeps the policy in one nginx variable, `$ui_csp`, and adds it with `always` in each of
 the three locations that serve the UI — the icons, the hashed bundles, `index.html` — because an
 `add_header` inside a location replaces the server's
 ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)). Under
 `script-src 'self'` the production build inlines no critical CSS (`"inlineCritical": false` in
-`angular.json`): the inliner's loader is an inline `onload` handler. A change to the template or to
-the build is checked by running the built image in a browser and watching the console for a
-violation; nginx has no unit test ([build-test-lint.md](build-test-lint.md#run-the-images-together)).
+`angular.json`): the inliner's loader is an inline `onload` handler. A change to the configuration
+or to the build is checked by running the built image behind the Ingress stand-in in a browser and
+watching the console for a violation; nginx has no unit test
+([build-test-lint.md](build-test-lint.md#run-the-images-together)).
 
 ## Tests
 

@@ -2,7 +2,7 @@
 
 How a committed act reaches the clients that may see it: publication in the act's transaction,
 one listener per replica, the hub that fans out, the filter per stream, the replay, the
-heartbeat, the limits, the shutdown, and what nginx must do for it. The decision is the one of
+heartbeat, the limits, the shutdown, and what the Ingress must do for it. The decision is the one of
 [ADR 0054] — events carry keys and versions, never content, and polling is the fallback. Read
 against the tree on 2026-10-04.
 
@@ -148,13 +148,17 @@ the replica the client reconnects to; a replica that did not hear the event answ
 `SIGTERM` ends every stream with `unavailable` as the shutdown begins, and the drain bounded by
 `COWORK_SHUTDOWN_TIMEOUT` does not wait for open streams (D9).
 
-## nginx
+## The Ingress
 
-[`default.conf.template`](../../frontend/nginx/default.conf.template) nests a location for
-`^/api/v1/tenants/[^/]+/events$` inside `location ^~ /api/`: `proxy_buffering off`,
-`proxy_cache off`, `proxy_read_timeout 1h`, an empty `Connection` header to the upstream (D6). The
-backend sends `X-Accel-Buffering: no` as well. Running both images together is how a change here
-is verified ([build-test-lint.md](build-test-lint.md#run-the-images-together)).
+The Ingress routes the stream to the backend like any `/api/` path; the frontend's nginx never sees
+it ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3). The backend answers `X-Accel-Buffering: no`, which an nginx-based controller obeys — the
+Ingress stand-in leaves its response buffering on to prove the header alone does it — and the
+heartbeat every twenty seconds keeps the stream inside any read timeout above that (D6). What an
+installation sets on its controller is
+[installation.md, expose it](../operations/installation.md#expose-it). Running both images behind
+the stand-in is how a change here is verified
+([build-test-lint.md](build-test-lint.md#run-the-images-together)).
 
 ## Tests
 

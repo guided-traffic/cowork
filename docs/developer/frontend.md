@@ -137,6 +137,17 @@ pass-through of [`field-aria.ts`](../../frontend/src/app/shared/field-aria.ts).
 empty. A resource's error is the `HttpErrorResponse` itself, or an `Error` with it as `cause`;
 `ProblemService.read` unwraps both.
 
+**How [`ProblemService.read`](../../frontend/src/app/core/problem.service.ts) names a failure.** A
+problem body gives its code, title, detail, request id and field errors. Without one, the status
+decides: no answer at all (status `0`) is `backend_unreachable`, "The backend cannot be reached";
+a `502`, `503` or `504` is the same, its detail naming the status ("The Ingress answered 503: no
+backend took the request. cowork tries again on its own."), because the backend answers every error
+with a problem body
+([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md)) — a gateway's
+status without one comes from the Ingress in front, which reached no backend; any other status
+without a body is `unexpected`, naming the status; an error thrown in the page is `client_error`.
+These three are the UI's own names, not codes of the API's catalogue.
+
 **Reloading because something changed goes through [`refresh()`](../../frontend/src/app/core/refresh.ts),
 never `reload()` alone.** A resource refuses `reload()` while it loads, and the answer on its way
 may predate the change; `refresh` reloads once more when that load ends. Lists, the detail page's
@@ -564,18 +575,19 @@ list in production).
 them), or with *Sign in with Dex* as one of the four users of
 [`hack/dex/config.yaml`](../../hack/dex/config.yaml) — `ada`, `bob`, `cyd` and `dan` at
 `example.com`, with `dev-only-dex` — which show the administrator group, a mapped member, a person
-in no tenant and a refusal at the gate ([testing.md](testing.md#the-identity-provider-in-the-tests)). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) holds no
-credential; it forwards `/api` and `/auth`, and the session cookie travels as it does through
-nginx. **HTTPS**, with the Angular CLI's self-signed certificate the browser asks about once,
+in no tenant and a refusal at the gate ([testing.md](testing.md#the-identity-provider-in-the-tests)). The dev server's proxy ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the
+developer's stand-in for the Ingress and holds no credential: it forwards `/api` and `/auth` to the
+backend, as the Ingress routes them on an installation, and the session cookie travels as it does
+through the Ingress. **HTTPS**, with the Angular CLI's self-signed certificate the browser asks about once,
 because Safari stores no `Secure` cookie from `http://localhost` and the session cookie is
 `Secure` everywhere ([ADR 0031] D2). The proxy also flushes the headers of every
 `text/event-stream` answer at once — the event stream's and a chat turn's — because Node holds
 response headers until the first body byte, and a stream's first byte may be a heartbeat twenty
 seconds later. And it ends the request to the backend when the browser's side closes before the
-backend's answer has ended, as nginx does: without that, the chat's Stop ended the stream in the
-browser while the backend's turn and the model's generation went on — measured on 2026-10-04, LM
-Studio still generating ten seconds after Stop through the proxy, and stopping in the same second
-through nginx and, with the fix, through the proxy. Over HTTP/2 an aborted stream counts as a
+backend's answer has ended, as nginx does by default: without that, the chat's Stop ended the
+stream in the browser while the backend's turn and the model's generation went on — measured on
+2026-10-04, LM Studio still generating ten seconds after Stop through the proxy, and stopping in the
+same second through nginx — then the frontend's proxy — and, with the fix, through the proxy. Over HTTP/2 an aborted stream counts as a
 finished response, so the test is whether the backend's answer is complete.
 
 ### The PrimeUI license key

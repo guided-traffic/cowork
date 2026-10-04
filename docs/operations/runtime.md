@@ -1,8 +1,8 @@
 # Runtime behaviour
 
 What the two cowork pods do between being scheduled and serving, how they hold a request to
-its limits, what reaches a client from nginx and what from the backend, how the event stream
-behaves behind proxies, and how the pods behave under the probes, on shutdown and in their
+its limits, what reaches a client from the backend, from the Ingress controller and from nginx,
+how the event stream behaves behind proxies, and how the pods behave under the probes, on shutdown and in their
 logs. The variables named here are explained one by one in
 [README.md, Configuration](../../README.md#configuration).
 
@@ -128,8 +128,8 @@ is not an error: the run applies nothing and logs
 
 A pod whose database goes away stays alive and leaves the Service endpoints until the
 database is back; it is not restarted for it. While no backend endpoint is ready, the
-frontend still serves the UI and answers `/api/` requests with its own `502`
-([what nginx answers itself](#what-nginx-answers-itself)). The object storage and the identity
+frontend still serves the UI, and the Ingress controller answers `/api/` and `/auth/` itself, with
+a page of its own ([what answers what](#what-answers-what)). The object storage and the identity
 provider are not probed: the provider is asked at start and at a login or a refresh, never by a
 probe.
 
@@ -192,7 +192,7 @@ cookie and no check.
 **The browser keeps no session** — the login answers `200` and the next request is `401`: the
 cookie is `Secure` and has the `__Host-` prefix, so a browser stores it only over HTTPS (or on
 `localhost`). A page reached over plain `http://` on another host cannot log in; terminate TLS
-in front of the frontend.
+at the Ingress.
 
 **Sessions** live in the database: a restart of every pod ends none of them. A changed server key
 ends none of the local login's, and each session of the identity provider that holds a refresh
@@ -217,8 +217,9 @@ its /64 — are `429` with
 `Retry-After: 60`. The client address is the TCP peer's unless the peer is inside
 `COWORK_TRUSTED_PROXIES`, in which case it is the first address of `X-Forwarded-For`, from the
 right, that is not a proxy of ours. **With the list empty — the default — the address behind the
-frontend is nginx's**, so the limit is one for the whole installation and one client's failing
-logins can use it up for everybody; a list that is too wide lets a client choose its address
+Ingress is the controller pod's**, so the limit is one for every browser behind it and one client's
+failing logins can use it up for everybody; a list that is too wide, or one that names a pod
+network other pods can reach the backend from, lets a client choose its address
 ([H-17](../security/local-accounts.md#h-17);
 [installation.md](installation.md#the-client-address-and-the-trusted-proxies) says what to set).
 `COWORK_LOGIN_ADDRESS_LIMIT=0` and `COWORK_LOGIN_MAX_FAILURES=0` switch the throttle and the
@@ -327,29 +328,29 @@ is `400 page_too_deep`, and the uploads the backend holds in memory at once are 
 unbounded memory; a disabled timeout lets one slow request hold its connection and its
 database transaction for as long as it runs; a disabled stream limit lets one person hold any
 number of streams, each with a buffer of its own. Nothing warns when a limit is `0` — not the
-log, not the chart, which also opens nginx up in step (`0` body size, an hour's read timeout).
-The chart's own defaults set none.
+log, not the chart, whose notes then ask the Ingress controller for no body limit and an hour's
+read timeout in step. The chart's own defaults set none.
 
-## What nginx answers itself
+## What answers what
 
-The frontend's nginx sits in front of every `/api/` request with two limits the chart derives
-from the backend's: its body size is the larger of `maxJsonBody` and `attachmentMaxBytes`,
-rounded up to whole MiB, plus 1 MiB (`11m` with the defaults), and its read timeout is
-`requestTimeout` plus ten seconds (`40s`). So a request over a backend limit reaches the
-backend and gets the backend's answer; nginx answers only what the backend never sees:
+The Ingress routes `/api/` and `/auth/` to the backend and everything else to the frontend
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3), so an answer comes from one of three places:
 
-| Status | When | Body |
+| From | When | Body |
 |---|---|---|
-| `413` | the body is larger than nginx's limit | `code: payload_too_large`, detail `the request is larger than the proxy passes` |
-| `502` | the backend cannot be reached — down, not ready, not resolvable | `code: backend_unreachable` |
-| `503` | nginx generates one itself — mapped for completeness; nothing in this configuration is expected to | `code: not_ready` |
-| `504` | the backend did not answer within nginx's read timeout | `code: timeout` |
+| the backend | everything that reaches it — its own `413` above `COWORK_MAX_JSON_BODY` or the upload limit, its `503 not_ready`, its `504 timeout` included | a problem with `instance` and `request_id`, and `X-Request-Id` |
+| the Ingress controller | what never reaches the backend: no backend pod ready (`502` or `503`), a body above the controller's limit (`413`), no answer within its read timeout (`504`) | the controller's own page, not a problem body — ingress-nginx's, in the run of [installation.md](installation.md#expose-it), is HTML. The UI shows a `502`, `503` or `504` without a problem body as the backend out of reach — "The backend cannot be reached: The Ingress answered 503: no backend took the request. cowork tries again on its own." — and another status without one as an unexpected answer that names it |
+| the frontend's nginx | a request for `/api/` or `/auth/` that reaches the frontend — an Ingress that sends every path there | `404` with a static problem, `not_found`, whose detail is "the frontend serves the UI only; the Ingress must route /api/ and /auth/ to the backend Service", without `instance` and `request_id` — a body above nginx's own 1 MiB limit gets the same |
 
-These are static `application/problem+json` bodies from the nginx configuration: no
-`instance`, no `request_id`, and no `X-Request-Id` header — that absence tells a client the
-answer came from the proxy. Every answer the backend gives, its own `413`, `503` and `504`
-included, passes through untouched (nginx does not intercept upstream errors) and carries the
-request id.
+So a request over a backend limit gets the backend's answer only while the controller's limits sit
+above the backend's: a body size of at least the larger of `maxJsonBody` and `attachmentMaxBytes`,
+rounded up to whole MiB, plus 1 MiB (`11m` with the defaults), and a read timeout of at least
+`requestTimeout` plus ten seconds (`40` seconds). The chart sets neither — it does not know the
+controller — and its notes print both; [installation.md, expose it](installation.md#expose-it)
+has what any controller must do, a worked example for a cluster that still runs the retired
+ingress-nginx, and what was verified with it. The absence of `request_id`
+and of the `X-Request-Id` header tells a client that the answer did not come from the backend.
 
 ## The event stream
 
@@ -389,32 +390,25 @@ How it behaves, as somebody running it sees it:
 - **The stream is exempt from `COWORK_REQUEST_TIMEOUT`**, and a shutdown ends it at once
   ([shutdown](#shutdown)).
 - The backend answers with `Content-Type: text/event-stream`, `Cache-Control: no-cache` and
-  `X-Accel-Buffering: no`. The frontend's nginx has a location of its own for the path:
-  buffering and caching off, HTTP/1.1, a read timeout of one hour.
+  `X-Accel-Buffering: no`. The Ingress routes the stream to the backend like any `/api/` path; the
+  frontend's nginx never sees it.
 
 ### Behind an Ingress
 
-Whatever stands in front of the frontend Service has to pass the stream through unbuffered
-and keep it open — the event stream, and the stream of a turn of the chat
-([below](#the-chats-stream)) — and has to let uploads through. The frontend's nginx does not
-forward the backend's `X-Accel-Buffering` header to it — nginx keeps `X-Accel-*` headers to
-itself — so the Ingress needs its own settings. For ingress-nginx:
-
-```yaml
-ingress:
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"      # the event stream, unbuffered
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"  # seconds; as the frontend's stream location
-    nginx.ingress.kubernetes.io/proxy-body-size: "11m"      # at least the frontend's NGINX_CLIENT_MAX_BODY_SIZE
-```
-
-Without the body size, an upload larger than the controller's default (1 MiB for
-ingress-nginx) gets the controller's own `413` page instead of a problem body. **Streams that
-die every minute** — or events that arrive late and in bursts — are the symptom of a proxy in
-front that buffers the response or cuts it at a read timeout: set the two stream annotations
-above, or their equivalent on another controller or load balancer. Not verified against an
-ingress-nginx in this repository; the annotations and the default are from that project's
-documentation.
+The Ingress controller is the one proxy in front of the backend, and it has to pass the streams
+through unbuffered and keep them open — the event stream, and the stream of a turn of the chat
+([below](#the-chats-stream)) — and has to let uploads through. Both streams come with
+`X-Accel-Buffering: no`, so a controller that honours that header — nginx does — buffers neither,
+and one that does not must be told not to buffer `text/event-stream`. Both send something at least
+every twenty seconds, so any read timeout above that keeps them open. The body limit and the read
+timeout the backend's own answers need are in [installation.md, expose it](installation.md#expose-it),
+with a worked example for a cluster that still runs ingress-nginx, which is retired and not for a
+new installation. Verified on 2026-10-04 with ingress-nginx v1.15.1 in a kind cluster: the stream
+held open past a read timeout of 60 s and of 40 s, and unbuffered with `proxy-buffering: "on"`
+forced. **Streams that die every minute** — or events that arrive late and in bursts — are the
+symptom of a proxy in front that buffers the response or cuts it at a read timeout below twenty
+seconds: a controller that does not honour `X-Accel-Buffering`, or a load balancer before it,
+needs its own way to pass `text/event-stream` unbuffered.
 
 ## The chat's stream
 
@@ -434,9 +428,10 @@ setting the chat up is [chat.md](chat.md)). What an operator meets:
   (`DELETE …/chat/turns`, [chat.md, Stop](chat.md#stop)) ends with `done` and the reason `stopped`,
   and no `error` event.
 - **A comment, `: keep-alive`, after ten seconds without an event**, so no proxy closes a turn while
-  the model thinks. The frontend's nginx has no location of its own for the path: `/api/` passes it,
-  unbuffered by the backend's header, and its read timeout, `requestTimeout` plus ten seconds, stays
-  above the comments. An Ingress in front needs the stream annotations [above](#behind-an-ingress).
+  the model thinks. The Ingress routes the turn to the backend like any `/api/` path: a controller
+  that honours the backend's `X-Accel-Buffering: no` passes it unbuffered, and the comments keep it
+  inside any read timeout above ten seconds ([above](#behind-an-ingress)). Not run through a
+  controller: the event stream was, with the same header.
 - **The turn is exempt from `COWORK_REQUEST_TIMEOUT`**, which bounds reading its body; it is bounded
   by `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` ([limits](#limits)).
 - **Each tool call is a request of its own** through the whole server, so the request log has a line
@@ -458,44 +453,36 @@ checked by nothing at start; the first upload is the test. Setting it up:
 
 ## The frontend
 
-The image is `nginxinc/nginx-unprivileged` with the Angular bundle and one configuration
-template. At start the image entrypoint renders the template into
-`/etc/nginx/conf.d/default.conf` with four variables and nothing else: `BACKEND_URL` (the
-chart sets it to the backend Service, `http://<fullname>-backend:8080`; the image's default,
-`http://backend:8080`, is a name a plain `docker run` must provide), the cluster
-nameservers from `/etc/resolv.conf` as `NGINX_LOCAL_RESOLVERS`, and the body size
-`NGINX_CLIENT_MAX_BODY_SIZE` and read timeout `NGINX_PROXY_READ_TIMEOUT` that the chart
-computes from the backend's limits (the image's defaults, `11m` and `40s`, match the backend's
-defaults). nginx listens on 8080 as user 101. The backend name is resolved per request (cached
-30 s), so the frontend pod starts and becomes ready whether or not the backend exists yet;
-`/api/` answers `502` until it does. `frontend.extraEnv` exists for the entrypoint's own
-switches (`NGINX_ENTRYPOINT_QUIET_LOGS`, for instance).
+The image is `nginxinc/nginx-unprivileged` with the Angular bundle and one configuration file,
+[`frontend/nginx/default.conf`](../../frontend/nginx/default.conf), copied into
+`/etc/nginx/conf.d/default.conf` at build time. Nothing in it is substituted at start and the image
+reads no variable of cowork's: the frontend serves the UI and reaches no backend
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3). nginx listens on 8080 as user 101, and the pod starts and becomes ready whether or not the
+backend exists. `frontend.extraEnv` exists for the entrypoint's own switches
+(`NGINX_ENTRYPOINT_QUIET_LOGS`, for instance).
 
 What nginx does with a request:
 
 | Path | Behaviour |
 |---|---|
 | `/healthz` | `{"status":"ok"}` from nginx itself — the frontend's liveness and readiness probes; it says nothing about the backend |
-| `/api/v1/tenants/<slug>/events` | proxied unbuffered and uncached, with a read timeout of one hour |
-| `/api/v1/tenants/<slug>/chat` | proxied as any `/api/` path; a turn's answer is passed unbuffered, because the backend sends `X-Accel-Buffering: no`, and kept within the read timeout by its comments |
-| `/api/…` | proxied to `BACKEND_URL` with the path unchanged and `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Real-IP` set; the errors nginx answers itself are problem bodies ([above](#what-nginx-answers-itself)). An API path that ends like a static file (`….png`) still goes to the backend |
-| `/auth/…` | the same, for the login flows: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout`; the cookies and the backend's `Set-Cookie` pass through, and the errors nginx answers itself are the same problem bodies — a callback nginx itself fails, the backend unreachable, leaves its query, the code and the state, in the error log ([trust-boundaries.md H-14](../security/trust-boundaries.md#h-14)) |
+| `/api/…`, `/auth/…` | the Ingress routes these to the backend, so they reach the frontend only by mistake — an Ingress that sends every path here, a port-forward to the frontend. nginx then answers `404` with a static problem whose detail names the cause ([what answers what](#what-answers-what)), a path ending in `.png` and a body above its 1 MiB limit alike; the UI shows that detail on its page |
 | hashed bundles (`*.js`, `*.css`, fonts, images) | served with `Cache-Control: public, max-age=31536000, immutable` and the shell's `Content-Security-Policy` |
+| `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` | served with `Cache-Control: no-cache` and the shell's `Content-Security-Policy` |
 | everything else | `index.html` with `Cache-Control: no-store` and the shell's `Content-Security-Policy` — the Angular router resolves the path |
 
 The policy keeps every script, style sheet, font, image and request of the UI on its own origin and
 runs no inline script ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)).
 A page that broke under it shows a violation in the browser's console, never in nginx's log.
 
-The pod runs with a read-only root filesystem; the chart mounts `emptyDir`s at `/tmp` and
-`/etc/nginx/conf.d`, which is all nginx writes, and `fsGroup: 101` is what makes them
-writable for the nginx user. If `conf.d` is mounted but not writable the entrypoint logs
-`/etc/nginx/conf.d is not writable`, skips the template, and nginx serves nothing on 8080 —
-the readiness probe then never passes, which is the symptom to look for. Without the mount,
-on the read-only root filesystem, rendering fails with `can't create
-/etc/nginx/conf.d/default.conf: Read-only file system` and the container exits 1. Both were
-run against the built image. Its log is nginx's
-access log on stdout — time, method, path without its query, status, size, duration — and its
-error log on stderr, whose line for a request nginx failed carries the query
-([trust-boundaries.md H-14](../security/trust-boundaries.md#h-14)). On `SIGTERM` the image's nginx exits within its
-grace period; there is no draining beyond nginx's own.
+The pod runs with a read-only root filesystem; the chart mounts an `emptyDir` at `/tmp`, which is
+all nginx writes — its pid and temporary files —, and `fsGroup: 101` is what makes it writable for
+the nginx user. The configuration is part of the image: a volume mounted over `/etc/nginx/conf.d`
+hides it, and nginx then starts with no server and answers nothing on 8080 — the readiness probe
+never passes, which is the symptom to look for. The chart's mounts were run in a kind cluster,
+the volume over `/etc/nginx/conf.d` against the built image. Its log is nginx's access log on
+stdout — time, method,
+path without its query, status, size, duration — and its error log on stderr
+([trust-boundaries.md H-14](../security/trust-boundaries.md#h-14)). On `SIGTERM` the image's nginx
+exits within its grace period; there is no draining beyond nginx's own.

@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-03 (D2: the chart's backend NetworkPolicy). Date: 2026-10-01. Decided
+Accepted, amended 2026-10-03 (D2: the chart's backend NetworkPolicy), amended 2026-10-04 by the
+owner's decision on the routing recorded in
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3 (D1: the Ingress, not nginx, routes `/api/`; D2: the chart ships no NetworkPolicy, so the rule
+for the metrics port is the installation's again). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "metrics?": Prometheus on a separate port with `client_golang`, together with the
 kube-prometheus custom resources (`ServiceMonitor`/`PodMonitor`, `PrometheusRule`) rendered
 by the chart, over metrics on the main port behind authentication, over OpenTelemetry push,
@@ -19,8 +23,8 @@ the consistency check's dangling metadata and orphans and the last export time
 ([ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4), the pool and a tracer slot ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
 D8), the per-token view of the audit ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
-The API port is proxied by nginx under `/api/`, so a metrics path on it would be one proxy
-mistake away from the internet; a second listener that the Service does not expose is the
+The API port is ~~proxied by nginx~~ *(since 2026-10-04 routed by the Ingress)* under `/api/`, so
+a metrics path on it would be one proxy mistake away from the internet; a second listener that the Service does not expose is the
 pattern the sibling operator uses and every Prometheus scrapes. The owner runs
 kube-prometheus and wants the resources that wire scraping and alerting rendered by the chart.
 
@@ -28,18 +32,20 @@ kube-prometheus and wants the resources that wire scraping and alerting rendered
 
 **D1 — Metrics are Prometheus text on a second backend listener,** `COWORK_METRICS_ADDR`
 (default `:8081`), path `/metrics`, no authentication, implemented with `client_golang`. The
-listener shares the lifecycle of the API listener and is never proxied by nginx. The health
-probes stay on `:8080`.
+listener shares the lifecycle of the API listener and is never ~~proxied by nginx~~ *(amended
+2026-10-04: routed by the Ingress)*. The health probes stay on `:8080`.
 
 **D2 — The chart exposes the port on the pod, not on the Service.** `metrics.enabled`
 (default `true`) adds the container port `metrics`; the backend Service does not list it. The
 operations page names the NetworkPolicy an installation should add: port 8081 reachable from
-the monitoring namespace only. *(Amended 2026-10-03: the chart now renders a NetworkPolicy of its
+the monitoring namespace only. ~~*(Amended 2026-10-03: the chart now renders a NetworkPolicy of its
 own for the backend pods, which admits the frontend's pods on the API port and nothing else
 ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3). Policies add up, so the rule for port 8081 is a policy beside it — and with the chart's in
 place it is needed, not only advisable: a scrape of the metrics port is refused where policies
-are enforced until the monitoring namespace is admitted.)*
+are enforced until the monitoring namespace is admitted.)*~~ *(Amended 2026-10-04 by the owner,
+ADR 0001 D3: the chart ships no NetworkPolicy — network policies are the cluster administrator's —,
+so the rule for port 8081 is the installation's policy, as this decision first said.)*
 
 **D3 — The chart renders the kube-prometheus resources, each behind a switch, default off:**
 

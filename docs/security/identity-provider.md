@@ -448,9 +448,9 @@ cause ([`oidc/client.go`](../../backend/internal/oidc/client.go) `safeCode`, `tr
 `TestRefreshRefusalAndUnreachability` asserts that no refusal's error carries the body). The
 callback's own `error` parameter is cut to 64 characters, and its `error_description` is never
 logged. The backend's request log carries no query string. Outside the backend, the callback's
-query — the code and the state — is in nginx's error log for a request nginx itself failed
-([trust-boundaries.md](trust-boundaries.md#h-14), H-14), and in the access log of an Ingress
-controller that logs query strings. A code is redeemed once and only together with the PKCE
+query — the code and the state — is in the access log of an Ingress controller that logs query
+strings, which ingress-nginx does by default ([trust-boundaries.md](trust-boundaries.md#h-14),
+H-14); the frontend's nginx never sees the callback. A code is redeemed once and only together with the PKCE
 verifier, which is in the sealed cookie, and the client secret.
 
 The log lines an operator meets are in [runtime.md](../operations/runtime.md#the-login-through-the-identity-provider).

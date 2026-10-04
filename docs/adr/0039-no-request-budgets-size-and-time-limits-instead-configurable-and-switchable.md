@@ -16,8 +16,9 @@ for an hour ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-conten
 D1, D6, D9); a request timeout would cut it every thirty seconds.
 
 **Partly built** (phase 2, 2026-10-02): D1–D4 — the five limits of D2 in
-[`config.go`](../../backend/internal/config/config.go) and the request pipeline, nginx sized by
-the chart. D5 arrives with the inbox.
+[`config.go`](../../backend/internal/config/config.go) and the request pipeline, ~~nginx sized by
+the chart~~ *(since 2026-10-04 the controller's sizes documented and printed by the chart's
+notes, D3)*. D5 arrives with the inbox.
 
 **Built** (phase 3, 2026-10-03): D6 with the local login — `COWORK_LOGIN_MAX_FAILURES` and
 `COWORK_LOGIN_ADDRESS_LIMIT`, in the chart `auth.local.maxFailures` and `auth.local.addressLimit`.
@@ -28,7 +29,11 @@ provisionally with that record (D2: a turn's limits; D3: the turn's stream behin
 the same day ([`config/chat.go`](../../backend/internal/config/chat.go),
 [`api/chat.go`](../../backend/internal/api/chat.go)). Amended again on 2026-10-04 by the owner's
 answers recorded in ADR 0076 (D2: no decisions in a turn's body; the person's stop of their turns, on
-the replica that answers it), built the same day.
+the replica that answers it), built the same day. Amended on 2026-10-04 by the owner's decision on
+the routing recorded in
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
+(D3: the frontend proxies nothing, so the proxy sized above the backend's limits is the Ingress
+controller, whose limits the installation sets and the chart documents; built the same day).
 
 ## Context
 
@@ -81,7 +86,25 @@ answer. The count of turns is a bound on what runs at once, not a budget: D1 sta
 a person stops their running turns at once with `DELETE …/chat/turns`, which ends them on the
 replica that answers it, as the count of turns is that replica's.)*
 
-**D3 — The frontend proxy is sized above the backend's limits.** nginx's
+**D3 — ~~The frontend proxy is sized above the backend's limits.~~ The Ingress controller is
+sized above the backend's limits** *(amended 2026-10-04 by the owner, ADR 0001 D3; the rule it
+replaces is struck through below)*. The controller stands in front of the backend, and the chart
+does not know which controller it is, so its limits are the installation's to set in the
+controller's own configuration, and the chart documents them (the `ingress` comment of
+[`values.yaml`](../../deploy/helm/cowork/values.yaml),
+[docs/operations/installation.md](../operations/installation.md#expose-it)) and prints them in its
+notes for the values given: a body limit of at least the larger of the JSON and the attachment
+maximum, rounded up to MiB, plus one MiB (`11m` with the defaults; none when either is `0`), and a
+read timeout of at least the request timeout plus ten seconds (`40` seconds; an hour when it is
+`0`), so a limit is the backend's problem body with its request id. What the controller answers
+itself — its own `413` above its limit, its `502` or `503` without a ready backend pod, its `504`
+past its timeout — is its page, not a problem body
+([ADR 0047](0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6 as amended). The two
+streams need no setting of their own on an nginx-based controller: the backend answers both with
+`X-Accel-Buffering: no`, which nginx obeys, and each sends something at least every twenty seconds,
+which keeps it inside any read timeout above that.
+
+~~nginx's
 `client_max_body_size` is set from the attachment maximum plus headroom and its proxy
 timeouts above `COWORK_REQUEST_TIMEOUT`, so a limit is always the backend's JSON error and
 never nginx's default page. The chart renders both from the same values. *(Made concrete
@@ -95,7 +118,7 @@ get static problem bodies from nginx — without `instance` and `request_id`
 own errors pass through, never intercepted. The event stream's location has no buffering and
 an hour's read timeout. *(Added 2026-10-04: a turn of the chat has no location of its own; it
 passes `/api/` with the read timeout above, unbuffered because the backend answers it with
-`X-Accel-Buffering: no`, and kept within the read timeout by its comment every ten seconds.)*
+`X-Accel-Buffering: no`, and kept within the read timeout by its comment every ten seconds.)*~~
 
 **D4 — Abuse is answered by the record and by revocation.** The per-token view of the audit
 record ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6)
@@ -152,4 +175,7 @@ minutes and the address minute are fixed, not configured.)*
 - [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md) D6 — the attachment maximum
 - [ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D6, [ADR 0035](0035-personal-access-tokens.md) D6 — the per-token record and revocation
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) — the inbox the collapse protects
-- [`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) — where D3's sizes land
+- ~~`frontend/nginx/default.conf.template` — where D3's sizes land~~ *(until 2026-10-04)*;
+  [`deploy/helm/cowork/values.yaml`](../../deploy/helm/cowork/values.yaml) (`ingress`) and
+  [`templates/NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt) — where D3's sizes are
+  documented and printed

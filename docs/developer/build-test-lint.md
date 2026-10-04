@@ -1,7 +1,7 @@
 # Build, test and lint
 
 Every target `make` offers, what each needs and what it produces; the generated code; how to run
-the backend and the frontend locally and the two images together. The tiers and their rules are
+the backend and the frontend locally and the two images together behind a stand-in for the Ingress. The tiers and their rules are
 [testing.md](testing.md) and [ADR 0003](../adr/0003-test-and-ci-policy.md).
 
 ## Prerequisites
@@ -58,7 +58,7 @@ same toolchain builds them.
 | | `make dev-seed` | `make postgres-up` | migrates, then creates a person, a tenant, an admin membership and a token, and prints the token once |
 | | `make docker-build` | Docker | `BACKEND_IMG` and `FRONTEND_IMG` (defaults `guidedtraffic/cowork-backend:latest`, `guidedtraffic/cowork-frontend:latest`); `docker-build-backend` / `docker-build-frontend` for one |
 | | `make docker-push` | Docker, a registry login | pushes both images |
-| | `make verify-phase-2` | Docker, `python3`, the two images, `make postgres-up minio-up` | runs both images read-only and drives the API as a `make dev-seed` agent ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) |
+| | `make verify-phase-2` | Docker, `python3`, the two images, `make postgres-up minio-up` | runs both images read-only behind the Ingress stand-in and drives the API through it as a `make dev-seed` agent ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) |
 | Chart | `make helm-lint`, `make helm-template` | Helm | strict lint on defaults and each `ci/` file; render per `ci/` file |
 | Release | `make test-release-tooling` | `npm ci` at the root | the semantic-release plugins render notes |
 | Coverage | `make coverage-merge`, `make coverage-json` | the two profiles | `coverage/combined.*`, `.github/badges/coverage.json` |
@@ -97,7 +97,10 @@ local administrator `dev` and Dex as its identity provider — `cowork-users` al
 `cowork-admins` the administrator group, the button *Sign in with Dex* — logs it to
 `.dev/backend.log`, maps the group `team-red` to `member` in the tenant `dev` through a session of
 the local administrator, and keeps the demo data's token in `.dev/token` and a stable server key in
-`.dev/session-key` (all untracked). Two ways in: the form as `dev` with the development-only
+`.dev/session-key` (all untracked). The dev server's proxy
+([`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the developer's stand-in for the
+Ingress: it sends `/api` and `/auth` to the backend on `:8080` as the Ingress routes `/api/` and
+`/auth/` on an installation, and the dev server serves the rest. Two ways in: the form as `dev` with the development-only
 password `dev-only-cowork`, or *Sign in with Dex* as `ada@example.com`, `bob@example.com`,
 `cyd@example.com` or `dan@example.com` with `dev-only-dex` (what each is:
 [testing.md](testing.md#the-identity-provider-in-the-tests)). When LM Studio answers on
@@ -146,32 +149,61 @@ other names).
 
 ## Run the images together
 
-`make docker-build`, then both containers on one Docker network with read-only root filesystems,
-as the chart runs them:
+`make docker-build`, then three containers on one Docker network, as the chart and its Ingress run
+them ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3):
 
-- **The backend** with `--read-only`, `COWORK_DATABASE_URL` (the runtime role),
-  `COWORK_DATABASE_OWNER_URL` (the owner role; the image migrates on start unless
+- **The backend** with `--network-alias backend`, `--read-only`, `COWORK_DATABASE_URL` (the runtime
+  role), `COWORK_DATABASE_OWNER_URL` (the owner role; the image migrates on start unless
   `COWORK_MIGRATE_ON_START=false`) and `COWORK_SESSION_KEY` (`openssl rand -base64 32`);
-  `COWORK_S3_*` for uploads.
-- **The frontend** with `BACKEND_URL=http://<backend alias>:8080` and, to mirror the chart's
-  `fsGroup: 101`,
-  `--read-only --tmpfs /tmp:uid=101,gid=101 --tmpfs /etc/nginx/conf.d:gid=101,mode=2775 --user 101:101`.
-  The size and timeout variables keep their image defaults unless set
-  ([architecture.md](architecture.md#frontend-container)).
+  `COWORK_S3_*` for uploads; for a login `COWORK_LOCAL_ADMIN_USERNAME`,
+  `COWORK_LOCAL_ADMIN_PASSWORD` and `COWORK_BASE_URL` set to the stand-in's origin.
+- **The frontend** with `--network-alias frontend` and, to mirror the chart's `fsGroup: 101` and its
+  one volume, `--read-only --tmpfs /tmp:uid=101,gid=101 --user 101:101`. It takes no variable and
+  needs no backend to start.
+- **The Ingress stand-in** — [`hack/ingress/default.conf`](../../hack/ingress/default.conf) over the
+  default server of `INGRESS_IMAGE` (`nginxinc/nginx-unprivileged:1.31-alpine` `# default`, the
+  `Makefile`), published on the loopback address. It routes `/api/` and `/auth/` to `backend:8080`
+  and everything else to `frontend:8080`, as the chart's Ingress does; writes the address it saw
+  into `X-Forwarded-For`, as ingress-nginx does by default; and has the body limit (`11m`) and read
+  timeout (`40s`) the operations page names for the controller. It leaves response buffering on, so
+  the two streams pass unbuffered by the backend's `X-Accel-Buffering: no` alone. It looks both
+  names up per request (cached a second), so the three may start in any order. Its configuration
+  is copied in, not mounted, as `make dex-up` does with Dex's:
 
-Start the frontend first: it must come up without the backend and answer `/api/` with the `502`
-problem body. Then `curl` through the frontend: `/healthz`, `/api/v1/version`, a deep link, a
-hashed asset; with a token, an authenticated route; a JSON body above `COWORK_MAX_JSON_BODY` (the
-backend's `413`, with a `request_id`) and one above `NGINX_CLIENT_MAX_BODY_SIZE` (nginx's `413`,
-without); the event stream, which must arrive unbuffered; and `SIGTERM` to the backend with a
-stream open, which must end the stream at once. A change to the shell's content-security policy, or
-to the build under it, is checked in a browser against the image: the UI's pages — the chat's panel
-among them — with the console showing no violation in Chromium and WebKit. There is no unit test for
-nginx: this run is the check,
-[ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-records the one of 2026-10-02. `make verify-phase-2` scripts the API half of it — both images
-read-only, driven as a `make dev-seed` agent — by hand, not as a CI job; the nginx checks above
-stay manual.
+```bash
+docker network create cowork-run                                                    # example names and port
+docker run -d --name cowork-run-backend --network cowork-run --network-alias backend --read-only \
+  --user 65532:65532 -e COWORK_DATABASE_URL=… -e COWORK_DATABASE_OWNER_URL=… -e COWORK_SESSION_KEY=… \
+  guidedtraffic/cowork-backend:latest serve
+docker run -d --name cowork-run-frontend --network cowork-run --network-alias frontend --read-only \
+  --tmpfs /tmp:uid=101,gid=101 --user 101:101 guidedtraffic/cowork-frontend:latest
+docker create --name cowork-run-ingress --network cowork-run -p 127.0.0.1:18090:8080 \
+  nginxinc/nginx-unprivileged:1.31-alpine
+docker cp hack/ingress/default.conf cowork-run-ingress:/etc/nginx/conf.d/default.conf
+docker start cowork-run-ingress                                                     # the UI on http://localhost:18090
+```
+
+`make verify-phase-2` ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) does that against
+`make postgres-up minio-up`, with a database and a bucket of its own, and drives the API through the
+stand-in as a `make dev-seed` agent — by hand, not as a CI job. The end-to-end tier puts the same
+stand-in in front of the images
+([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D1).
+
+Then check through the stand-in: `/healthz` (the frontend's), `/api/v1/version` (the backend's,
+with `X-Request-Id`), a deep link and a hashed asset (`no-store`, `immutable`, the shell's
+policy); with a token or a session, an authenticated route; a JSON body above
+`COWORK_MAX_JSON_BODY` (the backend's `413`, with a `request_id`) and one above `11m` (the
+stand-in's own `413` page); the event stream, which must deliver an event at once and stay open
+past the stand-in's read timeout on its heartbeats; and `SIGTERM` to the backend with a stream
+open, which must end the stream at once. Then the frontend alone — published, or reached from a
+container on the network — for `/api/` and `/auth/`, which must answer the `404` problem, a body
+above 1 MiB included. A change to the shell's content-security policy, or to the build under it,
+is checked in a browser through the stand-in: the UI's pages — the chat's panel among them — with
+the console showing no violation. Chromium keeps the `Secure` session cookie on
+`http://localhost`, WebKit does not, so a WebKit run needs TLS in front of the stand-in. There is
+no unit test for nginx: this run is the check, and ADR 0001 records the one of 2026-10-04, which
+also ran the chart behind ingress-nginx in a kind cluster.
 
 ## The toolchain versions
 
@@ -179,7 +211,7 @@ stay manual.
 |---|---|---|
 | Go | `backend/go.mod`, `backend/Containerfile`, `GO_VERSION` in `release.yml`, the badge in `release-template.hbs` | Renovate, one grouped PR ("Go version") |
 | Node.js | `NODE_VERSION` in `release.yml`, `node:26-alpine` in `frontend/Containerfile` | Renovate |
-| nginx | `nginxinc/nginx-unprivileged:1.31-alpine` in `frontend/Containerfile`; its Alpine packages are upgraded at build time (`apk upgrade`), so a published Alpine fix does not wait for the upstream rebuild | Renovate (dockerfile manager) |
+| nginx | `nginxinc/nginx-unprivileged:1.31-alpine` in `frontend/Containerfile`; its Alpine packages are upgraded at build time (`apk upgrade`), so a published Alpine fix does not wait for the upstream rebuild. The same image is `INGRESS_IMAGE` in the `Makefile`, the Ingress stand-in's, with a `# renovate:` comment | Renovate (dockerfile manager; the regex manager for the `Makefile`, whose pattern matches the line — no Renovate run has confirmed it) |
 | Go tools, sqlc, oapi-codegen | `*_VERSION` in the `Makefile` with `# renovate:` comments | Renovate (custom regex manager) |
 | PostgreSQL test image | `POSTGRES_IMAGE` in the `Makefile`, the service in `release.yml` | Renovate, held on the 18 line: the Makefile manager captures the tag without the image name, so the hold rule sees `18` |
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |

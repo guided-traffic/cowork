@@ -64,9 +64,8 @@ Not as decided:
   as a new local account, a group mapping and a member's grant do; a token takes a new key per
   act on purpose, because a repeated answer carries no plaintext (ADR 0045 D6).
 - **The bundle budget warns on every production build** (Q1).
-- **Two checks by hand are outstanding:** nobody has looked at a released frontend image for the
-  license notice, and nobody has run both images read-only since the icon location joined the
-  nginx template ([`default.conf.template`](../../frontend/nginx/default.conf.template#L131-L139)).
+- **A check by hand is outstanding:** nobody has looked at a released frontend image for the
+  license notice.
 
 ## Required changes
 
@@ -80,8 +79,14 @@ Not as decided:
    ([frontend.md](../developer/frontend.md#where-state-lives)); unit tests per form that a retry
    of the same content sends the same key and a changed content a new one.
 3. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
-4. By hand: both images run together read-only with the icon location, as
-   [build-test-lint.md](../developer/build-test-lint.md#run-the-images-together) says.
+4. A stream admits the projects that were visible when it opened, and recomputes them only at its
+   heartbeat ([`events.go`](../../backend/internal/api/events.go) `pump`, `streamFilter`): the
+   events of a project created, opened or granted after that are dropped for up to the heartbeat
+   interval, twenty seconds by default, and a page that follows them misses them. The stream
+   recomputes what it admits on the events that change it — a project created, restricted or
+   opened, a membership or an access entry changed — before it filters the next one; an
+   integration test that a ticket filed in a project created after the stream opened arrives
+   within a second.
 
 ### Depends on the answer
 

@@ -3,8 +3,9 @@
 Repo: https://github.com/guided-traffic/cowork — a multi-tenant backlog and kanban board for
 one person working across many projects with an LLM as co-worker. Two containers: a Go
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
-(`frontend/`, the Angular bundle, `/api/` proxied to the backend); one Helm chart; and a third
-binary, `cowork-mcp`, on a person's machine for Claude Code.
+(`frontend/`, the Angular bundle and nothing else); one Helm chart, whose Ingress routes `/api/`
+and `/auth/` to the backend and the rest to the frontend; and a third binary, `cowork-mcp`, on a
+person's machine for Claude Code.
 **Status: phases 4 (the identity provider) and 5 (`cowork-mcp` and the chat in the UI) are
 released as `0.3.0`; phase 3 (UI v1) is in progress and comes next, by the owner's choice of
 2026-10-04, before phase 6** — the work lists are in
@@ -75,14 +76,15 @@ unanswered question.
   [docs/developer/frontend.md](docs/developer/frontend.md); `make dev` runs the whole stack with
   demo data and the UI on `https://localhost:4200` (self-signed: Safari stores no `Secure` cookie
   from plain-HTTP localhost) for the owner to watch; the browser logs in as `dev` /
-  `dev-only-cowork`, and the dev proxy holds no credential. The container is
-  `nginxinc/nginx-unprivileged` with [`frontend/nginx/default.conf.template`](frontend/nginx/default.conf.template):
-  `/healthz` itself, `/api/` and `/auth/` proxied to `BACKEND_URL`, hashed bundles immutable, everything
-  else `index.html` with `no-store`, and the shell's `Content-Security-Policy` on all it serves of
-  the UI (every source `'self'`; `'unsafe-inline'` for styles only). `BACKEND_URL`, `NGINX_LOCAL_RESOLVERS`,
-  `NGINX_CLIENT_MAX_BODY_SIZE` and `NGINX_PROXY_READ_TIMEOUT` are the only substituted
-  variables (the chart sizes the last two from the backend's limits); the backend is resolved
-  per request, so the frontend starts before it.
+  `dev-only-cowork`, and the dev proxy — the developer's stand-in for the Ingress — holds no
+  credential. The container is `nginxinc/nginx-unprivileged` with
+  [`frontend/nginx/default.conf`](frontend/nginx/default.conf), a plain file, nothing substituted
+  at start: `/healthz` itself, hashed bundles immutable, everything else `index.html` with
+  `no-store`, the shell's `Content-Security-Policy` on all it serves of the UI (every source
+  `'self'`; `'unsafe-inline'` for styles only), and a `404` problem for `/api/` and `/auth/`,
+  which the Ingress routes to the backend — the frontend never reaches it (ADR 0001 D3). Runs of
+  the two images put [`hack/ingress/default.conf`](hack/ingress/default.conf) in front as the
+  Ingress stand-in.
 - Both toolchains track the newest stable release (ADR 0001 D9); TypeScript stays in
   Angular's peer range. Do not pin back.
 - Backend configuration is `COWORK_*` environment variables only
@@ -97,7 +99,9 @@ unanswered question.
   schema or pending migrations.
 - The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*` (with
   `database.owner.*`), `session.*`, `storage.*`, `localAdmin.*`, `bootstrap.*`, `auth.*`,
-  `chat.*`, `ingress.*` (targets the frontend Service). The runtime and the owner URL each come from an
+  `chat.*`, `ingress.*` (per host `/api/` and `/auth/` to the backend Service, `/` to the frontend
+  Service; the controller's limits are annotations the installation sets). No NetworkPolicy:
+  network policies are the cluster administrator's. The runtime and the owner URL each come from an
   `existingSecret` (preferred) or a `url` (throw-away only, plain text in the release); the owner
   URL reaches only the `migrate` init container; the session key, the storage key, the identity
   provider's client secret and the chat's API key come from Secrets only, the local
@@ -135,7 +139,7 @@ unanswered question.
 | Frontend unit | `make frontend-test` | Node.js 26 |
 | Static analysis | `make lint cyclo gosec vuln`, `make frontend-lint` | — |
 | Chart | `make helm-lint helm-template` | Helm |
-| Images | `make docker-build` (both) and a read-only run of both containers together, see [docs/developer/build-test-lint.md](docs/developer/build-test-lint.md) | Docker |
+| Images | `make docker-build` (both) and a read-only run of both containers together behind the Ingress stand-in, see [docs/developer/build-test-lint.md](docs/developer/build-test-lint.md) | Docker |
 | Everything a PR gets | see [docs/developer/ci-and-release.md](docs/developer/ci-and-release.md) | |
 
 No `-short`, no `testing.Short()`, no skip on a missing dependency: the integration tier fails
@@ -156,7 +160,8 @@ of `semantic-release`; a new job is added there in the same change.
   fields), written through `problem.Write` with a code from the catalogue in
   `backend/internal/problem` — never an ad-hoc JSON error (ADR 0047).
 - Every Go tool runs inside `backend/`; the frontend tree is never in its path. nginx has no
-  unit test: a change to the template is verified by running the image.
+  unit test: a change to its configuration is verified by running the image behind the Ingress
+  stand-in.
 
 # Important Notes
 

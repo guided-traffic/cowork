@@ -281,7 +281,7 @@ the columns released before keep their places. The mark tells, it does not bind:
   client, one hash; a job's rows, none). It tells one client's rows apart from another's under one
   server key; a new key gives the same address another hash, so rows from before a rotation do not
   compare with rows after it. With `COWORK_TRUSTED_PROXIES` empty, every browser's request through
-  the frontend has the frontend pod's address, and the hash tells nobody apart. Whoever holds the
+  the Ingress has a controller pod's address, and the hash tells no browser behind it apart. Whoever holds the
   key reverses it ([H-30](#h-30)).
 - Reads are not recorded, with two exceptions that mean data left the system (ADR 0026 D5):
   every download of an attachment's bytes — a `304` is not one — and every Markdown export of

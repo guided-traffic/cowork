@@ -3,7 +3,11 @@
 ## Status
 
 Accepted, amended 2026-10-03 (D1, D5, D6 made concrete by the first implementation) and
-2026-10-04 (D5, D6: the identity provider's callback and its base URL built). Date:
+2026-10-04 (D5, D6: the identity provider's callback and its base URL built), and on 2026-10-04
+by the owner's decision on the routing (Context: the one origin is the Ingress's, which routes
+`/api/` and `/auth/` to the backend,
+[ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3; nothing of the decision changes). Date:
 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
@@ -24,7 +28,9 @@ in a sealed cookie ([docs/security/identity-provider.md](../security/identity-pr
 
 The browser session is a cookie ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md)
 D2, `SameSite=Lax`), and the record says in the same breath that `Lax` is not CSRF protection
-for an API over which tickets are deleted. The UI and the API are one origin behind nginx
+for an API over which tickets are deleted. The UI and the API are one origin ~~behind nginx~~
+*(since 2026-10-04 behind the Ingress, which routes `/api/` and `/auth/` to the backend and the
+rest to the frontend)*
 ([ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3, D4) and the API sends no CORS headers; that single fact is what makes a stateless check
 complete: a cross-origin page can submit a form but cannot set a custom header, and a

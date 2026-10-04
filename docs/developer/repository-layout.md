@@ -61,15 +61,16 @@ cowork/
 │   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
 │   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
 │   ├── ng-openapi-gen.json     # the client generator's configuration
-│   ├── nginx/default.conf.template  # the container's nginx configuration, four substituted variables, the shell's CSP
-│   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz; holds no credential
+│   ├── nginx/default.conf      # the container's nginx configuration, a plain file: the UI only, the shell's CSP
+│   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz: the dev stand-in for the Ingress
 │   ├── Containerfile           # node:26-alpine build → nginxinc/nginx-unprivileged
 │   └── eslint.config.js
 ├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
 ├── hack/                       # dev.sh + dev_demo.py (make dev); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
-│   └── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
+│   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
+│   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions

@@ -7,14 +7,14 @@ Everything described here exists; what is not built is listed at the end.
 ## Two containers, one origin
 
 ```
-                          ┌───────────────────────────────────┐
-  browser ───────────────►│ cowork-frontend (nginx)   :8080   │
-  Claude (PAT) ──────────►│   /            → index.html       │
-                          │   /<hashed>.js → immutable        │
-                          │   /healthz     → nginx itself     │
-                          │   /api/…, /auth/… → proxy ──────────┐
-                          └───────────────────────────────────┘ │
-                                                                ▼
+  browser ───────┐                          ┌───────────────────────────────────┐
+  Claude (PAT) ──┴──► Ingress controller ──►│ cowork-frontend (nginx)   :8080   │
+                      (the installation's)  │   /            → index.html       │
+                      /     → frontend      │   /<hashed>.js → immutable        │
+                      /api/, /auth/         │   /healthz     → nginx itself     │
+                          → backend         │   /api/…, /auth/… → 404 problem   │
+                              │             └───────────────────────────────────┘
+                              ▼
   kubelet ───────────────►┌───────────────────────────────────┐
   scripts, port-forward ─►│ cowork-backend (Go)       :8080   │──► PostgreSQL 18
                           │   /healthz, /readyz               │      (runtime role; owner role
@@ -30,9 +30,11 @@ Everything described here exists; what is not built is listed at the end.
                                                                       the picked COWORK_CHAT_<ID>_URL)
 ```
 
-The frontend is the entry point and the only Service an Ingress targets; the browser sees one
-origin. The backend Service stays cluster-internal for scripts and port-forwards
-([ADR 0001] D2–D4). Every route under `/api/v1` except the version, the API document and the
+The Ingress is the entry point: for every host it routes `/api/` and `/auth/` to the backend
+Service and everything else to the frontend Service, so the browser sees one origin, and the
+frontend's nginx serves the UI and never reaches the backend ([ADR 0001] D2–D4;
+[`ingress.yaml`](../../deploy/helm/cowork/templates/ingress.yaml)). The backend Service also serves
+scripts and port-forwards inside the cluster. Every route under `/api/v1` except the version, the API document and the
 schema of `.cowork.yaml` needs a personal access token or a session cookie
 ([api.md](api.md#authentication)); the login flows live at `/auth/…` beside `/api/`. During a
 login through the identity provider the browser goes to the issuer and comes back to
@@ -155,16 +157,17 @@ of the provider whose last gate check is older than the interval, `authenticateT
 gate, which reads the database only. Both may write, in transactions of their own, before the
 request's handler has run.
 
-**Who the client is.** A browser reaches the backend through the frontend's nginx and, with an
-Ingress, a controller before it — a cloud load balancer in front of that is a third — and each
-appends the address it saw to `X-Forwarded-For`. The backend finds the client by walking that header from the right through the
+**Who the client is.** A browser reaches the backend through the Ingress controller — a cloud
+load balancer in front of that is a second hop — and each writes the address it saw into
+`X-Forwarded-For` (ingress-nginx in place of what the client sent). The backend finds the client by walking that header from the right through the
 networks of `COWORK_TRUSTED_PROXIES`, starting at the TCP peer, and uses the address for the
 login throttle and for the keyed hash every audit row of the request carries
 ([api.md](api.md#the-pipeline), [the
 rule](../security/local-accounts.md#the-client-address); the chain and what to set are
 [installation.md](../operations/installation.md#the-client-address-and-the-trusted-proxies)). The
-chart's NetworkPolicy keeps every pod but the frontend's away from the backend, because the
-walk trusts what a trusted peer says.
+walk trusts what a trusted peer says, and the chart ships no NetworkPolicy: with the list naming a
+network other pods live in, keeping them away from the backend is the cluster's policy
+([H-17](../security/local-accounts.md#h-17)).
 
 ### A turn of the chat
 
@@ -253,44 +256,25 @@ the person, and what it leaves open, is
 ## Frontend container
 
 [`frontend/Containerfile`](../../frontend/Containerfile) builds the Angular production bundle
-in a Node stage and copies `dist/frontend/browser/` into `nginxinc/nginx-unprivileged`.
-[`frontend/nginx/default.conf.template`](../../frontend/nginx/default.conf.template) is
-rendered by the image's entrypoint at start with four variables substituted;
-`NGINX_ENVSUBST_FILTER` names exactly those four, so nginx's own `$uri`, `$host` and friends stay
-intact.
-
-| Variable | Image | Chart |
-|---|---|---|
-| `BACKEND_URL` | `http://backend:8080` `# default` | the backend Service; never `localhost:8080`, which is nginx itself and would proxy `/api/` back into the proxy |
-| `NGINX_LOCAL_RESOLVERS` | the nameservers of `/etc/resolv.conf`, exported by the entrypoint (`NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true`) | — |
-| `NGINX_CLIENT_MAX_BODY_SIZE` | `11m` `# default` | the larger of `backend.config.maxJsonBody` and `attachmentMaxBytes`, rounded up to MiB, plus 1 MiB; `0` (no limit) when either is 0 |
-| `NGINX_PROXY_READ_TIMEOUT` | `40s` `# default` | `backend.config.requestTimeout` plus ten seconds; `3600s` when it is 0 |
-
-nginx is sized above the backend's limits so the backend answers its own `413` and `504`, with a
-request id ([ADR 0039] D3); the chart computes the last two in
-[`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl). The upstream is a variable
-behind a `resolver`, so nginx looks the backend up per request (cached 30 s) rather than once at
-start — the frontend starts before the backend Service exists and follows it when its address
-changes.
+in a Node stage and copies `dist/frontend/browser/` into `nginxinc/nginx-unprivileged`, with
+[`frontend/nginx/default.conf`](../../frontend/nginx/default.conf) over the base image's default
+server at `/etc/nginx/conf.d/default.conf`, owned by root. Nothing is substituted at start — the
+image sets no variable of its own, and none changes the configuration — and nginx resolves no name:
+the frontend serves the UI and nothing else ([ADR 0001] D3).
 
 | Path | nginx does |
 |---|---|
 | `/healthz` | answers `{"status":"ok"}` itself — the frontend's probes, saying nothing about the backend |
-| `/api/…` | `location ^~ /api/`, so no static-file rule takes an API path ending in `.png` or `.svg`: `proxy_pass` to `BACKEND_URL` resolved per request, path unchanged, `X-Forwarded-*` set, body size and read timeout from the variables above. What nginx answers itself — `413`, `502`, `503`, `504` — is a static `application/problem+json; charset=utf-8` body without `instance` or `request_id` (`502` is `backend_unreachable`); the backend's own errors pass through ([ADR 0047] D6) |
-| `/auth/…` | `location ^~ /auth/`, the same proxy and the same static problem bodies, for the login flows, the identity provider's start and callback among them; the cookies — the session's and the login's state — pass in both directions |
-| `/api/v1/tenants/<slug>/events` | a nested location: unbuffered, uncached, a one-hour read timeout ([events.md](events.md#nginx)) |
-| `/api/v1/tenants/<slug>/chat` | no location of its own: `/api/` passes a turn's stream, unbuffered because the backend answers `X-Accel-Buffering: no`, and within the read timeout by the turn's comment every ten seconds |
+| `/api/…`, `/auth/…` | `location ^~ /api/` and `^~ /auth/`, so no static-file rule takes such a path: `return 404`, and `error_page 404 413 =404 @misrouted` sends that and a body above nginx's 1 MiB limit to one named location, which answers a static `application/problem+json; charset=utf-8` body — `not_found`, the detail naming the cause, without `instance` or `request_id` ([ADR 0047] D6) — under an empty `types {}`, so a path ending in `.png` is not typed `image/png`. The Ingress routes these paths to the backend; they reach the frontend only by mistake |
 | `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` | serves the file with `Cache-Control: no-cache`: the icons come from `public/` and keep their names across builds; the shell's `Content-Security-Policy` |
 | `*.js`, `*.css`, fonts, images | serves the file with `Cache-Control: public, max-age=31536000, immutable`; the bundle names are hashed; the shell's `Content-Security-Policy` |
 | everything else | `try_files $uri /index.html` with `Cache-Control: no-store`, so the Angular router resolves deep links and a cached shell never pins old bundle hashes; the shell's `Content-Security-Policy` ([chat.md](chat.md#the-content-security-policy)) |
 
 The container runs as user 101 with a read-only root filesystem; it writes only under `/tmp`
-(pid, temp files) and `/etc/nginx/conf.d` (the rendered configuration), which the chart mounts
-as `emptyDir`s made group-writable through `fsGroup: 101`. A `conf.d` that is mounted but not
-writable makes the entrypoint log `/etc/nginx/conf.d is not writable` and skip the template:
-nginx starts with no server block and answers nothing on 8080. Without the mount, on the
-read-only root filesystem, rendering the template fails and the container exits 1. Both were
-run against the built image.
+(pid, temp files), which the chart mounts as an `emptyDir` made group-writable through
+`fsGroup: 101`. A volume over `/etc/nginx/conf.d` would hide the configuration: nginx then starts
+with no server and answers nothing on 8080. Both were run against the built image, and the chart's
+mounts in a kind cluster.
 
 ## Local development
 
@@ -301,8 +285,11 @@ it migrates as `cowork_owner`, serves as `cowork_app` and makes a throw-away ser
 `COWORK_SESSION_KEY` is set. `make dev-seed` creates a person, a tenant, an admin membership and
 a token, and prints the token once. `make frontend-serve` starts the Angular dev server on
 `:4200` with [`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs) forwarding `/api`,
-`/auth`, `/healthz` and `/readyz` — the same shape nginx has in the container, and like nginx it
-holds no credential. `make dex-up` starts the minimal Dex of
+`/auth`, `/healthz` and `/readyz` to the backend — the developer's stand-in for the Ingress, which
+routes `/api/` and `/auth/` the same way on an installation; like the Ingress it holds no
+credential. Runs of the two images get a stand-in of their own,
+[`hack/ingress/default.conf`](../../hack/ingress/default.conf)
+([build-test-lint.md](build-test-lint.md#run-the-images-together)). `make dex-up` starts the minimal Dex of
 [`hack/dex/config.yaml`](../../hack/dex/config.yaml) on `localhost:5556`, and `make dev-up` all
 three containers, each published on the loopback address only (`CONTAINER_BIND`). `make dev`
 ([`hack/dev.sh`](../../hack/dev.sh)) puts it together with the real logins: the backend with the
@@ -332,6 +319,5 @@ page of its own, when it exists.
 [ADR 0032]: ../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
 [ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
-[ADR 0039]: ../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md
 [ADR 0047]: ../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md
 [ADR 0057]: ../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md
