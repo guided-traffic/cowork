@@ -12,11 +12,14 @@
 // database and runs the migrations, and a runtime role that owns nothing and
 // is what every store and API test connects as. The administrative
 // connection is used only to create the two roles and the database, and by
-// the fixture package to write past row-level security.
+// the fixture package to write past row-level security. The run's bucket is
+// its own as well; the run removes both when it ends, so it leaves nothing on
+// the test servers.
 package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -24,6 +27,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
@@ -80,6 +85,13 @@ func runMain(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "integration setup: %v\n", err)
 		return 1
 	}
+	defer func() {
+		removeCtx, removeCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer removeCancel()
+		if err := removeBucket(removeCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "integration teardown: %v\n", err)
+		}
+	}()
 	if err := prepareIssuer(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "integration setup: %v\n", err)
 		return 1
@@ -192,4 +204,47 @@ func prepareStorage(ctx context.Context) error {
 		return err
 	}
 	return client.EnsureBucket(ctx)
+}
+
+// removeBucket empties the run's bucket and removes it, as the run drops its
+// database. The server never removes a bucket — the operator provides it
+// (docs/adr/0058 D5) — so this lives here and not in the storage package.
+func removeBucket(ctx context.Context) error {
+	u, err := url.Parse(env.Storage.Endpoint)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", envTestS3Endpoint, err)
+	}
+	mc, err := minio.New(u.Host, &minio.Options{
+		Creds:        credentials.NewStaticV4(env.Storage.AccessKeyID, env.Storage.SecretAccessKey, ""),
+		Secure:       u.Scheme == "https",
+		BucketLookup: minio.BucketLookupPath,
+	})
+	if err != nil {
+		return fmt.Errorf("connect to the test S3 server: %w", err)
+	}
+	bucket := env.Storage.Bucket
+	var listErr error
+	objects := make(chan minio.ObjectInfo)
+	go func() {
+		defer close(objects)
+		for object := range mc.ListObjects(ctx, bucket, minio.ListObjectsOptions{Recursive: true}) {
+			if object.Err != nil {
+				listErr = object.Err
+				return
+			}
+			objects <- object
+		}
+	}()
+	for failed := range mc.RemoveObjects(ctx, bucket, objects, minio.RemoveObjectsOptions{}) {
+		if failed.Err != nil {
+			err = errors.Join(err, fmt.Errorf("remove %s from the bucket %s: %w", failed.ObjectName, bucket, failed.Err))
+		}
+	}
+	if err = errors.Join(err, listErr); err != nil {
+		return err
+	}
+	if err := mc.RemoveBucket(ctx, bucket); err != nil {
+		return fmt.Errorf("remove the bucket %s: %w", bucket, err)
+	}
+	return nil
 }

@@ -308,7 +308,7 @@ postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
 
 .PHONY: postgres-down
 postgres-down: ## Remove the local PostgreSQL container and its data.
-	docker rm -f $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
+	docker rm -f -v $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: verify-phase-2
 verify-phase-2: ## Verify phase 2 by hand: both built images against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
