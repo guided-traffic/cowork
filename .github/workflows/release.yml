@@ -260,8 +260,18 @@ jobs:
       - name: Start the S3 server
         run: make minio-up
 
+      # The OpenID Connect issuer of the login tests: the Dex the Makefile
+      # pins, with hack/dex/config.yaml copied in, which a service container
+      # cannot take; the tests read COWORK_TEST_OIDC_ISSUER from make's default.
+      - name: Start the identity provider
+        run: make dex-up
+
       - name: Run integration tests with coverage
         run: make test-integration-coverage
+
+      - name: Stop the identity provider
+        if: always()
+        run: make dex-down
 
       - name: Stop the S3 server
         if: always()

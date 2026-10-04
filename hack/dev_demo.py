@@ -1,12 +1,17 @@
-"""Demo data for make dev: three projects with tickets in every state, questions, comments,
+"""Demo data for make dev: the group mapping team-red -> member for the users of
+hack/dex/config.yaml, and three projects with tickets in every state, questions, comments,
 links, interest, progress and time, so the UI has something to show while it is built.
 
 Usage: dev_demo.py <base-url> <token> <tenant>. It writes through the API like any client —
-every act is an audit row and an event — and does nothing when the tenant has a project
-already. Some acts carry an X-Cowork-Agent header, so the activity shows an agent at work."""
+every act is an audit row and an event — and adds no project when the tenant has one
+already. Some acts carry an X-Cowork-Agent header, so the activity shows an agent at work.
+A mapping is made by a browser session only (docs/adr/0035 D5), so the script logs in as the
+local administrator of make dev for it: COWORK_DEV_ADMIN, COWORK_DEV_ADMIN_PASSWORD and
+COWORK_BASE_URL, the origin the login and the CSRF check expect (docs/adr/0037)."""
 
 import datetime
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -44,8 +49,42 @@ def get(path):
     return call("GET", path)[0]
 
 
+# The mapping comes before the projects, so that a tenant seeded before the identity provider
+# gains it too; a group the tenant maps already keeps its mapping, whatever the UI made of it
+# (docs/adr/0030 D2).
+def session_call(method, path, body=None, cookie=None, expect=(200, 201, 204)):
+    req = urllib.request.Request(base + path, method=method)
+    req.add_header("Origin", os.environ["COWORK_BASE_URL"])
+    req.add_header("X-Requested-With", "cowork")
+    if cookie:
+        req.add_header("Cookie", cookie)
+    if method == "POST" and path.startswith("/api/"):
+        req.add_header("Idempotency-Key", str(uuid.uuid4()))
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, data) as res:
+            status, raw, headers = res.status, res.read(), res.headers
+    except urllib.error.HTTPError as err:
+        status, raw, headers = err.code, err.read(), err.headers
+    if status not in expect:
+        sys.exit(f"dev-demo: {method} {path} answered {status}: {raw[:400]!r}")
+    return (json.loads(raw) if raw else None), headers
+
+
+login = {"username": os.environ["COWORK_DEV_ADMIN"], "password": os.environ["COWORK_DEV_ADMIN_PASSWORD"]}
+_, headers = session_call("POST", "/auth/local", login)
+session = next(c.split(";", 1)[0] for c in headers.get_all("Set-Cookie") if c.startswith("__Host-cowork-session="))
+mapping, _ = session_call("POST", f"{T}/group-mappings", {"group": "team-red", "role": "member"}, session, expect=(201, 409))
+session_call("POST", "/auth/logout", cookie=session, expect=(200, 204))
+if "code" in mapping and mapping["code"] != "mapping_exists":
+    sys.exit(f"dev-demo: mapping team-red answered {mapping}")
+print("demo data: the group team-red maps to member" + (" (it did already)" if "code" in mapping else ""))
+
 if get(f"{T}/projects")["items"]:
-    print("demo data: the tenant has projects already, nothing to do")
+    print("demo data: the tenant has projects already, no more to add")
     sys.exit(0)
 
 me = get("/api/v1/me")
