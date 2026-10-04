@@ -216,8 +216,9 @@ func TestStreamFollowsAccess(t *testing.T) {
 // docs/adr/0054 D3: a stream recomputes what it admits on the act that
 // changes it, before it filters the next event — a ticket filed in a project
 // created after the stream opened, in a project opened for everyone, or in one
-// whose access list took the person in, arrives within a second; the
-// heartbeat, an hour here, plays no part.
+// whose access list took the person in, arrives within a second, and the
+// stream of a person whose grant is removed ends; the heartbeat, an hour here,
+// plays no part.
 func TestTheStreamAdmitsWhatAnActOpensAtOnce(t *testing.T) {
 	e := newTicketEnv(t)
 	names := withAccounts(t, e.world)
@@ -280,6 +281,23 @@ func TestTheStreamAdmitsWhatAnActOpensAtOnce(t *testing.T) {
 	e.file(t, adminToken, "HIDDEN", task("Behind the restriction"))
 	_, ok = s.next(t, 300*time.Millisecond)
 	assert.False(t, ok, "a recomputed filter still holds the restriction")
+
+	// A grant removed takes the tenant away: the stream ends before its next event.
+	res = srv.do(t, adminToken, http.MethodDelete, tenant+"/members/"+e.MemberA.String()+"/grant", nil)
+	require.Equal(t, http.StatusNoContent, res.StatusCode)
+	select {
+	case <-s.Ended:
+	case <-time.After(time.Second):
+		t.Fatal("the stream of a person who left the tenant goes on")
+	}
+	e.file(t, adminToken, "LATE", task("After the person left"))
+	for {
+		m, ok := s.next(t, 100*time.Millisecond)
+		if !ok {
+			break
+		}
+		assert.NotEqual(t, "ticket.changed", m.Event, "nothing after the grant is gone")
+	}
 }
 
 // docs/adr/0054 D5: a reconnect inside the window replays the gap, one

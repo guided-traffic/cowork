@@ -191,9 +191,9 @@ membership event, the replay and the window, the dropped slow stream, the limit,
 close, and the admission changes that hold the hub's judgement until the stream has refiltered. [`api_events_test.go`](../../backend/test/integration/api_events_test.go) reads real streams
 through the whole handler: a committed act arrives with key and version, a rolled-back one never,
 nothing crosses a tenant, a restriction or the confidential rule; the replay and `resync`; the
-heartbeat, the limit, a revoked token's stream closing and the shutdown; and that a ticket filed
-in a project created, opened or let into after the stream opened arrives within a second, with an
-hour's heartbeat.
+heartbeat, the limit, a revoked token's stream closing and the shutdown; and, with an hour's
+heartbeat, that a ticket filed in a project created, opened or let into after the stream opened
+arrives within a second and that the stream of a person whose grant is removed ends.
 `TestMembershipEventsReachTheirAudience` in
 [`api_members_test.go`](../../backend/test/integration/api_members_test.go) opens an
 administrator's, a member's and a viewer's stream and checks who hears a grant, a mapping and an
