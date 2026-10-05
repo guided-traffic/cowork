@@ -447,10 +447,24 @@ where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A li
 urgency override's setter carry no mark of their own — no view of the UI shows them; the activity
 marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
 
+## Who is told
+
+A person's inbox ([ADR 0020]) holds a notification for each act of D2 that concerns them: a ticket
+assigned to them, a question asked of them, a question they asked answered, a state change of a
+ticket they watch — a block's reason comes only with a move into `blocked` —, a comment on one, a
+ticket that blocks one they watch reaching `done` or `dropped`, and an `urgent` stake on a ticket
+assigned to them. The watchers are everyone with a stake of any weight, the assignee, the reporter
+and whoever asked or was asked an open question on the ticket ([ADR 0013] D6). A person's own act
+tells them nothing, nor does their agent's, and a person who cannot see the ticket is told nothing of
+it ([ADR 0065] D5). The table and the store's side are
+[data-access.md](data-access.md#notifications). A mention in a comment tells nobody yet: how a
+comment names a person is not decided.
+
 ## Not built
 
-The score of [ADR 0014] D3–D5 is not built — no score beside the rank, and no person-level
-lists for it to order — nor is the rebalancing of the rank's keys. There is no `deleted_at` and
+The score of [ADR 0014] D3–D5 is not built — no score beside the rank; the person-level lists,
+which it would order, are ordered by the tenant, the project and the project's rank meanwhile — nor
+is the rebalancing of the rank's keys. There is no `deleted_at` and
 no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
@@ -466,6 +480,7 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0014]: ../adr/0014-rank-is-the-decision-score-is-the-warning.md
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
+[ADR 0020]: ../adr/0020-notifications-are-an-in-app-inbox-per-person.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0022]: ../adr/0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md

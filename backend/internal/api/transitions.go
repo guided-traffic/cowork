@@ -87,8 +87,20 @@ func transition(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCt
 		ev.Refs = append(ev.Refs, waitsOn)
 	}
 	ev.Action, ev.Before, ev.After = actionTransitioned, map[string]any{fieldState: string(from)}, after
+	ev.Notices = stateNotices(to)
 	w.Record(ev)
 	return reread(ctx, w, t, tc.row.ID)
+}
+
+// stateNotices are whom a state change tells (docs/adr/0020 D2): the watchers
+// of the ticket — a block's reason comes only with a move into blocked —, and
+// when it reaches done or dropped the watchers of every ticket it blocks.
+func stateNotices(to domain.TicketState) []store.Notice {
+	n := []store.Notice{{Reason: store.NoticeStateChanged, Watchers: true}}
+	if to.Terminal() {
+		n = append(n, store.Notice{Reason: store.NoticeBlockerClosed, Blocked: true})
+	}
+	return n
 }
 
 // keepDoneByStages withdraws a done by hand from a ticket without children

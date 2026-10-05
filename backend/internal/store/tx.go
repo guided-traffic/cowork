@@ -72,6 +72,12 @@ type Event struct {
 	// Membership announces the act on the tenant's event stream as
 	// membership.changed (docs/adr/0054 D2); nil for every other act.
 	Membership *MembershipChange
+	// Notices are whom the act tells in their inbox and why
+	// (docs/adr/0020 D2); none for an act that tells nobody.
+	Notices []Notice
+	// InboxOf is the person whose inbox the act changed without a notice —
+	// their own notifications marked read —, whose streams hear it.
+	InboxOf uuid.UUID
 }
 
 // Record adds an act to the mutation.
@@ -298,6 +304,9 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		}
 		if err := w.InsertAuditEvent(ctx, p); err != nil {
 			return fmt.Errorf("write audit row: %w", err)
+		}
+		if err := w.deliver(ctx, tenantID, id, caller, e); err != nil {
+			return err
 		}
 		if err := w.publish(ctx, tenantID, id, e); err != nil {
 			return err

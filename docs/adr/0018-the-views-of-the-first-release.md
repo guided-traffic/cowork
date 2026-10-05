@@ -51,7 +51,12 @@ the note when the last stage fills, the moves with done by hand and its withdraw
 with the answer form, links, interest, comments, activity, attachments and time (the body as
 text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's
 front page, until D6's dashboard, each project's open tickets by state with the tickets updated
-last. Not built: the score's marker in the backlog, D3–D7.
+last. *(2026-10-04:)* D3's "assigned to me", "open decisions" and the inbox, each across every tenant
+of the person as a union of per-tenant reads with the tenant beside each key, in the navigation for
+every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
+"assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
+until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
+Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
 
 ## Context
 

@@ -19,7 +19,13 @@ like a missing membership. D2's person-level lists arrive with their phase. *(Ph
 2026-10-03:)* D4's routes `/t/{slug}`, `/t/{slug}/p/{KEY}/backlog`,
 `/t/{slug}/tickets/{KEY}-{number}` and `/t/{slug}/members`, and the single membership's
 redirect to `/t/{slug}` without a tenant switcher —
-[`app.routes.ts`](../../frontend/src/app/app.routes.ts).
+[`app.routes.ts`](../../frontend/src/app/app.routes.ts). *(2026-10-04:)* D2's `inbox` — with
+`/me/inbox/read` and `/me/inbox/{notification}/read` to mark it read —, `assigned` and `decisions`,
+each one read per tenant of the person, every item naming its tenant, `?tenant=<slug>` narrowing to
+one and answering a slug that names none of the person's tenants like D5's unknown slug
+([`api/inbox.go`](../../backend/internal/api/inbox.go), [`api/mylists.go`](../../backend/internal/api/mylists.go));
+D4's `/me/inbox`, `/me/assigned` and `/me/decisions`. Not built: D2's `next` and `search`, D4's
+`/me/next`.
 
 ## Context
 

@@ -38,8 +38,14 @@ func (s *stream) Close() { s.cancel() }
 // openStream subscribes c to the tenant's events.
 func (e ticketEnv) openStream(t *testing.T, srv apiServer, c caller, slug, lastEventID string) *stream {
 	t.Helper()
+	return e.openStreamAt(t, srv, c, "/api/v1/tenants/"+slug+"/events", lastEventID)
+}
+
+// openStreamAt subscribes c to the stream at path, with its query.
+func (e ticketEnv) openStreamAt(t *testing.T, srv apiServer, c caller, path, lastEventID string) *stream {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/v1/tenants/"+slug+"/events", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+path, nil)
 	require.NoError(t, err)
 	require.NoError(t, c.editor(ctx, req))
 	if lastEventID != "" {

@@ -317,7 +317,8 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		if near != nil {
 			after[f.place.side()] = ticketKey(t, *near)
 		}
-		w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key, Action: actionCreated, After: after})
+		w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key, Action: actionCreated, After: after,
+			Notices: told(store.NoticeAssigned, ins.AssigneeID)})
 		if ins.Confidential {
 			w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key,
 				Action: "confidential_set", Reason: "the security class is " + string(body.Security)})
@@ -644,7 +645,8 @@ func (m *stageMove) write(ctx context.Context, w *store.Writer, t tenantScope, t
 	}
 	w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 		Action: actionTransitioned, Before: map[string]any{fieldState: string(m.change.from)}, After: m.after,
-		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs})
+		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs,
+		Notices: stateNotices(m.change.to)})
 	return nil
 }
 
@@ -880,7 +882,9 @@ func recordTicketChange(w *store.Writer, t tenantScope, tc ticketCtx, before, af
 			Before: b, After: a, ExplainedBy: explainedBy}
 	}
 	if _, ok := after[fieldAssignee]; ok {
-		w.Record(ev("assigned", map[string]any{fieldAssignee: before[fieldAssignee]}, map[string]any{fieldAssignee: after[fieldAssignee]}))
+		e := ev("assigned", map[string]any{fieldAssignee: before[fieldAssignee]}, map[string]any{fieldAssignee: after[fieldAssignee]})
+		e.Notices = told(store.NoticeAssigned, ch.params.AssigneeID)
+		w.Record(e)
 		delete(before, fieldAssignee)
 		delete(after, fieldAssignee)
 	}
@@ -1100,4 +1104,13 @@ func notModified(ifNoneMatch *string, etag string) bool {
 		return false
 	}
 	return slices.Contains(strings.Split(strings.ReplaceAll(*ifNoneMatch, " ", ""), ","), etag)
+}
+
+// told is the notice of an act that names one person (docs/adr/0020 D2) — the
+// assignee, the person asked —, none where it names nobody.
+func told(reason string, person *uuid.UUID) []store.Notice {
+	if person == nil {
+		return nil
+	}
+	return []store.Notice{{Reason: reason, People: []uuid.UUID{*person}}}
 }

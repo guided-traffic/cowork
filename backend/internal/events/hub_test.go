@@ -123,6 +123,45 @@ func TestPublishReplayAndWindow(t *testing.T) {
 	assert.True(t, resync, "beyond the window: resync")
 }
 
+// docs/adr/0054 D1, D2: a change of a person's inbox reaches that person's
+// person-level streams on every tenant and nobody else's, and is kept for no
+// replay; a question's act reaches the person asked on their person-level
+// streams of other tenants, where the stream judges it, and once on the
+// tenant's own.
+func TestPersonLevelEvents(t *testing.T) {
+	f := newFixtures()
+	h := New(time.Minute, 0)
+	elsewhere := uuid.New()
+	me := f.filter()
+	me.Me = true
+	plain, _, _ := h.Subscribe(f.tenant, f.filter(), nil)
+	own, _, _ := h.Subscribe(f.tenant, me, nil)
+	far, _, _ := h.Subscribe(elsewhere, me, nil)
+	otherFilter := me
+	otherFilter.Person = f.other
+	another, _, _ := h.Subscribe(elsewhere, otherFilter, nil)
+
+	inbox := store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Entity: store.EntityInbox, Person: &f.person}
+	h.Publish(inbox)
+	assert.Equal(t, "inbox.changed", (<-own.C).Name())
+	assert.Equal(t, "inbox.changed", (<-far.C).Name(), "on another tenant's person-level stream too")
+	assert.Empty(t, plain.C, "a stream without me hears no inbox")
+	assert.Empty(t, another.C, "another person's inbox")
+	_, replay, resync := h.Subscribe(f.tenant, me, &inbox.ID)
+	assert.True(t, resync, "an inbox change is no replay point")
+	assert.Empty(t, replay)
+
+	asked := f.note(f.project)
+	asked.Entity, asked.AskedOf = "question", &f.person
+	h.Publish(asked)
+	assert.Equal(t, asked.ID, (<-plain.C).ID)
+	assert.Equal(t, asked.ID, (<-own.C).ID)
+	assert.Empty(t, own.C, "once on the tenant's own stream")
+	got := <-far.C
+	assert.Equal(t, f.tenant, got.Tenant, "handed over with its tenant, for the stream to judge")
+	assert.Empty(t, another.C, "a question asked of another person")
+}
+
 // docs/adr/0054 D4: a stream that falls behind is told to resync and
 // dropped; the others go on.
 func TestSlowStreamIsDropped(t *testing.T) {

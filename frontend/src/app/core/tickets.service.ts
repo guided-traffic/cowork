@@ -234,7 +234,13 @@ export class TicketsService {
       this.reloadLists();
       return;
     }
-    if (event.name === 'membership.changed') {
+    // The person-level stream also names tickets of the person's other tenants (docs/adr/0054 D1);
+    // this service holds the tickets of the tenant the pages show.
+    if (
+      event.name === 'membership.changed' ||
+      event.name === 'inbox.changed' ||
+      splitKey(event.key).tenant !== this.session.tenant()
+    ) {
       return;
     }
     const held = this.cache.value(event.key);

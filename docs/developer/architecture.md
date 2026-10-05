@@ -306,10 +306,13 @@ D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_D
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
 the deletion of a tenant ([ADR 0034] D2); the
-revocation of a refresh token at the issuer when a session ends; the person-level lists, search,
-saved filters, the tenant board and the dashboard; the score beside the rank and the rebalancing
-of the rank's keys; deletion and purge; import; the notification inbox; metrics; the end-to-end
-tier, with its login through Dex. The order in which they come is
+revocation of a refresh token at the issuer when a session ends; "next for me" — the person-level
+lists "assigned to me" and "open decisions" and the inbox exist ([api.md](api.md#the-person-level-routes),
+[frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries the person's
+own events across their tenants but not the rest of their tenants' changes —; a mention in a
+comment; search, saved filters, the tenant board and the dashboard; the score beside the rank and the
+rebalancing of the rank's keys; deletion and purge; import; metrics; the end-to-end tier, with its
+login through Dex. The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
 page of its own, when it exists.
 

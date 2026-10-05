@@ -21,8 +21,15 @@ filings and reopens at the bottom — or, since 2026-10-04, a filing beside a ti
 horizon (`rankBeside` in [`rank.go`](../../backend/internal/api/rank.go)) —, done and dropped without a key, the move
 `PUT …/tickets/{number}/rank` recorded as `ranked` ([`rank.go`](../../backend/internal/api/rank.go)),
 and a project's list in its rank; the drag in the backlog
-([ADR 0018](0018-the-views-of-the-first-release.md) D1). **Not built:** the score of D3–D5 and
-the person-level lists it orders; the rebalancing the Consequences name.
+([ADR 0018](0018-the-views-of-the-first-release.md) D1). **Not built:** the score of D3–D5;
+the rebalancing the Consequences name. *(2026-10-04:)* "assigned to me" and the open decisions of
+[ADR 0018](0018-the-views-of-the-first-release.md) D3 are built before the score, and until it
+exists D5's order stands in as the interim order of the person-level lists: by the tenant's slug,
+the project's key and the project's rank — the open decisions by their ticket's place in it, `done`
+and `dropped` tickets after the ranked ones, then the question's number
+([`api/mylists.go`](../../backend/internal/api/mylists.go), `ByProjectRank` in
+[`store/tickets.go`](../../backend/internal/store/tickets.go)); the rank stays sealed in their
+cursors (D2). The score replaces it when it is built.
 
 ## Context
 
