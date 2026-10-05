@@ -303,7 +303,10 @@ shared and the back button undoes a filter.
 
 **The charts are bars in CSS**, widths and heights in per cent, every colour a token of the preset
 (ADR 0052 D5), so they follow the scheme as every other element does and the numbers are text a
-screen reader reads; the bars are `aria-hidden`. PrimeNG's chart component would bring Chart.js, a
+screen reader reads; the bars are `aria-hidden`. The rows of a tile's bars are one grid
+(`.bar-row` is `display: contents`), so every track has the same length whatever a label or a
+count takes and the bars compare. Three tiles — the age, done per week and the time — span two
+columns, and the grid places densely, so the nine fill whole rows at two, three and four columns. PrimeNG's chart component would bring Chart.js, a
 dependency the project does not have, into the page's lazy chunk, and draw on a canvas, which cannot take a
 `light-dark()` token: every colour would have to be resolved from the computed style and the
 chart drawn again on a change of scheme. Nine tiles of counts and short series do not need it, and

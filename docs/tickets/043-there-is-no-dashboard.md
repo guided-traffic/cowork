@@ -1,6 +1,6 @@
 ---
 id: T43
-title: the dashboard is built, but no end-to-end path walks it and nobody has looked at it in a browser
+title: the dashboard is built, but no end-to-end path walks it and the owner has not reviewed it
 state: in-progress
 severity: low
 security: none
@@ -40,8 +40,9 @@ What is not done:
   Playwright test walks with two identities, and ADR 0052's that the smoke paths run in both
   schemes; [`frontend/e2e/`](../../frontend/e2e/) has none for the dashboard. It was not written
   because the suite runs against the built images, which could not be built for this change.
-- **Nobody has looked at the page in a browser**, in either scheme: the layout of the tiles, the
-  bars' colours on both grounds and the narrow window are unseen.
+- **The owner has not reviewed the page.** It was looked at only as the production build against
+  a mocked API in Chromium, both schemes at 1440 px and the dark one at 1000 px; not in WebKit,
+  not with real data, not on a phone's width.
 - **A time booking does not reach the page live**: time entries are not published to the event
   stream ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
   D4), so the time tile shows a booking at the next reload another event causes, at a poll, or when

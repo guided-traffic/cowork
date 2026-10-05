@@ -72,9 +72,9 @@ predicate and each tile's definition and hidden-ticket case an integration test
 ([`api_dashboard_test.go`](../../backend/test/integration/api_dashboard_test.go)); the tenant's
 front page `/t/{slug}` is the dashboard ([`features/tenant/dashboard.ts`](../../frontend/src/app/features/tenant/dashboard.ts)),
 live through the event stream at most once a second, its filters in the page's address, its
-charts bars in CSS over the preset's tokens. Not verified: how the page looks in either scheme in
-a browser, and how long the queries take over a large tenant; no end-to-end test walks the page
-yet.
+charts bars in CSS over the preset's tokens. Looked at as the production build against a mocked
+API in Chromium, in both schemes; not verified: WebKit, real data, the owner's review, and how long
+the queries take over a large tenant; no end-to-end test walks the page yet.
 
 ## Context
 

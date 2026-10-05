@@ -183,7 +183,7 @@
         }
       </section>
 
-      <section class="tile" aria-labelledby="tile-age-title" data-testid="tile-age">
+      <section class="tile wide" aria-labelledby="tile-age-title" data-testid="tile-age">
         <h2 id="tile-age-title">Age of the open tickets</h2>
         @if (tiles(); as d) {
           <div class="bars">
@@ -278,7 +278,7 @@
         }
       </section>
 
-      <section class="tile" aria-labelledby="tile-time-title" data-testid="tile-time">
+      <section class="tile wide" aria-labelledby="tile-time-title" data-testid="tile-time">
         <h2 id="tile-time-title">Time booked</h2>
         @if (tiles(); as d) {
           <p class="figure tabular">{{ duration(d.time.total_minutes) }}</p>
