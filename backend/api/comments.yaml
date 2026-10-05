@@ -12,20 +12,29 @@ comments:
       - $ref: './components/parameters.yaml#/Order'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of comments; a withdrawn one without its text
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/CommentList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
     operationId: addComment
     tags: [comments]
     summary: Comment on the ticket
-    description: A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+    description: |
+      A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+      ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+      that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -76,7 +85,9 @@ comment:
     summary: Edit a comment
     description: |
       A person edits their own comments and those their agents wrote; an agent only those an
-      agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+      agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+      left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+      (D5).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:
@@ -162,12 +173,18 @@ activity:
       - $ref: './components/parameters.yaml#/Order'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of acts
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ActivityList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'

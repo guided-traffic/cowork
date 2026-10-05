@@ -2,12 +2,13 @@
 
 How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
-the CSRF check, the tenant boundary, authorization, errors, idempotency, versions, paging,
-filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
-(errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
-(versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
+the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
+paging, filters, the deprecated names a rename keeps for a release, and the media types beside
+JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045] (idempotency),
+[ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions), [ADR 0028] (expand before
+contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ## The document
 
@@ -19,15 +20,18 @@ into the file of its path family.
 |---|---|
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
+| [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`, and the deprecated `…/urgency-override` beside it, [deprecated names](#deprecated-names)) and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, transitions, the move in the rank, interest, the Markdown export and the context |
-| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
-| [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events` |
+| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
+| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the tenant's attachment usage (`/tenants/{tenant}/attachment-usage`) |
+| [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
+| [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
@@ -120,14 +124,14 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-sixteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+seventeen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`, `purgeTicket`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
-(`setMyChat`); a turn of the chat acts with the person's session and its stop ends the session's
+(`setMyChat`) and what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
@@ -225,6 +229,70 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 ([architecture.md](architecture.md#the-two-logins),
 [identity-provider.md](../security/identity-provider.md)).
 
+## The person-level routes
+
+The routes under `/api/v1/me/` that list what spans tenants — the inbox, "next for me", the tickets
+assigned to the person, the open decisions, the search ([ADR 0023] D2) — name no tenant in their
+path, so no boundary admits them to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
+memberships in an `Installation` transaction, keeps a token restricted to a tenant to that tenant
+(`restricted`), narrows to the `tenant` query parameter — a slug that names none of the person's is
+the boundary's `404 not_found`, whether or not it exists — and sorts them by slug. Each tenant is then
+read in a transaction of its own (`InTenant`, [ADR 0021] D5), under the visibility predicates as the
+tenant's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
+project of another tenant invisible — and the parts are merged in Go
+([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go),
+[`search.go`](../../backend/internal/api/search.go)).
+"Next for me" (`ListMyNext`) and "assigned to me" (`ListMyAssigned`) share `listMine`: each tenant's
+part is the list builder's `ByScore` page after the cursor, with the assignee filter — the person or
+nobody for "next for me", the person for "assigned to me" — and the places of its tickets in their
+project's rank (`ListRankPlaces`) in the same transaction; the parts are merged in the score's order
+and cut to the page, which answers its weak `ETag` and `304` as the other polled lists do. `GET
+/api/v1/me/next` also takes `project`, a project key within the tenant `tenant` names — without
+`tenant` it is `400 validation_failed` at `query:project`.
+A global administrator without a role in a tenant holds no membership there, and these lists leave it
+out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
+authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
+reading each tenant in turn (`FindNotification`); no query reads two tenants.
+
+## The dashboard
+
+`GET /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go))
+answers the nine tiles of [ADR 0018] D6, and beside them the open tickets updated last, in **one
+route**: the page shows the tiles together under one set of filters, one read-only transaction
+(`InTenant`) gives counts that agree with each other, and a reload after an event costs one
+request, which a weak `ETag` answers with `304` while nothing the caller sees changed. Nine routes
+would have cost nine requests per reload and nine snapshots that could disagree. **Each tile's
+definition is its field's description in the document**, `components/schemas.yaml#/Dashboard` —
+the one place a reader checks a number against — and the code follows it:
+
+- `parseDashboardQuery` reads `project` as the ticket lists do ([ADR 0049] D6): repeatable, a `!`
+  leaving a project out, a value that is no key `400` at `query:project`; the plain values become
+  `projects`, the negated `without`, both empty arrays rather than `nil`, because the queries read
+  an empty array as no filter and a `NULL` would match nothing. Without a plain value every project
+  that is not archived counts; a key that names no project the caller sees counts nothing, and
+  answers exactly like one that names no project at all.
+- The period is `from` and `to`, UTC days, both inclusive, by default the thirty days that end
+  today by `Options.Now` (the tests fix the clock); `from` after `to` is `400` at `query:from`. It
+  bounds the time booked; throughput's eight ISO weeks end with the week of `to`, cut at `to`, and
+  lead time's thirty days end with `to` ([ADR 0019] D2); the open tiles and the ages stand as the
+  tickets do at the request. A week is named `2026-W40` by Go's `ISOWeek`, the Monday the query's
+  `date_trunc('week', …)` gives.
+- `dashboardRows.read` runs the ten queries of
+  [`queries/read/dashboard.sql`](../../backend/internal/store/queries/read/dashboard.sql) in the
+  transaction ([data-access.md](data-access.md#visibility-in-sql)); one small function per tile
+  (`stateCounts`, `severityCounts`, `securityTile`, `blockedTile`, `ageTile`, `throughputTile`,
+  `leadTimeTile`, `decisionsTile`, `timeTile`, `recentList`) turns its rows into the answer — the
+  severities, the two classes, the five age buckets and the eight weeks always present, zero
+  included, the rows of state and time only where they count something.
+
+It takes `read`, any member and an agent; a global administrator without a role and a token
+restricted to a project are refused by the boundary, the dashboard being neither of `oversight`
+nor of `tenantWideForProjectTokens`. A deleted ticket counts in no tile, nor its questions and its
+time, until it is restored ([ADR 0024] D1, [data-access.md](data-access.md#the-dashboards-queries)).
+The time entries are not published to the event stream ([events.md](events.md#publication)), so
+the browser's dashboard shows a booking made elsewhere at its next reload
+([frontend.md](frontend.md#the-dashboard)) — settled so on the recommendation ([ADR 0018] D6).
+
 ## The tenant boundary
 
 `boundary` in [`tenant.go`](../../backend/internal/api/tenant.go) admits a request to the tenant
@@ -236,7 +304,7 @@ exists ([ADR 0047] D5):
 - an unknown slug, or a person without a membership;
 - a token restricted to another tenant;
 - a token restricted to a project, on a path without `{project}` — except `listProjects`,
-  `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
+  `listTenantTickets`, `searchTenant`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
 
 **A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
@@ -262,7 +330,8 @@ administrators keep theirs.
 Every handler under a tenant calls `auth.Authorize(principal, role, need)`
 ([`authorize.go`](../../backend/internal/auth/authorize.go)) with the tenant role or the project
 role it read; the `/me` routes act on the person's own rows and need none, except revoking
-another token. The checks run in this order; the first failure answers:
+another token and marking notifications read (`write` scope,
+[the person-level routes](#the-person-level-routes)). The checks run in this order; the first failure answers:
 
 1. `Need.Role` above the person's role: `403 forbidden` ("the act needs the member role").
 2. `Need.Scope` above the token's scope: `403 insufficient_scope`.
@@ -278,10 +347,12 @@ another token. The checks run in this order; the first failure answers:
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list |
-| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) |
+| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
+| `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden` |
+| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, a horizon set `set-horizon` and of an agent a reason — on `setHorizon` for `later` too —, a filing into a horizon other than `later` `set-horizon` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
-| `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
+| `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go): a move; the sort by the score in [`score.go`](../../backend/internal/api/score.go) |
 | `booking` | member, `write` | hard-off `booking time` | [`time.go`](../../backend/internal/api/time.go) |
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
@@ -293,9 +364,9 @@ a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
-(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
-and the writes of [`members.go`](../../backend/internal/api/members.go) use `administer`, the
-member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
+the writes of [`members.go`](../../backend/internal/api/members.go) and the revocation of a member's
+token (`RevokeTenantToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
 (`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
 `409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
 tenant's lock first);
@@ -325,7 +396,7 @@ request id.
 ## Idempotency
 
 A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQuestion`, `addComment`,
-`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping` — calls
+`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping`, `createSavedFilter` — calls
 `keyed(ctx, key, op, scope, body)` in
 [`server.go`](../../backend/internal/api/server.go):
 
@@ -346,7 +417,8 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
   (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
-  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  come from the client: the browser's creating forms hold one per content
+  ([frontend.md](frontend.md#where-state-lives)), `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
@@ -366,15 +438,24 @@ and records no act. A `PATCH` whose progress stages close or reopen the ticket r
 once: the state is written with `bump` false after the fields.
 
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
-`replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
+`replaceTicketBody`, `setHorizon` (and the deprecated `overrideUrgency` and `withdrawUrgencyOverride`), `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
-`editTimeEntry`, `updateGroupMapping` and `setProjectRestriction` (the project's version). A grant
+`editTimeEntry`, `updateGroupMapping`, `updateSavedFilter` and `setProjectRestriction` (the project's version). A deletion, a restoration and a purge of a ticket take none: they overwrite no field, and the deletion and the restoration raise the version. A grant
 and an access entry are addressed by their person and written without it, like a link. Links, interest and attachments are written without it and carry no version
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
 
-The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
-page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
+The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
+`listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
+`listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
+`listPrerequisites`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
+`listDeletedTickets`, `listSavedFilters`, `listTenantTokens` — and the dashboard, `getDashboard`, and
+the attachments' usage, `getAttachmentUsage`, answer a
+weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
+`304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
+`tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
+is the caller's: two callers who read the same list differently — an administrator the members'
+addresses, a member not — get two tags. An
 attachment's content answers its quoted hex SHA-256 and `304` likewise.
 
 ## Paging
@@ -396,17 +477,39 @@ list answers that `invalid_cursor`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
-- `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
-  `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
-  per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
-  `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
+- The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
+  `listMembers`, `listMyTokens`, `listTenantTokens` and `listProjects` — also take numbered pages: `page` with
+  `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
+  and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
+  beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
+  is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or `per_page` without `page`,
+  is `400 validation_failed` ([ADR 0048] D2). `tablePage` in [`cursor.go`](../../backend/internal/api/cursor.go)
+  reads both modes for every table but the two ticket lists, whose `paging` in
+  [`ticketlist.go`](../../backend/internal/api/ticketlist.go) also seals the rank's cursor.
 - The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
   them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's tenants by slug; the other lists by id.
+  mappings by group; the installation's tenants by slug; the tenant's tokens newest first; a tenant's bin the last deleted first, its
+  position the deletion's time and the id; a tenant's saved filters by id; the person's inbox newest
+  first, merged across the tenants by the notifications' ids, which order by time; "next for me" and
+  the tickets assigned to the person by the score, highest first, then the ticket's id, and the open
+  decisions by the score of their ticket — a done or dropped ticket's after the others — then the
+  ticket's id and the question's number ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
+  D5); a search's hits by their rank, then the ticket's id, both descending — a search's position is
+  `<rank>/<id>`, bound to a hash of its query as well ([search.md](search.md#the-cursor)); the other
+  lists by id.
+- A person-level list's cursor is bound to the person and the `tenant` it was narrowed to — "next
+  for me"'s to its `project` as well. Its position is the notification's id, or for the lists in the
+  score's order `<score key>/<ticket id>` (`store.ScorePosition`), for the open decisions
+  `/<question>` after it (`decisionPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)):
+  the stored key, written so that it reads back to the same `float64` (`-Inf` for a ticket without a
+  score), and the id, unique across tenants, so every tenant's part resumes at the same place of one
+  order. A score is shown on the ticket, so the position is not sealed. Every tenant is read for a
+  page after the position, and the parts are merged. The `cursor` parameter takes up to 1024
+  characters.
 
 ## Filters
 
@@ -417,7 +520,56 @@ enums (`apigen.TicketState(v).Valid()` …); `assignee` and `reporter` take a pe
 `assignee` also `none`; `parent` takes a ticket key or `none`, resolved under the predicate —
 a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `blocked`,
 `has_open_questions` and `include_terminal` are booleans; `q` is capped at
-`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`.
+`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
+the title and body hold every word, the list keeps its order —; the ranked search with snippets over
+comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
+The checks of the filters themselves are `parseFilters`, which the saved filters share. `horizon`
+and its deprecated name `urgency` are one filter (`ticketQuery.horizons`): either is taken, and a
+request that names both is `400` at `query:urgency` — an AND of one field under two names would only
+narrow the list to what nobody meant.
+
+**Saved filters** ([`filters.go`](../../backend/internal/api/filters.go), [ADR 0018] D5, [ADR 0049]
+D6, D7) store a filter's parameters as the JSON object `SavedFilterParameters` — the query's names,
+each repeatable one an array —, whose schema refuses an unknown name (`additionalProperties:
+false`, D4). Written, the parameters go through `parseFilters` and every refused value is `400` at
+`/parameters/<name>` (`checkFilter`); `me` is stored as `me`. Read, they go through it again
+(`filterView`), a filter stored with `urgency` answered under `horizon` (`horizonNamed`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
+project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
+another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
+withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change
+(`ownFilter`); the policies of migration 33 hold that in the data layer as well
+([data-access.md](data-access.md#the-settings-the-policies-read)). Saved filters are not published
+on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads
+again on a poll ([above](#versions-etag-if-match)).
+
+## Deprecated names
+
+`/api/v1` keeps what the clients of the release before read ([ADR 0046] D7), so a rename is an
+expand and a later contract ([ADR 0028] D3). The horizon is the case today ([ADR 0010] D1 as
+amended 2026-10-05):
+
+- **In the document** the old names stay with `deprecated: true` and a description that names what
+  replaces them: the `Urgency`, `UrgencyOverride` and `UrgencyOverrideSet` schemas, the ticket's
+  `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override`, a filing's `urgency`, the
+  lists' and a saved filter's `urgency`, and `overrideUrgency` and `withdrawUrgencyOverride`. A
+  property that is a `$ref` carries `deprecated` through an `allOf` of one: the bundler writes a
+  `$ref` alone and would drop the keyword beside it.
+- **In the generated Go** they carry `Deprecated:`, which staticcheck reports wherever the code uses
+  them; each use is a function or a line with `//nolint:staticcheck` and why — `urgencyFields`,
+  which answers them from the columns, `filedHorizon`, `horizonNamed`, `horizonOfStored`, the
+  lists' query — and a test that proves the old surface still works says so the same way.
+- **On the way in** an old name is the new one: a filing's `urgency` is its `horizon`, a list's or a
+  saved filter's `urgency` its `horizon` (both together refused, [filters](#filters)), and a
+  capability set's `override-urgency` is `set-horizon` (`auth.Canonical`, wherever a set comes in).
+  **On the way out** every answer names the new one beside the deprecated fields, with one
+  exception: `GET /me/token` answers `override-urgency` after `set-horizon` in `request.capabilities`,
+  the list the `cowork-mcp` of the release before reads to describe its tools
+  (`requestCapabilities` in [`token.go`](../../backend/internal/api/token.go)).
+- **A replayed answer** a release before stored lacks the new fields; `horizonOfStored` fills them
+  from the old ones ([idempotency](#idempotency)).
+
+The contract — the old names out of the document, the code and the stored capability sets — is a
+later release's, once no supported client reads them.
 
 ## Media types beside JSON
 
@@ -445,7 +597,13 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
   after the stream began is its `error` event, a problem body from `problem.BodyOf`
   ([chat.md](chat.md#a-turn)).
 
+[ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
+[ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
+[ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
+[ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
+[ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
@@ -461,3 +619,5 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
+[ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
+[ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

@@ -10,7 +10,10 @@ action `login_refused`, the column `source_hash`, the system actor `system:ident
 the security review, no e-mail address in `before` or `after`; by the owner's answer on the groups,
 no group of a person in them either; by the owner's decision that every act made through a token is
 shown as such, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
-D6, the column `token_name`; D6: the tenant's view shows it beside the token's id).
+D6, the column `token_name`; D6: the tenant's view shows it beside the token's id) and 2026-10-05
+(D3: the purge's function runs inside the transaction that records its act instead of writing the
+act itself — the first implementation found that a function cannot know the token, the agent, the
+request and the source hash the row must carry; not yet put to the owner, see the Status below).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -37,6 +40,24 @@ global administrator's reading arrive with their routes; D7 needs nothing yet. S
 system actor name no person and are read by no route. Since 2026-10-04 a row carries its token's
 name beside its id ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql),
 `tokenName` in [`store/tx.go`](../../backend/internal/store/tx.go)), and the activity shows it.
+Since 2026-10-04 D2's notifications reference their act's row
+([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D3,
+[migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)), and marking
+one's notifications read is the act `read` (added to D1's list below), in the tenant of the
+notifications. Since the same day the tenant's view of D6 has numbered pages with a total and a
+page in the browser for the tenant's administrators — its filters, its pages and its CSV
+([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)); the per-token view
+and the global administrator's reading still arrive with their routes.
+
+**D3's purge built** (2026-10-05): `purge_ticket_audit`
+([migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql)), owned by
+the owner role, executable by the runtime role alone, its `search_path` fixed with `pg_temp` last,
+empties `before`, `after`, `reason` and `note` of the current tenant's rows of one deleted ticket in
+a transaction that names the purge, and refuses everything else; the policy `audit_purge` admits
+that update to the owner role. The purge's own act is written by D2's wrapper in the same transaction
+(D3 as amended). The amendment is the implementer's and is open to the owner's objection: a function
+that wrote the row itself would need the request's facts handed in, and would trust them no more than
+the wrapper does. The tenant deletion's function is not built.
 
 ## Context
 
@@ -69,7 +90,7 @@ the administrator's transaction, and carries the request, not the administrator)
 | `token_id` | the personal access token used, or null for a browser session; *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* `token_name` its name as the token has it, copied when the row is written — the activity shows it to readers who may not read the token's row, and a revoked token's acts keep it; null without a token, and on every row written before the column existed, which names the token by its id alone; a system actor's act in a request carries neither |
 | `entity_type`, `entity_id` | what changed |
 | `ticket_id` | the ticket the entity belongs to, denormalised, so a ticket's activity is one index scan; *(added 2026-10-02)* `ticket_key` its key, which survives the ticket's purge |
-| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* |
+| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* *(added 2026-10-04: `read`, a person's own notifications marked read — one or every one up to the newest seen, per tenant, [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D6)* |
 | `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it; *(amended after the security review, 2026-10-04)* never an e-mail address, which no append-only row could erase on request — a changed address is recorded as `email_changed: true`; ~~a person's group lists are recorded~~ *(amended 2026-10-04, the owner's answer recorded in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md) D6)* never a person's groups either: a change of them is recorded as `groups_changed: true`, and the row of a person's creation says nothing of them; the memberships the groups cause are recorded tenant by tenant |
 | `refs` *(added 2026-10-02)* | the other tickets the payload names — a link's other end, the ticket a block waits on, the prerequisites a close overrode, a parent; D6 withholds the payload from a reader who cannot see one of them |
 | `reason`, `note` | the transition's reason or verification note, the override's reason |
@@ -89,8 +110,13 @@ publishes each row of a ticket's act with `NOTIFY` in that transaction
 **D3 — Append-only is a grant, not a convention.** The application role has `INSERT` and
 `SELECT` on `audit_events` and nothing else. The two writes that are not inserts — the
 purge's emptying of content fields and the tenant deletion of ADR 0024 D6 — run through
-`SECURITY DEFINER` functions owned by the migration role, each of which writes its own audit
-row first.
+`SECURITY DEFINER` functions owned by the migration role, ~~each of which writes its own audit
+row first~~ *(amended 2026-10-05, built with the purge: each of which runs only inside the
+transaction that records its act through D2's wrapper, so that the act and the change commit
+together or not at all, and refuses outside its own case — the purge's function outside a
+transaction that names the purge, and for any ticket that is not deleted; the function cannot write
+the act itself, because the token, the agent mark, the request and the source hash the row carries
+are the request layer's, D2)*.
 
 **D4 — Row-level security applies as everywhere** ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md));
 rows with `tenant_id IS NULL` are readable by global administrators only, through a policy

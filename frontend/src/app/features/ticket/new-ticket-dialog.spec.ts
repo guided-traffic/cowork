@@ -9,7 +9,14 @@ import type { MockInstance } from 'vitest';
 import { Member, Problem, Ticket, TicketCreate } from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { TicketActions } from '../../core/ticket-actions.service';
+import { TicketsService } from '../../core/tickets.service';
 import { NewTicketDialog } from './new-ticket-dialog';
+import { ParentPicker } from './parent-picker';
+
+/** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
+const formKey = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+);
 
 const ada: Member = {
   role: 'admin',
@@ -59,6 +66,7 @@ describe('NewTicketDialog', () => {
         MessageService,
         { provide: TicketActions, useValue: { create } },
         { provide: MembersService, useValue: { list: people } },
+        { provide: TicketsService, useValue: { openTickets: vi.fn().mockResolvedValue([]) } },
       ],
     });
   });
@@ -243,7 +251,12 @@ describe('NewTicketDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith('acme', 'COW', plain('The board flickers'));
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        'acme',
+        'COW',
+        plain('The board flickers'),
+        formKey,
+      );
       expect(create.mock.calls[0][2]).toStrictEqual(plain('The board flickers'));
     });
 
@@ -261,16 +274,53 @@ describe('NewTicketDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith('acme', 'COW', {
-        title: 'Anyone can read another tenant',
-        type: 'bug',
-        severity: 'critical',
-        security: 'boundary',
-        effort: 'L',
-        threat: 'A member can read a ticket of another tenant',
-        assignee: 'p2',
-        body: '    code first\n\nthen words',
-      });
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        'acme',
+        'COW',
+        {
+          title: 'Anyone can read another tenant',
+          type: 'bug',
+          severity: 'critical',
+          security: 'boundary',
+          effort: 'L',
+          threat: 'A member can read a ticket of another tenant',
+          assignee: 'p2',
+          body: '    code first\n\nthen words',
+        },
+        formKey,
+      );
+    });
+
+    it('files again with the same Idempotency-Key after a lost answer, and with a new one for another content or the next ticket (docs/adr/0045 D3)', async () => {
+      create.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      create.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await render();
+      typeInto(fixture, 'new-title', 'The board flickers');
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+      expect(create.mock.calls[1][3]).toBe(create.mock.calls[0][3]);
+
+      typeInto(fixture, 'new-title', 'The board flickers at night');
+      submit(fixture);
+      await settle(fixture);
+      expect(create.mock.calls[2][3]).not.toBe(create.mock.calls[0][3]);
+
+      // Filed: the next ticket of the same content is another act.
+      fixture.componentRef.setInput('visible', false);
+      await settle(fixture);
+      fixture.componentRef.setInput('visible', true);
+      await settle(fixture);
+      typeInto(fixture, 'new-title', 'The board flickers at night');
+      submit(fixture);
+      await settle(fixture);
+      expect(create.mock.calls[3][3]).not.toBe(create.mock.calls[2][3]);
+      expect(new Set(create.mock.calls.map((call) => call[3])).size).toBe(3);
     });
 
     it('trims the title and the threat but sends the description as written', async () => {
@@ -288,6 +338,38 @@ describe('NewTicketDialog', () => {
         threat: 'Anyone can do it',
         body: '  indented\n',
       });
+    });
+
+    it('files the ticket under the parent chosen among the open tickets of its project (docs/adr/0008 D2)', async () => {
+      const fixture = await render();
+      typeInto(fixture, 'new-title', 'Part of the board');
+      const picker = fixture.debugElement.query(By.directive(ParentPicker))
+        .componentInstance as ParentPicker;
+      expect([picker.tenant(), picker.project(), picker.value()]).toEqual(['acme', 'COW', null]);
+
+      picker.picked.emit('acme/COW-3');
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create.mock.calls[0][2]).toStrictEqual({
+        ...plain('Part of the board'),
+        parent: 'acme/COW-3',
+      });
+    });
+
+    it('files no parent once the choice is cleared', async () => {
+      const fixture = await render();
+      const picker = fixture.debugElement.query(By.directive(ParentPicker))
+        .componentInstance as ParentPicker;
+      typeInto(fixture, 'new-title', 'Second');
+      picker.picked.emit('acme/COW-3');
+      picker.picked.emit(null);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create.mock.calls[0][2]).toStrictEqual(plain('Second'));
     });
 
     it('leaves out a description that is only spaces and an assignee that was cleared', async () => {

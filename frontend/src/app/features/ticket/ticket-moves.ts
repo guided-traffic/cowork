@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { MenuItem } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Menu } from 'primeng/menu';
@@ -36,6 +44,8 @@ export class TicketMoves {
   private readonly actions = inject(TicketActions);
   private readonly problems = inject(ProblemService);
 
+  /** The key alone, so that a newer version of the same ticket keeps what is open. */
+  private readonly key = computed(() => this.ticket().key);
   protected readonly moves = computed(() => movesOf(this.ticket()));
   /** The forward step, done by hand, the unblock, the withdrawal or the reopen — whichever comes first. */
   protected readonly main = computed(() => this.moves().find((move) => mainKinds.has(move.kind)));
@@ -45,8 +55,15 @@ export class TicketMoves {
       .map((move) => ({ label: move.label, command: () => this.start(move) })),
   );
 
-  /** The move whose input the dialog asks for. */
-  protected readonly request = signal<MoveRequest | null>(null);
+  /**
+   * The move whose input the dialog asks for. It belongs to the ticket it was chosen on: the page
+   * is reused when its path names another ticket, and a dialog confirmed after that would move the
+   * ticket shown then.
+   */
+  protected readonly request = linkedSignal<string, MoveRequest | null>({
+    source: this.key,
+    computation: () => null,
+  });
   /** A move that needs no input is on its way. */
   protected readonly sending = signal(false);
 

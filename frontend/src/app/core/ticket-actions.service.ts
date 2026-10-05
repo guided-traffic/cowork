@@ -1,21 +1,24 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
+import { createTicket } from '../api/fn/tickets/create-ticket';
+import { deleteTicket } from '../api/fn/tickets/delete-ticket';
+import { listPrerequisites } from '../api/fn/tickets/list-prerequisites';
+import { moveTicketRank } from '../api/fn/tickets/move-ticket-rank';
+import { replaceTicketBody } from '../api/fn/tickets/replace-ticket-body';
+import { setConfidential } from '../api/fn/tickets/set-confidential';
+import { setHorizon } from '../api/fn/tickets/set-horizon';
+import { sortProjectRank } from '../api/fn/tickets/sort-project-rank';
+import { transitionTicket } from '../api/fn/tickets/transition-ticket';
+import { updateTicket } from '../api/fn/tickets/update-ticket';
 import {
-  createTicket,
-  moveTicketRank,
-  overrideUrgency,
-  transitionTicket,
-  updateTicket,
-  withdrawUrgencyOverride,
-} from '../api/functions';
-import {
+  ConfidentialSet,
+  Horizon,
+  HorizonUpdate,
   Ticket,
   TicketCreate,
   TicketPatch,
   Transition,
-  Urgency,
-  UrgencyOverrideSet,
 } from '../api/models';
 import { etagOf } from './entity-cache';
 import { ProblemService, ProblemView } from './problem.service';
@@ -45,6 +48,14 @@ export function routeOf(key: string): { tenant: string; project: string; number:
   return { tenant, project: short.slice(0, dash), number: Number(short.slice(dash + 1)) };
 }
 
+/** The fields of a patch that it changes; what only explains or qualifies the act is left out. */
+const qualifiers = new Set(['comment', 'note', 'reason', 'override_prerequisites']);
+
+/** Whether two values of a field are the same, an object by its content. */
+function same(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 /**
  * The writes on a ticket (docs/adr/0018 D1, D2). Every answer goes into the ticket cache at once,
  * so every view shows it before the event returns — and the event of one's own write then
@@ -56,19 +67,49 @@ export class TicketActions {
   private readonly tickets = inject(TicketsService);
   private readonly problems = inject(ProblemService);
 
-  async create(tenant: string, project: string, body: TicketCreate): Promise<Ticket> {
+  /**
+   * Files a ticket. The key is the form's, one for each content it holds, so a retry of a lost
+   * answer is answered again instead of filing the ticket twice (docs/adr/0045 D3).
+   */
+  async create(
+    tenant: string,
+    project: string,
+    body: TicketCreate,
+    idempotencyKey: string,
+  ): Promise<Ticket> {
     const ticket = await this.api.invoke(createTicket, {
       tenant,
       project,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     this.tickets.cache.put(ticket.key, ticket);
     return ticket;
   }
 
-  /** Changes fields with the cached version as `If-Match`; a `412` becomes a {@link StaleWrite}. */
-  async update(key: string, patch: TicketPatch): Promise<Ticket> {
+  /**
+   * Changes fields with the cached version as `If-Match`; a `412` becomes a {@link StaleWrite}.
+   *
+   * An editor that was open for a while passes `since`, the ticket as it was when the editing
+   * began: the write is then made over that version, never over a newer one the cache took from an
+   * event meanwhile, which would write over a change the person never saw (docs/adr/0050 D3). Its
+   * `412` is written once more over the current version while each field the patch changes still
+   * has the value it had then — what changed was another field —, and is a {@link StaleWrite}
+   * otherwise.
+   */
+  async update(key: string, patch: TicketPatch, since?: Ticket): Promise<Ticket> {
+    if (since) {
+      const fields = Object.keys(patch).filter((field) => !qualifiers.has(field));
+      return this.writeOver(
+        key,
+        (etag) => this.api.invoke(updateTicket, { ...routeOf(key), 'If-Match': etag, body: patch }),
+        (current) =>
+          fields.every((field) =>
+            same(current[field as keyof Ticket], since[field as keyof Ticket]),
+          ),
+        etagOf(since.version),
+      );
+    }
     const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
     try {
       const ticket = await this.api.invoke(updateTicket, {
@@ -88,6 +129,21 @@ export class TicketActions {
   }
 
   /**
+   * Replaces the body as a whole (docs/adr/0011 D1) over `since`, the ticket as the editor began
+   * with it; a `412` is written once more while the body is still the one it began with, and is a
+   * {@link StaleWrite} once somebody else changed the body.
+   */
+  replaceBody(key: string, body: string, since: Ticket): Promise<Ticket> {
+    return this.writeOver(
+      key,
+      (etag) =>
+        this.api.invoke(replaceTicketBody, { ...routeOf(key), 'If-Match': etag, body: { body } }),
+      (current) => current.body === since.body,
+      etagOf(since.version),
+    );
+  }
+
+  /**
    * Places the ticket directly after or before another open ticket of its project (docs/adr/0014
    * D2). A move overwrites nothing, so it takes no `If-Match` and never meets a `412`
    * (docs/adr/0050 D4); it raises the ticket's version, and the answer replaces the cache entry.
@@ -99,37 +155,70 @@ export class TicketActions {
   }
 
   /**
-   * Sets the urgency override (docs/adr/0010 D3). `reason` goes into the request only when the
-   * person gave one: it is optional for a person and never made up.
+   * Sorts the project's open tickets by their score, in one act of the project (docs/adr/0014
+   * D3), with no event of the tickets it moved: the open lists load again, which hold the order and
+   * bring their new versions. It answers how many changed their place, 0 when the rank followed the
+   * score already.
    */
-  overrideUrgency(key: string, value: Urgency, reason?: string): Promise<Ticket> {
-    const body: UrgencyOverrideSet = { value, ...(reason ? { reason } : {}) };
-    return this.writeUrgency(key, (etag) =>
-      this.api.invoke(overrideUrgency, { ...routeOf(key), 'If-Match': etag, body }),
-    );
+  async sortByScore(tenant: string, project: string): Promise<number> {
+    const sorted = await this.api.invoke(sortProjectRank, {
+      tenant,
+      project,
+      body: { by: 'score' },
+    });
+    this.tickets.reloadLists();
+    return sorted.moved;
   }
 
-  /** Withdraws the override, so that the derived urgency holds again; it needs no reason. */
-  withdrawUrgency(key: string): Promise<Ticket> {
-    return this.writeUrgency(key, (etag) =>
-      this.api.invoke(withdrawUrgencyOverride, { ...routeOf(key), 'If-Match': etag }),
+  /**
+   * Sets the horizon (docs/adr/0010 D3); `later` clears the horizon set, which is where a ticket
+   * nobody placed stands. `reason` goes into the request only when the person gave one: it is
+   * optional for a person and never made up.
+   */
+  async setHorizon(key: string, value: Horizon, reason?: string): Promise<Ticket> {
+    const body: HorizonUpdate = { value, ...(reason ? { reason } : {}) };
+    const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
+    return this.writeOver(
+      key,
+      (etag) => this.api.invoke(setHorizon, { ...routeOf(key), 'If-Match': etag, body }),
+      (current) => current.horizon === held.horizon,
     );
   }
 
   /**
-   * Writes the urgency with the cached `ETag`. A `412` refetches the ticket: while its urgency is
-   * still the one the cache held, the write is repeated once over the new version, because what
-   * changed was another field; otherwise someone else decided the urgency, and the person is told
-   * with a {@link StaleWrite} (docs/adr/0050 D5).
+   * Sets or lifts the confidential flag (docs/adr/0065 D2, D3): a tenant administrator's act,
+   * lifting with a reason.
    */
-  private async writeUrgency(
+  async setConfidential(key: string, confidential: boolean, reason?: string): Promise<Ticket> {
+    const body: ConfidentialSet = { confidential, ...(reason ? { reason } : {}) };
+    const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
+    return this.writeOver(
+      key,
+      (etag) => this.api.invoke(setConfidential, { ...routeOf(key), 'If-Match': etag, body }),
+      (current) => current.confidential === held.confidential,
+    );
+  }
+
+  /**
+   * Writes with `etag` as `If-Match` — the cached `ETag` where none is given. A `412` refetches the
+   * ticket: while `unchanged` says that what the write changes is still as it was read, the write
+   * is repeated once over the new version, because what changed was something else; otherwise
+   * someone else decided it, and the person is told with a {@link StaleWrite} (docs/adr/0050 D5).
+   */
+  private async writeOver(
     key: string,
     write: (etag: string) => Promise<Ticket>,
+    unchanged: (current: Ticket) => boolean,
+    etag?: string,
     retried = false,
   ): Promise<Ticket> {
-    const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
+    let sent = etag;
+    if (sent === undefined) {
+      const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
+      sent = this.tickets.cache.etag(key) ?? etagOf(held.version);
+    }
     try {
-      const ticket = await write(this.tickets.cache.etag(key) ?? etagOf(held.version));
+      const ticket = await write(sent);
       this.tickets.cache.put(ticket.key, ticket);
       return ticket;
     } catch (error) {
@@ -137,10 +226,10 @@ export class TicketActions {
         throw error;
       }
       const current = await this.tickets.refresh(key);
-      if (retried || current.urgency !== held.urgency) {
+      if (retried || !unchanged(current)) {
         throw new StaleWrite(this.problems.read(error), current);
       }
-      return this.writeUrgency(key, write, true);
+      return this.writeOver(key, write, unchanged, etagOf(current.version), true);
     }
   }
 
@@ -153,5 +242,32 @@ export class TicketActions {
     });
     this.tickets.cache.put(ticket.key, ticket);
     return ticket;
+  }
+
+  /**
+   * Puts the ticket into the tenant's bin (docs/adr/0024 D1): a tenant administrator's act. From
+   * then on it answers like a missing ticket everywhere but the bin, so it leaves the cache, and
+   * every view that showed it with it.
+   */
+  async delete(key: string): Promise<void> {
+    await this.api.invoke(deleteTicket, routeOf(key));
+    this.tickets.cache.delete(key);
+  }
+
+  /**
+   * The open tickets that wait on the ticket — its dependents a step up the prerequisite tree,
+   * those it blocks directly (docs/adr/0012 D6) — which a deletion names before it asks
+   * (docs/adr/0024 D7). The first page of the tree is enough to name them: the tree lists the
+   * nearest ones first.
+   */
+  async dependents(key: string): Promise<string[]> {
+    const tree = await this.api.invoke(listPrerequisites, {
+      ...routeOf(key),
+      direction: 'up',
+      limit: 50,
+    });
+    return tree.items
+      .filter((node) => node.depth === 1 && node.state !== 'done' && node.state !== 'dropped')
+      .map((node) => splitKey(node.key).key);
   }
 }

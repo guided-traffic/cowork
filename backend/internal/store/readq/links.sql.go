@@ -74,69 +74,126 @@ func (q *Queries) GetLink(ctx context.Context, arg GetLinkParams) (GetLinkRow, e
 	return i, err
 }
 
-const getUrgencyInputs = `-- name: GetUrgencyInputs :one
-SELECT t.state, t.block_kind,
-       EXISTS (SELECT 1
-               FROM ticket_links l
-               JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
-               WHERE l.tenant_id = t.tenant_id AND l.target_id = t.id AND l.type = 'blocks'
-                 AND s.type = 'decision' AND s.state NOT IN ('done', 'dropped')) AS open_decision_blocker
-FROM tickets t
-WHERE t.tenant_id = $1 AND t.id = $2
+const listDependents = `-- name: ListDependents :many
+WITH RECURSIVE reach (id, via, depth) AS (
+    SELECT l.target_id, l.source_id, 1
+    FROM ticket_links l
+    JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.target_id
+    WHERE l.tenant_id = $3 AND l.source_id = $4::uuid AND l.type = 'blocks'
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+    UNION
+    SELECT l.target_id, l.source_id, reach.depth + 1
+    FROM reach
+    JOIN ticket_links l ON l.tenant_id = $3 AND l.source_id = reach.id AND l.type = 'blocks'
+    JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.target_id
+    WHERE reach.depth < $5::integer AND s.id <> $4::uuid
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+), first AS (
+    SELECT DISTINCT ON (reach.id) reach.id, reach.via, reach.depth FROM reach ORDER BY reach.id, reach.depth, reach.via
+), tree (id, depth, path) AS (
+    SELECT first.id, first.depth, ARRAY[first.id] FROM first WHERE first.depth = 1
+    UNION ALL
+    SELECT first.id, first.depth, tree.path || first.id FROM tree JOIN first ON first.via = tree.id
+), nodes AS (
+    SELECT tree.id, tree.depth, tree.path, false AS repeated FROM tree
+    UNION
+    SELECT reach.id, tree.depth + 1, tree.path || reach.id, true
+    FROM reach
+    JOIN first ON first.id = reach.id AND first.via <> reach.via
+    JOIN tree ON tree.id = reach.via
+), shown AS (
+    SELECT nodes.depth, nodes.path, nodes.repeated, sp.key AS project_key, s.number, s.title, s.state, s.blocked_from,
+           s.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
+           s.progress, s.progress_derived, s.progress_refinement, s.progress_refinement_derived,
+           s.progress_review, s.progress_review_derived,
+           count(*) FILTER (WHERE NOT nodes.repeated AND s.state NOT IN ('done', 'dropped')) OVER () AS open_count
+    FROM nodes
+    JOIN tickets s ON s.tenant_id = $3 AND s.id = nodes.id
+    JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
+    LEFT JOIN users au ON au.id = s.assignee_id
+    WHERE s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+)
+SELECT shown.depth::integer AS depth, shown.path::uuid[] AS path, shown.repeated::boolean AS repeated,
+       shown.project_key, shown.number, shown.title, shown.state, shown.blocked_from,
+       shown.assignee_id, shown.assignee_username, shown.assignee_name,
+       shown.progress, shown.progress_derived, shown.progress_refinement, shown.progress_refinement_derived,
+       shown.progress_review, shown.progress_review_derived, shown.open_count::integer AS open_count
+FROM shown
+WHERE $1::uuid[] IS NULL OR shown.path > $1::uuid[]
+ORDER BY shown.path
+LIMIT $2
 `
 
-type GetUrgencyInputsParams struct {
-	TenantID uuid.UUID
-	ID       uuid.UUID
-}
-
-type GetUrgencyInputsRow struct {
-	State               domain.TicketState
-	BlockKind           *domain.BlockKind
-	OpenDecisionBlocker bool
-}
-
-// The facts rule set v1 reads (docs/adr/0010 D3). The derivation belongs to
-// the ticket, not to a reader: an open decision that blocks it counts whether
-// or not the caller can see it, and only the derived value leaves.
-// visibility: exempt (the derivation's inputs of a ticket the caller writes)
-func (q *Queries) GetUrgencyInputs(ctx context.Context, arg GetUrgencyInputsParams) (GetUrgencyInputsRow, error) {
-	row := q.db.QueryRow(ctx, getUrgencyInputs, arg.TenantID, arg.ID)
-	var i GetUrgencyInputsRow
-	err := row.Scan(&i.State, &i.BlockKind, &i.OpenDecisionBlocker)
-	return i, err
-}
-
-const listBlockedTickets = `-- name: ListBlockedTickets :many
-SELECT t.id
-FROM ticket_links l
-JOIN tickets t ON t.tenant_id = l.tenant_id AND t.id = l.target_id
-WHERE l.tenant_id = $1 AND l.source_id = $2 AND l.type = 'blocks'
-ORDER BY t.id
-`
-
-type ListBlockedTicketsParams struct {
+type ListDependentsParams struct {
+	After    []uuid.UUID
+	PageSize int32
 	TenantID uuid.UUID
 	TicketID uuid.UUID
+	MaxDepth int32
 }
 
-// The tickets a ticket blocks, whose urgency derivation reads it
-// (docs/adr/0010 D3). Only their derived urgency changes; nothing of them
-// reaches the caller.
-// visibility: exempt (the dependents of a derivation input)
-func (q *Queries) ListBlockedTickets(ctx context.Context, arg ListBlockedTicketsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listBlockedTickets, arg.TenantID, arg.TicketID)
+type ListDependentsRow struct {
+	Depth                     int32
+	Path                      []uuid.UUID
+	Repeated                  bool
+	ProjectKey                string
+	Number                    int32
+	Title                     string
+	State                     domain.TicketState
+	BlockedFrom               *domain.TicketState
+	AssigneeID                *uuid.UUID
+	AssigneeUsername          *string
+	AssigneeName              *string
+	Progress                  int16
+	ProgressDerived           *int16
+	ProgressRefinement        int16
+	ProgressRefinementDerived *int16
+	ProgressReview            int16
+	ProgressReviewDerived     *int16
+	OpenCount                 int32
+}
+
+// The prerequisite tree read upward (docs/adr/0012 D6): the tickets the
+// ticket blocks, what those block, and so on — ListPrerequisites with the two
+// ends of every link swapped, under the same rules.
+func (q *Queries) ListDependents(ctx context.Context, arg ListDependentsParams) ([]ListDependentsRow, error) {
+	rows, err := q.db.Query(ctx, listDependents,
+		arg.After,
+		arg.PageSize,
+		arg.TenantID,
+		arg.TicketID,
+		arg.MaxDepth,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []uuid.UUID{}
+	items := []ListDependentsRow{}
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var i ListDependentsRow
+		if err := rows.Scan(
+			&i.Depth,
+			&i.Path,
+			&i.Repeated,
+			&i.ProjectKey,
+			&i.Number,
+			&i.Title,
+			&i.State,
+			&i.BlockedFrom,
+			&i.AssigneeID,
+			&i.AssigneeUsername,
+			&i.AssigneeName,
+			&i.Progress,
+			&i.ProgressDerived,
+			&i.ProgressRefinement,
+			&i.ProgressRefinementDerived,
+			&i.ProgressReview,
+			&i.ProgressReviewDerived,
+			&i.OpenCount,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -151,7 +208,7 @@ JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
 JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
 WHERE l.tenant_id = $1 AND l.target_id = $2 AND l.type = 'blocks'
   AND s.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+  AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 ORDER BY sp.key, s.number
 `
 
@@ -197,6 +254,140 @@ func (q *Queries) ListOpenPrerequisites(ctx context.Context, arg ListOpenPrerequ
 	return items, nil
 }
 
+const listPrerequisites = `-- name: ListPrerequisites :many
+WITH RECURSIVE reach (id, via, depth) AS (
+    SELECT l.source_id, l.target_id, 1
+    FROM ticket_links l
+    JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
+    WHERE l.tenant_id = $3 AND l.target_id = $4::uuid AND l.type = 'blocks'
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+    UNION
+    SELECT l.source_id, l.target_id, reach.depth + 1
+    FROM reach
+    JOIN ticket_links l ON l.tenant_id = $3 AND l.target_id = reach.id AND l.type = 'blocks'
+    JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
+    WHERE reach.depth < $5::integer AND s.id <> $4::uuid
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+), first AS (
+    SELECT DISTINCT ON (reach.id) reach.id, reach.via, reach.depth FROM reach ORDER BY reach.id, reach.depth, reach.via
+), tree (id, depth, path) AS (
+    SELECT first.id, first.depth, ARRAY[first.id] FROM first WHERE first.depth = 1
+    UNION ALL
+    SELECT first.id, first.depth, tree.path || first.id FROM tree JOIN first ON first.via = tree.id
+), nodes AS (
+    SELECT tree.id, tree.depth, tree.path, false AS repeated FROM tree
+    UNION
+    SELECT reach.id, tree.depth + 1, tree.path || reach.id, true
+    FROM reach
+    JOIN first ON first.id = reach.id AND first.via <> reach.via
+    JOIN tree ON tree.id = reach.via
+), shown AS (
+    SELECT nodes.depth, nodes.path, nodes.repeated, sp.key AS project_key, s.number, s.title, s.state, s.blocked_from,
+           s.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
+           s.progress, s.progress_derived, s.progress_refinement, s.progress_refinement_derived,
+           s.progress_review, s.progress_review_derived,
+           count(*) FILTER (WHERE NOT nodes.repeated AND s.state NOT IN ('done', 'dropped')) OVER () AS open_count
+    FROM nodes
+    JOIN tickets s ON s.tenant_id = $3 AND s.id = nodes.id
+    JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
+    LEFT JOIN users au ON au.id = s.assignee_id
+    WHERE s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+)
+SELECT shown.depth::integer AS depth, shown.path::uuid[] AS path, shown.repeated::boolean AS repeated,
+       shown.project_key, shown.number, shown.title, shown.state, shown.blocked_from,
+       shown.assignee_id, shown.assignee_username, shown.assignee_name,
+       shown.progress, shown.progress_derived, shown.progress_refinement, shown.progress_refinement_derived,
+       shown.progress_review, shown.progress_review_derived, shown.open_count::integer AS open_count
+FROM shown
+WHERE $1::uuid[] IS NULL OR shown.path > $1::uuid[]
+ORDER BY shown.path
+LIMIT $2
+`
+
+type ListPrerequisitesParams struct {
+	After    []uuid.UUID
+	PageSize int32
+	TenantID uuid.UUID
+	TicketID uuid.UUID
+	MaxDepth int32
+}
+
+type ListPrerequisitesRow struct {
+	Depth                     int32
+	Path                      []uuid.UUID
+	Repeated                  bool
+	ProjectKey                string
+	Number                    int32
+	Title                     string
+	State                     domain.TicketState
+	BlockedFrom               *domain.TicketState
+	AssigneeID                *uuid.UUID
+	AssigneeUsername          *string
+	AssigneeName              *string
+	Progress                  int16
+	ProgressDerived           *int16
+	ProgressRefinement        int16
+	ProgressRefinementDerived *int16
+	ProgressReview            int16
+	ProgressReviewDerived     *int16
+	OpenCount                 int32
+}
+
+// The prerequisite tree of a ticket (docs/adr/0012 D6): the tickets that
+// block it, what blocks those, and so on to max_depth, depth first, siblings
+// by id — in the order they were filed. The walk keeps each link once per
+// depth (UNION), never each path, so a dense graph costs its links times the
+// depth and not the number of its paths. It never passes a ticket the caller
+// cannot see: that ticket and what lies only behind it are absent
+// (docs/adr/0065 D5). A ticket reached under several others stands in full
+// under the first of them nearest the root (first) and under each other one as
+// a repeated leaf. open_count counts the open tickets of the whole tree, each
+// once, before the page is cut.
+func (q *Queries) ListPrerequisites(ctx context.Context, arg ListPrerequisitesParams) ([]ListPrerequisitesRow, error) {
+	rows, err := q.db.Query(ctx, listPrerequisites,
+		arg.After,
+		arg.PageSize,
+		arg.TenantID,
+		arg.TicketID,
+		arg.MaxDepth,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPrerequisitesRow{}
+	for rows.Next() {
+		var i ListPrerequisitesRow
+		if err := rows.Scan(
+			&i.Depth,
+			&i.Path,
+			&i.Repeated,
+			&i.ProjectKey,
+			&i.Number,
+			&i.Title,
+			&i.State,
+			&i.BlockedFrom,
+			&i.AssigneeID,
+			&i.AssigneeUsername,
+			&i.AssigneeName,
+			&i.Progress,
+			&i.ProgressDerived,
+			&i.ProgressRefinement,
+			&i.ProgressRefinementDerived,
+			&i.ProgressReview,
+			&i.ProgressReviewDerived,
+			&i.OpenCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketLinks = `-- name: ListTicketLinks :many
 SELECT l.id, l.type, (l.source_id = $1::uuid)::boolean AS outgoing,
        o.id AS other_id, op.key AS other_project_key, o.number AS other_number, o.title AS other_title,
@@ -209,7 +400,7 @@ JOIN projects op ON op.tenant_id = o.tenant_id AND op.id = o.project_id
 LEFT JOIN users u ON u.id = l.created_by
 WHERE l.tenant_id = $2
   AND (l.source_id = $1::uuid OR l.target_id = $1::uuid)
-  AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
+  AND o.deleted_at IS NULL AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
   AND ($3::uuid IS NULL OR l.id > $3::uuid)
 ORDER BY l.id
 LIMIT $4

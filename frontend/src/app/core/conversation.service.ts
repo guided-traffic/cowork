@@ -1,16 +1,26 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
+import { addComment } from '../api/fn/comments/add-comment';
+import { editComment } from '../api/fn/comments/edit-comment';
+import { listCommentRevisions } from '../api/fn/comments/list-comment-revisions';
+import { withdrawComment } from '../api/fn/comments/withdraw-comment';
+import { answerQuestion } from '../api/fn/questions/answer-question';
+import { askQuestion } from '../api/fn/questions/ask-question';
+import { updateQuestion } from '../api/fn/questions/update-question';
+import { withdrawQuestion } from '../api/fn/questions/withdraw-question';
+import { linkTickets } from '../api/fn/tickets/link-tickets';
+import { removeInterest } from '../api/fn/tickets/remove-interest';
+import { setInterest } from '../api/fn/tickets/set-interest';
+import { unlinkTickets } from '../api/fn/tickets/unlink-tickets';
 import {
-  addComment,
-  answerQuestion,
-  askQuestion,
-  linkTickets,
-  removeInterest,
-  setInterest,
-  unlinkTickets,
-  withdrawQuestion,
-} from '../api/functions';
-import { Comment, InterestWeight, LinkType, Question, QuestionCreate } from '../api/models';
+  Comment,
+  CommentRevision,
+  InterestWeight,
+  LinkType,
+  Question,
+  QuestionCreate,
+  QuestionPatch,
+} from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';
 
@@ -23,18 +33,57 @@ import { routeOf } from './ticket-actions.service';
 export class Conversation {
   private readonly api = inject(Api);
 
-  comment(key: string, body: string): Promise<Comment> {
+  /**
+   * Comments on the ticket, mentioning the persons of `mentions` by id (docs/adr/0015 D5). The
+   * idempotency key is the form's, one for each content it holds, so a retry of a lost answer is
+   * answered again instead of commenting twice (docs/adr/0045 D3); so is the one of a question.
+   */
+  comment(
+    key: string,
+    body: string,
+    idempotencyKey: string,
+    mentions: string[] = [],
+  ): Promise<Comment> {
     return this.api.invoke(addComment, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
-      body: { body },
+      'Idempotency-Key': idempotencyKey,
+      body: mentions.length > 0 ? { body, mentions } : { body },
     });
   }
 
-  ask(key: string, question: QuestionCreate): Promise<Question> {
+  /**
+   * Replaces a comment's text over the version the editing began with (docs/adr/0015 D3,
+   * docs/adr/0050 D3): the author's act; the previous text is kept in its history. `mentions`
+   * replaces the comment's, and tells the persons it adds (D5); left out, they stay.
+   */
+  editComment(key: string, comment: Comment, body: string, mentions?: string[]): Promise<Comment> {
+    return this.api.invoke(editComment, {
+      ...routeOf(key),
+      comment: comment.id,
+      'If-Match': etagOf(comment.version),
+      body: mentions ? { body, mentions } : { body },
+    });
+  }
+
+  /** A comment's previous texts, oldest first; none once it is withdrawn. */
+  async commentRevisions(key: string, comment: Comment): Promise<CommentRevision[]> {
+    const list = await this.api.invoke(listCommentRevisions, {
+      ...routeOf(key),
+      comment: comment.id,
+      limit: 200,
+    });
+    return list.items;
+  }
+
+  /** Hides a comment's text and keeps its entry: its author's act, or a tenant administrator's. */
+  withdrawComment(key: string, comment: Comment): Promise<Comment> {
+    return this.api.invoke(withdrawComment, { ...routeOf(key), comment: comment.id });
+  }
+
+  ask(key: string, question: QuestionCreate, idempotencyKey: string): Promise<Question> {
     return this.api.invoke(askQuestion, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: question,
     });
   }
@@ -46,6 +95,16 @@ export class Conversation {
       question: question.number,
       ...(question.status === 'answered' ? { 'If-Match': etagOf(question.version) } : {}),
       body: { answer },
+    });
+  }
+
+  /** Changes an open question's text over the version the editing began with: the asker's act. */
+  editQuestion(key: string, question: Question, patch: QuestionPatch): Promise<Question> {
+    return this.api.invoke(updateQuestion, {
+      ...routeOf(key),
+      question: question.number,
+      'If-Match': etagOf(question.version),
+      body: patch,
     });
   }
 

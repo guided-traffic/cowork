@@ -6,6 +6,9 @@ coverage/
 # Dependencies are installed inside the image from the lockfile
 node_modules/
 
+# The end-to-end suite runs against the image; it is no part of it
+e2e/
+
 # Container and repository files that are not part of the bundle
 Containerfile
 .dockerignore

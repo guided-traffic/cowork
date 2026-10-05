@@ -178,3 +178,39 @@ func assertBetween(t *testing.T, lo, k, hi string) {
 		assert.Less(t, k, hi)
 	}
 }
+
+// A spread gives n keys in order, as short as n allows, with room between
+// every two of them and at both ends (docs/adr/0014 Consequences).
+func TestRankSpread(t *testing.T) {
+	assert.Empty(t, RankSpread(0))
+	for n, width := range map[int]int{1: 2, 61: 2, 62: 3, 3843: 3, 3844: 4} {
+		keys := RankSpread(n)
+		require.Len(t, keys, n)
+		for i, k := range keys {
+			assert.True(t, ValidRank(k), "n=%d: %q", n, k)
+			assert.LessOrEqual(t, len(k), width, "n=%d", n)
+			if i > 0 {
+				assert.Less(t, keys[i-1], k, "n=%d", n)
+			}
+		}
+		// Five moves into one gap between two keys stay within one character
+		// more; the ends take moves as RankBetween's open ends do.
+		if n > 1 {
+			for _, gap := range [][2]string{{keys[0], keys[1]}, {keys[n-2], keys[n-1]}} {
+				lo, hi := gap[0], gap[1]
+				for range 5 {
+					k, err := RankBetween(lo, hi)
+					require.NoError(t, err)
+					assertBetween(t, lo, k, hi)
+					assert.LessOrEqual(t, len(k), width+1, "n=%d, between %q and %q", n, lo, hi)
+					lo = k
+				}
+			}
+		}
+		for _, gap := range [][2]string{{keys[n-1], ""}, {"", keys[0]}} {
+			k, err := RankBetween(gap[0], gap[1])
+			require.NoError(t, err)
+			assertBetween(t, gap[0], k, gap[1])
+		}
+	}
+}

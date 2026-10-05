@@ -19,6 +19,11 @@ export interface StreamEvents$Params {
  * The id of the last event the client received
  */
   'Last-Event-ID'?: string;
+
+/**
+ * Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)
+ */
+  me?: boolean;
 }
 
 export function streamEvents(http: HttpClient, rootUrl: string, params: StreamEvents$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
@@ -26,6 +31,7 @@ export function streamEvents(http: HttpClient, rootUrl: string, params: StreamEv
   if (params) {
     rb.path('tenant', params.tenant, {});
     rb.header('Last-Event-ID', params['Last-Event-ID'], {});
+    rb.query('me', params.me, {});
   }
 
   return http.request(

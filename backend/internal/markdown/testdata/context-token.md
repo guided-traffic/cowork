@@ -6,7 +6,7 @@ type: task
 state: filed
 severity: low
 security: none
-urgency: later
+horizon: later
 effort: S
 progress-refinement: 0
 progress: 0

@@ -59,6 +59,7 @@ describe('TicketRelations', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
+    tree: `${base}/prerequisites?direction=down&limit=200`,
   };
   const empty = { items: [], next_cursor: null };
 
@@ -95,6 +96,7 @@ describe('TicketRelations', () => {
       interest: vi.spyOn(relations.interest, 'reload').mockReturnValue(true),
       attachments: vi.spyOn(relations.attachments, 'reload').mockReturnValue(true),
       time: vi.spyOn(relations.time, 'reload').mockReturnValue(true),
+      tree: vi.spyOn(relations.tree, 'reload').mockReturnValue(true),
     };
   }
 
@@ -112,7 +114,7 @@ describe('TicketRelations', () => {
       expect(relations.comments.status()).toBe('idle');
     });
 
-    it('loads the comments, the activity, the questions, the links, the interest, the files and the time of the ticket that is set', async () => {
+    it('loads the comments, the activity, the questions, the links, the interest, the files, the time and the prerequisite tree of the ticket that is set', async () => {
       relations.at.set(cow12);
       TestBed.tick();
 
@@ -124,6 +126,7 @@ describe('TicketRelations', () => {
         interest: { items: [], next_cursor: null },
         attachments: { items: [], next_cursor: null },
         time: { items: [], next_cursor: null, total_minutes: 0 },
+        tree: { items: [], next_cursor: null, open: 0 },
       };
       for (const [part, body] of Object.entries(bodies)) {
         http.expectOne(urls[part as keyof typeof urls]).flush(body);
@@ -152,7 +155,69 @@ describe('TicketRelations', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
+    });
+
+    it('reads the tree the other way, the dependents, when the page asks for them', () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      http.match(() => true);
+
+      relations.direction.set('up');
+      TestBed.tick();
+
+      http.expectOne(`${base}/prerequisites?direction=up&limit=200`);
+      http.verify();
+    });
+  });
+
+  describe('the rendered body', () => {
+    const bodyUrl = `${base}/body`;
+    const rendered = (version: number) => ({ body: 'x', body_html: '<p>x</p>', version });
+
+    it('loads once the version of the ticket is known, and again for a newer one', () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      http.expectNone(bodyUrl);
+
+      relations.version.set(3);
+      TestBed.tick();
+      http.expectOne(bodyUrl).flush(rendered(3));
+
+      relations.version.set(4);
+      TestBed.tick();
+      http.expectOne(bodyUrl);
+    });
+
+    it('loads again on a change that moves no version, an upload, and leaves a newer one to the version', async () => {
+      relations.at.set(cow12);
+      relations.version.set(3);
+      TestBed.tick();
+      http.expectOne(bodyUrl).flush(rendered(3));
+      // The other parts stay unanswered, so the application is not stable: wait for the answer.
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(relations.body.value()).toEqual(rendered(3));
+      const reload = vi.spyOn(relations.body, 'reload').mockReturnValue(true);
+
+      events.next({
+        name: 'ticket.changed',
+        id: 'e-1',
+        key: 'acme/COW-12',
+        version: 3,
+        kind: 'uploaded',
+      });
+      expect(reload).toHaveBeenCalledOnce();
+
+      reload.mockClear();
+      events.next({
+        name: 'ticket.changed',
+        id: 'e-2',
+        key: 'acme/COW-12',
+        version: 4,
+        kind: 'edited',
+      });
+      expect(reload).not.toHaveBeenCalled();
     });
   });
 
@@ -164,7 +229,7 @@ describe('TicketRelations', () => {
     it.each([
       ['comment.changed', ['comments', 'activity']],
       ['question.changed', ['questions', 'activity']],
-      ['link.changed', ['links', 'activity']],
+      ['link.changed', ['links', 'tree', 'activity']],
       ['interest.changed', ['interest', 'activity']],
       ['ticket.changed', ['attachments', 'activity']],
     ] as const)('reload only the parts %s changes: %j', (name, parts) => {
@@ -219,7 +284,61 @@ describe('TicketRelations', () => {
         'links',
         'questions',
         'time',
+        'tree',
       ]);
+    });
+
+    describe('of a ticket of the prerequisite tree', () => {
+      const node = {
+        key: 'acme/COW-7',
+        title: 'Pick the format',
+        state: 'filed' as const,
+        blocked_from: null,
+        assignee: null,
+        progress: 0,
+        progress_refinement: 0,
+        progress_review: 0,
+        progress_derived: false,
+        depth: 1,
+        settled: false,
+        repeated: false,
+      };
+
+      async function loaded() {
+        TestBed.tick();
+        for (const request of http.match(() => true)) {
+          request.flush(
+            request.request.url.endsWith('/prerequisites')
+              ? { items: [node], next_cursor: null, open: 1 }
+              : empty,
+          );
+        }
+        await TestBed.inject(ApplicationRef).whenStable();
+      }
+
+      it.each(['ticket.changed', 'link.changed'] as const)(
+        'reload the tree alone on %s, because the tree shows that ticket',
+        async (name) => {
+          await loaded();
+          const spies = spyOnReloads();
+
+          events.next(ticketEvent(name, 'acme/COW-7'));
+
+          expect(reloaded(spies)).toEqual(['tree']);
+        },
+      );
+
+      it.each(['comment.changed', 'question.changed', 'interest.changed'] as const)(
+        'leave the tree alone on %s, which changes nothing it shows',
+        async (name) => {
+          await loaded();
+          const spies = spyOnReloads();
+
+          events.next(ticketEvent(name, 'acme/COW-7'));
+
+          expect(reloaded(spies)).toEqual([]);
+        },
+      );
     });
 
     it('follow the ticket that is shown when it changes', () => {
@@ -254,6 +373,10 @@ describe('TicketRelations', () => {
 
         http.expectOne(urls[part]).flush(changed);
         http.expectOne(urls.activity).flush(empty);
+        if (name === 'link.changed') {
+          // A link of the ticket changes its prerequisite tree as well.
+          http.expectOne(urls.tree).flush({ ...empty, open: 0 });
+        }
         http.verify();
         await TestBed.inject(ApplicationRef).whenStable();
         expect(relations[part].value()).toBe(changed);
@@ -374,6 +497,7 @@ describe('TicketRelations', () => {
       'interest',
       'attachments',
       'time',
+      'tree',
     ] as const;
 
     /** Lets the answers reach the resources and the effects they feed run. */
@@ -426,6 +550,36 @@ describe('TicketRelations', () => {
         }
       },
     );
+
+    it("sends each part's weak ETag on a poll and keeps every part on a 304 (docs/adr/0054 D7)", async () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      for (const request of http.match(() => true)) {
+        request.flush(
+          { items: [], next_cursor: null, total_minutes: 0 },
+          { headers: { ETag: `W/"${request.request.url.split('/').pop()}"` } },
+        );
+      }
+      await settle();
+      const shown = Object.fromEntries(parts.map((part) => [part, relations[part].value()]));
+
+      events.next({ name: 'poll' });
+      TestBed.tick();
+      const requests = http.match(() => true);
+      expect(requests).toHaveLength(parts.length);
+      for (const request of requests) {
+        expect(request.request.headers.get('If-None-Match')).toBe(
+          `W/"${request.request.url.split('/').pop()}"`,
+        );
+        request.flush(null, { status: 304, statusText: 'Not Modified' });
+      }
+      await settle();
+
+      for (const part of parts) {
+        expect(relations[part].status(), part).toBe('resolved');
+        expect(relations[part].value(), part).toBe(shown[part]);
+      }
+    });
 
     it.each([401, 403, 404])(
       'shows no part when the poll answers %i: the ticket is gone for the person',

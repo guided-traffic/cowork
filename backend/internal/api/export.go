@@ -67,11 +67,11 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 // exportDocument gathers what the document shows.
 func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx) (markdown.Ticket, error) {
 	row := tc.row
-	v := ticketView(t, row)
+	stages := stagesOf(row)
 	doc := markdown.Ticket{
-		Key: v.Key, Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
-		Security: string(row.Security), Threat: deref(row.Threat), Urgency: string(v.Urgency), Effort: string(row.Effort),
-		ProgressRefinement: v.ProgressRefinement, Progress: v.Progress, ProgressReview: v.ProgressReview,
+		Key: ticketKey(t, row), Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
+		Security: string(row.Security), Threat: deref(row.Threat), Horizon: string(horizonOf(row)), Effort: string(row.Effort),
+		ProgressRefinement: stages.Refinement, Progress: stages.Implementation, ProgressReview: stages.Review,
 		Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
 	}
 	if row.AssigneeName != nil {

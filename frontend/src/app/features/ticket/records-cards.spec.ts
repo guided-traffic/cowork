@@ -16,8 +16,14 @@ import {
 import { SessionService } from '../../core/session.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { Clock } from '../../shared/time';
+import { FilePreview } from './file-preview';
 import { AttachmentsCard, fileIcon, TimeCard } from './records-cards';
 import { TicketRelations } from './ticket-relations';
+
+/** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
+const formKey = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+);
 
 const now = Date.parse('2026-10-03T12:00:00Z');
 
@@ -102,6 +108,8 @@ describe('record cards', () => {
     attach: MockInstance<TicketRecords['attach']>;
     book: MockInstance<TicketRecords['book']>;
     void: MockInstance<TicketRecords['void']>;
+    edit: MockInstance<TicketRecords['edit']>;
+    revisions: MockInstance<TicketRecords['revisions']>;
   };
   let person: WritableSignal<Me | undefined>;
   let clockNow: WritableSignal<number>;
@@ -117,6 +125,8 @@ describe('record cards', () => {
       attach: vi.fn<TicketRecords['attach']>().mockResolvedValue(attachment()),
       book: vi.fn<TicketRecords['book']>().mockResolvedValue(entry()),
       void: vi.fn<TicketRecords['void']>().mockResolvedValue(entry({ voided: true })),
+      edit: vi.fn<TicketRecords['edit']>().mockResolvedValue(entry()),
+      revisions: vi.fn<TicketRecords['revisions']>().mockResolvedValue([]),
     };
     person = signal<Me | undefined>({
       ...ada,
@@ -347,8 +357,39 @@ describe('record cards', () => {
         const cleared = pick(fixture, [chosen]);
         await settle(fixture);
 
-        expect(records.attach).toHaveBeenCalledExactlyOnceWith(key, chosen);
+        expect(records.attach).toHaveBeenCalledExactlyOnceWith(key, chosen, formKey);
         expect(cleared).toHaveBeenCalledWith('');
+      });
+
+      it('sends the same file again with the same Idempotency-Key after a lost answer, and another file or the next upload with a new one (docs/adr/0045 D3)', async () => {
+        records.attach.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        records.attach.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        const fixture = await render(AttachmentsCard);
+        const keys = () => records.attach.mock.calls.map((call) => call[2]);
+
+        pick(fixture, [chosen]);
+        await settle(fixture);
+        pick(fixture, [
+          new File(['hello'], 'notes.txt', {
+            type: 'text/plain',
+            lastModified: chosen.lastModified,
+          }),
+        ]);
+        await settle(fixture);
+        expect(keys()[1]).toBe(keys()[0]);
+
+        pick(fixture, [new File(['other'], 'other.txt', { type: 'text/plain' })]);
+        await settle(fixture);
+        expect(keys()[2]).not.toBe(keys()[0]);
+
+        // Uploaded: the same file again is another upload.
+        pick(fixture, [new File(['other'], 'other.txt', { type: 'text/plain' })]);
+        await settle(fixture);
+        expect(keys()[3]).not.toBe(keys()[2]);
       });
 
       it('does nothing when the dialog is dismissed without a file', async () => {
@@ -553,7 +594,13 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', minutes, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(
+          key,
+          '2026-10-03',
+          minutes,
+          '',
+          formKey,
+        );
       });
 
       it.each(['', '   ', 'abc', '0', '0:00', '1:75', '-5', '1h 30'])(
@@ -570,6 +617,35 @@ describe('record cards', () => {
         },
       );
 
+      it('books again with the same Idempotency-Key after a lost answer, and with a new one for another content or the next booking (docs/adr/0045 D3)', async () => {
+        records.book.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        records.book.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        const fixture = await render(TimeCard);
+        const keys = () => records.book.mock.calls.map((call) => call[4]);
+        typeInto(fixture, 'time-duration', '1h');
+        submit(fixture);
+        await settle(fixture);
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[1]).toBe(keys()[0]);
+
+        typeInto(fixture, 'time-note', 'Reproducing it');
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[2]).not.toBe(keys()[0]);
+
+        // Booked: the same time again is another booking.
+        typeInto(fixture, 'time-duration', '1h');
+        typeInto(fixture, 'time-note', 'Reproducing it');
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[3]).not.toBe(keys()[2]);
+      });
+
       it('books on the day that was chosen, with the note', async () => {
         const fixture = await render(TimeCard);
         typeInto(fixture, 'time-day', '2026-10-01');
@@ -584,6 +660,7 @@ describe('record cards', () => {
           '2026-10-01',
           120,
           'Reproducing it',
+          formKey,
         );
       });
 
@@ -762,7 +839,7 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-01', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-01', 120, '', formKey);
       });
 
       it('books on the new date after midnight, however the page was left open', async () => {
@@ -773,7 +850,7 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-04', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-04', 120, '', formKey);
       });
 
       it('keeps the duration and the note that were typed when the day moves on', async () => {
@@ -804,7 +881,7 @@ describe('record cards', () => {
         finish(entry());
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', 120, '', formKey);
         expect(dayShown(fixture)).toBe('2026-10-04');
       });
     });
@@ -837,6 +914,216 @@ describe('record cards', () => {
           expect.objectContaining({ summary: 'The period is locked' }),
         );
         expect(relations.reloadTime).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('the previews of the files (docs/adr/0016 D5)', () => {
+    it('shows a preview of a raster image and none of another file, and marks a file of a comment', async () => {
+      relations.attachments.value.set({
+        items: [
+          attachment(),
+          attachment({
+            id: 'f-2',
+            file_name: 'trace.txt',
+            content_type: 'text/plain; charset=utf-8',
+            comment: 'c-1',
+          }),
+        ],
+        next_cursor: null,
+      });
+
+      const fixture = await render(AttachmentsCard);
+
+      expect(el(fixture, 'attachment-f-1')?.querySelector('img')?.getAttribute('src')).toBe(
+        '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/f-1/content',
+      );
+      expect(el(fixture, 'attachment-f-2')?.querySelector('img')).toBeNull();
+      expect(fixture.debugElement.queryAll(By.directive(FilePreview))).toHaveLength(2);
+      expect(text(fixture, '[data-testid="attachment-f-2"] .muted')).toContain('on a comment');
+      expect(text(fixture, '[data-testid="attachment-f-1"] .muted')).not.toContain('on a comment');
+    });
+  });
+
+  describe('TimeCard, a correction (docs/adr/0017 D7)', () => {
+    const booked = (...entries: TimeEntry[]) =>
+      relations.time.value.set({ items: entries, next_cursor: null, total_minutes: 0 });
+
+    async function correcting(current: TimeEntry = entry({ id: 'e-1', note: 'Reproducing it' })) {
+      booked(current);
+      const fixture = await render(TimeCard);
+      button(fixture, 'correct-e-1')?.click();
+      await settle(fixture);
+      return fixture;
+    }
+
+    const field = (fixture: ComponentFixture<unknown>, testId: string) =>
+      el(fixture, testId) as HTMLInputElement | null;
+
+    async function save(fixture: ComponentFixture<unknown>) {
+      button(fixture, 'correct-save-e-1')?.click();
+      await settle(fixture);
+    }
+
+    it('is offered for the entries of the person only', async () => {
+      booked(entry({ id: 'e-1' }), entry({ id: 'e-2', person: sam, author: sam }));
+
+      const fixture = await render(TimeCard);
+
+      expect(el(fixture, 'correct-e-1')).not.toBeNull();
+      expect(el(fixture, 'correct-e-2')).toBeNull();
+    });
+
+    it('starts from the day, the duration and the note of the entry', async () => {
+      const fixture = await correcting();
+
+      expect(field(fixture, 'correct-day-e-1')?.value).toBe('2026-10-02');
+      expect(field(fixture, 'correct-duration-e-1')?.value).toBe('1 h 30 min');
+      expect(field(fixture, 'correct-note-e-1')?.value).toBe('Reproducing it');
+    });
+
+    it('writes what changed over the version the correction began with, and loads the entries again', async () => {
+      const mine = entry({ id: 'e-1', note: 'Reproducing it' });
+      const fixture = await correcting(mine);
+      typeInto(fixture, 'correct-duration-e-1', '2:15');
+      typeInto(fixture, 'correct-note-e-1', '  Reproducing and fixing it ');
+
+      await save(fixture);
+
+      expect(records.edit).toHaveBeenCalledExactlyOnceWith(key, mine, {
+        minutes: 135,
+        note: 'Reproducing and fixing it',
+      });
+      expect(relations.reloadTime).toHaveBeenCalledOnce();
+      expect(field(fixture, 'correct-day-e-1')).toBeNull();
+    });
+
+    it('cannot be saved with a duration that is none', async () => {
+      const fixture = await correcting();
+
+      typeInto(fixture, 'correct-duration-e-1', 'soon');
+
+      expect(button(fixture, 'correct-save-e-1')?.disabled).toBe(true);
+    });
+
+    it('closes without a write when nothing changed', async () => {
+      const fixture = await correcting();
+
+      await save(fixture);
+
+      expect(records.edit).not.toHaveBeenCalled();
+      expect(field(fixture, 'correct-day-e-1')).toBeNull();
+    });
+
+    describe('that met a change made meanwhile', () => {
+      async function conflicted() {
+        records.edit.mockRejectedValueOnce(
+          refusal(412, 'Precondition failed', 'The entry changed.'),
+        );
+        const fixture = await correcting();
+        typeInto(fixture, 'correct-duration-e-1', '2:00');
+        await save(fixture);
+        booked(entry({ id: 'e-1', minutes: 60, note: 'From the other tab', version: 2 }));
+        await settle(fixture);
+        return fixture;
+      }
+
+      it('loads the entries again, says so and keeps what was typed', async () => {
+        const fixture = await conflicted();
+
+        expect(relations.reloadTime).toHaveBeenCalledOnce();
+        expect(el(fixture, 'conflict')?.textContent).toContain(
+          'The entry changed while you edited it.',
+        );
+        expect(field(fixture, 'correct-duration-e-1')?.value).toBe('2:00');
+      });
+
+      it('writes the person own values over the entry as it is now on request', async () => {
+        const fixture = await conflicted();
+
+        button(fixture, 'conflict-overwrite')?.click();
+        await settle(fixture);
+
+        expect(records.edit).toHaveBeenLastCalledWith(
+          key,
+          entry({ id: 'e-1', minutes: 60, note: 'From the other tab', version: 2 }),
+          { minutes: 120, note: 'Reproducing it' },
+        );
+      });
+
+      it('goes on from the entry as it is now on request', async () => {
+        const fixture = await conflicted();
+
+        button(fixture, 'conflict-take-theirs')?.click();
+        await settle(fixture);
+
+        expect(field(fixture, 'correct-duration-e-1')?.value).toBe('1 h');
+        expect(field(fixture, 'correct-note-e-1')?.value).toBe('From the other tab');
+        expect(records.edit).toHaveBeenCalledOnce();
+      });
+    });
+
+    it('shows the earlier values of a corrected entry on request, and hides them again', async () => {
+      records.revisions.mockResolvedValueOnce([
+        {
+          minutes: 60,
+          day: '2026-10-01',
+          note: 'First',
+          edited_by: ada,
+          token: script,
+          at: '2026-10-03T11:00:00Z',
+        },
+      ]);
+      const corrected = entry({ id: 'e-1', edited: true });
+      booked(corrected);
+      const fixture = await render(TimeCard);
+
+      button(fixture, 'time-revisions-e-1')?.click();
+      await settle(fixture);
+
+      expect(records.revisions).toHaveBeenCalledExactlyOnceWith(key, corrected);
+      const list = el(fixture, 'time-revision-list-e-1') as HTMLElement;
+      expect(list.textContent?.replace(/\s+/g, ' ')).toContain('1 h on 2026-10-01 — First');
+      expect(list.textContent).toContain('changed by Ada Lovelace');
+      expect(list.querySelector('app-agent-mark')).not.toBeNull();
+
+      button(fixture, 'time-revisions-e-1')?.click();
+      await settle(fixture);
+      expect(el(fixture, 'time-revision-list-e-1')).toBeNull();
+    });
+
+    it('offers no earlier values for an entry never corrected', async () => {
+      booked(entry({ id: 'e-1' }));
+
+      const fixture = await render(TimeCard);
+
+      expect(el(fixture, 'time-revisions-e-1')).toBeNull();
+    });
+
+    describe('a turn of the page to another ticket', () => {
+      it('closes the correction, which writes nothing', async () => {
+        const fixture = await correcting();
+        typeInto(fixture, 'correct-duration-e-1', '2:00');
+
+        fixture.componentRef.setInput('ticketKey', 'acme/COW-13');
+        await settle(fixture);
+
+        expect(field(fixture, 'correct-day-e-1')).toBeNull();
+        expect(records.edit).not.toHaveBeenCalled();
+      });
+
+      it('drops the duration and the note typed for the booking, which books nothing', async () => {
+        const fixture = await render(TimeCard);
+        typeInto(fixture, 'time-duration', '1:30');
+        typeInto(fixture, 'time-note', 'Meant for COW-12');
+
+        fixture.componentRef.setInput('ticketKey', 'acme/COW-13');
+        await settle(fixture);
+
+        expect(field(fixture, 'time-duration')?.value).toBe('');
+        expect(field(fixture, 'time-note')?.value).toBe('');
+        expect(button(fixture, 'time-book')?.disabled).toBe(true);
+        expect(records.book).not.toHaveBeenCalled();
       });
     });
   });

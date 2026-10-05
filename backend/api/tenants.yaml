@@ -137,8 +137,12 @@ audit:
     summary: The tenant's audit record (docs/adr/0026 D6)
     description: |
       For the tenant's administrators. Filters combine with AND; a repeated
-      `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-      cell that could start a formula prefixed with an apostrophe.
+      `action` with OR. Newest first, paged by cursor, or by number with a total
+      (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+      cell that could start a formula prefixed with an apostrophe. A CSV answer
+      carries no cursor: a client that reads more than one page as CSV asks for
+      numbered pages, with `to` held at the moment it began, so that a newer
+      row does not move the rows between two pages.
     parameters:
       - name: actor
         in: query
@@ -169,6 +173,8 @@ audit:
         schema: {type: string, format: date-time}
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
     responses:
       '200':
         description: A page of audit rows, newest first
@@ -188,19 +194,29 @@ projects:
     operationId: listProjects
     tags: [projects]
     summary: The projects the caller can see
+    description: |
+      By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
     parameters:
       - name: include_archived
         in: query
         schema: {type: boolean, default: false}
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of projects, by key
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ProjectList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
@@ -329,6 +345,42 @@ projectArchive:
               $ref: './components/schemas.yaml#/Project'
       default:
         $ref: './components/responses.yaml#/Problem'
+projectRank:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  put:
+    operationId: sortProjectRank
+    tags: [tickets]
+    summary: Reorder the project's open tickets by their score
+    description: |
+      "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+      the places they hold among themselves in the score's order — highest first, each scored anew
+      with the function as it stands — so every horizon's group and every parent's children read in
+      the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+      `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+      it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+      a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+      and records nothing. Never automatic. A member's act with `write` scope; an agent
+      needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+      (docs/adr/0050 D4).
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectRankSort'
+          example:
+            by: score
+    responses:
+      '200':
+        description: How many tickets changed their place
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectRankSorted'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 tenantTickets:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -340,13 +392,15 @@ tenantTickets:
       The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
       value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
       show only with include_terminal or when state names them; done_after keeps those done
-      after a time.
+      after a time. `urgency` is the deprecated name of `horizon`, and a request that names
+      both is 400 at `query:urgency`.
     parameters:
       - $ref: './components/parameters.yaml#/FilterProject'
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
       - $ref: './components/parameters.yaml#/FilterSeverity'
       - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
       - $ref: './components/parameters.yaml#/FilterUrgency'
       - $ref: './components/parameters.yaml#/FilterEffort'
       - $ref: './components/parameters.yaml#/FilterAssignee'
@@ -402,12 +456,14 @@ projectTickets:
       and the number sealed, since a key is computed over tickets the caller may not see, and is
       bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
       D5). `state=done&done_after=<time>` counts what the board shows for done
-      (docs/adr/0018 D1).
+      (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
+      names both is 400 at `query:urgency`.
     parameters:
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
       - $ref: './components/parameters.yaml#/FilterSeverity'
       - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
       - $ref: './components/parameters.yaml#/FilterUrgency'
       - $ref: './components/parameters.yaml#/FilterEffort'
       - $ref: './components/parameters.yaml#/FilterAssignee'
@@ -455,9 +511,15 @@ projectTickets:
     summary: File a ticket
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-      the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-      (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-      (docs/adr/0065 D2). An archived project refuses.
+      the project's next. `horizon` is the ticket's horizon, a planning category independent of
+      the state, `later` when left out; another horizon is the ticket's set horizon, set by the
+      caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
+      as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
+      at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
+      the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+      `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
+      `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+      confidential (docs/adr/0065 D2). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -549,11 +611,142 @@ ticket:
               $ref: './components/schemas.yaml#/Ticket'
       default:
         $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: deleteTicket
+    tags: [tickets]
+    summary: Delete a ticket into the tenant's bin
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+      docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+      like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+      it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+      lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+      (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+      published. A restoration brings everything back; thirty days after the deletion the purge job
+      removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+      shows the dependents and asks first (D7).
+    responses:
+      '204':
+        description: Deleted
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listDeletedTickets
+    tags: [tickets]
+    summary: The tenant's bin of deleted tickets
+    description: |
+      The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+      each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+      list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+      restricted to a project is refused like an unknown tenant.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the bin
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/DeletedTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicket:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  delete:
+    operationId: purgeTicket
+    tags: [tickets]
+    summary: Purge a deleted ticket for good
+    description: |
+      A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+      **in a browser session only**: the one irreversible act on a ticket, so a token — an
+      administrator's `admin` token included — answers `403 session_required`, and the purge job
+      does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+      ticket of the bin only — any other key is 404. The ticket, its
+      comments, questions, links, stakes, time entries, notifications and attachments are removed,
+      and the attachments' objects after them; its children become roots, and a block that waited
+      on it waits on its key as an external reference. Its audit rows stay with their content
+      emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+      Irreversible: the browser asks a second time. Recorded as `purged` and published.
+    security:
+      - sessionCookie: []
+    responses:
+      '204':
+        description: Purged
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicketRestore:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  put:
+    operationId: restoreTicket
+    tags: [tickets]
+    summary: Restore a deleted ticket from the bin
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+      docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+      as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+      `restored` and published.
+    responses:
+      '200':
+        description: The restored ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 ticketBody:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicketBody
+    tags: [tickets]
+    summary: The ticket's body, as Markdown and rendered
+    description: |
+      The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+      own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+      is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+      as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+      installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+      image shows only when it names a raster attachment of this ticket, from that attachment's
+      own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+      Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+      replacement of the body names in `If-Match`; the HTML changes with the ticket's
+      attachments as well, which raise no version.
+    responses:
+      '200':
+        description: The body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketBody'
+            example:
+              body: "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7)."
+              body_html: "<h2>Current state</h2>\n<p>The gate fails on <code>readyReplicas</code> — see <a href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\">the run</a>.</p>"
+              version: 4
+      default:
+        $ref: './components/responses.yaml#/Problem'
   put:
     operationId: replaceTicketBody
     tags: [tickets]
@@ -579,6 +772,47 @@ ticketBody:
               $ref: './components/schemas.yaml#/Ticket'
       default:
         $ref: './components/responses.yaml#/Problem'
+ticketHorizon:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: setHorizon
+    tags: [tickets]
+    summary: Set the horizon
+    description: |
+      Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+      category independent of the state, which holds until a person or an agent sets another;
+      nothing changes it on its own (docs/adr/0010 D3). `later` is where a ticket nobody placed
+      stands: setting it clears the set horizon, so `horizon_set` is null afterwards, and on a
+      ticket with none set it changes nothing. The reason is optional for a person and required
+      of an agent, whose request without one is 400 at `/reason`; it is recorded on the act and,
+      for a horizon other than `later`, shown with it. An agent needs the set-horizon capability
+      (docs/adr/0043 D4). A 412 names the current `horizon` and `horizon_set`.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/HorizonUpdate'
+          example:
+            value: next
+            reason: Taken up once the import works
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 ticketUrgencyOverride:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -587,12 +821,16 @@ ticketUrgencyOverride:
   put:
     operationId: overrideUrgency
     tags: [tickets]
-    summary: Override the derived urgency
+    deprecated: true
+    summary: Set the horizon, under the name it had before
     description: |
-      The override holds until a person or an agent withdraws it or sets another; when an input of
-      the derivation changes, the derived value and its rule change beside it and the override stays
-      (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-      without one is 400 at `/reason`. An agent needs the override-urgency capability
+      Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
+      and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
+      `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
+      holds until a person or an agent withdraws it or sets another; nothing derives it, the
+      derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
+      person and required of an agent, whose request without one is 400 at `/reason`. An agent
+      needs the set-horizon capability, which its deprecated name override-urgency names as well
       (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
@@ -617,8 +855,13 @@ ticketUrgencyOverride:
   delete:
     operationId: withdrawUrgencyOverride
     tags: [tickets]
-    summary: Withdraw the urgency override
-    description: The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+    deprecated: true
+    summary: Return the ticket to the horizon later, under the name it had before
+    description: |
+      Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
+      removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
+      derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
+      capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     responses:

@@ -159,9 +159,57 @@ func TestTokenCreationRules(t *testing.T) {
 
 	narrow := decode[apigen.TokenCreated](t, created(t, create(map[string]any{"scope": "write", "tenant": w.SlugA, "project": "ALPHA"})))
 	assert.Equal(t, w.SlugA, narrow.RestrictedTenant.MustGet())
-	assert.Equal(t, w.ProjectA, narrow.RestrictedProjectId.MustGet())
+	assert.Equal(t, "ALPHA", narrow.RestrictedProject.MustGet())
+	assert.Equal(t, w.ProjectA, narrow.RestrictedProjectId.MustGet()) //nolint:staticcheck // SA1019: the deprecated field is still answered
 	assert.Equal(t, http.StatusOK, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA", nil).StatusCode)
 	assertProblem(t, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugB, nil), http.StatusNotFound, "not_found")
+}
+
+// docs/adr/0035 D3: a token names the project it is restricted to by its key,
+// in the list and in the token's own answer, as long as the person sees the
+// project in a tenant they belong to; the id stays beside it for the clients
+// that read it.
+func TestATokenNamesItsProjectByKey(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	s := newAPI(t, withLogin)
+	b := s.browser(t)
+	b.mustLogin(names["both"], testPassword)
+	narrow := decode[apigen.TokenCreated](t, created(t, b.request(http.MethodPost, "/api/v1/me/tokens",
+		map[string]any{"name": "narrow", "scope": "read", "tenant": w.SlugA, "project": "ALPHA"})))
+	tenantOnly := decode[apigen.TokenCreated](t, created(t, b.request(http.MethodPost, "/api/v1/me/tokens",
+		map[string]any{"name": "tenant", "scope": "read", "tenant": w.SlugB})))
+	listed := func() map[uuid.UUID]apigen.Token {
+		list := decode[apigen.TokenList](t, b.get("/api/v1/me/tokens"))
+		out := map[uuid.UUID]apigen.Token{}
+		for _, tok := range list.Items {
+			out[tok.Id] = tok
+		}
+		return out
+	}
+	own := func() apigen.CurrentToken {
+		return decode[apigen.CurrentToken](t, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/me/token", nil))
+	}
+
+	tokens := listed()
+	assert.Equal(t, "ALPHA", tokens[narrow.Id].RestrictedProject.MustGet())
+	assert.Equal(t, w.ProjectA, tokens[narrow.Id].RestrictedProjectId.MustGet()) //nolint:staticcheck // SA1019: the deprecated field is still answered
+	assert.True(t, tokens[tenantOnly.Id].RestrictedProject.IsNull(), "a tenant restriction names no project")
+	assert.Equal(t, "ALPHA", own().RestrictedProject.MustGet())
+
+	// The project restricted, and the person on no list of it: the key is gone, the id stays.
+	require.NoError(t, fixtures(t).Exec(context.Background(), "UPDATE projects SET restricted = true WHERE id = $1", w.ProjectA))
+	tokens = listed()
+	assert.True(t, tokens[narrow.Id].RestrictedProject.IsNull(), "a project the person no longer sees has no key")
+	assert.Equal(t, w.ProjectA, tokens[narrow.Id].RestrictedProjectId.MustGet()) //nolint:staticcheck // SA1019: the deprecated field is still answered
+	assert.Equal(t, http.StatusNotFound, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA", nil).StatusCode,
+		"and the token reaches nothing")
+
+	// Open again, but the person left the tenant: no key either.
+	require.NoError(t, fixtures(t).Exec(context.Background(), "UPDATE projects SET restricted = false WHERE id = $1", w.ProjectA))
+	assert.Equal(t, "ALPHA", listed()[narrow.Id].RestrictedProject.MustGet())
+	require.NoError(t, fixtures(t).Exec(context.Background(), "DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2", w.A, w.Both))
+	assert.True(t, listed()[narrow.Id].RestrictedProject.IsNull(), "a tenant the person left names no project")
 }
 
 // created requires the 201 of a creation and hands the response on.

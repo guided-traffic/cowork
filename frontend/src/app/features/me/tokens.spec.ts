@@ -1,14 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { isSignal, signal, WritableSignal } from '@angular/core';
+import { computed, isSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { Tooltip } from 'primeng/tooltip';
 import type { MockInstance } from 'vitest';
 import { Membership, Problem, Token, TokenCreated } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
+import { selectableCapabilities } from '../../shared/capabilities';
 import { dateTime } from '../../shared/time';
 import { NewTokenDialog, scopeMeanings } from './new-token-dialog';
 import { day, Tokens, tokenStateMeanings } from './tokens';
@@ -25,7 +25,7 @@ function token(id: string, overrides: Partial<Token> = {}): Token {
     last_used_on: null,
     revoked_at: null,
     restricted_tenant: null,
-    restricted_project_id: null,
+    restricted_project: null,
     state: 'active',
     ...overrides,
   };
@@ -34,8 +34,9 @@ function token(id: string, overrides: Partial<Token> = {}): Token {
 const laptop = token('t1', {
   name: 'claude on my laptop',
   agent: true,
-  capabilities: [...CAPABILITY],
+  capabilities: [...selectableCapabilities],
   restricted_tenant: 'acme',
+  restricted_project: 'COW',
   restricted_project_id: '0199aaaa-0000-7000-8000-00000000c0de',
   last_used_on: '2026-10-02',
 });
@@ -96,18 +97,18 @@ describe('Tokens', () => {
   let list: WritableSignal<Token[]>;
   let loading: WritableSignal<boolean>;
   let error: WritableSignal<unknown>;
-  let keys: Map<string, string>;
   let reload: MockInstance<() => boolean>;
   let revoke: MockInstance<TokensService['revoke']>;
+  let turn: MockInstance<(state: unknown) => void>;
   let memberships: WritableSignal<Membership[]>;
 
   beforeEach(() => {
     list = signal<Token[]>([laptop, script, old, gone]);
     loading = signal(false);
     error = signal<unknown>(undefined);
-    keys = new Map([['0199aaaa-0000-7000-8000-00000000c0de', 'COW']]);
     reload = vi.fn<() => boolean>().mockReturnValue(true);
     revoke = vi.fn<TokensService['revoke']>().mockResolvedValue(undefined);
+    turn = vi.fn<(state: unknown) => void>();
     memberships = signal<Membership[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -117,7 +118,12 @@ describe('Tokens', () => {
           useValue: {
             list,
             tokens: { isLoading: loading, error, reload },
-            keyOfProject: (id: string) => keys.get(id),
+            table: {
+              page: signal(1),
+              perPage: signal(25),
+              total: computed(() => list().length),
+              turn,
+            },
             revoke,
             create: vi.fn(),
             projectsOf: vi.fn().mockResolvedValue([]),
@@ -197,6 +203,16 @@ describe('Tokens', () => {
       await settle(fixture);
 
       expect(row(fixture, 't2')).not.toBeNull();
+    });
+
+    it('shows the numbered pages under the list and hands a turn of the paginator to the table', async () => {
+      const fixture = await render();
+      const pages = fixture.debugElement.query(By.css('[data-testid="tokens-pages"]'));
+      expect(pages.nativeElement.textContent).toContain('1–4 of 4');
+
+      pages.triggerEventHandler('onPageChange', { page: 0, rows: 50, first: 0 });
+
+      expect(turn).toHaveBeenCalledWith({ page: 0, rows: 50, first: 0 });
     });
 
     it('asks for the tokens again, because what the list holds is as old as the last visit', async () => {
@@ -306,8 +322,8 @@ describe('Tokens', () => {
     });
 
     it('names every capability of a long list, so that two agent tokens can be told apart by looking', async () => {
-      const eight = CAPABILITY.filter((each) => each !== 'close');
-      const seven = CAPABILITY.filter((each) => each !== 'close' && each !== 'decide');
+      const eight = selectableCapabilities.filter((each) => each !== 'close');
+      const seven = selectableCapabilities.filter((each) => each !== 'close' && each !== 'decide');
       list.set([
         token('a', { agent: true, capabilities: eight }),
         token('b', { agent: true, capabilities: seven }),
@@ -352,13 +368,11 @@ describe('Tokens', () => {
       expect(text(restriction(fixture, 't2'))).toBe('none');
     });
 
-    it('shows the tenant, and the key of the project when the token has one', async () => {
+    it('shows the tenant, and the key of the project the token names', async () => {
       const fixture = await render();
 
       expect(text(restriction(fixture, 't1'))).toBe('acme / COW');
-      expect(restriction(fixture, 't1')?.querySelector('.key')?.getAttribute('title')).toBe(
-        '0199aaaa-0000-7000-8000-00000000c0de',
-      );
+      expect(restriction(fixture, 't1')?.querySelector('.key')?.textContent).toBe('COW');
     });
 
     it('shows the tenant alone for a token that is restricted to a tenant only', async () => {
@@ -369,34 +383,19 @@ describe('Tokens', () => {
       expect(restriction(fixture, 'a')?.querySelector('.key')).toBeNull();
     });
 
-    it('shows the end of the id of a project whose key is not found, with the whole id in a title', async () => {
-      keys.clear();
-      const fixture = await render();
-
-      expect(text(restriction(fixture, 't1'))).toBe('acme / 0000c0de');
-      expect(restriction(fixture, 't1')?.querySelector('.key')?.getAttribute('title')).toBe(
-        '0199aaaa-0000-7000-8000-00000000c0de',
-      );
-    });
-
-    it('tells two projects apart whose keys are not found and whose ids were made in the same minute', async () => {
-      keys.clear();
-      // UUIDv7 starts with the time, so these two begin alike; what differs is at the end.
+    it('says so of a project the person no longer sees, which the token no longer reaches', async () => {
       list.set([
         token('a', {
           restricted_tenant: 'acme',
+          restricted_project: null,
           restricted_project_id: '0199a3c2-5b1e-7a40-8c11-4d2f9e0a71b3',
-        }),
-        token('b', {
-          restricted_tenant: 'acme',
-          restricted_project_id: '0199a3c2-5b1e-7f02-9a6d-c81e5b3402ef',
         }),
       ]);
       const fixture = await render();
 
-      expect(text(restriction(fixture, 'a'))).toBe('acme / 9e0a71b3');
-      expect(text(restriction(fixture, 'b'))).toBe('acme / 5b3402ef');
-      expect(text(restriction(fixture, 'a'))).not.toBe(text(restriction(fixture, 'b')));
+      expect(text(restriction(fixture, 'a'))).toBe('acme / a project you no longer see');
+      expect(restriction(fixture, 'a')?.querySelector('.key')).toBeNull();
+      expect(text(restriction(fixture, 'a'))).not.toContain('0199a3c2');
     });
   });
 

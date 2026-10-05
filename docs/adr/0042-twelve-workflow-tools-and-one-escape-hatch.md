@@ -21,6 +21,19 @@ records, and a unit test holds every operation a tool calls to the document. The
 surface: `session_start` reads the working directory and is for a terminal; a host inside the
 backend runs the others in process — ~~which credential such a host presents is not decided~~.
 
+Amended 2026-10-05 by the answer on mentions recorded in
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5, built on the
+recommendation, the owner reviewing the result (D1: `comment` takes `mentions`), and built the same
+day in [`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go) `runComment`.
+
+Amended 2026-10-04 (D1: `place_ticket` in place of `set_urgency`, and `file_ticket` into a
+horizon at a place — the owner's answer recorded in [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)
+D3), and built the same day: `place_ticket` and the horizon of `file_ticket` in
+[`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go), in `cowork-mcp` and in the chat.
+Amended 2026-10-05 (D1: `place_ticket` sets the horizon through `PUT …/horizon` and both tools name
+the capability `set-horizon`, the API following the word as ADR 0010 D1 records it), and built the
+same day: `file_ticket` sends `horizon`, `place_ticket` calls `setHorizon`, their answers and the
+session start read `horizon`, and an act on the horizon reads as setting it.
 Amended 2026-10-04 (D1: `set_urgency`, and the preconditions `from` and `version` a caller may pin),
 with the chat in the UI provisionally
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
@@ -76,10 +89,16 @@ and `activity`; `search` `scope`, `project`, `state`, `type`, `assigned_to_me`,
 `include_terminal` — and `query` itself is optional in one project, where a search without words lists
 the project's tickets in rank order, and asks for words outside one *(amended 2026-10-04: on a
 live run of the chat a model asked "which tickets are in WEB?" sent an empty query, which the
-required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; `transition`
+required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; *(added
+2026-10-05 with [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5)*
+`comment` `mentions`, the persons the comment mentions as `me`, usernames, display names or ids,
+resolved through the member list as `open_question`'s `asked_of`; `transition`
 `block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
-candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
-is not built, and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
+~~candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
+is not built~~ *(2026-10-05:)* candidates by score — the top of `GET /api/v1/me/next` narrowed to
+the bound project with `?tenant=` and `?project=`, passing over the tickets in progress, blocked or
+waiting on an open prerequisite, each with its score and its place in its horizon of the backlog
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D5) — and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
 is not.)* *(Amended 2026-10-04: ~~`comment(key, text, explains_act?)`~~ `comment(key, text)` —
 the explanation of an own act is the `comment` argument of `record_state`, `transition` and
 `set_progress`, written in the act's own request as
@@ -96,7 +115,18 @@ ticket and the reason of the one that reopens it.)* *(Amended 2026-10-04: a sixt
 `finish_work(…, from?)` act only while the ticket is in the state named, `set_progress(…, version?)`
 only while the ticket has the version named ~~— the chat pins what it read before the person decides
 (ADR 0076 D2)~~ *(the chat no longer pins: nothing of it waits for a decision, 2026-10-04; the
-preconditions stay any caller's)*; left out, the state or version read at the call.)*
+preconditions stay any caller's)*; left out, the state or version read at the call.)* *(Amended 2026-10-04, with the horizon of
+ADR 0010 D3 as amended that day:)* ~~`set_urgency(key, urgency?, reason?, withdraw?)`~~
+`place_ticket(key, horizon?, after?, before?, reason?)` — the horizon of a ticket, its place
+directly after or before another ticket of that horizon, or both in one call: the horizon through
+~~the override routes (`later`, the derived value of every ticket, withdraws)~~ *(amended
+2026-10-05, ADR 0010 D1:)* `PUT …/tickets/{number}/horizon`, `later` clearing the horizon set,
+the place through
+`PUT …/tickets/{number}/rank`; a horizon needs ~~`override-urgency`~~ `set-horizon` and a reason, a place `rank`.
+`file_ticket(…, horizon?, after?, before?)` files into a horizon at a place in one request,
+`later` at the end without them. Both descriptions say what a horizon means and that it is not a
+state: asked to file a ticket into `next`, an agent of the earlier catalogue sent the person to
+the state `analysed`.
 
 **D2 — ~~`answer_question` is not a tool and never will be;~~** *(amended 2026-10-01:
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and

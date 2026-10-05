@@ -12,6 +12,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
@@ -29,10 +30,13 @@ const (
 // question is the columns every question query returns.
 type question = readq.GetQuestionRow
 
-func questionView(q question) apigen.Question {
+// questionView renders a question, its options and its answer rendered beside
+// the Markdown (docs/adr/0011 D6) with the images of its ticket.
+func questionView(q question, images richtext.Images) apigen.Question {
 	v := apigen.Question{
-		Id: q.ID, Number: int(q.Number), Question: q.Question, Options: q.Options, Recommendation: q.Recommendation,
-		Answer: nullableOf(q.Answer), Status: apigen.QuestionStatus(q.Status),
+		Id: q.ID, Number: int(q.Number), Question: q.Question, Options: q.Options,
+		OptionsHtml: richtext.HTML(q.Options, images), Recommendation: q.Recommendation,
+		Answer: nullableOf(q.Answer), AnswerHtml: nullableString(nil), Status: apigen.QuestionStatus(q.Status),
 		AskedBy: personView(q.AskedBy, q.AskedByUsername, q.AskedByName), AskedByAgent: nullableOf(q.AskedByAgent),
 		AskedByToken: tokenMarkView(q.AskedByTokenID, q.AskedByTokenName), AskedOf: nullableOf[apigen.Person](nil),
 		AnsweredBy: nullableOf[apigen.Person](nil), AnsweredAt: nullableOf(q.AnsweredAt), RecordedByAgent: q.RecordedByAgent,
@@ -46,6 +50,10 @@ func questionView(q question) apigen.Question {
 	if q.AnsweredBy != nil {
 		p := personView(*q.AnsweredBy, q.AnsweredByUsername, q.AnsweredByName)
 		v.AnsweredBy = nullableOf(&p)
+	}
+	if q.Answer != nil {
+		html := richtext.HTML(*q.Answer, images)
+		v.AnswerHtml = nullableString(&html)
 	}
 	return v
 }
@@ -80,10 +88,16 @@ func (s *Server) ListQuestions(ctx context.Context, req apigen.ListQuestionsRequ
 	const op = "listQuestions"
 	scope := fmt.Sprintf("%s/%s/%d", t.ID, req.Project, req.Number)
 	size := s.h.pageSize(req.Params.Limit)
-	var rows []readq.ListQuestionsRow
+	var (
+		rows   []readq.ListQuestionsRow
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		tc, err := visibleTicket(ctx, r, t, req.Project, req.Number)
 		if err != nil {
+			return err
+		}
+		if images, err = ticketImages(ctx, r, t, tc); err != nil {
 			return err
 		}
 		params := readq.ListQuestionsParams{TenantID: t.ID, TicketID: tc.row.ID, PageSize: limitArg(size)}
@@ -106,11 +120,15 @@ func (s *Server) ListQuestions(ctx context.Context, req apigen.ListQuestionsRequ
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(q readq.ListQuestionsRow) string { return strconv.Itoa(int(q.Number)) })
-	out := apigen.ListQuestions200JSONResponse{Items: make([]apigen.Question, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.QuestionList{Items: make([]apigen.Question, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, q := range rows {
-		out.Items = append(out.Items, questionView(question(q)))
+		out.Items = append(out.Items, questionView(question(q), images))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListQuestions304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListQuestions200JSONResponse{Body: out, Headers: apigen.ListQuestions200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetQuestion answers one question.
@@ -119,16 +137,23 @@ func (s *Server) GetQuestion(ctx context.Context, req apigen.GetQuestionRequestO
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
 	}
-	var q question
+	var (
+		q      question
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		var err error
-		_, q, err = visibleQuestion(ctx, r, t, req.Project, req.Number, req.Question)
+		tc, found, err := visibleQuestion(ctx, r, t, req.Project, req.Number, req.Question)
+		if err != nil {
+			return err
+		}
+		q = found
+		images, err = ticketImages(ctx, r, t, tc)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetQuestion200JSONResponse{Body: questionView(q), Headers: apigen.GetQuestion200ResponseHeaders{ETag: etag(q.Version)}}, nil
+	return apigen.GetQuestion200JSONResponse{Body: questionView(q, images), Headers: apigen.GetQuestion200ResponseHeaders{ETag: etag(q.Version)}}, nil
 }
 
 // AskQuestion asks a question on a ticket: a member's act, in the agent
@@ -140,8 +165,11 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 	if perr != nil {
 		return nil, perr
 	}
-	var asked question
-	var location string
+	var (
+		asked    question
+		images   richtext.Images
+		location string
+	)
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -174,12 +202,13 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 			return fmt.Errorf("insert the question: %w", err)
 		}
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf}})
-		if asked, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: n}); err != nil {
+			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf},
+			Notices: told(store.NoticeAsked, body.AskedOf)})
+		if asked, images, err = writtenQuestion(ctx, w.Reader, t, tc, n); err != nil {
 			return err
 		}
 		location = questionURL(t, tc, n)
-		res, err := stored(questionView(asked), map[string]string{headerETag: *etag(asked.Version), headerLocation: location})
+		res, err := stored(questionView(asked, images), map[string]string{headerETag: *etag(asked.Version), headerLocation: location})
 		if err != nil {
 			return err
 		}
@@ -197,7 +226,7 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 		return apigen.AskQuestion201JSONResponse{Body: body, Headers: apigen.AskQuestion201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
-	return apigen.AskQuestion201JSONResponse{Body: questionView(asked), Headers: apigen.AskQuestion201ResponseHeaders{
+	return apigen.AskQuestion201JSONResponse{Body: questionView(asked, images), Headers: apigen.AskQuestion201ResponseHeaders{
 		ETag: etag(asked.Version), Location: &location}}, nil
 }
 
@@ -222,10 +251,16 @@ func (s *Server) UpdateQuestion(ctx context.Context, req apigen.UpdateQuestionRe
 		return nil, perr
 	}
 	body := *req.Body
-	var out question
+	var (
+		out    question
+		images richtext.Images
+	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, q, err := visibleQuestion(ctx, w.Reader, t, req.Project, req.Number, req.Question)
 		if err != nil {
+			return err
+		}
+		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
 			return err
 		}
 		if perr := mayEdit(principal(ctx), tc, q); perr != nil {
@@ -234,8 +269,9 @@ func (s *Server) UpdateQuestion(ctx context.Context, req apigen.UpdateQuestionRe
 		up := writeq.UpdateQuestionParams{TenantID: t.ID, ID: q.ID, Version: q.Version, Question: q.Question,
 			Options: q.Options, Recommendation: q.Recommendation, AskedOf: q.AskedOf}
 		applyQuestionPatch(body, &up)
-		if up.AskedOf != nil && (q.AskedOf == nil || *up.AskedOf != *q.AskedOf) {
-			if err := checkAskedOf(ctx, w.Reader, t, tc, *up.AskedOf); err != nil {
+		anew := askedAnew(q.AskedOf, up.AskedOf)
+		if anew != nil {
+			if err := checkAskedOf(ctx, w.Reader, t, tc, *anew); err != nil {
 				return err
 			}
 		}
@@ -253,15 +289,16 @@ func (s *Server) UpdateQuestion(ctx context.Context, req apigen.UpdateQuestionRe
 		} else if err != nil {
 			return err
 		}
+		// Asked of another person now: a question asked of them (docs/adr/0020 D2).
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: q.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-			Action: actionEdited, Before: before, After: after})
+			Action: actionEdited, Before: before, After: after, Notices: told(store.NoticeAsked, anew)})
 		out, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: q.Number})
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.UpdateQuestion200JSONResponse{Body: questionView(out), Headers: apigen.UpdateQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.UpdateQuestion200JSONResponse{Body: questionView(out, images), Headers: apigen.UpdateQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // mayEdit holds an edit to the asker and to an open question.
@@ -298,6 +335,15 @@ func applyQuestionPatch(body apigen.QuestionPatch, up *writeq.UpdateQuestionPara
 	}
 }
 
+// askedAnew is the person an edit asks a question of who was not asked
+// before; nil when it is asked of nobody or of the same person.
+func askedAnew(before, after *uuid.UUID) *uuid.UUID {
+	if after == nil || (before != nil && *before == *after) {
+		return nil
+	}
+	return after
+}
+
 func questionFields(p writeq.UpdateQuestionParams) map[string]any {
 	var askedOf any
 	if p.AskedOf != nil {
@@ -313,10 +359,16 @@ func questionFields(p writeq.UpdateQuestionParams) map[string]any {
 // (docs/adr/0066 D8).
 func (s *Server) AnswerQuestion(ctx context.Context, req apigen.AnswerQuestionRequestObject) (apigen.AnswerQuestionResponseObject, error) {
 	t := tenantFrom(ctx)
-	var out question
+	var (
+		out    question
+		images richtext.Images
+	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, q, err := visibleQuestion(ctx, w.Reader, t, req.Project, req.Number, req.Question)
 		if err != nil {
+			return err
+		}
+		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
 			return err
 		}
 		p := principal(ctx)
@@ -337,14 +389,15 @@ func (s *Server) AnswerQuestion(ctx context.Context, req apigen.AnswerQuestionRe
 		}
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: q.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 			Action: questionAnswered, Before: map[string]any{fieldAnswer: q.Answer},
-			After: map[string]any{fieldAnswer: req.Body.Answer, "recorded_by_agent": p.IsAgent()}})
+			After:   map[string]any{fieldAnswer: req.Body.Answer, "recorded_by_agent": p.IsAgent()},
+			Notices: []store.Notice{{Reason: store.NoticeAnswered, People: []uuid.UUID{q.AskedBy}}}})
 		out, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: q.Number})
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.AnswerQuestion200JSONResponse{Body: questionView(out), Headers: apigen.AnswerQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.AnswerQuestion200JSONResponse{Body: questionView(out, images), Headers: apigen.AnswerQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // mayAnswer holds an answer to the rules of docs/adr/0011 D2 and
@@ -386,10 +439,16 @@ func mayAnswer(p auth.Principal, tc ticketCtx, q question, ifm *string) *problem
 // withdraws only what an agent of the same person asked (docs/adr/0011 D2).
 func (s *Server) WithdrawQuestion(ctx context.Context, req apigen.WithdrawQuestionRequestObject) (apigen.WithdrawQuestionResponseObject, error) {
 	t := tenantFrom(ctx)
-	var out question
+	var (
+		out    question
+		images richtext.Images
+	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, q, err := visibleQuestion(ctx, w.Reader, t, req.Project, req.Number, req.Question)
 		if err != nil {
+			return err
+		}
+		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
 			return err
 		}
 		p := principal(ctx)
@@ -428,5 +487,5 @@ func (s *Server) WithdrawQuestion(ctx context.Context, req apigen.WithdrawQuesti
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.WithdrawQuestion200JSONResponse{Body: questionView(out), Headers: apigen.WithdrawQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.WithdrawQuestion200JSONResponse{Body: questionView(out, images), Headers: apigen.WithdrawQuestion200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }

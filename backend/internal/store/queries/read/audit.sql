@@ -1,5 +1,6 @@
 -- name: ListAuditForTenant :many
--- The tenant's audit record, newest first (docs/adr/0026 D6). Each filter is
+-- The tenant's audit record, newest first (docs/adr/0026 D6): by id after a
+-- cursor, or a numbered page by offset (docs/adr/0048 D1, D2). Each filter is
 -- optional; actions combine with OR, the filters with AND.
 SELECT a.id, a.created_at, a.actor_user_id, a.actor_system, a.agent, a.agent_capabilities,
        a.token_id, a.token_name, a.entity_type, a.entity_id, a.ticket_key, a.action::text AS action, a.before,
@@ -16,4 +17,17 @@ WHERE a.tenant_id = sqlc.arg(tenant_id)
   AND (sqlc.narg(to_time)::timestamptz IS NULL OR a.created_at < sqlc.narg(to_time)::timestamptz)
   AND (sqlc.narg(before)::uuid IS NULL OR a.id < sqlc.narg(before)::uuid)
 ORDER BY a.id DESC
-LIMIT sqlc.arg(page_size);
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
+-- name: CountAuditForTenant :one
+-- The rows of the tenant's audit record the filters select, for a numbered
+-- page's total.
+SELECT count(*)::bigint AS events
+FROM audit_events a
+WHERE a.tenant_id = sqlc.arg(tenant_id)
+  AND (sqlc.narg(actor)::uuid IS NULL OR a.actor_user_id = sqlc.narg(actor)::uuid)
+  AND (sqlc.narg(token)::uuid IS NULL OR a.token_id = sqlc.narg(token)::uuid)
+  AND (cardinality(sqlc.arg(actions)::text[]) = 0 OR a.action::text = ANY (sqlc.arg(actions)::text[]))
+  AND (sqlc.narg(entity_type)::text IS NULL OR a.entity_type = sqlc.narg(entity_type)::text)
+  AND (sqlc.narg(from_time)::timestamptz IS NULL OR a.created_at >= sqlc.narg(from_time)::timestamptz)
+  AND (sqlc.narg(to_time)::timestamptz IS NULL OR a.created_at < sqlc.narg(to_time)::timestamptz);

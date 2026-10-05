@@ -28,6 +28,18 @@ export interface ListProjectTickets$Params {
   type?: Array<string>;
   severity?: Array<string>;
   security?: Array<string>;
+
+/**
+ * A horizon, or !horizon; repeated values combine with OR (docs/adr/0010 D3, docs/adr/0049)
+ */
+  horizon?: Array<string>;
+
+/**
+ * `horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it
+ * is 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)
+ *
+ * @deprecated
+ */
   urgency?: Array<string>;
   effort?: Array<string>;
 
@@ -58,7 +70,10 @@ export interface ListProjectTickets$Params {
   done_after?: string;
 
 /**
- * Full text over title and body (docs/adr/0025); its length is capped by the server
+ * A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+ * every word, in the list's own order, without a rank or a snippet — the ranked search over
+ * comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+ * the server
  */
   q?: string;
 
@@ -113,6 +128,7 @@ export function listProjectTickets(http: HttpClient, rootUrl: string, params: Li
     rb.query('type', params.type, {"style":"form","explode":true});
     rb.query('severity', params.severity, {"style":"form","explode":true});
     rb.query('security', params.security, {"style":"form","explode":true});
+    rb.query('horizon', params.horizon, {"style":"form","explode":true});
     rb.query('urgency', params.urgency, {"style":"form","explode":true});
     rb.query('effort', params.effort, {"style":"form","explode":true});
     rb.query('assignee', params.assignee, {"style":"form","explode":true});

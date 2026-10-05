@@ -456,7 +456,9 @@ endpoint (`TestLogoutAtTheIssuer`) and the bootstrap tenant of the administrator
 be discovered, or whose discovery breaks the rules above, is a unit test (`TestDiscoveryFailure`,
 `TestDiscoveryHoldsTheIssuerToItsRules`).
 **Not verified here:** an issuer other than Dex and the test's own; the start's refusal through the
-chart, on a cluster; the login page in a real browser — there is no end-to-end tier yet.
+chart, on a cluster. The login page in a real browser — the local form, a temporary password, the
+sign-in through Dex — is walked by the end-to-end tier against the built images
+([testing.md](../developer/testing.md#end-to-end-tests)).
 
 ## Object storage
 
@@ -857,6 +859,21 @@ D3, amended 2026-10-04) changes what stands in front of the backend:
   paths of [Expose it](#expose-it).
 - `networkPolicy.enabled` and a host's `paths` are no values any more; `--reuse-values` carries
   them along, and nothing reads them.
+
+**The release whose API names the horizon by its word**
+([ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 and
+[ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4, amended 2026-10-05) keeps the names before beside the new ones, so a `cowork-mcp` of the release
+before keeps working against it. Two things to know:
+
+- **Upgrade the installation before the people's `cowork-mcp`.** A `cowork-mcp` of this release
+  calls `setHorizon`, which the release before does not serve, and refuses every tool against it,
+  naming the operation.
+- **A rollback over it** keeps every ticket, list and saved filter working, and every token made
+  before the upgrade. An agent token made, or a chat's capabilities chosen, under this release
+  names the capability `set-horizon`, which the release before does not know: after the rollback
+  that agent is refused setting a horizon (`403 agent_forbidden`, `missing capability:
+  override-urgency`) until its person makes a new token or chooses the chat's capabilities again.
 
 ## Uninstall
 

@@ -124,30 +124,39 @@ func TestStartKeepsTheBlockBounded(t *testing.T) {
 	assert.Len(t, f.calls(http.MethodGet, ticketPath+"/context"), 2, "a smaller context first, then the cut")
 }
 
-// Without a ticket in progress: the top of the backlog by rank.
+// Without a ticket in progress: the top of "next for me" in the bound
+// project, by score (docs/adr/0042 D1), passing over what cannot be taken up.
 func TestStartShowsCandidates(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-	n := 0
-	f.mux.HandleFunc("GET /api/v1/tenants/acme/projects/COW/tickets", func(w http.ResponseWriter, r *http.Request) {
-		n++
-		w.Header().Set("Content-Type", "application/json")
-		if n == 1 {
-			_, _ = w.Write([]byte(`{"items": [], "next_cursor": null}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"items": [{"key": "acme/COW-3", "title": "Pick", "state": "decided", "effort": "M", "assignee": null}], "next_cursor": null}`))
-	})
+	f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list())
+	item := func(key, state string, score any, waiting int) map[string]any {
+		return map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"}, "place": 2,
+			"ticket": map[string]any{"key": key, "title": "Title of " + key, "state": state, "effort": "M", "assignee": nil,
+				"horizon": "next", "score": score, "open_prerequisites": waiting}}
+	}
+	f.on("GET /api/v1/me/next", http.StatusOK, map[string]any{"next_cursor": nil, "items": []any{
+		item("acme/COW-3", "decided", 9.4, 0),
+		item("acme/COW-4", "blocked", 8.1, 0),
+		item("acme/COW-5", "analysed", 7, 1),
+		item("acme/COW-6", "in-progress", 6.5, 0),
+		item("acme/COW-7", "filed", nil, 0),
+	}})
 	block, _, err := Start(context.Background(), startSession(f, fakeWorkspace{remotes: origin}), StartOptions{})
 	require.NoError(t, err)
 	assert.Contains(t, block, "## No ticket of yours is in progress in acme/COW")
-	assert.Contains(t, block, "1. acme/COW-3 — Pick (decided, M, unassigned)")
-	calls := f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets")
-	q, _ := url.ParseQuery(calls[1].Query)
-	assert.Equal(t, []string{"review", "decided", "analysed", "filed"}, q["state"])
-	assert.Equal(t, []string{"me", "none"}, q["assignee"])
-	assert.Equal(t, "false", q.Get("blocked"))
-	assert.Equal(t, "5", q.Get("limit"))
+	assert.Contains(t, block, "Next for you, by score")
+	assert.Contains(t, block, "1. acme/COW-3 — Title of acme/COW-3 (decided, M, unassigned; score 9.4, #2 of next in the backlog)")
+	assert.Contains(t, block, "2. acme/COW-7 — Title of acme/COW-7 (filed, M, unassigned; no score yet, #2 of next in the backlog)")
+	for _, passed := range []string{"COW-4", "COW-5", "COW-6"} {
+		assert.NotContains(t, block, "acme/"+passed, "blocked, waiting on a prerequisite or in progress")
+	}
+	calls := f.calls(http.MethodGet, "/api/v1/me/next")
+	require.Len(t, calls, 1)
+	q, _ := url.ParseQuery(calls[0].Query)
+	assert.Equal(t, "acme", q.Get("tenant"))
+	assert.Equal(t, "COW", q.Get("project"))
+	assert.Equal(t, "25", q.Get("limit"))
 }
 
 // docs/adr/0066 D3: unbound with a proposal, the call to make on yes; several
@@ -195,6 +204,7 @@ func TestStartWithABindingFile(t *testing.T) {
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
 	f.on("GET /api/v1/tenants/acme/projects/UP", http.StatusOK, map[string]any{"key": "UP", "name": "Upstream"})
 	f.on("GET /api/v1/tenants/acme/projects/UP/tickets", http.StatusOK, list())
+	f.on("GET /api/v1/me/next", http.StatusOK, list())
 	s := startSession(f, fakeWorkspace{remotes: origin, file: &BindingFile{Tenant: "acme", Project: "UP", File: "/r/.cowork.yaml"}})
 	block, _, err := Start(context.Background(), s, StartOptions{})
 	require.NoError(t, err)
@@ -342,4 +352,20 @@ func TestActLineNamesTheAgentOrTheToken(t *testing.T) {
 	assert.Equal(t, "Sam through a token commented",
 		actLine(act(`"agent":null,"token":{"id":"0199a3c2-1d2e-7f00-8000-000000000005","name":null}`)))
 	assert.Equal(t, "Sam commented", actLine(act(`"agent":null,"token":null`)))
+}
+
+// An act on the horizon, which the record keeps as overridden, reads in this
+// release's words (docs/adr/0010 D1): a horizon set, or the ticket returned to
+// later.
+func TestActLineSaysHorizon(t *testing.T) {
+	act := func(after string) apigen.Activity {
+		var a apigen.Activity
+		require.NoError(t, json.Unmarshal([]byte(`{"id":"0199a3c2-1d2e-7f00-8000-0000000000e9","at":"2026-10-04T07:00:00Z",
+			"actor":{"id":"0199a3c2-1d2e-7f00-8000-000000000002","display_name":"Sam"},"actor_system":null,
+			"action":"overridden","entity_type":"ticket","entity_id":null,"before":{"urgency_override":null},
+			"after":`+after+`,"reason":null,"note":null,"explained_by_comment":null,"redacted":false,"agent":null,"token":null}`), &a))
+		return a
+	}
+	assert.Equal(t, "Sam set the horizon to now", actLine(act(`{"urgency_override":"now"}`)))
+	assert.Equal(t, "Sam returned the ticket to later", actLine(act(`{"urgency_override":null}`)))
 }

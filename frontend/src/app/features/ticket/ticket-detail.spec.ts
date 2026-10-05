@@ -1,6 +1,6 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal, Type, WritableSignal } from '@angular/core';
+import { computed, signal, Type, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
@@ -23,20 +23,29 @@ import {
   Me,
   Problem,
   Question,
+  PrerequisiteTree,
   QuestionList,
   Ticket,
+  TicketBody as RenderedBody,
   TimeEntryList,
 } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { EntityCache } from '../../core/entity-cache';
-import { EventStreamService } from '../../core/event-stream.service';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { TicketsService } from '../../core/tickets.service';
 import { Clock } from '../../shared/time';
-import { AnswerQuestion, AskQuestion, CommentComposer, LinkAdder } from './conversation-forms';
+import { CommentItem } from './comment-item';
+import {
+  AnswerQuestion,
+  AskQuestion,
+  CommentComposer,
+  EditQuestion,
+  LinkAdder,
+} from './conversation-forms';
 import { InterestControl } from './interest-control';
 import { AttachmentsCard, TimeCard } from './records-cards';
 import { describe as describeActivity, TicketDetail } from './ticket-detail';
@@ -74,6 +83,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     progress_derived: false,
     progress_refinement: 0,
     progress_review: 0,
+    horizon: 'next',
+    horizon_set: null,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -86,6 +97,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 3,
     ...overrides,
   };
@@ -97,9 +110,11 @@ function question(overrides: Partial<Question> = {}): Question {
     number: 1,
     question: 'Which flicker is it?',
     options: '',
+    options_html: '',
     recommendation: '',
     status: 'open',
     answer: null,
+    answer_html: null,
     answered_at: null,
     answered_by: null,
     asked_by: ada,
@@ -123,8 +138,10 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     agent: null,
     token: null,
     body: 'Reproduced on the second board.',
+    body_html: null,
     edited: false,
     explains: [],
+    mentions: [],
     withdrawn: false,
     withdrawn_at: null,
     created_at: '2026-10-03T10:00:00Z',
@@ -196,6 +213,8 @@ function list<T>(...items: T[]) {
   return { items, next_cursor: null };
 }
 
+const noTree: PrerequisiteTree = { items: [], next_cursor: null, open: 0 };
+
 describe('describe', () => {
   it('names the person who acted', () => {
     expect(describeActivity(activity({ actor: ada, action: 'transitioned' }))).toBe(
@@ -232,6 +251,40 @@ describe('describe', () => {
 
     expect(describeActivity(activity({ action }))).toBe('Ada Lovelace confidential set again');
   });
+
+  // docs/adr/0014 D3, docs/adr/0015 D1: the project's act shows on every ticket it moved.
+  it('says that the backlog was sorted by the score, where the act is the project', () => {
+    expect(
+      describeActivity(
+        activity({ action: 'ranked', entity_type: 'project', after: { by: 'score' } }),
+      ),
+    ).toBe('Ada Lovelace sorted the backlog by score');
+    expect(describeActivity(activity({ action: 'ranked', entity_type: 'ticket' }))).toBe(
+      'Ada Lovelace ranked',
+    );
+  });
+
+  // docs/adr/0010 D1: the act on the horizon is recorded as overridden, its name before.
+  it('says what an act on the horizon did, never overridden', () => {
+    expect(
+      describeActivity(
+        activity({
+          action: 'overridden',
+          before: { urgency_override: null },
+          after: { urgency_override: 'now' },
+        }),
+      ),
+    ).toBe('Ada Lovelace set the horizon to now');
+    expect(
+      describeActivity(
+        activity({
+          action: 'overridden',
+          before: { urgency_override: 'next' },
+          after: { urgency_override: null },
+        }),
+      ),
+    ).toBe('Ada Lovelace returned the ticket to later');
+  });
 });
 
 describe('TicketDetail', () => {
@@ -244,10 +297,13 @@ describe('TicketDetail', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
+    tree: `${base}/prerequisites?direction=down&limit=200`,
+    body: `${base}/body`,
   };
 
   /** What the API answers for the parts around a ticket; a part left out stays unanswered. */
   interface Answers {
+    tree?: PrerequisiteTree;
     comments?: CommentList;
     activity?: ActivityList;
     questions?: QuestionList;
@@ -255,12 +311,15 @@ describe('TicketDetail', () => {
     interest?: InterestList;
     attachments?: AttachmentList;
     time?: TimeEntryList;
+    body?: RenderedBody;
   }
 
   let tenant: WritableSignal<string | null>;
+  let role: WritableSignal<'admin' | 'member'>;
   let person: WritableSignal<Me | undefined>;
   let cache: EntityCache<Ticket>;
   let loadError: WritableSignal<unknown>;
+  let loaded: WritableSignal<string | undefined>;
   let shownKey: (() => string | undefined) | undefined;
   let http: HttpTestingController;
   let conversation: { unlink: MockInstance<Conversation['unlink']> };
@@ -268,6 +327,7 @@ describe('TicketDetail', () => {
 
   beforeEach(() => {
     tenant = signal<string | null>('acme');
+    role = signal<'admin' | 'member'>('member');
     person = signal<Me | undefined>({
       ...ada,
       memberships: [],
@@ -277,6 +337,7 @@ describe('TicketDetail', () => {
     });
     cache = new EntityCache<Ticket>();
     loadError = signal<unknown>(undefined);
+    loaded = signal<string | undefined>(undefined);
     shownKey = undefined;
     conversation = { unlink: vi.fn<Conversation['unlink']>().mockResolvedValue(undefined) };
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
@@ -287,7 +348,10 @@ describe('TicketDetail', () => {
         provideHttpClientTesting(),
         provideApiConfiguration(''),
         MessageService,
-        { provide: SessionService, useValue: { tenant, person } },
+        {
+          provide: SessionService,
+          useValue: { tenant, person, membership: computed(() => ({ role: role() })) },
+        },
         { provide: Conversation, useValue: conversation },
         { provide: TicketActions, useValue: { update, transition: vi.fn() } },
         { provide: TicketRecords, useValue: {} },
@@ -298,7 +362,7 @@ describe('TicketDetail', () => {
             cache,
             ticket: (key: () => string | undefined) => {
               shownKey = key;
-              return { error: loadError };
+              return { error: loadError, hasValue: () => loaded() !== undefined, value: loaded };
             },
           },
         },
@@ -383,6 +447,7 @@ describe('TicketDetail', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
 
@@ -410,13 +475,13 @@ describe('TicketDetail', () => {
   });
 
   describe('the header', () => {
-    it('links the project in the breadcrumbs and names the key', async () => {
+    it('links the project in the breadcrumbs to its board and names the key', async () => {
       show();
 
       const { page } = await render();
 
       const crumbs = page.querySelector('nav.crumbs');
-      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/board');
       expect(crumbs?.querySelector('a')?.textContent).toBe('COW');
       expect(crumbs?.querySelector('.tabular')?.textContent).toBe('COW-12');
     });
@@ -460,6 +525,17 @@ describe('TicketDetail', () => {
       const { page } = await render();
 
       expect(page.querySelector('.badges > .pill')).toBeNull();
+    });
+
+    it('offers the deletion to a tenant administrator only (docs/adr/0024 D7)', async () => {
+      show();
+      const member = await render();
+      expect(member.page.querySelector('[data-testid="delete-ticket"]')).toBeNull();
+
+      role.set('admin');
+      member.fixture.detectChanges();
+
+      expect(member.page.querySelector('[data-testid="delete-ticket"]')).not.toBeNull();
     });
 
     it('shows why a ticket is blocked', async () => {
@@ -535,6 +611,44 @@ describe('TicketDetail', () => {
       expect(page.querySelector('[data-testid="body"]')).toBeNull();
       expect(page.textContent).toContain('No description.');
     });
+
+    it('shows the body as the server rendered it, once it has the rendering', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        body: {
+          body: 'It flickers on every event.',
+          body_html: '<p>It <em>flickers</em> on every event.</p>',
+          version: 3,
+        },
+      });
+
+      expect(page.querySelector('[data-testid="body"] .rendered em')?.textContent).toBe('flickers');
+    });
+
+    it('loads the rendering again for a newer version, and for an upload, which moves none', async () => {
+      show();
+      const { fixture } = await render('COW-12', {
+        body: { body: 'It flickers on every event.', body_html: '<p>It flickers.</p>', version: 3 },
+      });
+
+      show({ version: 4, body: 'It flickers less.' });
+      fixture.detectChanges();
+      await answer(fixture, {
+        body: { body: 'It flickers less.', body_html: '<p>It flickers less.</p>', version: 4 },
+      });
+      expect(text(fixture.nativeElement, '[data-testid="body"]')).toBe('It flickers less.');
+
+      (TestBed.inject(EventStreamService).events as Subject<StreamEvent>).next({
+        name: 'ticket.changed',
+        id: 'act-1',
+        key: 'acme/COW-12',
+        version: 4,
+        kind: 'uploaded',
+      });
+      await answer(fixture, {});
+      expect(http.match(urls.body)).toHaveLength(1);
+    });
   });
 
   describe('the questions', () => {
@@ -547,6 +661,7 @@ describe('TicketDetail', () => {
             number: 2,
             question: 'Which flicker is it?',
             options: 'Repaint or reflow',
+            options_html: '<p>Repaint or reflow</p>',
             recommendation: 'Repaint',
             asked_by_agent: 'claude',
             asked_of: sam,
@@ -556,10 +671,9 @@ describe('TicketDetail', () => {
 
       const open = page.querySelector('[data-testid="question-2"]');
       expect(open?.querySelector('.ask')?.textContent).toBe('Which flicker is it?');
+      expect(text(page, '[data-testid="question-2"] .options strong')).toBe('Options:');
+      expect(text(page, '[data-testid="question-2"] .options .rendered')).toBe('Repaint or reflow');
       expect(text(page, '[data-testid="question-2"] p:nth-of-type(2)')).toBe(
-        'Options: Repaint or reflow',
-      );
-      expect(text(page, '[data-testid="question-2"] p:nth-of-type(3)')).toBe(
         'Recommended: Repaint',
       );
       expect(text(page, '[data-testid="question-2"] .meta')).toBe(
@@ -578,6 +692,35 @@ describe('TicketDetail', () => {
       expect(text(page, '[data-testid="question-1"] .meta')).toBe(
         'asked by Ada Lovelace · 1 hour ago',
       );
+    });
+
+    it("shows the options and the answer as the server rendered them, through Angular's sanitiser", async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        questions: list(
+          question({
+            number: 1,
+            options: '- *repaint*',
+            options_html: '<ul><li><em>repaint</em></li></ul><img src="x" onerror="alert(1)">',
+          }),
+          question({
+            id: 'q-2',
+            number: 2,
+            status: 'answered',
+            answer: 'see [the run](https://ci.example/7)',
+            answer_html:
+              '<p>see <a href="https://ci.example/7" rel="noopener noreferrer nofollow" target="_blank">the run</a></p>',
+          }),
+        ),
+      });
+
+      const options = page.querySelector('[data-testid="question-1"] .options .rendered');
+      expect(options?.querySelector('em')?.textContent).toBe('repaint');
+      expect(options?.querySelector('img')?.getAttribute('onerror')).toBeNull();
+      const link = page.querySelector('[data-testid="question-answer"] a');
+      expect(link?.getAttribute('href')).toBe('https://ci.example/7');
+      expect(link?.getAttribute('rel')).toBe('noopener noreferrer nofollow');
     });
 
     it('says so when no question is open', async () => {
@@ -600,6 +743,7 @@ describe('TicketDetail', () => {
             question: 'Repaint or reflow?',
             status: 'answered',
             answer: 'Reflow.',
+            answer_html: '<p>Reflow.</p>',
           }),
           question({ id: 'q-2', number: 2, question: 'Which browser?', status: 'withdrawn' }),
           question({ id: 'q-3', number: 3, question: 'Still open?' }),
@@ -611,7 +755,8 @@ describe('TicketDetail', () => {
         ...page.querySelectorAll('.question.settled'),
       ] as HTMLElement[];
       expect(text(answered, '.ask')).toBe('Repaint or reflow?');
-      expect(text(answered, 'p.small')).toBe('Answer: Reflow.');
+      expect(text(answered, '.answer strong')).toBe('Answer:');
+      expect(text(answered, '.answer .rendered')).toBe('Reflow.');
       expect(text(withdrawn, '.ask')).toBe('Which browser?');
       expect(text(withdrawn, 'p.small')).toBe('withdrawn');
       expect(text(page, 'h2 .count')).toBe('1 open');
@@ -772,6 +917,21 @@ describe('TicketDetail', () => {
       expect(text(page, '[data-testid="comment-c-7"] p.muted:not(.meta)')).toBe('withdrawn');
     });
 
+    it('shows a comment as the server rendered it', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        comments: list(
+          comment({ id: 'c-7', body: '**done**', body_html: '<p><strong>done</strong></p>' }),
+        ),
+      });
+
+      expect(page.querySelector('[data-testid="comment-c-7"] .rendered strong')?.textContent).toBe(
+        'done',
+      );
+      expect(page.querySelector('[data-testid="comment-c-7"]')?.id).toBe('comment-c-7');
+    });
+
     it('says so when there are no comments', async () => {
       show();
 
@@ -782,7 +942,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the comments are loaded', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.textContent).not.toContain('No comments yet.');
 
@@ -871,7 +1031,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the activity is loaded', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.querySelector('.activity')).toBeNull();
 
@@ -1222,7 +1382,7 @@ describe('TicketDetail', () => {
 
     it('shows neither the skeleton nor the list of a failed part', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
 
       await fail(fixture, 'comments', unready);
       await fail(fixture, 'activity', unready);
@@ -1372,6 +1532,116 @@ describe('TicketDetail', () => {
     });
   });
 
+  describe('the parts that edit (docs/adr/0018 D2)', () => {
+    it('gives the title, the body and the prerequisite tree a place, the title as the heading', async () => {
+      show();
+
+      const { page } = await render();
+
+      expect(page.querySelector('.head app-ticket-title h1')?.textContent).toBe(
+        'The board flickers',
+      );
+      expect(page.querySelector('app-ticket-body [data-testid="body"]')?.textContent).toBe(
+        'It flickers on every event.',
+      );
+      expect(page.querySelector('app-prerequisite-tree')).not.toBeNull();
+    });
+
+    it('offers each open question its editor, which decides whom it offers itself to', async () => {
+      show();
+
+      const { fixture } = await render('COW-12', {
+        questions: list(question(), question({ id: 'q-2', number: 2, status: 'withdrawn' })),
+      });
+
+      const editors = fixture.debugElement.queryAll(By.directive(EditQuestion));
+      expect(editors.map((each) => (each.componentInstance as EditQuestion).question().id)).toEqual(
+        ['q-1'],
+      );
+    });
+
+    it('hands each comment its own files, the person and whether they administer the tenant', async () => {
+      show();
+      role.set('admin');
+      const shot: AttachmentList['items'][number] = {
+        id: 'a-1',
+        comment: 'c-1',
+        file_name: 'shot.png',
+        content_type: 'image/png',
+        content_url: '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/a-1/content',
+        sha256: 'ab12',
+        size: 2048,
+        uploaded_by: ada,
+        agent: null,
+        token: null,
+        created_at: '2026-10-03T11:00:00Z',
+      };
+      const loose = { ...shot, id: 'a-2', comment: null };
+
+      const { fixture } = await render('COW-12', {
+        comments: list(comment(), comment({ id: 'c-2' })),
+        attachments: list(shot, loose),
+      });
+
+      const items = fixture.debugElement
+        .queryAll(By.directive(CommentItem))
+        .map((each) => each.componentInstance as CommentItem);
+      expect(items.map((item) => item.files().map((file) => file.id))).toEqual([['a-1'], []]);
+      expect(items.map((item) => [item.me(), item.administers()])).toEqual([
+        ['p1', true],
+        ['p1', true],
+      ]);
+    });
+
+    it('closes the title and the body editors when the path names another ticket', async () => {
+      show();
+      cache.put(
+        'acme/COW-13',
+        ticket({ id: 't-13', key: 'acme/COW-13', number: 13, title: 'Next' }),
+      );
+      const { fixture, page } = await render();
+      (page.querySelector('[data-testid="title-edit"]') as HTMLButtonElement).click();
+      (page.querySelector('[data-testid="body-edit"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(page.querySelector('[data-testid="title-input"]')).not.toBeNull();
+      expect(page.querySelector('[data-testid="body-input"]')).not.toBeNull();
+
+      fixture.componentRef.setInput('key', 'COW-13');
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="title-input"]')).toBeNull();
+      expect(page.querySelector('[data-testid="body-input"]')).toBeNull();
+      expect(page.querySelector('[data-testid="ticket-title"]')?.textContent).toBe('Next');
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('closes the editors of a comment and of a question with the ticket they belong to', async () => {
+      show();
+      cache.put('acme/COW-13', ticket({ id: 't-13', key: 'acme/COW-13', number: 13 }));
+      const { fixture, page } = await render('COW-12', {
+        comments: list(comment()),
+        questions: list(question()),
+      });
+      (page.querySelector('[data-testid="comment-edit-c-1"]') as HTMLButtonElement).click();
+      (page.querySelector('[data-testid="edit-question-1"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).not.toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).not.toBeNull();
+
+      fixture.componentRef.setInput('key', 'COW-13');
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).toBeNull();
+    });
+  });
+
   describe('a ticket that cannot be shown', () => {
     it('says there is no such ticket when the API answers 404', async () => {
       loadError.set(problem(404, 'Not found', 'No such ticket.'));
@@ -1395,6 +1665,29 @@ describe('TicketDetail', () => {
       const missing = page.querySelector('[data-testid="ticket-missing"]');
       expect(missing?.querySelector('h1')?.textContent).toBe('The service is not ready');
       expect(missing?.querySelector('p')?.textContent?.trim()).toBe('The database is starting.');
+    });
+
+    it('says there is no such ticket when the ticket it showed leaves the cache, deleted or out of sight', async () => {
+      show();
+      loaded.set('acme/COW-12');
+      const { fixture, page } = await render();
+      expect(text(page, '[data-testid="ticket-title"]')).toBe('The board flickers');
+
+      cache.delete('acme/COW-12');
+      fixture.detectChanges();
+
+      const missing = page.querySelector('[data-testid="ticket-missing"]');
+      expect(missing?.querySelector('h1')?.textContent).toBe('No such ticket');
+      expect(page.querySelector('p-skeleton')).toBeNull();
+    });
+
+    it('waits with skeletons while the load of another key has not answered yet', async () => {
+      loaded.set('acme/COW-11');
+
+      const { page } = await render('COW-12');
+
+      expect(page.querySelector('[data-testid="ticket-missing"]')).toBeNull();
+      expect(page.querySelectorAll('p-skeleton').length).toBeGreaterThan(0);
     });
 
     it('shows the ticket instead of the failure when it is in the cache', async () => {

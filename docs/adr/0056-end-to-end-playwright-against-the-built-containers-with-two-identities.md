@@ -15,8 +15,34 @@ API).
 
 **Partly built.** The unit tiers and the frontend coverage report exist
 ([ADR 0003](0003-test-and-ci-policy.md), `make test`, `make frontend-test-coverage`, the
-`frontend` CI job's artefact and the PR comment's frontend line). The end-to-end tier is not
-built; ADR 0003 D2's row is amended to point here.
+`frontend` CI job's artefact and the PR comment's frontend line). ~~The end-to-end tier is not
+built;~~ ADR 0003 D2's row is amended to point here. *(Amended 2026-10-04: the end-to-end tier is
+built — `frontend/e2e/`, `make e2e` ([`hack/e2e.sh`](../../hack/e2e.sh)) and the `e2e` job after
+`container-malware-scan` with its images, ten minutes, trace and video on failure, in
+`semantic-release`'s `needs:` (D1, D4). D3 as far as the UI has its pages: the login through the
+local form, a temporary password and Dex; the session cookie, a write past the CSRF check and the
+sign-out; a ticket filed and moved; a project opening on its board and a transition by drag on it;
+the backlog's drag within and between horizons — every one in Chromium and WebKit (D8) and in both
+schemes, and a dark-mode screenshot of a seeded board at 2 % of the pixels, which a light surface
+fails and text turned dark on dark passes, measured; `data-testid` and data seeded through the API
+(D7), a PrimeNG menu item and Dex's form found otherwise. Verified by running it locally on
+2026-10-04. ~~**Not built:** the path with two identities in one test (D2) — filing, assigning, the
+second identity's "assigned to me" and inbox within the stream's latency, its move and close with a
+verification note — which waits for those pages and stands as a pending test;~~ *(2026-10-05: the
+path with two identities is written — [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts),
+each identity in a browser context of its own, the pending mark gone — and has not run yet: the
+images were not built for it; the `e2e` job runs it after the merge.)* **Not built:** the init state and
+the first tenant, the tenant board — whose path, a transition by drag and the refusal across
+swimlanes, is written ([`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts),
+2026-10-05) and has not run yet —, a restricted project's third identity, the import and the MCP
+server's `session_start` of D3. The `e2e` job ran on a runner first on 2026-10-05 (run 37267795406
+of commit `dbe64f0`): passed in 3 min 9 s against its ten minutes, the stack's ports on `127.0.0.1`
+reachable, the browsers installed with `--with-deps`, the Linux pictures holding on amd64. **Not
+verified:** the `main` ruleset does not require the job yet
+— the owner adds it ([ADR 0073](0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
+D6). D1 amended the same day with the build, for the reasons written there: `make e2e` runs a
+stack of its own instead of `make dev-up`'s containers — settled 2026-10-05 on the recommendation,
+the owner reviewing the result.)*
 
 ## Context
 
@@ -33,13 +59,21 @@ images work together must run the shipped images, not the dev server.
 
 **D1 — Playwright Test, in `frontend/e2e/`, against the built containers.** The target is
 the frontend and backend images of the same commit, with PostgreSQL, MinIO and the minimal
-Dex from the development `compose.yaml` ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D2) as services. *(Amended 2026-10-04: the two images run behind the stand-in for the Ingress of
+Dex ~~from the development `compose.yaml` ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+D2) as services~~ *(amended 2026-10-04: of its own, from the Makefile's images and
+[`hack/dex/config.yaml`](../../hack/dex/config.yaml); there is no `compose.yaml`, ADR 0038 D2)*. *(Amended 2026-10-04: the two images run behind the stand-in for the Ingress of
 [`hack/ingress/default.conf`](../../hack/ingress/default.conf), which routes `/api/` and `/auth/`
 to the backend and the rest to the frontend as the chart's Ingress does; the suite talks to the
 stand-in.)* Never `ng serve`, never a mocked API, in CI. Locally, `make e2e` runs the
-same against `make dev-up` plus locally built images; a developer may point the suite at
-`ng serve` for iteration, which is not a gate.
+same ~~against `make dev-up` plus locally built images~~ *(amended 2026-10-04: with locally built
+images; in CI and locally alike it starts a PostgreSQL, a MinIO and a Dex of its own on a Docker
+network of its own and removes them afterwards ([`hack/e2e.sh`](../../hack/e2e.sh)), because the
+backend runs in a container and must reach the issuer at the URL the browser uses — the backend
+takes plain `http` only on a loopback host, so Dex's container holds the network namespace the
+backend and the stand-in join — and because the run's tenants and people stay out of the
+development database. The stand-in terminates TLS with a certificate made for the run: WebKit
+stores no `Secure` cookie from plain-HTTP localhost ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D2))*;
+a developer may point the suite at `ng serve` for iteration, which is not a gate.
 
 **D2 — Two identities in one test where a feature is about people.** Playwright's browser
 contexts hold two sessions at once: the first identity acts, the second sees — assignment,

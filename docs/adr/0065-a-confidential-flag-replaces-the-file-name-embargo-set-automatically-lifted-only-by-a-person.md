@@ -11,7 +11,11 @@ were put to the owner with the question and not objected to.
 predicate `app_ticket_visible` in every ticket query (a unit test holds the queries to it),
 the flag set on creation and on a change to `live` or `boundary`, the administrator's act to
 set or lift it (lifting with a reason, never an agent's), and the security page on tenancy.
-D7 arrives with the importer.
+D7 arrives with the importer. *(2026-10-04.)* The detail page offers a tenant administrator to
+set the flag, with a reason they may give, and to lift it, only with one. *(2026-10-05.)* D5's
+dashboard tiles exist ([ADR 0018](0018-the-views-of-the-first-release.md) D6): every tile counts,
+names and measures only the tickets the reader sees, the open `live` count among them, and the
+integration tier reads each tile with a confidential ticket the reader cannot see.
 
 ## Context
 

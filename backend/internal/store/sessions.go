@@ -145,7 +145,7 @@ func (db *DB) ExpireSessions(ctx context.Context, now time.Time, idle time.Durat
 		if n == 0 {
 			return nil
 		}
-		w.Record(Event{EntityType: "sessions", Action: actionExpired, After: map[string]int64{"removed": n}})
+		w.Record(Event{EntityType: "sessions", Action: actionExpired, After: map[string]int64{fieldRemoved: n}})
 		return nil
 	})
 	return removed, err

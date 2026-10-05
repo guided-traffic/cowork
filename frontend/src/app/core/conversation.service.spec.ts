@@ -2,12 +2,13 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { Question } from '../api/models';
+import { Comment, Question } from '../api/models';
 import { Conversation } from './conversation.service';
 
 const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
 const key = 'acme/VKO-12';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
 function question(overrides: Partial<Question> = {}): Question {
   return {
@@ -15,9 +16,11 @@ function question(overrides: Partial<Question> = {}): Question {
     number: 3,
     question: 'Which way?',
     options: '',
+    options_html: '',
     recommendation: '',
     status: 'open',
     answer: null,
+    answer_html: null,
     answered_at: null,
     answered_by: null,
     asked_by: { id: 'p1', display_name: 'Hans' },
@@ -55,35 +58,29 @@ describe('Conversation', () => {
   });
 
   describe('comment', () => {
-    it('posts the text to the comments of the ticket, with a key of its own for the act', async () => {
-      const done = conversation.comment(key, 'Looks right.');
+    it("posts the text to the comments of the ticket, with the form's key (docs/adr/0045 D3)", async () => {
+      const done = conversation.comment(key, 'Looks right.', formKey);
 
       const sent = http.expectOne(`${base}/comments`);
       expect(sent.request.method).toBe('POST');
       expect(sent.request.body).toEqual({ body: 'Looks right.' });
-      expect(sent.request.headers.get('Idempotency-Key')).toMatch(uuid);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
       sent.flush({ id: 'c1', body: 'Looks right.' });
 
       expect(await done).toMatchObject({ id: 'c1' });
     });
 
-    it('sends another key for the next comment', async () => {
-      const first = conversation.comment(key, 'One');
-      const one = http.expectOne(`${base}/comments`);
-      one.flush({ id: 'c1' });
-      await first;
-      const second = conversation.comment(key, 'Two');
-      const two = http.expectOne(`${base}/comments`);
-      two.flush({ id: 'c2' });
-      await second;
+    it('sends the ids of the persons it mentions beside the text (docs/adr/0015 D5)', async () => {
+      const done = conversation.comment(key, '@Sam Rivera, look', formKey, ['p2']);
 
-      expect(one.request.headers.get('Idempotency-Key')).not.toBe(
-        two.request.headers.get('Idempotency-Key'),
-      );
+      const sent = http.expectOne(`${base}/comments`);
+      expect(sent.request.body).toEqual({ body: '@Sam Rivera, look', mentions: ['p2'] });
+      sent.flush({ id: 'c1' });
+      await done;
     });
 
     it('rejects with the HTTP error', async () => {
-      const outcome = conversation.comment(key, 'x').then(
+      const outcome = conversation.comment(key, 'x', formKey).then(
         () => null,
         (error: unknown) => error,
       );
@@ -97,12 +94,12 @@ describe('Conversation', () => {
   });
 
   describe('ask', () => {
-    it('posts the question to the questions of the ticket, with a key of its own for the act', async () => {
-      const done = conversation.ask(key, {
-        question: 'Which way?',
-        options: 'A or B',
-        recommendation: 'A',
-      });
+    it("posts the question to the questions of the ticket, with the form's key (docs/adr/0045 D3)", async () => {
+      const done = conversation.ask(
+        key,
+        { question: 'Which way?', options: 'A or B', recommendation: 'A' },
+        formKey,
+      );
 
       const sent = http.expectOne(`${base}/questions`);
       expect(sent.request.method).toBe('POST');
@@ -111,7 +108,7 @@ describe('Conversation', () => {
         options: 'A or B',
         recommendation: 'A',
       });
-      expect(sent.request.headers.get('Idempotency-Key')).toMatch(uuid);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
       sent.flush(question());
 
       expect((await done).number).toBe(3);
@@ -273,9 +270,74 @@ describe('Conversation', () => {
   });
 
   it('addresses every call through the tenant, the project and the number of the key', async () => {
-    const done = conversation.comment('globex/COW-3', 'x');
+    const done = conversation.comment('globex/COW-3', 'x', formKey);
 
     http.expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/comments').flush({ id: 'c1' });
     await done;
+  });
+
+  describe('the comments of a comment (docs/adr/0015 D3)', () => {
+    const comment = {
+      id: '0199aaaa-0000-7000-8000-0000000000c1',
+      version: 2,
+      body: 'Before',
+    } as Comment;
+    const at = `${base}/comments/0199aaaa-0000-7000-8000-0000000000c1`;
+
+    it('edits a comment over the version the editing began with', async () => {
+      const done = conversation.editComment(key, comment, 'After');
+
+      const sent = http.expectOne(at);
+      expect(sent.request.method).toBe('PATCH');
+      expect(sent.request.headers.get('If-Match')).toBe('"2"');
+      expect(sent.request.body).toEqual({ body: 'After' });
+      sent.flush({ ...comment, version: 3, body: 'After' });
+
+      expect((await done).version).toBe(3);
+    });
+
+    it('replaces the mentions of a comment with the list an edit sends', async () => {
+      const done = conversation.editComment(key, comment, 'After, @Sam Rivera', ['p2']);
+
+      const sent = http.expectOne(at);
+      expect(sent.request.body).toEqual({ body: 'After, @Sam Rivera', mentions: ['p2'] });
+      sent.flush({ ...comment, version: 3 });
+      await done;
+    });
+
+    it('reads the earlier texts of a comment, oldest first, as the API orders them', async () => {
+      const done = conversation.commentRevisions(key, comment);
+
+      http
+        .expectOne(`${at}/revisions?limit=200`)
+        .flush({ items: [{ body: 'First' }, { body: 'Before' }], next_cursor: null });
+
+      expect((await done).map((revision) => revision.body)).toEqual(['First', 'Before']);
+    });
+
+    it('withdraws a comment, which takes no version', async () => {
+      const done = conversation.withdrawComment(key, comment);
+
+      const sent = http.expectOne(`${at}/withdrawal`);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.headers.has('If-Match')).toBe(false);
+      sent.flush({ ...comment, withdrawn: true, body: null });
+
+      expect((await done).withdrawn).toBe(true);
+    });
+  });
+
+  describe('editQuestion (docs/adr/0011 D2)', () => {
+    it('changes the text of an open question over the version the editing began with', async () => {
+      const done = conversation.editQuestion(key, question(), { question: 'Which way now?' });
+
+      const sent = http.expectOne(`${base}/questions/3`);
+      expect(sent.request.method).toBe('PATCH');
+      expect(sent.request.headers.get('If-Match')).toBe('"4"');
+      expect(sent.request.body).toEqual({ question: 'Which way now?' });
+      sent.flush(question({ question: 'Which way now?', version: 5 }));
+
+      expect((await done).version).toBe(5);
+    });
   });
 });

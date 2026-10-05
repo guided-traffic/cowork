@@ -12,7 +12,9 @@ explicitly confirmed.
 `hooks/hooks.json` and the `settings.json` block of
 [docs/operations/claude-code.md](../operations/claude-code.md). D1 and D7 without the inbox,
 which does not exist ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)), and
-with the candidates in rank order while the score is not built; the block is held to about
+with the candidates ~~in rank order while the score is not built~~ *(2026-10-05: by score, the top
+of "next for me" in the bound project, [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)
+D1)*; the block is held to about
 9 000 bytes. A compaction (`source: compact`) shows the block again without moving the
 session's start. D4 and D5 as amended.
 

@@ -285,6 +285,36 @@ thead + .group .group-head th {
   }
 }
 
+/* Where the score disagrees with the rank (docs/adr/0014 D3): a marker, not a figure. */
+.score-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.2rem;
+  height: 1.25rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 550;
+  color: var(--p-text-muted-color);
+  border: 1px dashed var(--p-app-border);
+  cursor: help;
+
+  &.higher {
+    color: var(--p-primary-color);
+    border-color: var(--p-primary-color);
+  }
+
+  .pi {
+    font-size: 0.625rem;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--p-primary-color);
+    outline-offset: 1px;
+  }
+}
+
 .reason {
   width: min(30rem, 100%);
   margin-top: 0.625rem;

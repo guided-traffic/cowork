@@ -33,10 +33,13 @@ tokens:
     summary: The person's tokens, revoked and expired ones included
     description: |
       Metadata only; a token's plaintext is shown once, at creation
-      (docs/adr/0035 D1, D6).
+      (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+      a total (docs/adr/0048 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
     responses:
       '200':
         description: A page of tokens
@@ -158,7 +161,7 @@ chat:
             schema:
               $ref: './components/schemas.yaml#/ChatCapabilities'
             example:
-              capabilities: [rank, override-urgency, interest, upload, create-project]
+              capabilities: [rank, set-horizon, interest, upload, create-project]
               chosen: false
       default:
         $ref: './components/responses.yaml#/Problem'
@@ -183,7 +186,7 @@ chat:
           schema:
             $ref: './components/schemas.yaml#/ChatCapabilitiesUpdate'
           example:
-            capabilities: [rank, override-urgency]
+            capabilities: [rank, set-horizon]
     responses:
       '200':
         description: The chat's capabilities as chosen
@@ -216,5 +219,196 @@ password:
     responses:
       '204':
         description: Changed
+      default:
+        $ref: './components/responses.yaml#/Problem'
+inbox:
+  get:
+    operationId: listMyInbox
+    tags: [me]
+    summary: The person's notifications across their tenants, newest first
+    description: |
+      One inbox per person, a union over the tenants they belong to — one read per tenant, never one
+      query across them (docs/adr/0020 D1, docs/adr/0021 D5). A notification is written by the act
+      that caused it, for the events of docs/adr/0020 D2: a ticket assigned to the person, a
+      question asked of them, a question they asked answered, a state change of — or a comment on —
+      a ticket they watch (docs/adr/0013 D6: a stake, the assignee, the reporter, an open question
+      asked by or of them), a ticket that blocks one they watch reaching `done` or `dropped`, and an
+      `urgent` stake on a ticket assigned to them. Their own acts and their agents' tell them
+      nothing. Each entry names its tenant beside the ticket and renders from the act (D3): the
+      ticket as it is now, the act as the ticket's activity shows it — without its payload where
+      it names a ticket the person cannot see — and whether the comment or question it is on has
+      been withdrawn since. A notification of a ticket the person no longer sees, or of a tenant
+      they left, is absent and counts nowhere (docs/adr/0065 D5).
+
+      `unread` counts the person's unread notifications in the tenants the request reaches. A
+      token restricted to a tenant reads that tenant's, one restricted to a project that project's
+      (docs/adr/0035 D3). Cursor paging only; the cursor holds the place, so a notification that
+      arrives while the person reads shifts nothing (docs/adr/0048 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the inbox and the unread count
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/InboxList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+inboxRead:
+  put:
+    operationId: markMyInboxRead
+    tags: [me]
+    summary: Mark the person's notifications read, up to one they saw
+    description: |
+      "Mark all read" (docs/adr/0020 D6): every unread notification of the person up to and
+      including `through`, in the tenants the request reaches; one that arrived after it stays
+      unread. One act `read` per tenant where something changed; none where nothing did. Needs
+      `write` scope. Read notifications are kept ninety days, unread ones until they are read.
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/InboxReadThrough'
+    responses:
+      '200':
+        description: The unread count after the marking
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/InboxState'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+notificationRead:
+  parameters:
+    - name: notification
+      in: path
+      required: true
+      description: The notification's id
+      schema: {type: string, format: uuid}
+  put:
+    operationId: markNotificationRead
+    tags: [me]
+    summary: Mark one of the person's notifications read
+    description: |
+      Recorded as the act `read`; one already read changes nothing and records nothing. A
+      notification that is not the person's, or of a ticket they no longer see, is `404 not_found`.
+      Needs `write` scope.
+    responses:
+      '200':
+        description: The unread count after the marking
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/InboxState'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+next:
+  get:
+    operationId: listMyNext
+    tags: [me]
+    summary: What the person could take up next, across their tenants
+    description: |
+      "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+      `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+      they belong to, each with its tenant and its place in its project's rank — one read per tenant
+      (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+      is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+      last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+      (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+      project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+      restricted to a project that project (docs/adr/0035 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/MeProject'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of what the person could take up next
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MyTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+assigned:
+  get:
+    operationId: listMyAssigned
+    tags: [me]
+    summary: The open tickets assigned to the person, across their tenants
+    description: |
+      "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
+      assigned to the person, in every tenant they belong to, each with its tenant and its place in
+      its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+      tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+      one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+      (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
+      project that project (docs/adr/0035 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the person's tickets
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MyTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+decisions:
+  get:
+    operationId: listMyDecisions
+    tags: [me]
+    summary: The open decisions of the person, across their tenants
+    description: |
+      "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
+      their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
+      tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+      ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+      — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+      restricted token reads as on `GET /api/v1/me/assigned`.
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the open decisions
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/DecisionList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'

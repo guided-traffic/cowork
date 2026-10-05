@@ -15,8 +15,18 @@ not objected to.
 **Partly built** (phase 2, 2026-10-02): D1, D2, D4 and D5 — `ticket_interest` (migration 12),
 one stake per person and ticket set and removed by its person, visible with the ticket, `watch`
 for viewers and agents and `need` and `urgent` for an agent with `interest`, kept and shown as
-settled when the ticket is done or dropped, and the lists' `interest` filter. D3's score and
-D6's watcher set arrive with the score and the notifications.
+settled when the ticket is done or dropped, and the lists' `interest` filter. ~~D3's score
+arrives with the score.~~ *(2026-10-05: D3 built — every `need` counts one and every `urgent` two
+in the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D4, a `watch`
+nothing, and a stake set or removed scores its ticket again; the rank stays where it is.)*
+*(2026-10-04:)* D6's watcher set, which the notifications of
+[ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2 address — the stakes, the
+assignee, the reporter and the askers and the persons asked of the open questions (`ListWatchers` in
+[`queries/write/notifications.sql`](../../backend/internal/store/queries/write/notifications.sql));
+~~the person a mention names is not among them, because no mention is built~~
+([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5). *(Amended
+2026-10-05 with ADR 0015 D5, built on the recommendation, the owner reviewing the result: D6, the
+persons a comment that is not withdrawn mentions are among the watchers, without a stake.)*
 
 ## Context
 
@@ -55,7 +65,10 @@ interest rows are kept and shown as settled, so the people who needed it are not
 outcome and the record of who wanted what remains.
 
 **D6 — The watchers of a ticket are: every person with an interest row of any weight, the
-assignee, the reporter, and whoever asked or was asked an open question on it.** This is the
+assignee, the reporter, and whoever asked or was asked an open question on it.** *(Amended
+2026-10-05, [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5: and
+whoever a comment on it that is not withdrawn mentions, while it mentions them. A mention sets no
+stake in the mentioned person's name: a stake is the person's own (D1, D2, D4).)* This is the
 set notifications address; the notifications record decides the channel.
 
 ## Consequences

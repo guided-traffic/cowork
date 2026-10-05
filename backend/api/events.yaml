@@ -14,26 +14,47 @@ events:
       project the caller cannot see, or of a confidential ticket they may not read, never
       arrives (D3).
 
+      `project.changed` says that a project's rank was set as a whole — the sort by the score
+      (docs/adr/0014 D3) — with `data: {"key": "<tenant>/<PROJECT>", "kind": "ranked"}`; `id:` is
+      the act's id. It reaches whoever sees the project, and the client reloads the lists it
+      shows.
+
       `membership.changed` says that who belongs to the tenant, or who sees a project, changed —
       by an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its
-      `data` carries keys only, each where it applies: `person_id`, the person whose membership
-      or project access changed; `project_id`, the project whose restriction or access list
-      changed; `mapping_id`, the group mapping made, changed or removed. The client reloads what
-      it shows of members, mappings and access lists, its project list when `project_id` is
-      there, and the person's own `GET /api/v1/me`. An event about an access entry reaches the
-      tenant's administrators and the person it names, one about a mapping the administrators,
-      every other every member.
+      `data` carries the tenant's slug, `tenant`, and keys only, each where it applies:
+      `person_id`, the person whose membership or project access changed; `project_id`, the
+      project whose restriction or access list changed; `mapping_id`, the group mapping made,
+      changed or removed. The client reloads what it shows of that tenant's members, mappings and
+      access lists, its project list when `project_id` is there, and the person's own
+      `GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the
+      person it names, one about a mapping the administrators, every other every member.
 
-      A reconnect with `Last-Event-ID` inside the replay window replays the gap;
+      With `me=true` — the person-level pages, and the bell in the top bar — the stream carries
+      every event of every tenant the person belongs to that the tenant's own stream would carry
+      to them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with
+      `data: {"unread": n}`, the person's unread notifications in every tenant the request reaches
+      (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox
+      changes — a notification for them, or theirs marked read. The count carries no `id:` and is
+      not replayed: it says how things stand. A tenant the person is granted a role in is followed
+      at once, one they leave no more after the act that took it away. A token restricted to a
+      tenant hears its tenant alone (docs/adr/0035 D3).
+
+      A reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level
+      stream the gap of every tenant it follows, in the order the server received the events;
       beyond it the stream starts with `event: resync`, and the client refetches its lists (D5).
       A comment every twenty seconds keeps proxies open and checks the token and the
-      membership again; the stream ends when either fails. `event: unavailable` ends a stream
+      memberships again; the stream ends when the token or the membership of the tenant in the
+      path fails. `event: unavailable` ends a stream
       the server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).
     parameters:
       - name: Last-Event-ID
         in: header
         description: The id of the last event the client received
         schema: {type: string, format: uuid}
+      - name: me
+        in: query
+        description: Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)
+        schema: {type: boolean, default: false}
     responses:
       '200':
         description: The stream

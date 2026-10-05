@@ -15,7 +15,12 @@ is reviewed after experience. Amended 2026-10-03 (D1: the keys of the three prog
 D2, whose amendment says the export carries them; written when the stages were built). Amended
 2026-10-04 (D2: a person's act through a token is named by the token, by the owner's rule that an
 act an agent or a token makes is always marked, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day,
-`TestRenderContextNamesTheTokenOfAPersonsAct`).
+`TestRenderContextNamesTheTokenOfAPersonsAct`). Amended 2026-10-05 (D1: the key `urgency` is
+`horizon`, the word [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1
+gives the API as amended that day; D2: an act on the horizon reads as what it did; D3: the importer
+reads `urgency` as `horizon`), built the same day in grammar v1, amended in place — no reader
+parses the export yet, the golden files changed with it — except D3's, which arrives with the
+importer.
 
 **Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
@@ -42,12 +47,13 @@ chose to keep the two documents apart by URL rather than by a marker inside one.
 
 **D1 — `GET …/tickets/{number}/markdown` returns the canonical ticket and nothing else:**
 the frontmatter rendered from the columns (`key`, `title`, `type`, `state`, `severity`,
-`security`, `threat`, `urgency`, `effort`, `progress`, `assignee`, `parent`, `opened`,
+`security`, `threat`, ~~`urgency`~~ `horizon` *(amended 2026-10-05)*, `effort`, `progress`, `assignee`, `parent`, `opened`,
 `decided`, `done`, and the transition note or reason where the state has one), the body,
 and `## Open questions` with their `**Answer:**` lines, in the fixed order of ADR 0011 D4.
 It is what the importer reads and what a repository file looks like; a round trip through it
 is lossless. *(Made concrete 2026-10-02, grammar v1:)* the keys in that order, an absent value
-omitted — `threat` only when `security` is not `none`, `urgency` the effective value,
+omitted — `threat` only when `security` is not `none`, ~~`urgency`~~ `horizon` *(amended
+2026-10-05)* the effective value, the horizon set or else `later`,
 `assignee` the display name, `parent` the full key, dates as UTC dates — *(made concrete
 2026-10-03:)* `progress-refinement` before `progress`, which is the implementation stage, and
 `progress-review` after it, each always written, as the ticket shows them — then the state's note:
@@ -71,11 +77,16 @@ starts with one line `<!-- cowork: context of <key>, exported <time> by <person>
 act — a comment, an act of the activity, the request for the document itself — and a token did,
 the place of `via <agent>` says `through the token <name>`, or `through a token` where the act did
 not record the name; the first line `(through the token <name>)`. Everything else reads as
-before.)*
+before.)* *(Amended 2026-10-05, ADR 0010 D1: the act on the horizon, which the audit record keeps
+as `overridden`, reads `set the horizon to <value>`, or `returned the ticket to later` where the
+horizon set was cleared.)*
 
 **D3 — The importer reads D1's form only.** A file that carries D2's sections is refused
 with the line where the first read-only section starts, so a context export is never
-imported by mistake.
+imported by mistake. *(Amended 2026-10-05:)* It reads the key `urgency`, the name `horizon` had
+before — in an export written before 2026-10-05 and in the ticket files of a repository, whose
+frontmatter names it so — as `horizon`; a file that names both with different values is an
+error of the report, not a guess.
 
 **D4 — `get_ticket` of the MCP server calls `/context`;** `session_start` calls it for the
 active ticket with `comments=5&activity=10` ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)).

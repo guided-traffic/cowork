@@ -1,12 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
+import { Paginator } from 'primeng/paginator';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { Scope, Token, TokenCreated, TokenState } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { ProblemService } from '../../core/problem.service';
+import { perPageOptions } from '../../core/table-pages';
 import { TokensService } from '../../core/tokens.service';
+import { selectableCapabilities } from '../../shared/capabilities';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { SecretDialog } from '../../shared/secret-dialog';
 import { dateTime } from '../../shared/time';
@@ -43,14 +45,22 @@ export function day(value: string, locale?: string): string {
 }
 
 /**
- * The person's own tokens (docs/adr/0035): every one they made with its scope, restriction,
- * dates and state, never a plaintext — cowork keeps only a hash. A new token's plaintext is shown
+ * The person's own tokens (docs/adr/0035), in numbered pages of 25, 50 or 100 (docs/adr/0048 D4):
+ * every one they made with its scope, restriction, dates and state, never a plaintext — cowork keeps only a hash. A new token's plaintext is shown
  * once, in a dialog, and held nowhere else. Revoking one is final and asks first.
  */
 @Component({
   selector: 'app-tokens',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, ConfirmDialog, NewTokenDialog, SecretDialog, TableModule, Tooltip],
+  imports: [
+    ButtonDirective,
+    ConfirmDialog,
+    NewTokenDialog,
+    Paginator,
+    SecretDialog,
+    TableModule,
+    Tooltip,
+  ],
   providers: [ConfirmationService],
   templateUrl: './tokens.html',
   styleUrl: './tokens.scss',
@@ -63,6 +73,7 @@ export class Tokens {
 
   protected readonly dateTime = dateTime;
   protected readonly day = day;
+  protected readonly perPageOptions = perPageOptions;
 
   protected readonly creating = signal(false);
   /** The plaintext being shown: the one place the page holds it, emptied when the dialog closes. */
@@ -113,20 +124,10 @@ export class Tokens {
    * are what a person looks at to decide which token to revoke.
    */
   protected capabilitiesText(token: Token): string {
-    if (token.capabilities.length === CAPABILITY.length) {
+    if (token.capabilities.length === selectableCapabilities.length) {
       return 'all nine capabilities';
     }
     return token.capabilities.length === 0 ? 'the baseline only' : token.capabilities.join(', ');
-  }
-
-  /**
-   * The key of the project a token is restricted to. Until the key is found — the person left the
-   * tenant, or no longer sees the project — the end of its id stands in: the id is a UUIDv7, whose
-   * start is the time it was made and the same for projects made in the same minute, and whose end
-   * is random.
-   */
-  protected projectKey(id: string): string {
-    return this.tokens.keyOfProject(id) ?? id.slice(-8);
   }
 
   protected created({ token: plaintext, ...token }: TokenCreated): void {

@@ -1,13 +1,11 @@
 import { computed, inject, Injectable, Injector, resource } from '@angular/core';
 import { Api } from '../api/api';
-import {
-  createAccount,
-  deactivateAccount,
-  endAccountSessions,
-  listAccounts,
-  resetAccountPassword,
-  unlockAccount,
-} from '../api/functions';
+import { createAccount } from '../api/fn/accounts/create-account';
+import { deactivateAccount } from '../api/fn/accounts/deactivate-account';
+import { endAccountSessions } from '../api/fn/accounts/end-account-sessions';
+import { listAccounts } from '../api/fn/accounts/list-accounts';
+import { resetAccountPassword } from '../api/fn/accounts/reset-account-password';
+import { unlockAccount } from '../api/fn/accounts/unlock-account';
 import { Account, AccountCreate } from '../api/models';
 import { MembersService } from './members.service';
 import { refresh } from './refresh';

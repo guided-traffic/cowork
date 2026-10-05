@@ -20,11 +20,53 @@
       />
     } @else if (session.shown(); as shown) {
       <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
+    } @else if (soleTenant(); as sole) {
+      <!-- On the person-level pages the only tenant's name leads to it: no switcher offers it. -->
+      <a class="tenant-name" [routerLink]="['/t', sole.slug]" data-testid="tenant-name">{{
+        sole.name
+      }}</a>
     }
+
+    <!-- The search (docs/adr/0018 D7): inside a tenant that tenant's, anywhere else every tenant's. -->
+    <form class="search" role="search" ngNoForm (submit)="$event.preventDefault(); search()">
+      <i class="pi pi-search" aria-hidden="true"></i>
+      <input
+        pInputText
+        type="search"
+        name="q"
+        pSize="small"
+        maxlength="256"
+        placeholder="Search"
+        [attr.aria-label]="searchLabel()"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        data-testid="search-input"
+      />
+    </form>
 
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
+    <a
+      pButton
+      class="bell"
+      routerLink="/me/inbox"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
+      pTooltip="Inbox"
+      tooltipPosition="bottom"
+      [iconOnly]="true"
+      [attr.aria-label]="bellLabel()"
+      data-testid="bell"
+    >
+      <i class="pi pi-bell"></i>
+      @if (inbox.count() > 0) {
+        <span class="badge tabular" aria-hidden="true" data-testid="bell-count">{{
+          unread()
+        }}</span>
+      }
+    </a>
     @if (chat.available()) {
       <button
         pButton
@@ -77,16 +119,58 @@
   </header>
 
   <nav class="sidebar" aria-label="Main" (focusin)="closeOverPage()">
+    <!-- The person-level pages, across every tenant of the person (docs/adr/0023 D4). -->
+    <div class="section">
+      <div class="heading">For you</div>
+      <a class="item" routerLink="/me/next" routerLinkActive="active" data-testid="nav-next"
+        ><i class="pi pi-forward"></i>Next for me</a
+      >
+      <a class="item" routerLink="/me/inbox" routerLinkActive="active" data-testid="nav-inbox"
+        ><i class="pi pi-inbox"></i>Inbox
+        @if (inbox.count() > 0) {
+          <span class="count tabular" data-testid="nav-inbox-count">{{ unread() }}</span>
+        }
+      </a>
+      <a class="item" routerLink="/me/assigned" routerLinkActive="active" data-testid="nav-assigned"
+        ><i class="pi pi-user"></i>Assigned to me</a
+      >
+      <a
+        class="item"
+        routerLink="/me/decisions"
+        routerLinkActive="active"
+        data-testid="nav-decisions"
+        ><i class="pi pi-question-circle"></i>Open decisions</a
+      >
+    </div>
+
     @if (session.tenant(); as tenant) {
       <div class="section">
         <a
           class="item"
           [routerLink]="['/t', tenant]"
           routerLinkActive="active"
-          [routerLinkActiveOptions]="{ exact: true }"
+          [routerLinkActiveOptions]="frontPageActive"
           data-testid="nav-overview"
           ><i class="pi pi-home"></i>Overview</a
         >
+        @if (!session.oversight()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'board']"
+            routerLinkActive="active"
+            data-testid="nav-board"
+            ><i class="pi pi-objects-column"></i>Board</a
+          >
+          <!-- The list itself, whatever it is filtered by; a ticket's own page is not part of it. -->
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'tickets']"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="listOnly"
+            data-testid="nav-tickets"
+            ><i class="pi pi-ticket"></i>Tickets</a
+          >
+        }
         <a
           class="item"
           [routerLink]="['/t', tenant, 'members']"
@@ -113,6 +197,22 @@
             ><i class="pi pi-sitemap"></i>Group mappings</a
           >
         }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'audit']"
+            routerLinkActive="active"
+            data-testid="nav-audit"
+            ><i class="pi pi-history"></i>Audit record</a
+          >
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'tokens']"
+            routerLinkActive="active"
+            data-testid="nav-tenant-tokens"
+            ><i class="pi pi-key"></i>Tokens</a
+          >
+        }
         @if (!session.oversight()) {
           <a
             class="item"
@@ -120,6 +220,15 @@
             routerLinkActive="active"
             data-testid="nav-time"
             ><i class="pi pi-clock"></i>Time</a
+          >
+        }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'deleted-tickets']"
+            routerLinkActive="active"
+            data-testid="nav-deleted-tickets"
+            ><i class="pi pi-trash"></i>Deleted tickets</a
           >
         }
         <a
@@ -151,7 +260,7 @@
           @for (project of projects.list(); track project.id) {
             <a
               class="item project"
-              [routerLink]="['/t', tenant, 'p', project.key, 'backlog']"
+              [routerLink]="['/t', tenant, 'p', project.key, 'board']"
               routerLinkActive="active"
               [attr.data-testid]="'nav-project-' + project.key"
               ><span class="key">{{ project.key }}</span

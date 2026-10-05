@@ -8,24 +8,34 @@ import {
   ElementRef,
   inject,
   Injector,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  IsActiveMatchOptions,
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { Avatar } from 'primeng/avatar';
 import { ButtonDirective } from 'primeng/button';
+import { InputText } from 'primeng/inputtext';
 import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { Toast } from 'primeng/toast';
 import { Tooltip } from 'primeng/tooltip';
-import { catchError, of } from 'rxjs';
+import { catchError, filter, map, of } from 'rxjs';
 import { Wordmark } from '../brand/logo';
 import { AuthService } from '../core/auth.service';
 import { ChatService } from '../core/chat.service';
 import { EventStreamService } from '../core/event-stream.service';
 import { HARD_NAVIGATION } from '../core/hard-navigation';
+import { InboxService } from '../core/inbox.service';
 import { ProblemService } from '../core/problem.service';
 import { ProjectsService } from '../core/projects.service';
 import { TenantService } from '../core/tenant.service';
@@ -51,6 +61,31 @@ export function initials(name: string): string {
   return letters.toUpperCase();
 }
 
+/**
+ * The words of the search a URL shows, `/me/search?q=…` or `/t/<tenant>/search?q=…`; null for any
+ * other page.
+ */
+export function searchedFor(router: Router, url: string): string | null {
+  const tree = router.parseUrl(url);
+  const path = tree.root.children['primary']?.segments.map((segment) => segment.path) ?? [];
+  const isSearch =
+    (path.length === 2 && path[0] === 'me' && path[1] === 'search') ||
+    (path.length === 3 && path[0] === 't' && path[2] === 'search');
+  return isSearch ? String(tree.queryParams['q'] ?? '') : null;
+}
+
+/**
+ * When *Overview* is the page that is open: the tenant's front page, its dashboard
+ * (docs/adr/0018 D6), whatever filters its address holds — its path exactly, so that the tenant's
+ * board and every other page of the tenant leave it inactive.
+ */
+export const frontPageActive: IsActiveMatchOptions = {
+  paths: 'exact',
+  queryParams: 'ignored',
+  matrixParams: 'ignored',
+  fragment: 'ignored',
+};
+
 /** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
 export const overlayQuery = '(max-width: 64rem)';
 
@@ -67,6 +102,7 @@ export const overlayQuery = '(max-width: 64rem)';
     CdkScrollable,
     ChatPanel,
     FormsModule,
+    InputText,
     LiveIndicator,
     Menu,
     NewProjectDialog,
@@ -89,8 +125,17 @@ export class Shell {
   protected readonly theme = inject(ThemeService);
   protected readonly tenantInfo = inject(TenantService);
   protected readonly chat = inject(ChatService);
+  protected readonly inbox = inject(InboxService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
+  protected readonly frontPageActive = frontPageActive;
+  /** A link active on its own path, whatever the query; not on the paths below it. */
+  protected readonly listOnly: IsActiveMatchOptions = {
+    paths: 'exact',
+    queryParams: 'ignored',
+    matrixParams: 'ignored',
+    fragment: 'ignored',
+  };
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(
@@ -110,8 +155,44 @@ export class Shell {
       name: role ? name : `${name} (no role)`,
     })),
   );
+  /**
+   * The only tenant of a person who has one, with its name: no switcher offers it, so on the
+   * person-level pages — "next for me" is the start page — its name leads to it (docs/adr/0023 D4).
+   */
+  protected readonly soleTenant = computed(() => {
+    const sole = this.session.soleTenant();
+    return this.session.tenants().find((tenant) => tenant.slug === sole);
+  });
   protected readonly themeText = computed(() => themeTexts[this.theme.preference()]);
+  /** The bell's count as it is read: `99+` above ninety-nine. */
+  protected readonly unread = computed(() => {
+    const n = this.inbox.count();
+    return n > 99 ? '99+' : String(n);
+  });
+  protected readonly bellLabel = computed(() => {
+    const n = this.inbox.count();
+    return n === 0 ? 'Inbox' : `Inbox, ${n} unread`;
+  });
   protected readonly initials = computed(() => initials(this.session.person()?.display_name ?? ''));
+
+  /** The words of the search the page shows; null on any other page. */
+  private readonly searched = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => searchedFor(this.router, event.urlAfterRedirects)),
+    ),
+    { initialValue: searchedFor(this.router, this.router.url) },
+  );
+  /** What the search box holds: what the person types, the search shown, empty elsewhere. */
+  protected readonly query = linkedSignal(() => this.searched() ?? '');
+  /** Where the search box looks: inside a tenant the person works in, that tenant first. */
+  private readonly searchTenant = computed(() =>
+    this.session.oversight() ? null : this.session.tenant(),
+  );
+  protected readonly searchLabel = computed(() => {
+    const tenant = this.searchTenant();
+    return tenant ? `Search ${this.session.shown()?.name ?? tenant}` : 'Search all your tenants';
+  });
 
   private readonly auth = inject(AuthService);
   private readonly problems = inject(ProblemService);
@@ -135,6 +216,10 @@ export class Shell {
   });
 
   constructor() {
+    // The person-level stream follows the tenant the pages show; on the person-level pages, and
+    // wherever no tenant is shown, it is held on the person's first tenant, so that the bell and the
+    // person-level lists are live everywhere (docs/adr/0054 D1).
+    effect(() => this.stream.personal(this.session.memberships()[0]?.tenant.slug ?? null));
     // A temporary password allows nothing but changing it (docs/adr/0033 D4): the shell does not
     // show pages the backend would refuse, it goes to the password page first.
     effect(() => {
@@ -158,6 +243,22 @@ export class Shell {
     } catch (error) {
       this.problems.report(error);
     }
+  }
+
+  /**
+   * Opens the results of what the box holds: inside a tenant the person works in, that tenant's
+   * search, which offers every tenant's next; anywhere else — and in a tenant a global
+   * administrator only oversees, whose work they do not see — every tenant's (docs/adr/0023 D4).
+   */
+  protected search(): void {
+    const q = this.query().trim();
+    if (!q) {
+      return;
+    }
+    const tenant = this.searchTenant();
+    void this.router.navigate(tenant ? ['/t', tenant, 'search'] : ['/me', 'search'], {
+      queryParams: { q },
+    });
   }
 
   protected switchTenant(slug: string): void {

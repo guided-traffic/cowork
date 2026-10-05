@@ -11,7 +11,7 @@ import { FormsModule } from '@angular/forms';
 import { InputText } from 'primeng/inputtext';
 import { SelectButton } from 'primeng/selectbutton';
 import { Api } from '../../api/api';
-import { timeReport } from '../../api/functions';
+import { timeReport } from '../../api/fn/time/time-report';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { Clock, duration, today } from '../../shared/time';

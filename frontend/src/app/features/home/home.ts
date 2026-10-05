@@ -1,26 +1,29 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { Skeleton } from 'primeng/skeleton';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
+import { MyTickets } from '../me/my-tickets';
 import { FirstTenant } from './first-tenant';
 
 /**
- * The start page: a person with one membership goes straight to its tenant (docs/adr/0023 D4);
- * with several, they choose. A global administrator chooses among every tenant of the
- * installation, the ones they hold no role in marked so (docs/adr/0034 D2), and makes the first one
- * while there is none (docs/adr/0032 D5). The person-level lists of docs/adr/0018 D3 replace it
- * when they exist.
+ * The start page is "next for me" (docs/adr/0018 D3, docs/adr/0023 D4 as amended 2026-10-05): what
+ * the person could take up next across their tenants, whether they belong to one or to many. A
+ * person who belongs to none chooses among the tenants they may open — a global administrator among
+ * every tenant of the installation, the ones they hold no role in marked so (docs/adr/0034 D2) — and
+ * a global administrator makes the first one while there is none (docs/adr/0032 D5).
  */
 @Component({
   selector: 'app-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FirstTenant, RouterLink, Skeleton],
+  imports: [FirstTenant, MyTickets, RouterLink, Skeleton],
   template: `
-    <section class="page">
-      @if (session.me.isLoading() || listing()) {
+    @if (session.me.isLoading() || listing()) {
+      <section class="page">
         <p-skeleton width="16rem" height="2rem" />
-      } @else if (session.me.error(); as error) {
+      </section>
+    } @else if (session.me.error(); as error) {
+      <section class="page">
         <div class="notice" data-testid="signed-out">
           <h1>{{ problem(error).title }}</h1>
           <p class="muted">{{ problem(error).detail }}</p>
@@ -28,9 +31,13 @@ import { FirstTenant } from './first-tenant';
             <p><a routerLink="/login" data-testid="sign-in">Sign in</a></p>
           }
         </div>
-      } @else if (firstTenant()) {
-        <app-first-tenant />
-      } @else {
+      </section>
+    } @else if (firstTenant()) {
+      <section class="page"><app-first-tenant /></section>
+    } @else if (session.memberships().length > 0) {
+      <app-my-tickets list="next" />
+    } @else {
+      <section class="page">
         <h1>Your tenants</h1>
         <div class="tenants">
           @for (tenant of session.tenants(); track tenant.slug) {
@@ -46,8 +53,8 @@ import { FirstTenant } from './first-tenant';
             <p class="muted">You are not a member of any tenant yet.</p>
           }
         </div>
-      }
-    </section>
+      </section>
+    }
   `,
   styles: `
     .page {
@@ -101,16 +108,6 @@ export class Home {
       this.session.installation.hasValue() &&
       this.session.tenants().length === 0,
   );
-
-  constructor() {
-    const router = inject(Router);
-    effect(() => {
-      const sole = this.session.soleTenant();
-      if (sole) {
-        void router.navigate(['/t', sole], { replaceUrl: true });
-      }
-    });
-  }
 
   protected problem(error: unknown) {
     return this.problems.read(error);

@@ -32,7 +32,22 @@ Cursor:
   name: cursor
   in: query
   description: The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
-  schema: {type: string, minLength: 1, maxLength: 512}
+  schema: {type: string, minLength: 1, maxLength: 1024}
+MeTenant:
+  name: tenant
+  in: query
+  description: |
+    Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
+    none of them is `404 not_found`, whether or not the tenant exists
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+MeProject:
+  name: project
+  in: query
+  description: |
+    Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it
+    needs `tenant` (`400 validation_failed` without). A key that names no project the person sees
+    there lists nothing
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
 Limit:
   name: limit
   in: query
@@ -58,6 +73,18 @@ TicketNumber:
   required: true
   description: The ticket's number in its project
   schema: {type: integer, minimum: 1, maximum: 2147483647}
+SavedFilterID:
+  name: filter
+  in: path
+  required: true
+  description: The saved filter's id
+  schema: {type: string, format: uuid}
+TicketKeyPath:
+  name: key
+  in: path
+  required: true
+  description: The ticket's short key, <PROJECT>-<number>, in one path segment (docs/adr/0007 D3)
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'}
 IfNoneMatch:
   name: If-None-Match
   in: header
@@ -97,9 +124,20 @@ FilterSecurity:
   style: form
   explode: true
   schema: {type: array, items: {type: string, maxLength: 32}}
+FilterHorizon:
+  name: horizon
+  in: query
+  description: 'A horizon, or !horizon; repeated values combine with OR (docs/adr/0010 D3, docs/adr/0049)'
+  style: form
+  explode: true
+  schema: {type: array, items: {type: string, maxLength: 32}}
 FilterUrgency:
   name: urgency
   in: query
+  deprecated: true
+  description: |
+    `horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it
+    is 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)
   style: form
   explode: true
   schema: {type: array, items: {type: string, maxLength: 32}}
@@ -169,7 +207,19 @@ DoneAfter:
 Query:
   name: q
   in: query
-  description: Full text over title and body (docs/adr/0025); its length is capped by the server
+  description: |
+    A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+    every word, in the list's own order, without a rank or a snippet — the ranked search over
+    comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+    the server
+  schema: {type: string, minLength: 1, maxLength: 4096}
+SearchQuery:
+  name: q
+  in: query
+  required: true
+  description: |
+    The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+    is capped by the server, and a query of white space alone is `validation_failed`
   schema: {type: string, minLength: 1, maxLength: 4096}
 IncludeTerminal:
   name: include_terminal

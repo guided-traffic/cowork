@@ -14,13 +14,11 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../api/api';
-import {
-  getChatAvailability,
-  getMyChat,
-  runChatTurn,
-  setMyChat,
-  stopChatTurns,
-} from '../api/functions';
+import { getChatAvailability } from '../api/fn/chat/get-chat-availability';
+import { runChatTurn } from '../api/fn/chat/run-chat-turn';
+import { stopChatTurns } from '../api/fn/chat/stop-chat-turns';
+import { getMyChat } from '../api/fn/me/get-my-chat';
+import { setMyChat } from '../api/fn/me/set-my-chat';
 import {
   Capability,
   ChatCapabilities,

@@ -12,7 +12,7 @@ import { provideRouter, Router } from '@angular/router';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
 import { Api } from '../api/api';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { getMe } from '../api/functions';
+import { getMe } from '../api/fn/me/get-me';
 import { requestedWith, signInOnUnauthorised } from './http';
 
 describe('requestedWith', () => {

@@ -16,7 +16,7 @@ const token = (id: string, overrides: Partial<Token> = {}): Token => ({
   last_used_on: null,
   revoked_at: null,
   restricted_tenant: null,
-  restricted_project_id: null,
+  restricted_project: null,
   state: 'active',
   ...overrides,
 });
@@ -68,11 +68,6 @@ describe('TokensService', () => {
         request.url === listUrl &&
         request.params.get('cursor') === cursor,
     );
-  /** The page that the loader asks for once the previous one was taken, which is a promise away. */
-  const nextPage = async (cursor: string) => {
-    await settle();
-    return page(cursor);
-  };
   const pageOf = (names: string[], next: string | null) => ({
     items: names.map((name) => token(name)),
     next_cursor: next,
@@ -107,11 +102,13 @@ describe('TokensService', () => {
   });
 
   describe('the list', () => {
-    it('asks for the first page, 200 at a time, at /api/v1 without a doubled slash', async () => {
+    it('asks for the first numbered page, 25 a page, at /api/v1 without a doubled slash', async () => {
       const first = page();
 
       expect(first.request.url).toBe('/api/v1/me/tokens');
-      expect(first.request.params.get('limit')).toBe('200');
+      expect(first.request.params.get('page')).toBe('1');
+      expect(first.request.params.get('per_page')).toBe('25');
+      expect(first.request.params.has('limit')).toBe(false);
       first.flush(pageOf([], null));
       await settle();
     });
@@ -128,27 +125,27 @@ describe('TokensService', () => {
       expect(ids()).toEqual(['a', 'b']);
     });
 
-    it('follows the cursor to every page and lists the tokens in the order of the pages', async () => {
-      page().flush(pageOf(['a', 'b'], 'c1'));
-      (await nextPage('c1')).flush(pageOf(['c'], 'c2'));
-      const last = await nextPage('c2');
-      expect(last.request.params.get('limit')).toBe('200');
-      last.flush(pageOf(['d'], null));
+    it('asks for the page and the size the table turns to, and keeps the total (docs/adr/0048 D4)', async () => {
+      page().flush({ ...pageOf(['a', 'b'], null), total: 30, page: 1, per_page: 25 });
       await settle();
+      expect(service.table.total()).toBe(30);
 
-      expect(ids()).toEqual(['a', 'b', 'c', 'd']);
-    });
-
-    it('lists nothing until the last page has arrived', async () => {
-      page().flush(pageOf(['a'], 'c1'));
-      const second = await nextPage('c1');
-
-      expect(service.tokens.status()).toBe('loading');
-      expect(service.list()).toEqual([]);
-
-      second.flush(pageOf(['b'], null));
+      service.table.turn({ page: 1, rows: 25, first: 25 });
       await settle();
-      expect(ids()).toEqual(['a', 'b']);
+      const second = page();
+      expect(second.request.params.get('page')).toBe('2');
+      expect(service.table.total()).toBe(30);
+      second.flush({ ...pageOf(['c'], null), total: 30, page: 2, per_page: 25 });
+      await settle();
+      expect(ids()).toEqual(['c']);
+
+      service.table.turn({ page: 1, rows: 50, first: 50 });
+      await settle();
+      const bigger = page();
+      expect(bigger.request.params.get('page')).toBe('1');
+      expect(bigger.request.params.get('per_page')).toBe('50');
+      bigger.flush({ ...pageOf(['a', 'b', 'c'], null), total: 30, page: 1, per_page: 50 });
+      await settle();
     });
 
     it('keeps each token as the API lists it, with its state', async () => {
@@ -402,16 +399,6 @@ describe('TokensService', () => {
       expect((await done).map((each) => each.key)).toEqual(['A', 'B', 'C']);
     });
 
-    it('asks for the archived ones too when it is told to', async () => {
-      const done = service.projectsOf('acme', true);
-
-      const first = projectPage('acme');
-      expect(first.request.params.get('include_archived')).toBe('true');
-      first.flush({ items: [], next_cursor: null });
-
-      expect(await done).toEqual([]);
-    });
-
     it('rejects with the HTTP error when the projects cannot be read', async () => {
       const outcome = rejection(service.projectsOf('acme'));
 
@@ -424,116 +411,17 @@ describe('TokensService', () => {
     });
   });
 
-  describe('the keys of the projects a token is restricted to', () => {
-    const restricted = (id: string, tenant: string, projectId: string) =>
-      token(id, { restricted_tenant: tenant, restricted_project_id: projectId });
-
-    it('asks for no project while no token is restricted to one', async () => {
-      page().flush({
-        items: [token('a'), token('b', { restricted_tenant: 'acme' })],
-        next_cursor: null,
-      });
-      await settle();
-
-      expect(service.projectKeys.status()).toBe('idle');
-      expect(service.keyOfProject('id-COW')).toBeUndefined();
+  it('asks for no project to show the list: a token names its project by its key', async () => {
+    page().flush({
+      items: [
+        token('a', { restricted_tenant: 'acme', restricted_project: 'COW' }),
+        token('b', { restricted_tenant: 'globex' }),
+      ],
+      next_cursor: null,
     });
+    await settle();
 
-    it('finds the key of each project by its id, including an archived one, tenant by tenant', async () => {
-      page().flush({
-        items: [
-          restricted('a', 'acme', 'id-COW'),
-          restricted('b', 'acme', 'id-OPS'),
-          restricted('c', 'globex', 'id-GLX'),
-        ],
-        next_cursor: null,
-      });
-      await settle();
-
-      const acme = projectPage('acme');
-      expect(acme.request.params.get('include_archived')).toBe('true');
-      acme.flush({ items: [project('COW'), project('OPS'), project('OLD')], next_cursor: null });
-      await settle();
-      projectPage('globex').flush({ items: [project('GLX')], next_cursor: null });
-      await settle();
-
-      expect(service.keyOfProject('id-COW')).toBe('COW');
-      expect(service.keyOfProject('id-OPS')).toBe('OPS');
-      expect(service.keyOfProject('id-GLX')).toBe('GLX');
-      expect(service.keyOfProject('id-NOPE')).toBeUndefined();
-    });
-
-    it('asks once for a tenant that several tokens name', async () => {
-      page().flush({
-        items: [restricted('a', 'acme', 'id-COW'), restricted('b', 'acme', 'id-COW')],
-        next_cursor: null,
-      });
-      await settle();
-
-      projectPage('acme').flush({ items: [project('COW')], next_cursor: null });
-      await settle();
-
-      expect(service.keyOfProject('id-COW')).toBe('COW');
-    });
-
-    it('leaves out the ids of a tenant that cannot be read, and still finds the others', async () => {
-      page().flush({
-        items: [restricted('a', 'acme', 'id-COW'), restricted('b', 'globex', 'id-GLX')],
-        next_cursor: null,
-      });
-      await settle();
-
-      projectPage('acme').flush(
-        { type: 'about:blank', title: 'Not found', status: 404, code: 'not_found' },
-        { status: 404, statusText: 'Not Found' },
-      );
-      await settle();
-      projectPage('globex').flush({ items: [project('GLX')], next_cursor: null });
-      await settle();
-
-      expect(service.projectKeys.status()).toBe('resolved');
-      expect(service.keyOfProject('id-COW')).toBeUndefined();
-      expect(service.keyOfProject('id-GLX')).toBe('GLX');
-    });
-
-    it('finds no key before the lookup has answered', async () => {
-      page().flush({ items: [restricted('a', 'acme', 'id-COW')], next_cursor: null });
-      await settle();
-
-      const lookup = projectPage('acme');
-      expect(service.projectKeys.status()).toBe('loading');
-      expect(service.keyOfProject('id-COW')).toBeUndefined();
-
-      lookup.flush({ items: [project('COW')], next_cursor: null });
-      await settle();
-    });
-
-    it('does not ask again when the list reloads with the same restrictions, but does for a new one', async () => {
-      page().flush({ items: [restricted('a', 'acme', 'id-COW')], next_cursor: null });
-      await settle();
-      projectPage('acme').flush({ items: [project('COW'), project('OPS')], next_cursor: null });
-      await settle();
-
-      service.tokens.reload();
-      await settle();
-      page().flush({
-        items: [restricted('a', 'acme', 'id-COW'), token('b')],
-        next_cursor: null,
-      });
-      await settle();
-      http.expectNone((request) => request.url === '/api/v1/tenants/acme/projects');
-
-      service.tokens.reload();
-      await settle();
-      page().flush({
-        items: [restricted('a', 'acme', 'id-COW'), restricted('c', 'acme', 'id-OPS')],
-        next_cursor: null,
-      });
-      await settle();
-      projectPage('acme').flush({ items: [project('COW'), project('OPS')], next_cursor: null });
-      await settle();
-
-      expect(service.keyOfProject('id-OPS')).toBe('OPS');
-    });
+    expect(service.list().map((each) => each.restricted_project)).toEqual(['COW', null]);
+    http.expectNone((request) => request.url.includes('/projects'));
   });
 });

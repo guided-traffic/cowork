@@ -68,7 +68,8 @@ ORDER BY t.slug;
 
 -- name: ListMembers :many
 -- The tenant's members by person id (docs/adr/0034 D7), a page after the
--- cursor's person: the highest role, every source of it with its own role —
+-- cursor's person or a numbered page by offset (docs/adr/0048 D1, D2): the
+-- highest role, every source of it with its own role —
 -- the mapping before the grant — whether the person is a local account rather
 -- than one of the identity provider (docs/adr/0030 D4, docs/adr/0033), and
 -- the address, which the handler shows the tenant's administrators only.
@@ -82,7 +83,13 @@ WHERE m.tenant_id = sqlc.arg(tenant_id)
   AND (sqlc.narg(after)::uuid IS NULL OR u.id > sqlc.narg(after)::uuid)
 GROUP BY u.id, u.username, u.display_name, u.email
 ORDER BY u.id
-LIMIT sqlc.arg(page_size);
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
+-- name: CountMembers :one
+-- The tenant's members, each person once, for a numbered page's total.
+SELECT count(DISTINCT m.user_id)::bigint AS members
+FROM memberships m
+WHERE m.tenant_id = sqlc.arg(tenant_id);
 
 -- name: GetMember :one
 -- One member of the tenant, as the list shows them; no row when the person is

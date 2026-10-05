@@ -6,7 +6,7 @@ type: bug
 state: in-progress
 severity: high
 security: none
-urgency: now
+horizon: now
 effort: M
 progress-refinement: 100
 progress: 40
@@ -65,4 +65,6 @@ The zip has no files.
 - 2026-10-02 09:00 UTC — Ada Lovelace — transitioned: analysed → decided
 - 2026-10-03 10:00 UTC — Sam — linked: acme/VKO-3 blocks acme/VKO-12
 - 2026-10-03 11:00 UTC — Sam — updated effort, title — reason: "bigger than \"it looked\" at first"
+- 2026-10-03 12:00 UTC — Ada Lovelace via claude-code/unknown/7f3a — returned the ticket to later — reason: "not in this release"
+- 2026-10-03 13:00 UTC — Sam — set the horizon to now — reason: "a customer is down"
 - 2026-10-04 08:00 UTC — Ada Lovelace via claude-code/unknown/7f3a — linked (the details name a ticket you cannot see)

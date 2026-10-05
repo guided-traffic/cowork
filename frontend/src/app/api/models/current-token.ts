@@ -9,10 +9,5 @@ import { Token } from '../models/token';
  */
 export type CurrentToken = Token & {
 'request': RequestMark;
-
-/**
- * The key of the project the token is restricted to
- */
-'restricted_project': (string | null);
 };
 

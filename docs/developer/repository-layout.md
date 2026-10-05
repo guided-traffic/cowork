@@ -26,7 +26,7 @@ cowork/
 │   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
 │   │   ├── chat/               # the chat in the UI: a turn's loop, the tools it offers, the loopback, the page tools
 │   │   ├── config/             # COWORK_* environment variables → Config
-│   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
+│   │   ├── domain/             # vocabularies, keys, the horizon's default, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
 │   │   ├── httpserver/         # health, request id, request log, recovery, server lifecycle
 │   │   ├── llm/                # the chat's gateway: OpenAI Chat Completions and Anthropic Messages, streaming
@@ -37,6 +37,7 @@ cowork/
 │   │   ├── oidc/               # the OpenID Connect relying party: discovery, the code, the ID token, the refresh
 │   │   ├── problem/            # the problem code catalogue and the RFC 9457 body
 │   │   ├── requestid/          # the request id in the context
+│   │   ├── richtext/           # the Markdown people write rendered and sanitised for the browser
 │   │   ├── storage/            # the S3 client for the attachments
 │   │   ├── tools/              # the tool catalogue, transport-free; the session start and the binding
 │   │   └── store/              # transaction wrappers, roles check, list builder, locks, jobs, NOTIFY/LISTEN
@@ -58,6 +59,7 @@ cowork/
 │   └── .golangci.yml
 ├── frontend/                   # Angular 22 workspace, project "frontend"
 │   ├── src/app/                # api/ (generated), brand/, theme/, core/, layout/, features/, shared/, dev/ (frontend.md)
+│   ├── e2e/                    # the end-to-end suite: Playwright config, specs, support/, the dark screenshots' pictures (testing.md)
 │   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
 │   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
 │   ├── ng-openapi-gen.json     # the client generator's configuration
@@ -68,7 +70,7 @@ cowork/
 ├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
-├── hack/                       # dev.sh + dev_demo.py (make dev); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
+├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
 │   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together
 ├── docs/

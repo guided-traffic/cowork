@@ -177,6 +177,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		Storage:                objects,
 		AttachmentMaxBytes:     cfg.AttachmentMaxBytes,
 		AttachmentMaxPerTicket: cfg.AttachmentMaxPerTicket,
+		AttachmentTenantQuota:  cfg.AttachmentTenantQuota,
 		Events:                 hub,
 
 		BaseOrigin:           cfg.BaseOrigin,
@@ -197,7 +198,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
-	go runJobs(ctx, db, logger, cfg.SessionIdle)
+	go runJobs(ctx, db, objects, logger, cfg.SessionIdle)
 
 	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
 	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, root, cfg.ShutdownTimeout, hub.Close); err != nil {
@@ -287,8 +288,11 @@ func requireForServe(cfg config.Config) error {
 // holds its own advisory lock, so every replica may tick (docs/adr/0027 D5).
 // The sessions and the login's attempts are cleaned up here; neither is
 // enforced by the cleanup — a session past a limit is refused at its next
-// request, a lock that ended holds nothing at the next attempt.
-func runJobs(ctx context.Context, db *store.DB, logger *slog.Logger, sessionIdle time.Duration) {
+// request, a lock that ended holds nothing at the next attempt. The purge of
+// the tickets deleted thirty days ago is here too (docs/adr/0024 D2): their
+// attachment objects go once the purge committed, and each purged key is
+// logged.
+func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger *slog.Logger, sessionIdle time.Duration) {
 	expiry := time.NewTicker(time.Hour)
 	defer expiry.Stop()
 	jobs := []struct {
@@ -299,6 +303,15 @@ func runJobs(ctx context.Context, db *store.DB, logger *slog.Logger, sessionIdle
 		{"session expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
 		{"login expiry", func(ctx context.Context) (int64, error) {
 			return db.ExpireLoginState(ctx, time.Now(), store.LoginWindow)
+		}},
+		{"notification expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
+		{"ticket purge", func(ctx context.Context) (int64, error) {
+			purged, err := db.PurgeDeletedTickets(ctx, time.Now())
+			for _, p := range purged {
+				logger.Info("ticket purged", "job", "ticket purge", "ticket", p.Key, "attachments", len(p.Attachments))
+			}
+			api.RemovePurgedObjects(ctx, objects, logger, purged)
+			return int64(len(purged)), err
 		}},
 	}
 	for {

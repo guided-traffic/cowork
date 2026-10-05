@@ -7,7 +7,7 @@ FROM ticket_interest i
 JOIN tickets t ON t.tenant_id = i.tenant_id AND t.id = i.ticket_id
 LEFT JOIN users u ON u.id = i.user_id
 WHERE i.tenant_id = sqlc.arg(tenant_id) AND i.ticket_id = sqlc.arg(ticket_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (sqlc.narg(after)::uuid IS NULL OR i.user_id > sqlc.narg(after)::uuid)
 ORDER BY i.user_id
 LIMIT sqlc.arg(page_size);

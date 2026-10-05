@@ -26,12 +26,17 @@ export interface TicketEvent {
 /**
  * `membership.changed` (docs/adr/0054 D2): who belongs to the tenant, or who sees a project,
  * changed — by an administrator's act or by the identity provider's groups (docs/adr/0030). The
- * payload carries keys only, each where it applies.
+ * payload carries the tenant and keys only, each where it applies.
  */
 export interface MembershipEvent {
   name: 'membership.changed';
   /** The audit row's id, which is also the stream's event id (D5). */
   id: string;
+  /**
+   * The tenant's slug (D1 as amended on 2026-10-05). A server that does not send it yet sends a
+   * stream's own tenant's events alone; {@link ofTenant} takes such an event for any tenant.
+   */
+  tenant?: string;
   /** The person whose membership or project access changed. */
   personId?: string;
   /** The project whose restriction or access list changed. */
@@ -41,14 +46,69 @@ export interface MembershipEvent {
 }
 
 /**
- * What the services react to: a change of a ticket or of the memberships; `resync`, after which
- * everything shown is fetched again; or `poll`, the fallback's tick (D7).
+ * `project.changed` (docs/adr/0054 D2): a project's rank was set as a whole — sorted by the score
+ * (docs/adr/0014 D3). The payload carries the project's key, `<tenant>/<PROJECT>`, and the act's
+ * kind, and no version: the act is the project's, not a ticket's.
  */
-export type StreamEvent = TicketEvent | MembershipEvent | { name: 'resync' } | { name: 'poll' };
+export interface ProjectEvent {
+  name: 'project.changed';
+  /** The audit row's id, which is also the stream's event id (D5). */
+  id: string;
+  /** The project's key, `<tenant>/<PROJECT>`. */
+  key: string;
+  kind: string;
+}
 
-/** Whether an event may have changed who belongs to the tenant: its own event, or a gap in the stream. */
-export function changesMemberships(event: StreamEvent): boolean {
-  return event.name === 'membership.changed' || event.name === 'resync' || event.name === 'poll';
+/**
+ * `inbox.changed` (docs/adr/0054 D2) on the person-level stream: how many of the person's
+ * notifications are unread, in every tenant they belong to — when the stream opens and whenever the
+ * inbox changes. It carries no id: it says how things stand.
+ */
+export interface InboxEvent {
+  name: 'inbox.changed';
+  unread: number;
+}
+
+/**
+ * What the services react to: a change of a ticket or of the memberships, the person's unread
+ * count; `resync`, after which everything shown is fetched again; or `poll`, the fallback's tick
+ * (D7). A ticket or membership event may be of any tenant of the person: the person-level stream
+ * carries the events of all of them (D1 as amended on 2026-10-05). What shows one tenant reacts to
+ * that tenant's ({@link ofTenant}); the person-level pages follow every tenant
+ * (`features/me/person-list.ts`, `reloadOn`).
+ */
+export type StreamEvent =
+  TicketEvent | MembershipEvent | ProjectEvent | InboxEvent | { name: 'resync' } | { name: 'poll' };
+
+/**
+ * Whether an event may concern what a page of the tenant shows: a ticket event whose key is of the
+ * tenant, a membership event of it, and a `resync` or `poll`, which may have missed one. The unread
+ * count is of no tenant. `null`, no tenant shown, has no events but the gaps.
+ */
+export function ofTenant(event: StreamEvent, tenant: string | null): boolean {
+  switch (event.name) {
+    case 'resync':
+    case 'poll':
+      return true;
+    case 'inbox.changed':
+      return false;
+    case 'membership.changed':
+      return event.tenant === undefined || event.tenant === tenant;
+    default:
+      // The canonical key, `<tenant>/<PROJECT>-<number>`.
+      return tenant !== null && event.key.slice(0, event.key.indexOf('/')) === tenant;
+  }
+}
+
+/**
+ * Whether an event may have changed who belongs to the tenant: a membership event of it, or a gap
+ * in the stream.
+ */
+export function changesMemberships(event: StreamEvent, tenant: string | null): boolean {
+  return (
+    (event.name === 'membership.changed' || event.name === 'resync' || event.name === 'poll') &&
+    ofTenant(event, tenant)
+  );
 }
 
 /**
@@ -60,9 +120,21 @@ export function changesVisibility(event: MembershipEvent, person: string | undef
   return event.projectId !== undefined || (person !== undefined && event.personId === person);
 }
 
+/** The acts that take a ticket out of existence for everybody but the bin, or bring it back. */
+const existenceKinds: ReadonlySet<string> = new Set(['deleted', 'restored', 'purged']);
+
+/**
+ * Whether an event deleted, restored or purged a ticket (docs/adr/0024 D1, D2): whatever names the
+ * ticket — the inbox and its count, the open decisions — changes without an event of its own, so
+ * the views that show them load again on it.
+ */
+export function changesExistence(event: StreamEvent): boolean {
+  return event.name === 'ticket.changed' && existenceKinds.has(event.kind);
+}
+
 /**
  * `connecting` until the stream is open, `live` while it is, `polling` while the fallback runs,
- * `idle` outside a tenant.
+ * `idle` while the person belongs to no tenant.
  */
 export type StreamStatus = 'idle' | 'connecting' | 'live' | 'polling';
 
@@ -101,8 +173,26 @@ function isTicketPayload(data: unknown): data is { key: string; version: number;
   );
 }
 
+/** The payload of `project.changed`: the project's key and the act's kind. */
+function isProjectPayload(data: unknown): data is { key: string; kind: string } {
+  const payload = data as Record<string, unknown> | null;
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    typeof payload['key'] === 'string' &&
+    typeof payload['kind'] === 'string'
+  );
+}
+
+/** The payload of `inbox.changed`: the unread count, a whole number. */
+function unreadOf(data: unknown): number | undefined {
+  const unread = (data as Record<string, unknown> | null)?.['unread'];
+  return typeof unread === 'number' && Number.isInteger(unread) && unread >= 0 ? unread : undefined;
+}
+
 /** The keys a `membership.changed` payload may carry, and the event's names for them. */
 const membershipKeys = {
+  tenant: 'tenant',
   person_id: 'personId',
   project_id: 'projectId',
   mapping_id: 'mappingId',
@@ -114,12 +204,12 @@ const membershipKeys = {
  */
 function membershipPayload(
   data: unknown,
-): Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> | undefined {
+): Pick<MembershipEvent, 'tenant' | 'personId' | 'projectId' | 'mappingId'> | undefined {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     return undefined;
   }
   const payload = data as Record<string, unknown>;
-  const keys: Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> = {};
+  const keys: Pick<MembershipEvent, 'tenant' | 'personId' | 'projectId' | 'mappingId'> = {};
   for (const [key, field] of Object.entries(membershipKeys)) {
     const value = payload[key];
     if (typeof value === 'string') {
@@ -137,11 +227,14 @@ export const fallback = { failures: 3, pollEvery: 15_000, retryEvery: 60_000 };
 const closed = 2;
 
 /**
- * The tenant's event stream (docs/adr/0054): one `EventSource` per tenant page, events that
- * carry keys and versions and nothing else, and the polling fallback — after three failures in
- * a row or `event: unavailable`, a `poll` tick every fifteen seconds and a new attempt at the
- * stream every minute. While the tab is hidden the events wait and arrive, merged, when it is
- * visible again (D8). The browser sends `Last-Event-ID` on its own reconnects (D5).
+ * The event stream (docs/adr/0054): one `EventSource`, opened as the person-level stream
+ * (`?me=true`, D1) on the tenant the pages show, or — on the person-level pages and wherever no
+ * tenant is shown — on one of the person's tenants ({@link personal}); either way it carries the
+ * unread count and the events of every tenant of the person, whatever tenant it is opened on.
+ * Events that carry keys and versions and nothing else, and the polling fallback — after three failures in a row or `event: unavailable`,
+ * a `poll` tick every fifteen seconds and a new attempt at the stream every minute. While the tab
+ * is hidden the events wait and arrive, merged, when it is visible again (D8). The browser sends
+ * `Last-Event-ID` on its own reconnects (D5).
  */
 @Injectable({ providedIn: 'root' })
 export class EventStreamService {
@@ -150,7 +243,10 @@ export class EventStreamService {
   private readonly subject = new Subject<StreamEvent>();
 
   private source: EventSourceLike | null = null;
+  /** The tenant the stream is open on: the page's, else the person's. */
   private tenant: string | null = null;
+  private pageTenant: string | null = null;
+  private personTenant: string | null = null;
   private failures = 0;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
@@ -172,8 +268,22 @@ export class EventStreamService {
     });
   }
 
-  /** Follows the tenant the pages show; `null` closes the stream. */
+  /** Follows the tenant the pages show; `null` falls back to the person's own ({@link personal}). */
   connect(tenant: string | null): void {
+    this.pageTenant = tenant;
+    this.follow(this.pageTenant ?? this.personTenant);
+  }
+
+  /**
+   * The tenant to hold the person-level stream on while no tenant page is open: one of the
+   * person's, `null` for a person who belongs to none — then there is no stream.
+   */
+  personal(tenant: string | null): void {
+    this.personTenant = tenant;
+    this.follow(this.pageTenant ?? this.personTenant);
+  }
+
+  private follow(tenant: string | null): void {
     if (tenant === this.tenant) {
       return;
     }
@@ -191,7 +301,7 @@ export class EventStreamService {
   }
 
   private openStream(tenant: string): void {
-    const source = this.open(`/api/v1/tenants/${encodeURIComponent(tenant)}/events`);
+    const source = this.open(`/api/v1/tenants/${encodeURIComponent(tenant)}/events?me=true`);
     this.source = source;
     source.onopen = () => {
       // A stream opened after polling is a new EventSource without Last-Event-ID, so the hub
@@ -214,6 +324,23 @@ export class EventStreamService {
       source.addEventListener(name, (message) => this.ticketEvent(name, message));
     }
     source.addEventListener('membership.changed', (message) => this.membershipEvent(message));
+    source.addEventListener('project.changed', (message) => {
+      const data = parsed(message);
+      if (isProjectPayload(data)) {
+        this.emit({
+          name: 'project.changed',
+          id: message.lastEventId,
+          key: data.key,
+          kind: data.kind,
+        });
+      }
+    });
+    source.addEventListener('inbox.changed', (message) => {
+      const unread = unreadOf(parsed(message));
+      if (unread !== undefined) {
+        this.emit({ name: 'inbox.changed', unread });
+      }
+    });
     source.addEventListener('resync', () => this.emit({ name: 'resync' }));
     source.addEventListener('unavailable', () => this.fallBack());
   }
@@ -264,8 +391,9 @@ export class EventStreamService {
 
   /**
    * What waited while the tab was hidden: one resync if any was due, else each ticket's latest
-   * event, then the membership events as they came — each says what it touched, and the views
-   * they reload load at most once more however many arrive (`refresh`).
+   * event, then the membership and project events as they came — each says what it touched, and
+   * the views they reload load at most once more however many arrive (`refresh`) — and the latest
+   * unread count.
    */
   private flush(): void {
     const waiting = this.deferred;
@@ -275,10 +403,15 @@ export class EventStreamService {
       return;
     }
     const latest = new Map<string, TicketEvent>();
-    const memberships: MembershipEvent[] = [];
-    for (const event of waiting as (TicketEvent | MembershipEvent)[]) {
-      if (event.name === 'membership.changed') {
+    const memberships: (MembershipEvent | ProjectEvent)[] = [];
+    let inbox: InboxEvent | undefined;
+    for (const event of waiting as (TicketEvent | MembershipEvent | ProjectEvent | InboxEvent)[]) {
+      if (event.name === 'membership.changed' || event.name === 'project.changed') {
         memberships.push(event);
+        continue;
+      }
+      if (event.name === 'inbox.changed') {
+        inbox = event;
         continue;
       }
       const id = `${event.name} ${event.key}`;
@@ -287,7 +420,7 @@ export class EventStreamService {
         latest.set(id, event);
       }
     }
-    for (const event of [...latest.values(), ...memberships]) {
+    for (const event of [...latest.values(), ...memberships, ...(inbox ? [inbox] : [])]) {
       this.subject.next(event);
     }
   }

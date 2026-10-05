@@ -33,6 +33,20 @@ module.exports = defineConfig([
           style: 'kebab-case',
         },
       ],
+      // Every generated function assigns its PATH, a side effect that keeps a module in the
+      // bundle once anything reaches it: through the barrel, an eager service would pull every
+      // operation of the API into the initial bundle (docs/adr/0052 D6). Import the one file.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)api/functions$',
+              message: 'Import the operation from api/fn/<tag>/<operation> instead of the barrel.',
+            },
+          ],
+        },
+      ],
     },
   },
   {

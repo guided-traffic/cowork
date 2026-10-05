@@ -21,7 +21,10 @@ What every change in this repository follows.
   ever enters SQL text. The store's own fixed statements — `set_config`, the advisory locks,
   `pg_notify` and `LISTEN`, the role checks and the schema state — live in its Go files. A query that
   reads a ticket or a project calls the visibility predicate or names its exemption with
-  `-- visibility: exempt (<why>)` ([data-access.md](data-access.md#visibility-in-sql)).
+  `-- visibility: exempt (<why>)`, and leaves a deleted ticket out with `deleted_at IS NULL` or
+  names that exemption with `-- deletion: exempt (<why>)` ([data-access.md](data-access.md#visibility-in-sql)).
+  A function that runs with its owner's rights (`SECURITY DEFINER`) fixes its `search_path`, `pg_temp`
+  last, and is executable by the runtime role alone.
 - **Acts:** a request's write commits through `store.Mutate`, a job's through `store.RunJob`
   (the writes outside both are bookkeeping, not an act of a person: the token's last-used day, a
   session's idle clock, and the login's attempt count, `store.RecordLoginAttempt`, whose refusals
@@ -62,7 +65,10 @@ What every change in this repository follows.
   one by one and never a deprecated one (`[pButton]`, not `<p-button>`); colours only as the
   preset's tokens; `class` on a PrimeNG host where older code wrote `styleClass`; a resource read
   through `hasValue()` and reloaded through `refresh()`; vocabulary values shown as the API spells
-  them, with their meaning in a tooltip ([frontend.md](frontend.md)).
+  them, with their meaning in a tooltip ([frontend.md](frontend.md)). Text is shown by
+  interpolation; the one markup the page shows is the server's rendered Markdown, through
+  `RenderedText` and Angular's sanitiser, and nothing calls `bypassSecurityTrust…`
+  ([rendered-markdown.md](rendered-markdown.md)).
 - **Documentation:** every claim verified against the tree; "not verified" is a complete
   sentence; file and line references as relative links; `# default` / `# example` on shown
   values; nothing outside `docs/tickets/` cites a ticket.

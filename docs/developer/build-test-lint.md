@@ -10,9 +10,10 @@ the backend and the frontend locally and the two images together behind a stand-
 |---|---|---|
 | Go | 1.27 (`backend/go.mod`: 1.27.1; the toolchain downloads it if yours is older) | the backend, its generators and tools |
 | Node.js + npm | 26 (`NODE_VERSION` in the workflow's frontend job; `node:26-alpine` in the Containerfile); the workflow's release jobs use the current LTS | the frontend and the release tooling |
-| Docker | any recent | `make postgres-up`, `make minio-up`, `make dex-up`, `make docker-build` |
+| Docker | any recent | `make postgres-up`, `make minio-up`, `make dex-up`, `make docker-build`, `make e2e` |
 | Helm | 3 or 4 | `make helm-lint`, `make helm-template` |
-| `openssl`, `curl` | any | `make run` draws a throw-away server key with `openssl rand`; `make minio-up` and `make dex-up` wait for their servers with `curl` |
+| `openssl`, `curl` | any; `curl` with `--aws-sigv4` (7.75 or newer) for `make e2e` | `make run` draws a throw-away server key with `openssl rand`; `make minio-up` and `make dex-up` wait for their servers with `curl`; `make e2e` makes its server key and TLS certificate with `openssl` and its bucket and readiness checks with `curl` |
+| Chromium and WebKit of Playwright | the version of `@playwright/test` in `frontend/package.json` | `make e2e`; `make e2e-browsers` installs them |
 | `python3` | 3 | `make coverage-json`, `make verify-phase-2` |
 
 The Go tools (`golangci-lint`, `gocyclo`, `gosec`, `govulncheck`, `sqlc`, `oapi-codegen`)
@@ -59,6 +60,9 @@ same toolchain builds them.
 | | `make docker-build` | Docker | `BACKEND_IMG` and `FRONTEND_IMG` (defaults `guidedtraffic/cowork-backend:latest`, `guidedtraffic/cowork-frontend:latest`); `docker-build-backend` / `docker-build-frontend` for one |
 | | `make docker-push` | Docker, a registry login | pushes both images |
 | | `make verify-phase-2` | Docker, `python3`, the two images, `make postgres-up minio-up` | runs both images read-only behind the Ingress stand-in and drives the API through it as a `make dev-seed` agent ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) |
+| End-to-end | `make e2e` | Docker, the two images of one commit (`make docker-build`), the browsers | both images behind the Ingress stand-in with TLS, with a PostgreSQL, a MinIO and a Dex of its own, the Playwright suite in Chromium and WebKit, then the stack removed ([`hack/e2e.sh`](../../hack/e2e.sh), [testing.md](testing.md#end-to-end-tests)); `E2E_ARGS=` reaches `playwright test`; a failed run leaves `frontend/e2e/test-results/` and `frontend/e2e/playwright-report/` |
+| | `make e2e-up` / `e2e-down` | the same | the stack alone, kept for `cd frontend && npx playwright test -c e2e`, and its removal |
+| | `make e2e-browsers` | npm | Playwright's Chromium and WebKit; `PLAYWRIGHT_INSTALL_FLAGS=--with-deps` adds their system packages |
 | Chart | `make helm-lint`, `make helm-template` | Helm | strict lint on defaults and each `ci/` file; render per `ci/` file |
 | Release | `make test-release-tooling` | `npm ci` at the root | the semantic-release plugins render notes |
 | Coverage | `make coverage-merge`, `make coverage-json` | the two profiles | `coverage/combined.*`, `.github/badges/coverage.json` |
@@ -185,9 +189,10 @@ docker start cowork-run-ingress                                                 
 
 `make verify-phase-2` ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) does that against
 `make postgres-up minio-up`, with a database and a bucket of its own, and drives the API through the
-stand-in as a `make dev-seed` agent — by hand, not as a CI job. The end-to-end tier puts the same
-stand-in in front of the images
-([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D1).
+stand-in as a `make dev-seed` agent — by hand, not as a CI job. `make e2e` puts the same stand-in,
+listening with TLS, in front of the images and walks the UI through it in a browser
+([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D1,
+[testing.md](testing.md#end-to-end-tests)).
 
 Then check through the stand-in: `/healthz` (the frontend's), `/api/v1/version` (the backend's,
 with `X-Request-Id`), a deep link and a hashed asset (`no-store`, `immutable`, the shell's
@@ -200,7 +205,8 @@ container on the network — for `/api/` and `/auth/`, which must answer the `40
 above 1 MiB included. A change to the shell's content-security policy, or to the build under it,
 is checked in a browser through the stand-in: the UI's pages — the chat's panel among them — with
 the console showing no violation. Chromium keeps the `Secure` session cookie on
-`http://localhost`, WebKit does not, so a WebKit run needs TLS in front of the stand-in. There is
+`http://localhost`, WebKit does not, so a WebKit run needs TLS in front of the stand-in, as `make e2e`
+has it. There is
 no unit test for nginx: this run is the check, and ADR 0001 records the one of 2026-10-04, which
 also ran the chart behind ingress-nginx in a kind cluster.
 
@@ -215,6 +221,7 @@ also ran the chart behind ingress-nginx in a kind cluster.
 | PostgreSQL test image | `POSTGRES_IMAGE` in the `Makefile`, the service in `release.yml` | Renovate, held on the 18 line: the Makefile manager captures the tag without the image name, so the hold rule sees `18` |
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |
 | Dex test image | `DEX_IMAGE` in the `Makefile`, `ghcr.io/dexidp/dex:v2.45.1` pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the same regex manager — its pattern matches the line; no Renovate run has confirmed it |
+| Playwright and its browsers | `@playwright/test` in `frontend/package.json`; the browsers are the ones that version names (`make e2e-browsers`); the image that makes the screenshots' pictures, `mcr.microsoft.com/playwright:v<version>-noble`, is named in [testing.md](testing.md#the-dark-mode-screenshot) only | Renovate (npm); the image's tag follows by hand |
 
 The two Makefile managers in `renovate.json` were matched against the `Makefile` locally; no
 Renovate run has confirmed them yet.

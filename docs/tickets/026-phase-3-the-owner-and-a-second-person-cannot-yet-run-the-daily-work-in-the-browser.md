@@ -5,7 +5,7 @@ state: in-progress
 severity: high
 security: none
 threat:
-urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox does not exist
+urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox has no end-to-end verification
 effort: L
 blocked-by:
 filed-from: docs/planning/project-plan.md phase 3, converted by ADR 0074 D2
@@ -27,8 +27,12 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
-- **What the goal still lacks:** the person-level lists (T35) and the inbox (T36), through which
-  the phase's verification goes; the end-to-end tier (T29); and what is left of each child below.
+- **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
+  verification goes, exist, and so does "next for me" as the start page, each following every
+  tenant of the person; what is left of them is their end-to-end paths (T35) and the mention (T36). The
+  end-to-end tier (T29) is built with the login's paths, filing and moving, the board and the
+  backlog; its path with two identities through "assigned to me" and the inbox, and its required
+  check, are left. And what is left of each child below.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -56,37 +60,46 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
     reload and demo data;
   - high line coverage in the frontend's unit tier, measured and reported per pull request as
     [ADR 0003](../adr/0003-test-and-ci-policy.md) D5 has it, not gated by a number.
-- **Carried over from phase 2:** rank (built; its score and the rebalancing of its keys are T34),
+- **Carried over from phase 2:** rank (built, with its score and the rebalancing of its keys; their
+  end-to-end path is T34),
   deletion and purge (T39), numbered pages on the audit view, members, tokens and projects (T40),
-  the person-level events with the inbox (T36), the attachment quota (T32), the server-side
-  Markdown sanitiser (T33).
+  the attachment quota (T32); the server-side Markdown sanitiser is built, its end-to-end check is
+  T33.
 - **Not in phase 3:** import and the cut-over (phase 6).
 
 ## Required changes
 
 1. **The children, in this order.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
+   - T52 — what is left of the horizon: its open question on an image rollback over the
+     capability's new name, and the contract of the names before, which waits for a release after
+     the one that ships the expand
    - T27 — the login's remainder: a token's project by key and the token form's longest lifetime
    - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, a check
      by hand, and its open question on the bundle budget
-   - T29 — the end-to-end tier: Playwright against the built images, two identities, both
-     schemes, the login's paths and every view's
-   - T30 — the ticket page edits the title, the body, the parent, the urgency override and the
-     confidential flag, and its editors close when the page turns to another ticket
-   - T31 — comments edited and withdrawn, an open question's text edited, the prerequisite tree
-   - T32 — an upload to a comment, the raster preview, the correction of a time entry, the
-     attachment quota
-   - T33 — the rendered Markdown body and the server-side sanitiser
-   - T34 — the score beside the rank, and the rebalancing of the rank keys
-   - T35 — the person-level lists: next for me, assigned to me, open decisions
-   - T36 — the inbox and the person-level events
-   - T37 — search
+   - T29 — the end-to-end tier's remainder: the path with two identities through "assigned to
+     me" and the inbox, the ruleset's required check, the job's first run on a runner
+   - T30 — the ticket page's editing on the end-to-end path of T29 (its editors are built)
+   - T31 — the conversation's writes and the prerequisite tree seen by a second browser on the
+     end-to-end path of T29 (the editors, the withdrawal and the tree are built)
+   - T32 — the attachment quota (the upload to a comment, the raster preview and the correction
+     of a time entry are built)
+   - T33 — the rendered Markdown's end-to-end check under the shell's content-security policy (the
+     renderer, the sanitiser and the rendered texts of the ticket page are built)
+   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look at
+     them (the score, the sort, the marker and the rebalancing are built)
+   - T35 — the end-to-end paths of the person-level pages and of the start page ("next for me", the
+     score's order and the person-level stream across every tenant are built)
+   - T36 — the mention in a comment, and the inbox's end-to-end path
+   - T37 — the search's end-to-end check, and where "that tenant first" puts the other tenants (the
+     search routes, the box and the results page are built)
    - T38 — saved filters
    - T39 — ticket deletion and the purge
    - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
-   - T41 — the project board's end-to-end path
-   - T42 — the tenant board with swimlanes
-   - T43 — the fixed dashboard
+   - T41 — done (the project board's end-to-end path); its move to the archive is left
+   - T42 — the tenant board's end-to-end run (the board is built, its path written)
+   - T43 — the fixed dashboard's end-to-end path and the owner's look at it (the route and the
+     front page are built)
 2. **The phase verification**, recorded here with what was run, against what, with what result:
    the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned
    to me" and in its inbox, moves it and closes it — through the UI, without touching the API —

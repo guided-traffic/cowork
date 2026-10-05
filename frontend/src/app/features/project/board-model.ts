@@ -1,4 +1,4 @@
-import { Ticket, TicketState, Urgency, WipLimits } from '../../api/models';
+import { Horizon, Ticket, TicketState, WipLimits } from '../../api/models';
 import { Move, MoveKind, movesOf } from '../../shared/transitions';
 
 /**
@@ -23,8 +23,8 @@ export const columnSpecs: readonly ColumnSpec[] = [
   { id: 'review', title: 'Review', states: ['review'], limit: 'review' },
 ];
 
-/** The urgencies the board shows, each of its own column or columns. */
-export const boardUrgencies: readonly Urgency[] = ['now', 'release', 'next'];
+/** The horizons the board shows, each of its own column or columns. */
+export const boardHorizons: readonly Horizon[] = ['now', 'release', 'next'];
 
 /** The column of a state; none for `done` and `dropped`, which the board does not show. */
 export function columnOf(state: TicketState): ColumnId | null {
@@ -41,19 +41,19 @@ export type Place = 'next' | ColumnId | null;
 
 /**
  * Where a ticket belongs on the board: an open ticket without children (a leaf — `progress_derived`
- * is true exactly for a ticket with children) of urgency `now` or `release` in the column of its
- * state, and one of urgency `next` in the column `next`, whatever its state; `later`, `icebox`, a
+ * is true exactly for a ticket with children) of the horizon `now` or `release` in the column of its
+ * state, and one of the horizon `next` in the column `next`, whatever its state; `later`, `icebox`, a
  * parent and a closed ticket nowhere.
  */
-export function placeOf(ticket: Pick<Ticket, 'state' | 'urgency' | 'progress_derived'>): Place {
+export function placeOf(ticket: Pick<Ticket, 'state' | 'horizon' | 'progress_derived'>): Place {
   const column = columnOf(ticket.state);
   if (ticket.progress_derived || column === null) {
     return null;
   }
-  if (ticket.urgency === 'next') {
+  if (ticket.horizon === 'next') {
     return 'next';
   }
-  return ticket.urgency === 'now' || ticket.urgency === 'release' ? column : null;
+  return ticket.horizon === 'now' || ticket.horizon === 'release' ? column : null;
 }
 
 export interface Column extends ColumnSpec {

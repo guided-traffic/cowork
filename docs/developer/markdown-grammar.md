@@ -5,7 +5,8 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 ([ADR 0011] D4). This page is grammar v1 exactly as
 [`markdown.Render`](../../backend/internal/markdown/markdown.go) writes it; the golden files in
 [`internal/markdown/testdata/`](../../backend/internal/markdown/testdata/) are its examples.
-Read against the tree on 2026-10-04.
+Read against the tree on 2026-10-05. Turning the Markdown people write into the HTML a browser shows
+is another package and another page, [rendered-markdown.md](rendered-markdown.md).
 
 ## The route
 
@@ -46,7 +47,7 @@ left out.
 | `title` | the title |
 | `type`, `state`, `severity`, `security` | the vocabulary values |
 | `threat` | the threat; only when `security` is not `none` |
-| `urgency` | the urgency the ticket shows: the override when one stands, else the derived value |
+| `horizon` | the ticket's horizon: the one set on it, else `later`. The key was `urgency` until 2026-10-05, when the API took the word ([ADR 0010] D1); grammar v1 was amended in place, since nothing parses the export yet, and the importer reads `urgency` as `horizon` — an export written before and the ticket files of a repository name it so ([ADR 0044] D3) |
 | `effort` | the effort |
 | `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
 | `progress` | always present: the implementation stage, likewise |
@@ -92,7 +93,7 @@ type: task
 state: blocked
 severity: low
 security: none
-urgency: release
+horizon: release
 effort: S
 progress-refinement: 100
 progress: 0
@@ -128,14 +129,18 @@ charset=utf-8` without an `ETag`. In order:
 3. `## Links`: `- <name read from this ticket> <key> — <title> (<state>, <assignee>)`.
 4. `## Prerequisites`: `<open> of <all> open.`, then the tree of the tickets that block it, two
    spaces of indent per level, `- <key> — <title> (<state>, <assignee>, <implementation stage>%)`;
-   eight levels at most, stopping at a ticket the reader cannot see.
+   the tree of `…/prerequisites` ([domain.md](domain.md#the-prerequisite-tree)) — eight levels at
+   most, stopping at a ticket the reader cannot see — with each prerequisite once: under the first
+   ticket it blocks, not repeated under the others.
 5. `## Recent comments` — left out for `comments=0` —: the last ones, oldest of them first, each
    `**<author>** via <agent>, <time UTC>:` and its text as a block quote, or `[withdrawn]`.
 6. `## Attachments`: `- <name> — <type>, <size> — <URL>`.
 7. `## Recent activity` — left out for `activity=0` —: the last acts of the ticket's activity
    list, which leaves out time entries and what took data out (the exports among them), each
-   `- <time UTC> — <actor> via <agent> — <action>`, with the states of a transition, the ends of a link, the fields of an update, the
-   reason and the note quoted and cut to 200 characters; an act that names a ticket the reader
+   `- <time UTC> — <actor> via <agent> — <action>`, with the states of a transition, the ends of a link, the fields of an update,
+   `by score` after the sort of the project's rank that moved the ticket, an act on the horizon —
+   `overridden` in the record — as `set the horizon to <value>` or `returned the ticket to later`
+   (`horizonAct`), the reason and the note quoted and cut to 200 characters; an act that names a ticket the reader
    cannot see says so instead.
 
 An empty section says `None.`. A document lists at most 200 links, 200 nodes of the tree and 200
@@ -154,6 +159,7 @@ reads. The importer will read this form back ([ADR 0044] D3), so a change of the
 change of a contract.
 
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
+[ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md

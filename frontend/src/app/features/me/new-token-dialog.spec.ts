@@ -5,11 +5,19 @@ import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
 import { Select } from 'primeng/select';
 import type { MockInstance } from 'vitest';
-import { Capability, Membership, Problem, Project, TokenCreated } from '../../api/models';
+import {
+  AuthOptions,
+  Capability,
+  Membership,
+  Problem,
+  Project,
+  TokenCreated,
+} from '../../api/models';
 import { CAPABILITY } from '../../api/models/capability-array';
+import { AuthService } from '../../core/auth.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
-import { assisted, capabilityMeanings } from '../../shared/capabilities';
+import { assisted, capabilityMeanings, selectableCapabilities } from '../../shared/capabilities';
 import { maxLifetimeDays, NewTokenDialog, scopeMeanings } from './new-token-dialog';
 
 const acme: Membership = {
@@ -41,13 +49,13 @@ const issued: TokenCreated = {
   name: 'claude on my laptop',
   scope: 'write',
   agent: true,
-  capabilities: [...CAPABILITY],
+  capabilities: [...selectableCapabilities],
   created_at: '2026-10-03T10:00:00Z',
   expires_at: '2026-12-31T10:00:00Z',
   last_used_on: null,
   revoked_at: null,
   restricted_tenant: null,
-  restricted_project_id: null,
+  restricted_project: null,
   state: 'active',
   token: plaintext,
 };
@@ -74,15 +82,21 @@ describe('the vocabulary of a token', () => {
   });
 
   it('says what each of the nine capabilities lets an agent do', () => {
-    expect(CAPABILITY).toHaveLength(9);
-    expect(Object.keys(capabilityMeanings).sort()).toEqual([...CAPABILITY].sort());
+    expect(selectableCapabilities).toHaveLength(9);
+    expect(Object.keys(capabilityMeanings).sort()).toEqual([...selectableCapabilities].sort());
+  });
+
+  it('offers no switch for override-urgency, the name set-horizon had before (docs/adr/0043 D4)', () => {
+    expect(CAPABILITY).toContain('override-urgency');
+    expect(selectableCapabilities).not.toContain('override-urgency');
+    expect(selectableCapabilities).toEqual(CAPABILITY.filter((each) => each !== 'override-urgency'));
   });
 
   it('has the assisted set of docs/adr/0043 D4: decide, close, rank, create-project and record-answer are off', () => {
-    expect(assisted).toEqual(['drop', 'override-urgency', 'interest', 'upload']);
+    expect(assisted).toEqual(['drop', 'set-horizon', 'interest', 'upload']);
   });
 
-  it('takes up to 3650 days, the bound of the schema, and leaves the maximum to the installation (docs/adr/0035 D4)', () => {
+  it('takes up to 3650 days, the bound of the schema, within which the installation holds its own maximum (docs/adr/0035 D4)', () => {
     expect(maxLifetimeDays).toBe(3650);
   });
 
@@ -106,6 +120,8 @@ describe('NewTokenDialog', () => {
   let create: MockInstance<TokensService['create']>;
   let projectsOf: MockInstance<TokensService['projectsOf']>;
   let memberships: WritableSignal<Membership[]>;
+  /** What `/auth/options` answered; undefined while it has not, or could not be read. */
+  let options: WritableSignal<AuthOptions | undefined>;
   let warn: MockInstance<typeof console.warn>;
 
   beforeEach(() => {
@@ -114,12 +130,19 @@ describe('NewTokenDialog', () => {
       .fn<TokensService['projectsOf']>()
       .mockResolvedValue([project('COW', 'cowork'), project('OPS', 'operations')]);
     memberships = signal([acme, globex]);
+    options = signal<AuthOptions | undefined>(undefined);
     warn = vi.spyOn(console, 'warn');
     TestBed.configureTestingModule({
       providers: [
         MessageService,
         { provide: TokensService, useValue: { create, projectsOf } },
         { provide: SessionService, useValue: { memberships } },
+        {
+          provide: AuthService,
+          useValue: {
+            options: { hasValue: () => options() !== undefined, value: () => options() },
+          },
+        },
       ],
     });
   });
@@ -374,9 +397,9 @@ describe('NewTokenDialog', () => {
         value: Capability;
         meaning: string;
       }[];
-      expect(options.map((option) => option.value)).toEqual([...CAPABILITY]);
+      expect(options.map((option) => option.value)).toEqual([...selectableCapabilities]);
       expect(options.map((option) => option.meaning)).toEqual(
-        CAPABILITY.map((each) => capabilityMeanings[each]),
+        selectableCapabilities.map((each) => capabilityMeanings[each]),
       );
     });
 
@@ -397,9 +420,9 @@ describe('NewTokenDialog', () => {
       await settle(fixture);
 
       const items = [...document.body.querySelectorAll('.p-select-option .capability')];
-      expect(items.map((item) => item.querySelector('span')?.textContent)).toEqual([...CAPABILITY]);
+      expect(items.map((item) => item.querySelector('span')?.textContent)).toEqual([...selectableCapabilities]);
       expect(items.map((item) => item.querySelector('small')?.textContent)).toEqual(
-        CAPABILITY.map((each) => capabilityMeanings[each]),
+        selectableCapabilities.map((each) => capabilityMeanings[each]),
       );
     });
 
@@ -407,7 +430,7 @@ describe('NewTokenDialog', () => {
       const fixture = await render();
       await agent(fixture);
 
-      expect(label(fixture, 'token-capabilities')).toBe(CAPABILITY.join(', '));
+      expect(label(fixture, 'token-capabilities')).toBe(selectableCapabilities.join(', '));
     });
 
     it('are named for a screen reader, as the other selects of the dialog are, and grouped with their shortcuts', async () => {
@@ -443,7 +466,7 @@ describe('NewTokenDialog', () => {
 
       el(fixture, 'token-capabilities-assisted')?.click();
       await settle(fixture);
-      expect(label(fixture, 'token-capabilities')).toBe('drop, override-urgency, interest, upload');
+      expect(label(fixture, 'token-capabilities')).toBe('drop, set-horizon, interest, upload');
       expect(text(fixture, 'token-capabilities-count')).toContain('4 of 9 chosen');
 
       el(fixture, 'token-capabilities-full')?.click();
@@ -694,6 +717,80 @@ describe('NewTokenDialog', () => {
       expect(create.mock.calls[0][0].lifetime_days).toBe(days);
     });
 
+    describe("with the installation's maximum (docs/adr/0035 D4)", () => {
+      const installation = (days: number): AuthOptions => ({
+        local: true,
+        oidc: false,
+        oidc_name: null,
+        password_min_length: 12,
+        token_max_lifetime_days: days,
+      });
+      const field = (fixture: ComponentFixture<NewTokenDialog>) =>
+        fixture.debugElement.query(By.css('[data-testid="token-lifetime"]')).componentInstance as {
+          max(): number;
+          $disabled(): boolean;
+        };
+
+      it('goes up to the longest lifetime the installation gives a token, and says so', async () => {
+        options.set(installation(30));
+        const fixture = await render();
+
+        expect(field(fixture).max()).toBe(30);
+        expect(text(fixture, 'token-lifetime-hint')).toBe(
+          "Empty is the installation's default. Up to 30 days, the longest this installation gives a token.",
+        );
+      });
+
+      it('takes the maximum and refuses a day more', async () => {
+        options.set(installation(30));
+        const fixture = await render();
+        await fill(fixture);
+
+        await choose(fixture, 'token-lifetime', 31);
+        expect(saveButton(fixture)?.disabled).toBe(true);
+
+        await choose(fixture, 'token-lifetime', 30);
+        expect(saveButton(fixture)?.disabled).toBe(false);
+        submit(fixture);
+        await settle(fixture);
+        expect(create.mock.calls[0][0].lifetime_days).toBe(30);
+      });
+
+      it('follows the answer that arrives after the dialog opened', async () => {
+        const fixture = await render();
+        expect(field(fixture).max()).toBe(3650);
+
+        options.set(installation(365));
+        await settle(fixture);
+
+        expect(field(fixture).max()).toBe(365);
+        expect(text(fixture, 'token-lifetime-hint')).toContain('Up to 365 days');
+      });
+
+      it('stays within the bound of the schema when the installation allows longer', async () => {
+        options.set(installation(7300));
+        const fixture = await render();
+
+        expect(field(fixture).max()).toBe(3650);
+        expect(text(fixture, 'token-lifetime-hint')).toContain('Up to 3650 days');
+      });
+
+      it('takes no number when the installation gives a token less than a day, only its default', async () => {
+        options.set(installation(0));
+        const fixture = await render();
+        await fill(fixture);
+
+        expect(field(fixture).$disabled()).toBe(true);
+        expect(text(fixture, 'token-lifetime-hint')).toBe(
+          'This installation gives a token less than a day: leave it empty for its default.',
+        );
+        expect(saveButton(fixture)?.disabled).toBe(false);
+        submit(fixture);
+        await settle(fixture);
+        expect(create.mock.calls[0][0]).not.toHaveProperty('lifetime_days');
+      });
+    });
+
     it('is left out of the request again when it was filled and emptied, which is the default once more', async () => {
       const fixture = await render();
       await fill(fixture);
@@ -787,7 +884,7 @@ describe('NewTokenDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create.mock.calls[0][0]).toMatchObject({ agent: true, capabilities: [...CAPABILITY] });
+      expect(create.mock.calls[0][0]).toMatchObject({ agent: true, capabilities: [...selectableCapabilities] });
     });
 
     it('creates the assisted token with the four capabilities that are left', async () => {
@@ -802,7 +899,7 @@ describe('NewTokenDialog', () => {
 
       expect(create.mock.calls[0][0].capabilities).toEqual([
         'drop',
-        'override-urgency',
+        'set-horizon',
         'interest',
         'upload',
       ]);

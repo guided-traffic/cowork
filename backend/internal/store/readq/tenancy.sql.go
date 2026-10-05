@@ -13,6 +13,20 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
+const countMembers = `-- name: CountMembers :one
+SELECT count(DISTINCT m.user_id)::bigint AS members
+FROM memberships m
+WHERE m.tenant_id = $1
+`
+
+// The tenant's members, each person once, for a numbered page's total.
+func (q *Queries) CountMembers(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countMembers, tenantID)
+	var members int64
+	err := row.Scan(&members)
+	return members, err
+}
+
 const getMember = `-- name: GetMember :one
 SELECT u.id, u.username, u.display_name, u.email, max(m.role)::tenant_role AS role,
        array_agg(m.source::text ORDER BY m.source)::text[] AS sources,
@@ -220,13 +234,14 @@ WHERE m.tenant_id = $1
   AND ($2::uuid IS NULL OR u.id > $2::uuid)
 GROUP BY u.id, u.username, u.display_name, u.email
 ORDER BY u.id
-LIMIT $3
+LIMIT $4 OFFSET $3
 `
 
 type ListMembersParams struct {
-	TenantID uuid.UUID
-	After    *uuid.UUID
-	PageSize int32
+	TenantID   uuid.UUID
+	After      *uuid.UUID
+	PageOffset int32
+	PageSize   int32
 }
 
 type ListMembersRow struct {
@@ -241,12 +256,18 @@ type ListMembersRow struct {
 }
 
 // The tenant's members by person id (docs/adr/0034 D7), a page after the
-// cursor's person: the highest role, every source of it with its own role —
+// cursor's person or a numbered page by offset (docs/adr/0048 D1, D2): the
+// highest role, every source of it with its own role —
 // the mapping before the grant — whether the person is a local account rather
 // than one of the identity provider (docs/adr/0030 D4, docs/adr/0033), and
 // the address, which the handler shows the tenant's administrators only.
 func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]ListMembersRow, error) {
-	rows, err := q.db.Query(ctx, listMembers, arg.TenantID, arg.After, arg.PageSize)
+	rows, err := q.db.Query(ctx, listMembers,
+		arg.TenantID,
+		arg.After,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

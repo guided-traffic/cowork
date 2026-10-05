@@ -14,13 +14,18 @@ import { Api } from '../api/api';
 import {
   listProjectTickets,
   ListProjectTickets$Params,
-  listTenantTickets,
-  ListTenantTickets$Params,
-  resolveTicket,
-} from '../api/functions';
+} from '../api/fn/tickets/list-project-tickets';
+import { listTenantTickets, ListTenantTickets$Params } from '../api/fn/tickets/list-tenant-tickets';
+import { resolveTicket } from '../api/fn/tickets/resolve-ticket';
 import { Ticket, TicketList } from '../api/models';
+import { ConditionalPages, PageFetcher } from './conditional';
 import { EntityCache } from './entity-cache';
-import { changesVisibility, EventStreamService, StreamEvent } from './event-stream.service';
+import {
+  changesVisibility,
+  EventStreamService,
+  ofTenant,
+  StreamEvent,
+} from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -96,11 +101,12 @@ export class TicketsService {
     params: () => ListProjectTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
       loader: ({ params }) =>
         keepShown(tickets, () =>
-          this.api.invoke(listProjectTickets, params).then((list) => this.keep(list)),
+          pages.load((page) => page(listProjectTickets, params)).then((list) => this.keep(list)),
         ),
       injector,
     });
@@ -118,9 +124,11 @@ export class TicketsService {
     params: () => ProjectTicketPagesParams | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
-      loader: ({ params }) => keepShown(tickets, () => this.followPages(params)),
+      loader: ({ params }) =>
+        keepShown(tickets, () => pages.load((page) => this.followPages(params, page))),
       injector,
     });
     return this.track(tickets, injector);
@@ -131,11 +139,12 @@ export class TicketsService {
     params: () => ListTenantTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
       loader: ({ params }) =>
         keepShown(tickets, () =>
-          this.api.invoke(listTenantTickets, params).then((list) => this.keep(list)),
+          pages.load((page) => page(listTenantTickets, params)).then((list) => this.keep(list)),
         ),
       injector,
     });
@@ -174,6 +183,27 @@ export class TicketsService {
     });
   }
 
+  /**
+   * Every open ticket of a project, in its rank, every page of it, into the cache — what a person
+   * picks a parent from (docs/adr/0008 D2). A one-off read, not an open list: nothing reloads it.
+   */
+  async openTickets(tenant: string, project: string): Promise<Ticket[]> {
+    const tickets: Ticket[] = [];
+    let cursor: string | undefined;
+    do {
+      const list = await this.api.invoke(listProjectTickets, {
+        tenant,
+        project,
+        cursor,
+        limit: pageSize,
+      });
+      this.keep(list);
+      tickets.push(...list.items);
+      cursor = list.next_cursor ?? undefined;
+    } while (cursor);
+    return tickets;
+  }
+
   /** Fetches one ticket by its canonical key into the cache. */
   async refresh(key: string): Promise<Ticket> {
     const ticket = await this.api.invoke(resolveTicket, splitKey(key));
@@ -181,13 +211,16 @@ export class TicketsService {
     return ticket;
   }
 
-  private async followPages({ pages, ...query }: ProjectTicketPagesParams): Promise<TicketPage> {
+  private async followPages(
+    { pages, ...query }: ProjectTicketPagesParams,
+    page: PageFetcher,
+  ): Promise<TicketPage> {
     // The version of each key; a ticket seen twice keeps the place and the version of the later
     // answer, so it is deleted first.
     const versions = new Map<string, number>();
     let cursor: string | undefined;
-    for (let page = 0; page < pages; page++) {
-      const list = await this.api.invoke(listProjectTickets, { ...query, cursor, limit: pageSize });
+    for (let held = 0; held < pages; held++) {
+      const list = await page(listProjectTickets, { ...query, cursor, limit: pageSize });
       this.keep(list);
       for (const ticket of list.items) {
         versions.delete(ticket.key);
@@ -222,6 +255,11 @@ export class TicketsService {
   }
 
   private react(event: StreamEvent): void {
+    // The person-level stream carries the events of every tenant of the person (docs/adr/0054
+    // D1); this service holds the tickets of the tenant the pages show.
+    if (!ofTenant(event, this.session.tenant())) {
+      return;
+    }
     // A project's restriction, its access list or the person's own role may have hidden a project
     // or shown one: what is shown is fetched again, and a ticket the person no longer sees goes.
     // Any other change of a membership leaves the tickets as they are.
@@ -234,18 +272,25 @@ export class TicketsService {
       this.reloadLists();
       return;
     }
-    if (event.name === 'membership.changed') {
+    if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
+      return;
+    }
+    // A project's rank set as a whole — the sort by the score — is the project's act, with no
+    // event of the tickets it moved: the lists, which hold the order and bring their new versions,
+    // load again (docs/adr/0014 D3).
+    if (event.name === 'project.changed') {
+      this.reloadLists();
       return;
     }
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
-    // a question or a link re-derives its urgency without one; a comment or a stake changes
-    // nothing the ticket itself shows.
+    // a link changes its open prerequisites without one, and a stake its score (docs/adr/0013
+    // D3); a question or a comment changes nothing the ticket itself shows.
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
         ? held.version < event.version
-        : event.name === 'question.changed' || event.name === 'link.changed');
+        : event.name === 'link.changed' || event.name === 'interest.changed');
     if (stale) {
       this.refetch(event.key);
     }
@@ -267,7 +312,8 @@ export class TicketsService {
     });
   }
 
-  private reloadLists(): void {
+  /** Loads every open list again, once per burst ({@link listReloadDelay}). */
+  reloadLists(): void {
     if (this.reloadTimer) {
       return;
     }

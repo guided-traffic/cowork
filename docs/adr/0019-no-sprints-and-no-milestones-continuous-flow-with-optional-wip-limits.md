@@ -9,8 +9,13 @@ by the owner as the answer to the catalog question "iterations or sprints?": con
 over sprints, over milestones (the recommendation), and over deferring milestones.
 
 **Partly built** (phase 2, 2026-10-02): D1 (no time box exists) and D3 — WIP limits per state
-stored on the project, advisory, refusing nothing. D2's dashboard and D4's release ticket
-arrive with the views. The amendment of 2026-10-03 is built in the API (2026-10-03): `review`
+stored on the project, advisory, refusing nothing. ~~D2's dashboard and D4's release ticket
+arrive with the views.~~ D4's release ticket arrives with the views. **D2 is built** (phase 3,
+2026-10-05) with the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md) D6:
+throughput is `done` per ISO week of UTC days for the eight weeks that end with the chosen period's
+last day, lead time the median over the thirty rolling days that end with it, and the time booked
+the period's ([`dashboard.go`](../../backend/internal/api/dashboard.go); the definitions in the API
+document's `Dashboard`). The amendment of 2026-10-03 is built in the API (2026-10-03): `review`
 takes a limit (`wip_limits.review`); counting the Refinement column against the `analysed`
 limit is the board's ([ADR 0018](0018-the-views-of-the-first-release.md)).
 

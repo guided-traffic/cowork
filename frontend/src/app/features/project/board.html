@@ -24,113 +24,16 @@
   }
 
   @if (session.tenant(); as tenant) {
-    <!-- The board scrolls sideways where the window is narrow: a drag scrolls it at its edges and follows its scroll. -->
-    <div
-      class="board"
-      [class.loading]="loading()"
-      [class.dragging]="dragged() !== null"
-      [attr.aria-busy]="loading()"
-      cdkDropListGroup
-      cdkScrollable
-      data-testid="board"
-    >
-      <section
-        class="column next"
-        [class.refused]="dragged() !== null"
-        aria-labelledby="column-next"
-        data-testid="column-next"
-      >
-        <header class="head">
-          <h2
-            id="column-next"
-            pTooltip="Tickets of urgency next, in whatever state; Now makes one now, and it moves to the column of its state"
-            [showDelay]="400"
-          >
-            Next
-          </h2>
-          <span class="count tabular" data-testid="count-next">{{ board().next.length }}</span>
-        </header>
-        <div class="cards">
-          @for (ticket of board().next; track ticket.key) {
-            <app-board-card
-              [ticket]="ticket"
-              [tenant]="tenant"
-              [compact]="true"
-              (click)="open(ticket)"
-              (now)="makeNow(ticket)"
-              [attr.data-testid]="'card-' + ticket.key"
-            />
-          } @empty {
-            <p class="empty muted" data-testid="empty-next">Nothing is next</p>
-          }
-        </div>
-      </section>
-
-      @for (column of board().columns; track column.id) {
-        <section
-          class="column"
-          [class.over]="column.over"
-          [class.target]="targets().has(column.id)"
-          [class.refused]="dragged() !== null && !targets().has(column.id)"
-          [attr.aria-labelledby]="'column-' + column.id"
-          [attr.data-testid]="'column-' + column.id"
-        >
-          <header class="head">
-            <h2 [id]="'column-' + column.id">{{ column.title }}</h2>
-            <span
-              class="count tabular"
-              [class.over]="column.over"
-              [pTooltip]="limitText(column)"
-              [showDelay]="400"
-              [attr.aria-label]="limitText(column)"
-              [attr.data-testid]="'count-' + column.id"
-              >{{ column.cards.length }}
-              @if (column.max !== undefined) {
-                / {{ column.max }}
-              }
-            </span>
-          </header>
-          <div
-            class="cards"
-            cdkDropList
-            [cdkDropListData]="column.id"
-            [cdkDropListEnterPredicate]="accepts"
-            [cdkDropListSortingDisabled]="true"
-            (cdkDropListDropped)="dropped($event)"
-            [attr.data-testid]="'cards-' + column.id"
-          >
-            @for (ticket of column.cards; track ticket.key) {
-              <app-board-card
-                cdkDrag
-                [cdkDragData]="ticket"
-                (cdkDragStarted)="dragStarted(ticket)"
-                (cdkDragEnded)="dragEnded()"
-                [ticket]="ticket"
-                [tenant]="tenant"
-                [action]="action(ticket)"
-                [movable]="movable(ticket)"
-                (click)="open(ticket)"
-                (act)="act(ticket, $event)"
-                (menu)="openMenu($event, ticket)"
-                [attr.data-testid]="'card-' + ticket.key"
-              />
-            } @empty {
-              <p class="empty muted" [attr.data-testid]="'empty-' + column.id">No tickets</p>
-            }
-          </div>
-        </section>
-      }
-    </div>
+    <app-board-columns [view]="board()" [tenant]="tenant" [loading]="loading()" [reload]="reload" />
   }
 
-  @if (pendingTicket(); as ticket) {
+  @if (moves.pendingTicket(); as ticket) {
     <app-move-dialog
       [ticket]="ticket"
-      [request]="pending()?.request ?? null"
-      (closed)="closed($event)"
+      [request]="moves.pending()?.request ?? null"
+      (closed)="moves.closed($event)"
     />
   }
 
-  <p-menu #cardMenu [model]="menuItems()" [popup]="true" appendTo="body" />
-  <p class="sr-only" role="status" aria-live="polite" data-testid="status">{{ status() }}</p>
+  <p class="sr-only" role="status" aria-live="polite" data-testid="status">{{ moves.status() }}</p>
 </section>

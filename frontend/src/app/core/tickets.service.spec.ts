@@ -47,6 +47,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     severity: 'medium',
     security: 'none',
     effort: 'M',
+    horizon: 'later',
+    horizon_set: null,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,
@@ -71,6 +73,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version,
     ...overrides,
   };
@@ -655,6 +659,74 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('a poll that finds a list unchanged (docs/adr/0054 D7)', () => {
+    const notModified = { status: 304, statusText: 'Not Modified' };
+
+    describe.each([
+      ['projectTickets', projectUrl, () => projectList()],
+      [
+        'projectTicketPages',
+        projectUrl,
+        () =>
+          TestBed.runInInjectionContext(() =>
+            service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 1 })),
+          ),
+      ],
+      ['tenantTickets', tenantUrl, () => tenantList()],
+    ] as const)('made by %s', (_, url, open) => {
+      it("sends the list's weak ETag and keeps the keys on a 304", async () => {
+        const list = open();
+        await settle();
+        http
+          .expectOne((request) => request.url === url)
+          .flush(listOf([ticket('acme/VKO-2'), ticket('acme/VKO-1')]), {
+            headers: { ETag: 'W/"one"' },
+          });
+        await settle();
+
+        stream.next({ name: 'poll' });
+        await wait(listReloadDelay);
+        const again = http.expectOne((request) => request.url === url);
+        expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+        again.flush(null, notModified);
+        await settle();
+
+        expect(list.status()).toBe('resolved');
+        expect(list.value()?.keys).toEqual(['acme/VKO-2', 'acme/VKO-1']);
+        expect(service.cache.value('acme/VKO-1')).toBeDefined();
+      });
+    });
+
+    it('sends the tag of each page a list follows, cursor by cursor', async () => {
+      const list = TestBed.runInInjectionContext(() =>
+        service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 2 })),
+      );
+      await settle();
+      http
+        .expectOne((r) => r.url === projectUrl && !r.params.has('cursor'))
+        .flush(listOf([ticket('acme/VKO-1')], 'c1'), { headers: { ETag: 'W/"one"' } });
+      await settle();
+      http
+        .expectOne((r) => r.url === projectUrl && r.params.get('cursor') === 'c1')
+        .flush(listOf([ticket('acme/VKO-2')]), { headers: { ETag: 'W/"two"' } });
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await wait(listReloadDelay);
+      const first = http.expectOne((r) => r.url === projectUrl && !r.params.has('cursor'));
+      expect(first.request.headers.get('If-None-Match')).toBe('W/"one"');
+      first.flush(null, notModified);
+      await settle();
+      const second = http.expectOne((r) => r.url === projectUrl && r.params.get('cursor') === 'c1');
+      expect(second.request.headers.get('If-None-Match')).toBe('W/"two"');
+      second.flush(null, notModified);
+      await settle();
+
+      expect(list.value()?.keys).toEqual(['acme/VKO-1', 'acme/VKO-2']);
+      expect(list.value()?.nextCursor).toBeNull();
+    });
+  });
+
   describe('refresh', () => {
     it('fetches the ticket by its canonical key into the cache and hands it back', async () => {
       const done = service.refresh('acme/VKO-12');
@@ -682,6 +754,38 @@ describe('TicketsService', () => {
 
       expect(await outcome).toBeInstanceOf(HttpErrorResponse);
       expect(service.cache.value('acme/VKO-12')?.version).toBe(2);
+    });
+  });
+
+  describe('openTickets', () => {
+    const url = '/api/v1/tenants/acme/projects/VKO/tickets';
+
+    it('reads every page of the open tickets of a project, in the rank, into the cache', async () => {
+      const done = service.openTickets('acme', 'VKO');
+
+      const first = http.expectOne((request) => request.url === url);
+      expect(first.request.params.get('limit')).toBe('200');
+      expect(first.request.params.has('cursor')).toBe(false);
+      expect(first.request.params.has('include_terminal')).toBe(false);
+      first.flush({ ...listOf([ticket('acme/VKO-3', 2)]), next_cursor: 'more' });
+      await settle();
+      const second = http.expectOne((request) => request.url === url);
+      expect(second.request.params.get('cursor')).toBe('more');
+      second.flush(listOf([ticket('acme/VKO-1', 1)]));
+
+      expect((await done).map((each) => each.key)).toEqual(['acme/VKO-3', 'acme/VKO-1']);
+      expect(service.cache.value('acme/VKO-1')?.version).toBe(1);
+    });
+
+    it('is no open list: an event reloads nothing', async () => {
+      const done = service.openTickets('acme', 'VKO');
+      http.expectOne((request) => request.url === url).flush(listOf([]));
+      await done;
+
+      stream.next({ name: 'poll' });
+      await wait(200);
+
+      http.expectNone((request) => request.url === url);
     });
   });
 
@@ -763,28 +867,22 @@ describe('TicketsService', () => {
       http.expectNone(ticketUrl('acme/VKO-99'));
     });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'refetches a cached ticket on %s even at the version it holds, because its urgency is derived',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('refetches a cached ticket on link.changed even at the version it holds, because its open prerequisites change', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { urgency: 'now' }));
-        await settle();
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { open_prerequisites: 1 }));
+      await settle();
 
-        expect(service.cache.value(key)?.urgency).toBe('now');
-      },
-    );
+      expect(service.cache.value(key)?.open_prerequisites).toBe(1);
+    });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'does not fetch a ticket that is not cached on %s',
-      (name) => {
-        stream.next(changed(name, 'acme/VKO-99', 1));
+    it('does not fetch a ticket that is not cached on link.changed', () => {
+      stream.next(changed('link.changed', 'acme/VKO-99', 1));
 
-        http.expectNone(ticketUrl('acme/VKO-99'));
-      },
-    );
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
 
-    it.each(['comment.changed', 'interest.changed'] as const)(
+    it.each(['question.changed', 'comment.changed'] as const)(
       'never refetches the ticket on %s, whatever version it names, because they change nothing it shows',
       async (name) => {
         stream.next(changed(name, key, 99));
@@ -794,6 +892,22 @@ describe('TicketsService', () => {
         expect(service.cache.value(key)?.version).toBe(5);
       },
     );
+
+    // docs/adr/0013 D3, docs/adr/0014 D4: a stake moves the ticket's score, not its version.
+    it('refetches a cached ticket on interest.changed at the version it holds, because its score changes', async () => {
+      stream.next(changed('interest.changed', key, 5));
+
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { score: 7.5, score_version: 1 }));
+      await settle();
+
+      expect(service.cache.value(key)?.score).toBe(7.5);
+    });
+
+    it('does not fetch a ticket that is not cached on interest.changed', () => {
+      stream.next(changed('interest.changed', 'acme/VKO-99', 1));
+
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
 
     it.each([
       [404, 'the ticket is not there'],
@@ -829,17 +943,14 @@ describe('TicketsService', () => {
       },
     );
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'keeps the ticket as well when the refetch after a %s event fails with a 500',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('keeps the ticket as well when the refetch after a link.changed event fails with a 500', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        fail(http.expectOne(ticketUrl(key)), 500);
-        await settle();
+      fail(http.expectOne(ticketUrl(key)), 500);
+      await settle();
 
-        expect(service.cache.value(key)?.version).toBe(5);
-      },
-    );
+      expect(service.cache.value(key)?.version).toBe(5);
+    });
 
     it('keeps the entry when the refetch fails with something that is not an HTTP error', async () => {
       interceptorFailure = new Error('an interceptor broke');
@@ -904,6 +1015,14 @@ describe('TicketsService', () => {
       },
     );
 
+    it("are not reloaded by an event of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next(changed('question.changed', 'globex/OPS-1', 1));
+      await wait(10 * listReloadDelay);
+
+      http.expectNone(projectUrl);
+      http.expectNone(tenantUrl);
+    });
+
     it('reload once for a whole burst, counted from its first event', async () => {
       stream.next(changed('ticket.changed', 'acme/VKO-1', 2));
       await wait(100);
@@ -954,6 +1073,19 @@ describe('TicketsService', () => {
         http.expectNone(tenantUrl);
       },
     );
+
+    // docs/adr/0014 D3: the sort by the score is the project's act, no ticket's event; the lists hold the order.
+    it("reload on project.changed of the tenant the pages show, and on no other tenant's", async () => {
+      stream.next({ name: 'project.changed', id: 'e1', key: 'globex/VKO', kind: 'ranked' });
+      await wait(10 * listReloadDelay);
+      http.expectNone(projectUrl);
+
+      stream.next({ name: 'project.changed', id: 'e2', key: 'acme/VKO', kind: 'ranked' });
+      await wait(listReloadDelay);
+
+      expect(take(projectUrl)).toHaveLength(1);
+      expect(take(tenantUrl)).toHaveLength(1);
+    });
 
     describe('when the event comes during their own load', () => {
       /** A list that is loading, in a view of its own. */
@@ -1361,6 +1493,14 @@ describe('TicketsService', () => {
     it.each<[string, StreamEvent]>([
       ["somebody else's membership", { name: 'membership.changed', id: 'e1', personId: 'p2' }],
       ['a group mapping', { name: 'membership.changed', id: 'e1', mappingId: 'm1' }],
+      [
+        "a restriction in another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
+      ],
+      [
+        "the person's own role in another of their tenants",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' },
+      ],
     ])('leaves the tickets and the lists alone on %s', async (_what, event) => {
       await show('acme/VKO-1', 2);
       projectList();

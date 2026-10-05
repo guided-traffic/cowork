@@ -1,80 +1,58 @@
 ---
 id: T40
-title: the audit view, members, tokens and projects have no numbered pages, the tenant has no audit page, and its administrators cannot see or revoke the members' tokens
-state: analysed
+title: the members and tokens pages show no page numbers, and a tenant's administrators cannot see or revoke the members' tokens
+state: in-progress
 severity: low
 security: none
 threat:
-urgency: later        # rule 4: decided fix for the paging and the audit page; the members' tokens wait for Q1
+urgency: later        # rule 4: decided and built; the owner reviews the result
 effort: M
-blocked-by:
+blocked-by: human
 filed-from: T26
 opened: 2026-10-03
-decided:
+decided: 2026-10-05
 done:
 ---
 
 ## Current state
 
-The ticket lists and the tenant's time take `page` and `per_page`; the audit view (`listAudit`),
-the member list (`listMembers`), the person's token list (`listMyTokens`) and the project list
-(`listProjects`) page by cursor only.
-[ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D2 (numbered
-pages on tables) is carried over from phase 2.
+Built on this branch:
 
-The browser has the tenant's administration pages for its settings (`updateTenant` with
-`If-Match`), a project's settings with its WIP limits, access list and archive, the new project,
-the members with their roles and where each comes from, the local accounts and the group
-mappings ([`app.routes.ts`](../../frontend/src/app/app.routes.ts#L48-L79)). It has no audit page.
-And no route lists a tenant's tokens: the administrator's view and revocation of the members'
-tokens ([ADR 0035](../adr/0035-personal-access-tokens.md) D5) is built neither in the backend —
-there is no `/api/v1/tenants/{tenant}/tokens` — nor in the browser
-([tokens.md](../security/tokens.md) says so).
+- **Numbered pages on the four tables** of the API (`listAudit`, `listMembers`, `listMyTokens`,
+  `listProjects`) and the tenant's audit page at `/t/:tenant/audit`
+  ([ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D2, D4;
+  [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D6).
+- **The members page and the tokens page show numbered pages** — 25, 50 or 100 a page — through
+  [`table-pages.ts`](../../frontend/src/app/core/table-pages.ts) `tablePages`; the pickers keep
+  reading every member (`MembersService.members`). Unit tests: `members.spec.ts`,
+  `members.service.spec.ts`, `tokens.spec.ts`, `tokens.service.spec.ts`.
+- **The tokens that can act in the tenant**, Q1 answered (b) on the recommendation, the owner
+  reviewing the result ([ADR 0035](../adr/0035-personal-access-tokens.md) D5 as amended
+  2026-10-05): `GET` (numbered pages, a weak `ETag` and `304`) and `DELETE /api/v1/tenants/{tenant}/tokens` in
+  [`members.yaml`](../../backend/api/members.yaml) and
+  [`tenanttokens.go`](../../backend/internal/api/tenanttokens.go), numbered pages, the tokens policy
+  of [migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql), and the
+  tenant's page *Tokens* ([`tenant-tokens.ts`](../../frontend/src/app/features/tenant/tenant-tokens.ts)),
+  whose revocation of an unrestricted token asks first and says that it ends the token in every
+  tenant of its person. Integration tests across two tenants:
+  `TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant` (exactly the members'
+  unrestricted tokens and those restricted to the tenant; nothing of a token restricted to another
+  tenant or of a non-member, not its name, not its id; the revocation a recorded act of the tenant,
+  once, that ends an unrestricted token in the other tenant too) and the policy subtest of
+  `TestPoliciesOfThePersonsAndTheirAccounts`; unit tests `tenant-tokens.spec.ts`,
+  `tenant-tokens.service.spec.ts`, `shell.spec.ts`, `app.routes.spec.ts`.
+
+The README reference, [api.md](../developer/api.md), [data-access.md](../developer/data-access.md),
+[frontend.md](../developer/frontend.md), [package-map.md](../developer/package-map.md),
+[tokens.md](../security/tokens.md) (H-57) and [tenancy.md](../security/tenancy.md) carry it.
 
 ## Required changes
 
-### Independent of the open question
+1. The owner's review of the built result: the tenant's *Tokens* page, the confirmation of a
+   revocation, and the numbered pages of the members and the tokens in a browser (`make dev`).
 
-1. `page`/`per_page` with `total` on the audit view, members, tokens and projects, in the API
-   document first; integration tests for the paging.
-2. The tenant's audit page with its filters — actor, token, action, entity, period — and its CSV
-   (`listAudit`, [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D6).
-3. Unit tests per page.
+## Not verified
 
-### Depends on the answer
-
-4. The administrator's view of the members' tokens — metadata, never plaintext — and their
-   revocation (ADR 0035 D5): a route under `/api/v1/tenants/{tenant}/` in the API document
-   first, the page, and integration tests across two tenants that it shows the tokens Q1 decides
-   and nothing else.
-
-## Open questions
-
-### Q1: Which of a member's tokens does a tenant's administrator see and revoke?
-
-ADR 0035 D5 gives a tenant's administrators "the tokens of their tenant's members" and their
-revocation, without saying which: a member's token may be unrestricted, reaching every tenant
-they belong to, or restricted to one tenant — possibly another. A token's name is the person's
-free text, and nothing of one tenant crosses to another
-([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3).
-
-- **(a) Every token of every member,** as the sentence reads: an administrator of one tenant
-  reads the names, scopes and dates of tokens restricted to the member's other tenants, and can
-  revoke them.
-- **(b) The tokens that can act in the tenant** — the unrestricted ones and those restricted to
-  it. What the administrator sees is what can touch the tenant, and the name of such a token
-  already shows there beside every act made through it
-  ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
-  D6). Revoking an unrestricted token ends it in the member's other tenants too, which the page
-  says before it acts.
-- **(c) Only the tokens restricted to the tenant:** nothing of another tenant and no revocation
-  that reaches beyond it; an unrestricted token that acts in the tenant stays out of its
-  administrators' reach, findable only through the audit view's `token` filter.
-
-Recommended: **(b)** — it covers every token that can act in the tenant, which is what its
-administrator answers for, and shows nothing of the member's other tenants; that revoking an
-unrestricted token ends it everywhere is what an unrestricted token is, and the person makes a
-new one in a session. (a) puts another tenant's metadata in front of this one's administrators;
-(c) leaves out exactly the tokens that most need the view.
-
-**Answer:** _open_
+None of the three pages has been looked at in a browser — `make dev` was not run for this work —
+and the audit page's CSV download has not been tried against the shell's content-security policy in
+a real browser; the unit tier stubs `URL.createObjectURL`.

@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
-import { getTenant, updateTenant } from '../api/functions';
+import { getTenant } from '../api/fn/tenants/get-tenant';
+import { updateTenant } from '../api/fn/tenants/update-tenant';
 import { Tenant, TenantPatch } from '../api/models';
 import { etagOf } from './entity-cache';
 import { SessionService } from './session.service';

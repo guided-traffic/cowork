@@ -9,7 +9,33 @@ question "notifications — which channel first?": in-app only, over in-app plus
 recommendation), over e-mail, and over both. The event list of D2 was proposed with the
 question and not objected to.
 
-**Not built.** No `notifications` table exists.
+Amended 2026-10-05 by the answer on how a comment names a person, recorded in
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5 — a list of person ids
+beside the text, over a username or a link in the text — built on the recommendation, the owner
+reviewing the result (D2: the mention is built; one act tells a person once).
+
+**Built** (phase 3, 2026-10-04), ~~but for D2's mention~~ *(built 2026-10-05, below)*: D1 — the inbox `GET /api/v1/me/inbox`, a
+union of per-tenant reads newest first, each entry with its tenant, its ticket as it is now and its
+act, the unread count beside it, and in the UI the page `/me/inbox` grouped by ticket with the bell's
+unread count in the top bar ([`api/inbox.go`](../../backend/internal/api/inbox.go),
+[`features/me/inbox.ts`](../../frontend/src/app/features/me/inbox.ts)); D2's events but the mention,
+each telling only an active member who sees the ticket, never the actor nor for the actor's agent
+([`store/inbox.go`](../../backend/internal/store/inbox.go)) — "a question I asked is withdrawn"
+tells nobody, because only the asker withdraws a question and their own act tells them nothing; D3 —
+`notifications` rows written by `Mutate` with the act and referencing its audit row
+([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)), rendered from
+it, so a withdrawn comment or question and a reversed transition show as they are now; D4 — the
+count pushed as `inbox.changed` on the person-level stream of ADR 0054 and loaded again on its
+fallback's poll; D6 — marking one read and every one up to the newest seen
+(`PUT /api/v1/me/inbox/{notification}/read`, `PUT /api/v1/me/inbox/read`), each the person's act
+`read`, and the job `notification-expiry` that deletes a notification ninety days after it was read
+*(made concrete 2026-10-04: the ninety days count from the reading, so a notification read late is
+kept as long as one read at once)*. ~~**Not built:** D2's mention — D5 of
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) names `@person` without
+saying how a comment's text names a person, and that is open.~~ **Built** (2026-10-05): D2's mention,
+the reason `mentioned` ([migration 36](../../backend/internal/store/migrations/000036_comment_mentions.up.sql)),
+for each person a new comment's `mentions` names and each person an edit adds, and the inbox's
+"mentioned you in a comment".
 
 ## Context
 
@@ -42,7 +68,9 @@ D3); every entry names its tenant beside the key.
 | an `urgent` interest is registered on a ticket assigned to me | the assignee |
 
 The watcher set is ADR 0013 D6. A person's own acts create no notification for that person;
-an agent's act in a person's name creates none for that person either.
+an agent's act in a person's name creates none for that person either. *(Added 2026-10-05: one act
+tells a person once about a ticket, by the first reason that names them — a comment that mentions a
+watcher tells them `mentioned`, not also `commented`.)*
 
 **D3 — Notifications are created by the same transaction as the act** and are rows, not
 messages: a notification references the act in the audit record and renders from it, so a

@@ -22,11 +22,11 @@ import (
 )
 
 // AllCapabilities is the "full" capability set of docs/adr/0043 D4.
-var AllCapabilities = []string{"decide", "close", "drop", "rank", "override-urgency", "interest",
+var AllCapabilities = []string{"decide", "close", "drop", "rank", "set-horizon", "interest",
 	"upload", "create-project", "record-answer"}
 
 // AssistedCapabilities is the "assisted" shortcut of docs/adr/0043 D4.
-var AssistedCapabilities = []string{"drop", "override-urgency", "interest", "upload"}
+var AssistedCapabilities = []string{"drop", "set-horizon", "interest", "upload"}
 
 // DB writes fixture rows over an administrative connection to the database
 // under test.
@@ -172,7 +172,7 @@ func (f *DB) Ticket(ctx context.Context, tenantID, projectID, reporter uuid.UUID
 		            WHERE tenant_id = $1 AND project_id = $2 RETURNING last_number)
 		 INSERT INTO tickets (tenant_id, project_id, number, type, title, severity, security, urgency_derived,
 		                      urgency_rule, effort, reporter_id)
-		 SELECT $1, $2, n.last_number, 'task', $4, 'medium', 'none', 'later', 'v1:default', 'S', $3 FROM n
+		 SELECT $1, $2, n.last_number, 'task', $4, 'medium', 'none', 'later', 'v2:default', 'S', $3 FROM n
 		 RETURNING id, number`,
 		tenantID, projectID, reporter, title).Scan(&id, &number)
 	if err != nil {

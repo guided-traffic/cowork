@@ -13,7 +13,10 @@ locally (`make lint`, `make cyclo`, `make gosec`, `make vuln`, `make test-unit`,
 `make test-integration` against `postgres:18`, `make frontend-lint`, `make frontend-test-coverage`,
 `make frontend-build`, `make helm-lint`, `make helm-template`, `make test-release-tooling`,
 `make docker-build`) and by running both built images together, read-only, against the same
-database (the nginx proxy path included). **Not built:** the end-to-end tier (D2, row "E2E") — decided, no test exists.
+database (the nginx proxy path included). ~~**Not built:** the end-to-end tier (D2, row "E2E") — decided, no test exists.~~
+*(Amended 2026-10-04: the end-to-end tier is built — `make e2e` and the `e2e` job; what it covers
+and what it does not yet is [ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)'s
+Status.)*
 Amended 2026-10-02 (D2's integration row and D3: the integration tier needs an S3-compatible
 server since attachments exist). Re-verified on 2026-10-02 for the backend tiers, the chart and
 the images after phase 2. Amended 2026-10-03 (this Status, D2's unit row and the residual
@@ -52,7 +55,7 @@ a bump is a missing file and installs itself.
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | The chart lints strictly and renders with each `ci/*-values.yaml` |
 | Container | the `container-malware-scan` job, one leg per image | — | Docker | Each `Containerfile` builds from its own directory on a clean checkout; each image passes Trivy at CRITICAL/HIGH |
 | Release tooling | `make test-release-tooling` | — (node) | Node.js | The semantic-release dependency set still renders release notes |
-| End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | A person and a token can do a workflow through the real API and UI. Decided in [ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright against the built containers, two identities, both colour schemes, a required gate from the first workflow *(amended 2026-10-01)* |
+| End-to-end | `make e2e` ~~(planned)~~ *(built 2026-10-04)* | — | the built images, PostgreSQL, MinIO, Dex, a browser *(amended 2026-10-04: a stack of its own, the images behind the Ingress stand-in with TLS, Chromium and WebKit)* | A person and a token can do a workflow through the real API and UI. Decided in [ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright against the built containers, two identities, both colour schemes, a required gate from the first workflow *(amended 2026-10-01)* |
 
 **D3 — No `-short`, no `testing.Short()`, no skip on a missing dependency.** The integration
 tier fails when `COWORK_TEST_DATABASE_URL` is unset and says how to set it *(amended
@@ -112,9 +115,11 @@ names the gap.
 
 ## Residual risks
 
-- The end-to-end tier does not exist; nothing today proves that the UI and the API work
+- ~~The end-to-end tier does not exist; nothing today proves that the UI and the API work
   together beyond the version footer test in the frontend tier and the manual run recorded in
-  the Status.
+  the Status.~~ *(Amended 2026-10-04: the end-to-end tier proves the login, filing and moving a
+  ticket, the board and the backlog through both images on every push; the paths it does not walk
+  yet are ADR 0056's Status.)*
 - ~~`runs-on: self-hosted` is inherited, not verified for this repository (Status).~~
   *(Amended 2026-10-03: the runners serve this repository; their image lacks `make` and
   `libatomic1`, which the jobs install themselves — ADR 0061 D2, D5.)*

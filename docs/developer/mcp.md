@@ -14,7 +14,7 @@ D5 (the keys), [ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised
 (the commit strings) and [ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md)
 (the subcommands). Setting it up is [docs/operations/claude-code.md](../operations/claude-code.md);
 what it holds and leaves open, [docs/security/agent-client.md](../security/agent-client.md).
-Read against the tree on 2026-10-04.
+Read against the tree on 2026-10-05.
 
 ## Three layers
 
@@ -48,7 +48,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` (one file per installation and binding under the user's cache directory) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
-| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search, file_ticket, record_state, comment, link, watch, set_urgency), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
+| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the tenant's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
 | [`mcpserver/server.go`](../../backend/internal/mcpserver/server.go) | `New(Options)`: the server, its `Instructions`, each tool with its schema, its described limits and its annotations; a handler that learns the client's name, asks `Ready` and runs the tool |
 | [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup` |
 | [`cmd/cowork-mcp/main.go`](../../backend/cmd/cowork-mcp/main.go) | The linker's variables, the signal context, standard input for a hook when it is not a terminal |
@@ -83,7 +83,11 @@ func watchTool() Tool {
   failure: `check` turns an answer other than the wanted status into an `APIError`, rendered
   with the API's code, its message, the fields it named and — for `agent_forbidden` — that a
   refusal is the API's no; `usage` is a call the tool refuses itself, a key it cannot resolve; a
-  `textError` (the `api` tool) is the answer as it is.
+  `textError` (the `api` tool) is the answer as it is. A deleted ticket is a `404` to every tool, as
+  a missing one is, and no tool deletes: through `api`, the deletion, the restoration and the purge
+  meet the hard-off rule `deleting, restoring or purging` with any token
+  ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+  D7; `TestTheToolsNeverDeleteAndMissADeletedTicket`).
 - **A creating `POST`** sends `IdempotencyKey: s.key()`, from the session's `NewKey` — a fresh
   UUIDv7 per act in `cowork-mcp`, a key derived from the conversation and the call in the chat; a
   write that overwrites reads the ticket first and sends its `ETag` in `If-Match`; a transition sends
@@ -96,7 +100,10 @@ func watchTool() Tool {
 - **`limits`** — `limitsOf(text, capabilities…)` — is the part of the description that names
   the agent rules the tool can run into; `Describe(token)` appends which of the capabilities the
   agent holds — "This agent holds …; lacks …" —, the token's, read once at start (ADR 0043 D6), or
-  in the chat the ones the person gave it, read at each turn (D5).
+  in the chat the ones the person gave it, read at each turn (D5). `ReadToken` reads the set under
+  this release's names (`auth.Canonical`): `/me/token` answers `override-urgency`, the name
+  `set-horizon` had before, beside it for the `cowork-mcp` of the release before, whose `set_urgency`
+  looks for it ([api.md](api.md#deprecated-names)).
 - **`Surface`**: `Anywhere` for a tool that takes everything as arguments, `Terminal` for one
   that reads the working directory — today `session_start` alone. A host without a working
   directory takes `Catalogue(tools.Anywhere)`.
@@ -122,8 +129,11 @@ bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not 
    with the exact `create_project` call. No remote and no file is silence for the hook.
 3. Bound: the person's tickets `in-progress` in the project, in rank order. The first is active:
    its `/context` with five comments and ten acts, cut to the budget, then the commit strings and
-   its page. None: the top five of the backlog for the person — `review`, `decided`, `analysed`,
-   `filed`, assigned to them or to nobody, waiting on no open prerequisite — in rank order.
+   its page. None: the top five of "next for me" in the bound project — `GET /api/v1/me/next` with
+   the binding's `tenant` and `project`, a page of 25, the person's open tickets and the unassigned
+   ones by score ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D5) — passing
+   over those in progress, blocked or waiting on an open prerequisite, each with its score and its
+   place in its horizon of the backlog (`candidatesSection`).
 4. With a previous start in the memory: the acts since then on the person's other tickets in
    progress, the count of them on the active one, and the project's tickets that changed.
 5. The start is recorded in the memory — by the tool and the hook, not by `lookup`, and not

@@ -12,6 +12,30 @@ import (
 	"github.com/google/uuid"
 )
 
+const revokeTenantToken = `-- name: RevokeTenantToken :one
+UPDATE tokens
+SET revoked_at = now(), revoked_by = $1
+WHERE id = $2 AND revoked_at IS NULL
+  AND (restricted_tenant_id IS NULL OR restricted_tenant_id = $3::uuid)
+RETURNING id
+`
+
+type RevokeTenantTokenParams struct {
+	RevokedBy *uuid.UUID
+	TokenID   uuid.UUID
+	TenantID  uuid.UUID
+}
+
+// An administrator's revocation of a token that can act in the tenant
+// (docs/adr/0035 D5, D6): immediate, the row kept; the policy of migration 35
+// admits it.
+func (q *Queries) RevokeTenantToken(ctx context.Context, arg RevokeTenantTokenParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, revokeTenantToken, arg.RevokedBy, arg.TokenID, arg.TenantID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const revokeToken = `-- name: RevokeToken :one
 UPDATE tokens
 SET revoked_at = now(), revoked_by = $1

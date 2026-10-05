@@ -21,7 +21,8 @@ type (
 	Severity string
 	// SecurityClass is the threat-model class of the tickets page.
 	SecurityClass string
-	// Urgency is when the ticket matters, derived by a rule set.
+	// Urgency is the ticket's horizon under the name the database keeps for
+	// it; the API says horizon (docs/adr/0010 D1, D3).
 	Urgency string
 	// Effort is a size, not a time.
 	Effort string
@@ -116,45 +117,15 @@ func (l LinkType) Name(outgoing bool) string {
 	}
 }
 
-// UrgencyInputs are the facts rule set v1 reads (docs/adr/0010 D3).
-type UrgencyInputs struct {
-	State     TicketState
-	BlockKind BlockKind
-	// OpenDecisionBlocker is true when an open ticket of type decision blocks
-	// this one.
-	OpenDecisionBlocker bool
-}
-
-// Normalized keeps of the inputs what rule set v1 tells apart: the state
-// only as blocked or not, the block kind only while blocked. Two inputs equal
-// after it derive alike, and a change between them is a change of the
-// derivation's input, which derives the urgency again; a standing override
-// stays (docs/adr/0010 D3).
-func (in UrgencyInputs) Normalized() UrgencyInputs {
-	if in.State != StateBlocked {
-		return UrgencyInputs{OpenDecisionBlocker: in.OpenDecisionBlocker}
-	}
-	return in
-}
-
-// DeriveUrgency applies rule set v1 (docs/adr/0010 D3), first match: blocked
-// on a release is release; blocked on a decision, a person or a product call
-// is icebox; an open decision that blocks it is icebox; everything else is
-// later. It returns the urgency and the rule that matched.
-func DeriveUrgency(in UrgencyInputs) (Urgency, string) {
-	if in.State == StateBlocked {
-		switch in.BlockKind {
-		case BlockRelease:
-			return UrgencyRelease, "v1:release-block"
-		case BlockDecision, BlockHuman, BlockProduct:
-			return UrgencyIcebox, "v1:icebox-block"
-		}
-	}
-	if in.OpenDecisionBlocker {
-		return UrgencyIcebox, "v1:icebox-decision"
-	}
-	return UrgencyLater, "v1:default"
-}
+// The urgency is the ticket's horizon, a planning category a person or an
+// agent sets in whatever state the ticket is; nothing derives it (docs/adr/0010
+// D3 as amended 2026-10-04). Rule set v2 has one row: every ticket derives
+// later, and the horizon set on it is what the columns keep as its override
+// and the API answers as horizon_set (D1 as amended 2026-10-05).
+const (
+	UrgencyDefault     = UrgencyLater
+	UrgencyRuleDefault = "v2:default"
+)
 
 // Ticket keys (docs/adr/0007): <tenant-slug>/<PROJECT-KEY>-<number> in full,
 // <PROJECT-KEY>-<number> short. The project key has no hyphen, so the last

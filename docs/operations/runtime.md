@@ -65,12 +65,19 @@ logs. The variables named here are explained one by one in
     address, the version and the commit.
 
 From then on each replica, at start and once an hour, removes the idempotency records older
-than a day, the sessions past their absolute or their idle limit, and the login's failed
-attempts and ended locks older than fifteen minutes; each job holds a transaction-level
+than a day, the sessions past their absolute or their idle limit, the login's failed
+attempts and ended locks older than fifteen minutes, and the notifications read more than ninety
+days ago — an unread one stays ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
+D6) —, and purges the tickets deleted more than thirty days ago, up to 200 a run, with their
+attachments' objects once the purge committed
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2); each job holds a transaction-level
 advisory lock of its own that lets one replica at a time do it, and the log says
-`job removed expired rows` with the job and the count when there were any. A session past a
+`job removed expired rows` with the job and the count when there were any — the purge says
+`ticket purged` with each key first. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
-table small.
+table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
+no setting for it yet.
 
 ## The migration run
 
@@ -165,6 +172,8 @@ an alert or a look:
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
+| `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
@@ -311,9 +320,10 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413 payload_too_large` — before reading when the declared length is larger, while reading otherwise | no limit |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` | `413` before anything is stored; the upload's body may be 64 KiB larger, for the multipart framing | no limit: one upload at a time is buffered whole, so a single upload can exhaust the container's memory ([attachments.md H-12](../security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
+| `COWORK_ATTACHMENT_TENANT_QUOTA` | `0`: none | the bytes a tenant's attachments hold together: an upload that would go above it is `409 attachment_quota` before anything is stored, the tenant's uploads checked one after the other under its lock; the tenant's administrators read the usage on its settings page | no quota — the default ([below](#the-tenants-attachment-quota)) |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
-| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
+| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` — of a ticket list or of a search — is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10`, per replica | the next stream closes the person's oldest with `event: unavailable` | no limit |
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` | a reconnect beyond the window starts with `event: resync` | no replay: a reconnect that missed anything starts with `resync` |
 | `COWORK_CHAT_TURN_TIMEOUT` | `5m` | a turn of the chat ends with the `error` event `timeout` | no limit |
@@ -330,6 +340,23 @@ database transaction for as long as it runs; a disabled stream limit lets one pe
 number of streams, each with a buffer of its own. Nothing warns when a limit is `0` — not the
 log, not the chart, whose notes then ask the Ingress controller for no body limit and an hour's
 read timeout in step. The chart's own defaults set none.
+
+### The tenant's attachment quota
+
+`COWORK_ATTACHMENT_TENANT_QUOTA` is the one limit of the table that is off by default: it is no
+bound on what a request costs but on what a tenant keeps, and no figure suits every installation —
+an installation with one tenant has the bucket's size as its bound, and an upgrade that brought a
+quota along would start refusing uploads that worked the day before
+([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6). An installation of several tenants sets it — a size such as `10GiB`, in the chart
+`backend.config.attachmentTenantQuota` in bytes — because without it one tenant, or an agent with
+`upload` in a loop, can fill the storage every tenant shares ([attachments.md H-10](../security/attachments.md#h-10)).
+Every attachment of the tenant counts, its confidential tickets' and restricted projects' too, and a
+deleted ticket's until the purge — thirty days, or an administrator's purge in the bin — removes it:
+deleting a ticket frees no quota, purging it does. Lowering the quota below what a tenant holds
+deletes nothing: the tenant's next upload is refused.
+Each tenant's administrators read what it holds and the quota on the tenant's settings page
+(`GET /api/v1/tenants/{tenant}/attachment-usage`).
 
 ## What answers what
 
@@ -365,10 +392,23 @@ event: ticket.changed
 data: {"key":"dev/COW-1","version":2,"kind":"transitioned"}
 ```
 
-A change of who belongs to the tenant or who sees a project is `membership.changed`, with the ids of
-what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
+A change of who belongs to the tenant or who sees a project is `membership.changed`, with the
+tenant's slug and the ids of what changed — `tenant`, `person_id`, `project_id`, `mapping_id` — and
+reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
+A project's rank sorted by the score is `project.changed`, with the project's key and the kind and
+no version, and reaches whoever sees the project.
+
+Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it carries
+the events of every tenant the person belongs to, each as that tenant's own stream would judge it,
+over one connection whatever the number of tenants, and `inbox.changed` with `data: {"unread": n}`,
+the person's unread notifications in every tenant, when it opens and once a burst of changes of the
+inbox is over (a tenth of a second). A reconnect replays the gap of every tenant it follows; the
+count carries no `id:` and is not replayed, and the browser reloads its person-level pages when the
+stream opens. Every tenant it follows costs one database transaction when it opens, at every
+heartbeat and on every act that changes what the person may see there
+([tenancy.md](../security/tenancy.md#the-person-level-stream)).
 
 How it behaves, as somebody running it sees it:
 
@@ -378,6 +418,11 @@ How it behaves, as somebody running it sees it:
 - **A heartbeat every 20 seconds** (`: heartbeat`, an SSE comment) keeps proxies from closing
   a quiet stream and checks the token and the membership again; the stream ends when either
   is gone.
+- **A change of who sees what reaches the open streams at once.** A project created, a membership,
+  a mapping, a restriction or an access entry changed makes every open stream of the tenant read
+  the person's role and the projects they see again — two small queries per stream, once or twice for a
+  burst of such changes — before it passes its next event; the heartbeat repeats it for a change
+  made in the database past the API.
 - **Reconnects replay.** A client that reconnects with `Last-Event-ID` gets what it missed
   while the event is still within `COWORK_SSE_REPLAY_WINDOW` on that replica; otherwise the
   stream starts with `event: resync` and the client refetches its lists.

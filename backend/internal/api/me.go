@@ -59,48 +59,104 @@ func (s *Server) GetMe(ctx context.Context, _ apigen.GetMeRequestObject) (apigen
 	return apigen.GetMe200JSONResponse(out), nil
 }
 
-// ListMyTokens lists the person's tokens, newest first: metadata only
-// (docs/adr/0035 D1, D6); a restricted token lists itself only.
+// ListMyTokens lists the person's tokens, newest first, by cursor or numbered
+// pages (docs/adr/0048 D2): metadata only (docs/adr/0035 D1, D6); a
+// restricted token lists itself only.
 func (s *Server) ListMyTokens(ctx context.Context, req apigen.ListMyTokensRequestObject) (apigen.ListMyTokensResponseObject, error) {
 	p := principal(ctx)
 	const op = "listMyTokens"
 	scope := p.PersonID.String()
+	q := req.Params
+	lp, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
+	if perr != nil {
+		return nil, perr
+	}
 	var before *uuid.UUID
-	if req.Params.Cursor != nil {
-		after, perr := s.cursors.decode(op, scope, *req.Params.Cursor)
-		if perr != nil {
+	if !lp.numbered {
+		if before, perr = s.uuidCursor(op, scope, q.Cursor); perr != nil {
 			return nil, perr
 		}
-		id, err := uuid.Parse(after)
-		if err != nil {
-			return nil, problem.New(problem.InvalidCursor, "")
-		}
-		before = &id
 	}
-	size := s.h.pageSize(req.Params.Limit)
+	params := readq.ListTokensOfUserParams{UserID: p.PersonID, Before: before, PageSize: lp.limit(), PageOffset: lp.offset()}
+	if restricted(p) {
+		params.OnlyID = &p.TokenID
+	}
 	var rows []readq.ListTokensOfUserRow
+	var total int64
 	err := s.db.Installation(ctx, func(r *store.Reader) error {
 		var err error
-		params := readq.ListTokensOfUserParams{UserID: p.PersonID, Before: before, PageSize: limitArg(size)}
-		if restricted(p) {
-			params.OnlyID = &p.TokenID
+		if rows, err = r.ListTokensOfUser(ctx, params); err != nil || !lp.numbered {
+			return err
 		}
-		rows, err = r.ListTokensOfUser(ctx, params)
+		total, err = r.CountTokensOfUser(ctx, readq.CountTokensOfUserParams{UserID: p.PersonID, OnlyID: params.OnlyID})
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	rows, next := page(s.h, rows, size, op, scope, func(t readq.ListTokensOfUserRow) string { return t.ID.String() })
+	var next *string
+	if !lp.numbered {
+		rows, next = page(s.h, rows, lp.size, op, scope, func(t readq.ListTokensOfUserRow) string { return t.ID.String() })
+	}
+	keys, err := s.projectKeys(ctx, p.PersonID, rows)
+	if err != nil {
+		return nil, err
+	}
 	out := apigen.ListMyTokens200JSONResponse{Items: []apigen.Token{}, NextCursor: nullableString(next)}
+	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	now := s.h.opts.Now()
 	for _, t := range rows {
-		out.Items = append(out.Items, tokenView(t, now))
+		out.Items = append(out.Items, tokenView(t, now, keys))
 	}
 	return out, nil
 }
 
-func tokenView(t readq.ListTokensOfUserRow, now time.Time) apigen.Token {
+// projectKeys names the projects the tokens are restricted to by their keys
+// (docs/adr/0035 D3), each tenant read in its own transaction under the
+// project predicate: a project the person no longer sees, or of a tenant they
+// no longer belong to, has no key, and the token reaches nothing.
+func (s *Server) projectKeys(ctx context.Context, person uuid.UUID, tokens []readq.ListTokensOfUserRow) (map[uuid.UUID]string, error) {
+	byTenant := map[uuid.UUID][]uuid.UUID{}
+	for _, t := range tokens {
+		if t.RestrictedTenantID != nil && t.RestrictedProjectID != nil {
+			byTenant[*t.RestrictedTenantID] = append(byTenant[*t.RestrictedTenantID], *t.RestrictedProjectID)
+		}
+	}
+	keys := map[uuid.UUID]string{}
+	if len(byTenant) == 0 {
+		return keys, nil
+	}
+	var memberships []readq.ListMembershipsOfUserRow
+	err := s.db.Installation(ctx, func(r *store.Reader) error {
+		var err error
+		memberships, err = r.ListMembershipsOfUser(ctx, person)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range memberships {
+		ids, ok := byTenant[m.TenantID]
+		if !ok {
+			continue
+		}
+		err := s.db.InTenant(ctx, m.TenantID, func(r *store.Reader) error {
+			rows, err := r.ListVisibleProjectKeys(ctx, readq.ListVisibleProjectKeysParams{TenantID: m.TenantID, Ids: ids})
+			for _, row := range rows {
+				keys[row.ID] = row.Key
+			}
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
+}
+
+// tokenView is a token as the list shows it; keys names the projects of the
+// restrictions the person still sees (projectKeys).
+func tokenView(t readq.ListTokensOfUserRow, now time.Time, keys map[uuid.UUID]string) apigen.Token {
 	state := apigen.TokenStateActive
 	switch {
 	case t.RevokedAt != nil:
@@ -108,24 +164,24 @@ func tokenView(t readq.ListTokensOfUserRow, now time.Time) apigen.Token {
 	case !t.ExpiresAt.After(now):
 		state = apigen.TokenStateExpired
 	}
-	caps := make([]apigen.Capability, 0, len(t.Capabilities))
-	for _, c := range t.Capabilities {
-		caps = append(caps, apigen.Capability(c))
-	}
 	v := apigen.Token{
 		Id:           t.ID,
 		Name:         t.Name,
 		Scope:        apigen.Scope(t.Scope),
 		Agent:        t.Agent,
-		Capabilities: caps,
+		Capabilities: capabilitiesView(t.Capabilities),
 		CreatedAt:    t.CreatedAt,
 		ExpiresAt:    t.ExpiresAt,
 		State:        state,
 	}
 	v.RestrictedTenant = nullableOf(t.RestrictedTenantSlug)
+	v.RestrictedProject = nullableOf[string](nil)
 	if t.RestrictedProjectID != nil {
 		id := *t.RestrictedProjectID
-		v.RestrictedProjectId = nullableOf(&id)
+		v.RestrictedProjectId = nullableOf(&id) //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
+		if key, ok := keys[id]; ok {
+			v.RestrictedProject = nullableOf(&key)
+		}
 	}
 	if t.LastUsedOn != nil {
 		v.LastUsedOn = nullableOf(&openapi_types.Date{Time: *t.LastUsedOn})
@@ -169,7 +225,7 @@ func (s *Server) RevokeMyToken(ctx context.Context, req apigen.RevokeMyTokenRequ
 		if err != nil {
 			return err
 		}
-		w.Record(store.Event{EntityType: entityToken, EntityID: target, Action: "revoked"})
+		w.Record(store.Event{EntityType: entityToken, EntityID: target, Action: actionRevoked})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
@@ -203,7 +259,7 @@ func (s *Server) CreateMyToken(ctx context.Context, req apigen.CreateMyTokenRequ
 		row, err := w.InsertToken(ctx, writeq.InsertTokenParams{
 			UserID: p.PersonID, Name: spec.name, TokenHash: hash[:], Scope: spec.scope,
 			RestrictedTenantID: spec.tenantID, RestrictedProjectID: spec.projectID,
-			Agent: spec.agent, Capabilities: spec.capabilities, ExpiresAt: spec.expiresAt,
+			Agent: spec.agent, Capabilities: auth.Stored(spec.capabilities), ExpiresAt: spec.expiresAt,
 		})
 		if err != nil {
 			return err
@@ -249,14 +305,11 @@ type tokenSpec struct {
 }
 
 func (t tokenSpec) view(id uuid.UUID, createdAt time.Time) apigen.TokenCreated {
-	caps := make([]apigen.Capability, 0, len(t.capabilities))
-	for _, c := range t.capabilities {
-		caps = append(caps, apigen.Capability(c))
-	}
-	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: caps,
+	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: capabilitiesView(t.capabilities),
 		CreatedAt: createdAt, ExpiresAt: t.expiresAt, State: apigen.TokenStateActive}
 	v.RestrictedTenant = nullableOf(t.tenantSlug)
-	v.RestrictedProjectId = nullableOf(t.projectID)
+	v.RestrictedProject = nullableOf(t.projectKey)
+	v.RestrictedProjectId = nullableOf(t.projectID) //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
 	v.RevokedAt = nullableOf[time.Time](nil)
 	return v
 }
@@ -278,6 +331,9 @@ func (s *Server) tokenSpec(ctx context.Context, p auth.Principal, body apigen.Cr
 		for _, c := range *body.Capabilities {
 			named = append(named, string(c))
 		}
+		// A set is stored under this release's names, override-urgency as
+		// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
+		named = auth.Canonical(named)
 	}
 	switch {
 	case spec.agent && spec.scope == domain.ScopeAdmin:

@@ -2,7 +2,8 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04, an image in a
+rendered text and the tenant's quota on 2026-10-05. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -85,8 +86,25 @@ ADR 0016 D5):
 - `Cache-Control: no-store`, like every API response.
 
 `TestAttachmentRoundTrip` asserts the type, `nosniff`, `sandbox`, the disposition and the
-`ETag`. Nothing in cowork renders Markdown yet, so ADR 0016 D7's rule for an image embedded in
-a ticket's text has nothing to act on.
+`ETag`. **An image in a ticket's text** (ADR 0016 D7): the server renders the body, a comment, a
+question's options and its answer, and shows an image only when it names a raster attachment of the
+same ticket — from that attachment's own path, so the browser asks nothing of another origin; an SVG,
+another ticket's attachment and an address elsewhere become links, which load nothing until a person
+follows them ([rendered-markdown.md](rendered-markdown.md#images)). Each time a reader's page shows
+such an image, it is a recorded download, as a preview's is.
+
+**The preview in the UI.** The ticket's page shows a raster attachment — the four types delivered
+inline, never an SVG — as an `<img>` of the attachment's own URL
+([`file-preview.ts`](../../frontend/src/app/features/ticket/file-preview.ts)). The image is
+decoded in cowork's origin, which is what ADR 0016 D5 admits for raster types and nothing else:
+an image runs no script, and a response the browser treats as a document is sandboxed. The shell's
+policy admits images of its own origin and the `data:` and `blob:` URLs the page makes
+(`img-src 'self' data: blob:`,
+[trust-boundaries.md](trust-boundaries.md#the-shells-content-security-policy)); the request carries
+the session cookie, as a download does, and is read under the same check. What the preview adds is
+the decoder: a raster file crafted against a flaw in the browser's image decoder reaches it when the
+page is opened, not only when a person chooses to open the file — the same exposure as an image in
+any web page, and the reason the type is the server's, sniffed, never the client's.
 
 ## Limits before anything is stored
 
@@ -106,6 +124,26 @@ a ticket's text has nothing to act on.
   other there, so they cannot pass the count together
   ([`store/jobs.go`](../../backend/internal/store/jobs.go) `LockAttachments`;
   `TestSimultaneousUploadsKeepTheCount`).
+- **The tenant's quota.** `COWORK_ATTACHMENT_TENANT_QUOTA` — bytes, `0`, the default, for none —
+  bounds what a tenant's attachments hold together
+  ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+  D6 as amended 2026-10-05). Where it is set, the upload's transaction takes the tenant's quota
+  lock first (`LockAttachmentQuota`, before the ticket's), and, once the act is authorised, sums
+  the sizes of every attachment of the tenant — of every ticket, a confidential one and a
+  restricted project's included, which the uploader may not see — and refuses a file that would
+  take the sum above the quota with `409 attachment_quota`, before the row or the object exists
+  ([`api/attachments.go`](../../backend/internal/api/attachments.go) `withinQuota`). A deleted
+  ticket's files count until the purge removes their rows — they stay in the bucket until then
+  ([tenancy.md](tenancy.md#h-56) H-56), so a deletion frees nothing of the quota and a purge does
+  (`TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge`). An object whose removal failed
+  after a purge counts no more, though it still occupies the bucket (H-13). The lock is
+  held until the upload commits, so uploads of one tenant pass the check one after the other —
+  also to different tickets (`TestSimultaneousUploadsKeepTheTenantQuota`) — and one tenant's
+  uploads never wait for another's. Row-level security holds the sum to the tenant: another
+  tenant's files neither count against it nor show (`TestTheTenantAttachmentQuota`). The refusal
+  names the quota and the file's size, never the sum. The tenant's administrators read the sum,
+  the count and the quota (`GET …/attachment-usage`, on the tenant's settings page); anybody else
+  is `403`, because the sum counts files they may not see.
 - **Shape.** One file per upload; the multipart body takes `file` and an optional
   `comment_id`, and nothing else.
 - **Order.** The act is authorised on the tenant role, the scope and, for an agent, the
@@ -113,8 +151,8 @@ a ticket's text has nothing to act on.
   judged and its name sanitised; an agent's upload must carry an `Idempotency-Key`. Then, in
   one transaction, the ticket is read through its predicate, the role in its project is
   checked, a `comment_id` must name a comment of that ticket written by the caller's person,
-  the count is checked, the row and its `uploaded` act are written, the object is put, and the
-  transaction commits. When the row does not commit, or a concurrent request with the same key
+  the count is checked, the tenant's quota is checked, the row and its `uploaded` act are written,
+  the object is put, and the transaction commits. When the row does not commit, or a concurrent request with the same key
   won, the object is deleted again ([`api/attachments.go`](../../backend/internal/api/attachments.go)
   `UploadAttachment`). A failed deletion leaves an object no row names; nothing sweeps the
   bucket for such objects — the consistency check of
@@ -142,6 +180,7 @@ address another object.
   ([tokens.md](tokens.md#what-is-recorded)).
 - `downloaded`: every download that returns bytes, with the file name; a `304` is not one
   ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5).
+  The UI's preview of a raster image is such a download each time a page loads it.
   The act is written before the bytes are sent, and a download whose act cannot be written
   fails.
 - A row whose object the bucket lacks — a restore that brought the database back without its
@@ -179,13 +218,21 @@ SHA-256 lets a reader confirm, without downloading, that a file is one they alre
 ADR 0016 accepts this among its residual risks.
 
 <a id="h-10"></a>
-### H-10 — No per-tenant quota is enforced
+### H-10 — The tenant's quota is off unless the installation sets it, and its refusal says how full the tenant is
 
-Live today. ADR 0016 D6's per-tenant quota is neither enforced nor reported. What bounds a
-tenant's storage is the per-file maximum times the per-ticket count times the number of
-tickets, which any member with `write` scope can grow — at the defaults about a gibibyte per
-ticket. Mitigation: a quota on the bucket in the storage itself; the tenant's audit
-view shows the uploads by token, and revoking the token stops a runaway client.
+Live today, in two ways. **Off by default**: `COWORK_ATTACHMENT_TENANT_QUOTA` is `0` unless the
+operator sets it, because no number fits every installation and an upgrade must not start refusing
+uploads ([runtime.md](../operations/runtime.md#limits)). Until it is set, what bounds a tenant's
+storage is the per-file maximum times the per-ticket count times the number of tickets, which any
+member with `write` scope — or an agent with `upload` — can grow, at the defaults about a gibibyte
+per ticket, and one tenant can fill the storage every tenant of the installation shares; a quota on
+the bucket then stops every tenant at once. **A refusal is a signal**: a member who uploads files of
+chosen sizes learns, from which are refused, how many bytes the tenant has left once it is within one
+file of the quota — a figure that counts the files of confidential tickets and restricted projects
+the member cannot see, and that moves when one of them is uploaded. It tells no name, no ticket and
+no content. Mitigation: set the quota on an installation of several tenants, with headroom above the
+largest tenant's use (the tenant's settings page shows it to its administrators); the audit view
+shows the uploads by token, and revoking the token stops a runaway client.
 
 <a id="h-11"></a>
 ### H-11 — A plain http:// storage endpoint is accepted
@@ -231,11 +278,16 @@ read attachment rows. Withdrawing the comment a file was attached to hides the c
 the file stays listed, downloadable and named in the export for every reader of the ticket. A
 screenshot uploaded by mistake with a secret in it stays readable until someone with the
 administrative database credential and access to the bucket removes both — outside the API,
-with the `uploaded` act left in the record. The purge of a ticket, which would remove its
-attachments
-([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)),
-is not built. Inside the API, a tenant administrator can narrow who reads the file by setting
-the ticket confidential ([tenancy.md](tenancy.md) "The confidential flag").
+with the `uploaded` act left in the record. Inside the API, a tenant administrator can narrow who
+reads the file by setting the ticket confidential ([tenancy.md](tenancy.md) "The confidential
+flag"), or take it back only with the whole ticket: deleting the ticket hides its files at once,
+and purging it removes their rows and then their objects
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)). The objects go after the
+purge committed, so that a rollback leaves no row naming missing bytes; an object whose removal
+fails then — or that no configured storage could remove — stays in the bucket with no row naming
+it, and the log names its key (`an attachment object of a purged ticket could not be removed`).
+Nothing sweeps such objects.
 
 ### The bucket's own controls
 

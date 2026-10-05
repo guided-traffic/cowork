@@ -57,9 +57,11 @@ type Options struct {
 	// (docs/adr/0016 D1).
 	Storage *storage.Client
 	// AttachmentMaxBytes is the per-file maximum; AttachmentMaxPerTicket the
-	// per-ticket count, 0 for none (docs/adr/0016 D6).
+	// per-ticket count; AttachmentTenantQuota the bytes a tenant's
+	// attachments hold together; 0 for none (docs/adr/0016 D6).
 	AttachmentMaxBytes     int64
 	AttachmentMaxPerTicket int
+	AttachmentTenantQuota  int64
 	// Events fans the published acts out to the event streams; nil serves
 	// no stream (docs/adr/0054).
 	Events *events.Hub

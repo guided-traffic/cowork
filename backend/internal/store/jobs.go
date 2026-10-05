@@ -14,18 +14,23 @@ import (
 // golang-migrate takes a single bigint key, so the two key spaces never meet.
 const jobLockNamespace int32 = 0x636f776b
 
-// actionExpired is the act of a cleanup job that removed rows.
-const actionExpired = "expired"
+// actionExpired is the act of a cleanup job that removed rows, fieldRemoved
+// the count it records.
+const (
+	actionExpired = "expired"
+	fieldRemoved  = "removed"
+)
 
 // The first keys of the locks that order concurrent writes: re-parentings
 // per project, "cowp", and blocks links per tenant, "cowb", which an
 // integrity walk checks; question numbers per ticket, "cowq"; the attachment
-// count per ticket, "cowa".
+// count per ticket, "cowa"; the attachment quota per tenant, "cowu".
 const (
 	parentLockNamespace     int32 = 0x636f7770
 	blocksLockNamespace     int32 = 0x636f7762
 	questionLockNamespace   int32 = 0x636f7771
 	attachmentLockNamespace int32 = 0x636f7761
+	quotaLockNamespace      int32 = 0x636f7775
 )
 
 // LockParents takes the project's re-parenting lock until the transaction
@@ -54,6 +59,13 @@ func (w *Writer) LockAttachments(ctx context.Context, ticketID uuid.UUID) error 
 	return w.lock(ctx, attachmentLockNamespace, ticketID, "attachment")
 }
 
+// LockAttachmentQuota takes the tenant's attachment quota lock, so two uploads
+// cannot both pass the tenant's quota (docs/adr/0016 D6). An upload takes it
+// before the ticket's attachment lock.
+func (w *Writer) LockAttachmentQuota(ctx context.Context) error {
+	return w.lock(ctx, quotaLockNamespace, w.TenantID, "attachment quota")
+}
+
 func (w *Writer) lock(ctx context.Context, namespace int32, key uuid.UUID, name string) error {
 	if _, err := w.tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext($2::text))", namespace, key); err != nil {
 		return fmt.Errorf("take the %s lock: %w", name, err)
@@ -68,7 +80,9 @@ func (w *Writer) lock(ctx context.Context, namespace int32, key uuid.UUID, name 
 // would survive on an idle pooled connection. The job acts as the system
 // actor system:<name>, and the transaction names it in app.job, which the
 // policies of the job's tables admit. ran is false when another replica holds
-// the lock. A job that records no act commits nothing and is no error.
+// the lock. A job that records no act commits nothing and is no error. A job
+// that works in the tenants one by one writes each tenant's acts there
+// (Writer.inTenant); the rest are installation-level acts.
 func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w *Writer) error) (ran bool, err error) {
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
@@ -86,14 +100,14 @@ func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w 
 	if err := setContext(ctx, tx, uuid.Nil, caller, name); err != nil {
 		return false, err
 	}
-	w := &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx)}
+	w := &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx), caller: caller}
 	if err := fn(w); err != nil {
 		if errors.Is(err, ErrNoChange) {
 			return true, nil
 		}
 		return true, err
 	}
-	if len(w.events) == 0 {
+	if len(w.events) == 0 && !w.flushed {
 		return true, nil
 	}
 	if err := w.writeEvents(ctx, uuid.Nil, caller, Idempotency{}, false); err != nil {
@@ -117,7 +131,7 @@ func (db *DB) ExpireIdempotencyKeys(ctx context.Context) (removed int64, err err
 		if n == 0 {
 			return nil
 		}
-		w.Record(Event{EntityType: "idempotency_keys", Action: actionExpired, After: map[string]int64{"removed": n}})
+		w.Record(Event{EntityType: "idempotency_keys", Action: actionExpired, After: map[string]int64{fieldRemoved: n}})
 		return nil
 	})
 	return removed, err

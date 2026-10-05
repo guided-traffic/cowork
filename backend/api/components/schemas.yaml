@@ -43,8 +43,12 @@ Scope:
   description: A token's scope (docs/adr/0035 D3)
 Capability:
   type: string
-  enum: [decide, close, drop, rank, override-urgency, interest, upload, create-project, record-answer]
-  description: An agent capability (docs/adr/0043 D4)
+  enum: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer, override-urgency]
+  description: |
+    An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of
+    `set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in
+    `request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;
+    a later release removes the name (docs/adr/0046 D7).
 Person:
   type: object
   required: [id, display_name]
@@ -158,7 +162,7 @@ TokenState:
   enum: [active, expired, revoked]
 Token:
   type: object
-  required: [id, name, scope, agent, capabilities, created_at, expires_at, state]
+  required: [id, name, scope, agent, capabilities, restricted_project, created_at, expires_at, state]
   properties:
     id: {type: string, format: uuid}
     name: {type: string}
@@ -174,10 +178,20 @@ Token:
     restricted_tenant:
       type: [string, 'null']
       description: The slug of the tenant the token is restricted to
+    restricted_project:
+      type: [string, 'null']
+      description: |
+        The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+        without a project restriction, and for one whose project the person no longer sees or
+        whose tenant they no longer belong to — such a token reaches nothing
     restricted_project_id:
       type: [string, 'null']
       format: uuid
-      description: The id of the project the token is restricted to
+      deprecated: true
+      description: |
+        The id of the project the token is restricted to. Replaced by `restricted_project`, which
+        names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+        read it, since taking a field away is a breaking change (docs/adr/0046 D7)
     created_at: {type: string, format: date-time}
     expires_at: {type: string, format: date-time}
     last_used_on:
@@ -250,16 +264,73 @@ TokenList:
         $ref: '#/Token'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
+MemberToken:
+  type: object
+  description: |
+    A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):
+    its person and its metadata, never its secret, hash or prefix
+  required: [id, name, person, scope, agent, capabilities, restricted_tenant, restricted_project, created_at,
+    expires_at, last_used_on, revoked_at, state]
+  properties:
+    id: {type: string, format: uuid}
+    name:
+      type: string
+      description: The name its person gave it, free text that may say more than what it is for
+    person:
+      $ref: '#/Person'
+    scope:
+      $ref: '#/Scope'
+    agent:
+      type: boolean
+      description: The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+    capabilities:
+      type: array
+      items:
+        $ref: '#/Capability'
+    restricted_tenant:
+      type: [string, 'null']
+      description: |
+        This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches
+        every tenant its person belongs to, so revoking it ends it in all of them
+    restricted_project:
+      type: [string, 'null']
+      description: The key of the project of this tenant the token is restricted to; null for none
+    created_at: {type: string, format: date-time}
+    expires_at: {type: string, format: date-time}
+    last_used_on:
+      type: [string, 'null']
+      format: date
+      description: The last day it was used, wherever; for an unrestricted token possibly in another tenant
+    revoked_at:
+      type: [string, 'null']
+      format: date-time
+    state:
+      $ref: '#/TokenState'
+MemberTokenList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MemberToken'
+    next_cursor:
+      type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
     - $ref: '#/Token'
     - type: object
-      required: [restricted_project, request]
+      required: [request]
       properties:
-        restricted_project:
-          type: [string, 'null']
-          description: The key of the project the token is restricted to
         request:
           $ref: '#/RequestMark'
 RequestMark:
@@ -278,7 +349,9 @@ RequestMark:
         What an agent's request may do beyond the baseline: the token's set for a flagged token,
         every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
         capabilities for a session the header marks (D5); empty for a person's request, which the
-        capabilities do not bound
+        capabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`
+        follows it, for the cowork-mcp of the release before, until a later release removes it
+        (docs/adr/0046 D7)
       items:
         $ref: '#/Capability'
 Tenant:
@@ -354,6 +427,10 @@ MemberList:
         $ref: '#/Member'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 MemberAdd:
   type: object
   additionalProperties: false
@@ -432,7 +509,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated]
+    password_reset, deactivated, reactivated, read]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -491,6 +568,10 @@ AuditList:
         $ref: '#/AuditEvent'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 WipLimits:
   type: object
   additionalProperties: false
@@ -553,6 +634,10 @@ ProjectList:
         $ref: '#/Project'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 ProjectRestrictionSet:
   type: object
   additionalProperties: false
@@ -746,8 +831,21 @@ Severity:
 SecurityClass:
   type: string
   enum: [live, boundary, hardening, none]
+Horizon:
+  type: string
+  description: |
+    The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket
+    is, and nothing else changes (docs/adr/0010 D3): now, to be worked on now; release, to be in the
+    next release; next, taken up when now is empty; later, maybe some day; icebox, frozen until what
+    it waits for changes
+  enum: [now, release, next, later, icebox]
 Urgency:
   type: string
+  deprecated: true
+  description: |
+    The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
+    `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
+    (docs/adr/0046 D7).
   enum: [now, release, next, later, icebox]
 Effort:
   type: string
@@ -765,8 +863,28 @@ Block:
       type: [string, 'null']
       description: The key of the ticket it waits on, when the caller can see that ticket
     external_ref: {type: [string, 'null']}
+HorizonSet:
+  type: object
+  description: The horizon a person or an agent set on the ticket (docs/adr/0010 D3)
+  required: [value, reason, at]
+  properties:
+    value:
+      $ref: '#/Horizon'
+    reason:
+      type: [string, 'null']
+      description: Null when a person set the horizon without one (docs/adr/0010 D3)
+    by:
+      description: Who set it; null for a horizon a migration kept, which nobody set
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    at: {type: string, format: date-time}
 UrgencyOverride:
   type: object
+  deprecated: true
+  description: |
+    The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in
+    `/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).
   required: [value, reason, at]
   properties:
     value:
@@ -782,9 +900,10 @@ UrgencyOverride:
 Ticket:
   type: object
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
-    urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_refinement, progress_review,
-    progress_derived, parent, reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at,
-    done_at, done_from, done_by_hand, open_prerequisites, version, created_at, updated_at]
+    horizon, horizon_set, urgency, urgency_derived, urgency_rule, urgency_override, effort, progress,
+    progress_refinement, progress_review, progress_derived, parent, reporter, reporter_agent, reporter_token,
+    assignee, confidential, opened_at, decided_at, done_at, done_from, done_by_hand, open_prerequisites, score,
+    score_version, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -807,12 +926,38 @@ Ticket:
     security:
       $ref: '#/SecurityClass'
     threat: {type: [string, 'null']}
+    horizon:
+      $ref: '#/Horizon'
+    horizon_set:
+      description: The horizon a person or an agent set; null for a ticket nobody placed, which stands in later
+      oneOf:
+        - $ref: '#/HorizonSet'
+        - type: 'null'
     urgency:
-      $ref: '#/Urgency'
+      deprecated: true
+      description: |
+        The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which
+        replaces it; removed in a later release (docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/Urgency'
     urgency_derived:
-      $ref: '#/Urgency'
-    urgency_rule: {type: string, description: 'The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)'}
+      deprecated: true
+      description: |
+        What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more
+        (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/Urgency'
+    urgency_rule:
+      type: string
+      deprecated: true
+      description: |
+        The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04
+        (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
     urgency_override:
+      deprecated: true
+      description: |
+        The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which
+        replaces it; removed in a later release (docs/adr/0046 D7)
       oneOf:
         - $ref: '#/UrgencyOverride'
         - type: 'null'
@@ -875,6 +1020,18 @@ Ticket:
       description: |
         The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
         docs/adr/0018 D1); a ticket the caller cannot see is never counted
+    score:
+      type: [number, 'null']
+      format: double
+      description: |
+        The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of
+        the severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days
+        since `opened_at`. It warns where the facts disagree with the project's rank and orders the
+        person-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a
+        release before the score filed until an input of it changes.
+    score_version:
+      type: [integer, 'null']
+      description: The version of the function that computed `score` (docs/adr/0014 D4); null with it
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
@@ -896,6 +1053,19 @@ TicketCreate:
       $ref: '#/Effort'
     parent: {type: string, description: 'A ticket key of the same project, short or full'}
     assignee: {type: string, format: uuid, description: A member of the tenant}
+    horizon:
+      description: The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)
+      allOf:
+        - $ref: '#/Horizon'
+    urgency:
+      deprecated: true
+      description: |
+        The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it
+        another value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/Urgency'
+    after: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly after; not with before'}
+    before: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly before; not with after'}
 TicketPatch:
   type: object
   additionalProperties: false
@@ -947,6 +1117,16 @@ TicketPatch:
       minLength: 1
       maxLength: 100000
       description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+TicketBody:
+  type: object
+  required: [body, body_html, version]
+  properties:
+    body: {type: string, description: 'Markdown, as written (docs/adr/0011 D1)'}
+    body_html:
+      type: string
+      description: |
+        The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
+    version: {type: integer, description: The ticket's version the body belongs to}
 TicketBodyReplace:
   type: object
   additionalProperties: false
@@ -958,8 +1138,24 @@ TicketBodyReplace:
       minLength: 1
       maxLength: 100000
       description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+HorizonUpdate:
+  type: object
+  additionalProperties: false
+  required: [value]
+  properties:
+    value:
+      $ref: '#/Horizon'
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      description: Optional for a person, required of an agent (docs/adr/0010 D3)
 UrgencyOverrideSet:
   type: object
+  deprecated: true
+  description: |
+    The body of the deprecated `overrideUrgency`; replaced by `HorizonUpdate` and `setHorizon`, and
+    removed in a later release (docs/adr/0046 D7)
   additionalProperties: false
   required: [value]
   properties:
@@ -1017,6 +1213,27 @@ TicketRankSet:
   properties:
     after: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly after}
     before: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly before}
+ProjectRankSort:
+  type: object
+  additionalProperties: false
+  required: [by]
+  description: What the project's rank is set to (docs/adr/0014 D3)
+  properties:
+    by:
+      type: string
+      enum: [score]
+      description: The order the open tickets take — the score's, the one order there is to adopt
+ProjectRankSorted:
+  type: object
+  required: [moved, score_version]
+  properties:
+    moved:
+      type: integer
+      minimum: 0
+      description: How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already
+    score_version:
+      type: integer
+      description: The version of the score function the rank was sorted by (docs/adr/0014 D4)
 BlockSet:
   type: object
   additionalProperties: false
@@ -1032,7 +1249,8 @@ BlockSet:
     external_ref: {type: string, minLength: 1, maxLength: 500}
 Comment:
   type: object
-  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  required: [id, author, agent, token, body, body_html, withdrawn, withdrawn_at, edited, explains, mentions, version,
+    created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     author:
@@ -1044,6 +1262,11 @@ Comment:
         - $ref: '#/TokenMark'
         - type: 'null'
     body: {type: [string, 'null'], description: 'Markdown; null once withdrawn (docs/adr/0015 D3)'}
+    body_html:
+      type: [string, 'null']
+      description: |
+        The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+        the Markdown; null once withdrawn
     withdrawn: {type: boolean}
     withdrawn_at: {type: [string, 'null'], format: date-time}
     edited: {type: boolean, description: The comment has an edit history}
@@ -1052,6 +1275,12 @@ Comment:
       description: The acts this comment explains (docs/adr/0015 D2)
       items:
         $ref: '#/AuditAction'
+    mentions:
+      type: array
+      description: |
+        The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+        ticket while the comment stands; empty once it is withdrawn
+      items: {type: string, format: uuid}
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
@@ -1061,6 +1290,19 @@ CommentWrite:
   required: [body]
   properties:
     body: {type: string, minLength: 1, maxLength: 100000}
+    mentions:
+      type: array
+      uniqueItems: true
+      maxItems: 50
+      items: {type: string, format: uuid}
+      description: |
+        The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
+        a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+        Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
+        text names them as the writer likes — the API reads no text, so a name typed without the list
+        tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the
+        mentions stay as they are, and a list given replaces them — a person it adds is told, a person
+        it drops is no longer a watcher by it.
 CommentList:
   type: object
   required: [items, next_cursor]
@@ -1162,6 +1404,17 @@ Attachment:
         - type: 'null'
     created_at: {type: string, format: date-time}
     content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
+AttachmentUsage:
+  type: object
+  description: What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+  required: [used_bytes, attachments, quota_bytes]
+  properties:
+    used_bytes: {type: integer, format: int64, description: 'The sizes of every attachment of the tenant, summed'}
+    attachments: {type: integer, format: int64, description: How many attachments the tenant holds}
+    quota_bytes:
+      type: [integer, 'null']
+      format: int64
+      description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
 AttachmentList:
   type: object
   required: [items, next_cursor]
@@ -1315,16 +1568,22 @@ QuestionStatus:
   description: docs/adr/0011 D2
 Question:
   type: object
-  required: [id, number, question, options, recommendation, answer, status, asked_by, asked_by_agent,
-    asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token, withdrawn_at, version,
-    created_at, updated_at]
+  required: [id, number, question, options, options_html, recommendation, answer, answer_html, status, asked_by,
+    asked_by_agent, asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token,
+    withdrawn_at, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     number: {type: integer, description: 'Stable within the ticket: Q<n> (docs/adr/0011 D4)'}
     question: {type: string}
     options: {type: string, description: 'Markdown: the context and the options'}
+    options_html:
+      type: string
+      description: The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
     recommendation: {type: string}
     answer: {type: [string, 'null'], description: Markdown}
+    answer_html:
+      type: [string, 'null']
+      description: The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
     status:
       $ref: '#/QuestionStatus'
     asked_by:
@@ -1438,6 +1697,52 @@ LinkList:
         $ref: '#/Link'
     next_cursor:
       type: [string, 'null']
+PrerequisiteNode:
+  type: object
+  description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
+  required: [key, title, state, blocked_from, assignee, progress, progress_refinement, progress_review,
+    progress_derived, depth, settled, repeated]
+  properties:
+    key: {type: string, description: 'The canonical key; a ticket of another project names it'}
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    blocked_from:
+      description: The state a blocked ticket came from; null unless it is blocked (docs/adr/0009 D2)
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    assignee:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    progress: {type: integer, minimum: 0, maximum: 100, description: 'The implementation stage as the ticket shows it (docs/adr/0017 D2, D3)'}
+    progress_refinement: {type: integer, minimum: 0, maximum: 100}
+    progress_review: {type: integer, minimum: 0, maximum: 100}
+    progress_derived: {type: boolean, description: The stages are derived from the ticket's children}
+    depth:
+      type: integer
+      minimum: 1
+      maximum: 8
+      description: 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
+    settled: {type: boolean, description: Done or dropped (docs/adr/0012 D6)}
+    repeated:
+      type: boolean
+      description: The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it
+PrerequisiteTree:
+  type: object
+  required: [items, next_cursor, open]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/PrerequisiteNode'
+    next_cursor:
+      type: [string, 'null']
+    open:
+      type: integer
+      minimum: 0
+      description: The open tickets of the whole tree the caller can see, each counted once, on every page
 TicketList:
   type: object
   required: [items, next_cursor]
@@ -1451,9 +1756,139 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+DeletedTicket:
+  type: object
+  description: |
+    A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+    purge it.
+  required: [key, project, number, type, title, state, confidential, deleted_at, deleted_by, purge_at]
+  properties:
+    key: {type: string, description: '<tenant>/<PROJECT>-<number>'}
+    project: {type: string}
+    number: {type: integer}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    confidential: {type: boolean}
+    deleted_at: {type: string, format: date-time}
+    deleted_by:
+      $ref: '#/Person'
+    purge_at:
+      type: string
+      format: date-time
+      description: When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)
+DeletedTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/DeletedTicket'
+    next_cursor:
+      type: [string, 'null']
+SavedFilterParameters:
+  type: object
+  description: |
+    The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+    repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+    single values. What a list's query string would carry, without the paging.
+  additionalProperties: false
+  properties:
+    project: {type: array, maxItems: 50, items: {type: string, maxLength: 16}}
+    state: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    type: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    severity: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    security: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    horizon: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    urgency:
+      type: array
+      maxItems: 50
+      items: {type: string, maxLength: 32}
+      deprecated: true
+      description: |
+        `horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back
+        as `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release
+        (docs/adr/0046 D7)
+    effort: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    assignee: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    reporter: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    parent: {type: array, maxItems: 50, items: {type: string, maxLength: 80}}
+    interest: {type: array, maxItems: 50, items: {type: string, maxLength: 8}}
+    progress_min: {type: integer, minimum: 0, maximum: 100}
+    progress_max: {type: integer, minimum: 0, maximum: 100}
+    opened_after: {type: string, format: date-time}
+    opened_before: {type: string, format: date-time}
+    updated_after: {type: string, format: date-time}
+    updated_before: {type: string, format: date-time}
+    done_after: {type: string, format: date-time}
+    q: {type: string, minLength: 1, maxLength: 4096}
+    include_terminal: {type: boolean}
+    blocked: {type: boolean}
+    has_open_questions: {type: boolean}
+SavedFilterWarning:
+  type: object
+  description: A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)
+  required: [parameter, message]
+  properties:
+    parameter: {type: string}
+    message: {type: string}
+SavedFilter:
+  type: object
+  required: [id, name, owner, shared, parameters, redacted, warnings, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    name: {type: string}
+    owner:
+      $ref: '#/Person'
+    shared: {type: boolean, description: 'Shown to every member of the tenant, with its owner'}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    redacted:
+      type: boolean
+      description: |
+        Another person's filter names a project or a ticket the caller cannot see, or one that no
+        longer exists; its parameters and warnings are withheld (docs/adr/0065 D5)
+    warnings:
+      type: array
+      items:
+        $ref: '#/SavedFilterWarning'
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+SavedFilterCreate:
+  type: object
+  additionalProperties: false
+  required: [name, parameters]
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean, default: false}
+SavedFilterPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean}
+SavedFilterList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SavedFilter'
+    next_cursor:
+      type: [string, 'null']
 AuthOptions:
   type: object
-  required: [local, oidc, oidc_name, password_min_length]
+  required: [local, oidc, oidc_name, password_min_length, token_max_lifetime_days]
   properties:
     local:
       type: boolean
@@ -1471,6 +1906,14 @@ AuthOptions:
       type: integer
       minimum: 1
       description: The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+    token_max_lifetime_days:
+      type: integer
+      minimum: 0
+      description: |
+        The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+        down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+        maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+        form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
 LocalLoginRequest:
   type: object
   additionalProperties: false
@@ -1805,3 +2248,382 @@ ChatCapabilitiesUpdate:
       description: The whole set; an empty one leaves the chat the baseline
       items:
         $ref: '#/Capability'
+InboxReason:
+  type: string
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned]
+  description: |
+    Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
+    question they asked answered, a ticket they watch changed state or got a comment, a ticket that
+    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+    comment that mentions them (docs/adr/0015 D5)
+InboxEntry:
+  type: object
+  required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
+  properties:
+    id: {type: string, format: uuid}
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    reason:
+      $ref: '#/InboxReason'
+    act:
+      $ref: '#/Activity'
+    blocker:
+      description: For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+      oneOf:
+        - $ref: '#/TicketRef'
+        - type: 'null'
+    withdrawn:
+      type: boolean
+      description: The comment or question the act is on has been withdrawn since
+    read: {type: boolean}
+    created_at: {type: string, format: date-time}
+InboxList:
+  type: object
+  required: [items, next_cursor, unread]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/InboxEntry'
+    next_cursor:
+      type: [string, 'null']
+    unread:
+      type: integer
+      description: The person's unread notifications in the tenants the request reaches
+InboxState:
+  type: object
+  required: [unread]
+  properties:
+    unread: {type: integer}
+InboxReadThrough:
+  type: object
+  additionalProperties: false
+  required: [through]
+  properties:
+    through:
+      type: string
+      format: uuid
+      description: The newest notification the person saw; it and every older one are marked read
+MyTicket:
+  type: object
+  required: [tenant, ticket, place]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/Ticket'
+    place:
+      type: integer
+      minimum: 1
+      description: |
+        The ticket's place in its project's rank among the open tickets of its horizon the caller can
+        see, 1 for the first — where the backlog's group shows it: the secondary indicator beside the
+        score's order (docs/adr/0014 D5)
+MyTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MyTicket'
+    next_cursor:
+      type: [string, 'null']
+Decision:
+  type: object
+  required: [tenant, ticket, question]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    question:
+      $ref: '#/Question'
+DecisionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Decision'
+    next_cursor:
+      type: [string, 'null']
+Dashboard:
+  type: object
+  description: |
+    The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
+    transaction. Every tile counts only what the caller can see: the visibility predicate holds
+    each ticket, question and time entry it reads, so a restricted project or a confidential
+    ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,
+    docs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034
+    D5). A deleted ticket counts nowhere either — nor its questions and its time — until it is
+    restored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they
+    stand at the request; throughput and lead time end with the period's last day; the time is
+    the period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them
+    (docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without
+    a plain value, every project the caller sees that is not archived; a negated value leaves its
+    project out, and a key that names no project the caller sees counts nothing.
+  required: [period, open_by_state, open_by_severity, security, blocked, age, throughput, lead_time,
+    decisions, time, recent]
+  properties:
+    period:
+      $ref: '#/DashboardPeriod'
+    open_by_state:
+      type: array
+      description: |
+        Tile 1, open tickets by state: the open tickets of each counted project per state, by
+        project key; a project and state without an open ticket is left out. Their sum per state
+        is the tile, their sum per project the project's open count.
+      items:
+        $ref: '#/DashboardStateCount'
+    open_by_severity:
+      type: array
+      description: |
+        Tile 2, open tickets by severity: every severity of docs/adr/0010 D1 in its order,
+        `critical` first, with the count of open tickets that carry it, zero included.
+      items:
+        $ref: '#/DashboardSeverityCount'
+    security:
+      type: array
+      description: |
+        Tile 3, open security findings: `live`, then `boundary` (docs/adr/0010 D1, D2), each with
+        the count of open tickets of that class and the oldest of them by filing (`opened_at`, the
+        earlier id on a tie), `null` while there is none.
+      items:
+        $ref: '#/DashboardSecurity'
+    blocked:
+      $ref: '#/DashboardBlocked'
+    age:
+      type: array
+      description: |
+        Tile 5, the age distribution of the open tickets, the age being the time since filing
+        (`opened_at`) at the request: five buckets in this order, every one present — under 7
+        days, 7 to under 30, 30 to under 90, 90 to under 365, and 365 days or more, a day being
+        24 hours.
+      items:
+        $ref: '#/DashboardAgeBucket'
+    throughput:
+      type: array
+      description: |
+        Tile 6, throughput: the tickets done per ISO week (docs/adr/0019 D2) for the eight weeks
+        that end with the one holding the period's last day, oldest first, every week present. A
+        ticket counts in the week of its `done_at` while it is done: one reopened since counts
+        nowhere, one done again counts once, in the week of its last done. The last week counts
+        up to the period's last day.
+      items:
+        $ref: '#/DashboardWeek'
+    lead_time:
+      $ref: '#/DashboardLeadTime'
+    decisions:
+      $ref: '#/DashboardDecisions'
+    time:
+      $ref: '#/DashboardTime'
+    recent:
+      type: array
+      description: |
+        Beside the tiles, kept from the front page before the dashboard: the eight open tickets of
+        the counted projects updated last, newest first (the later id on a tie).
+      items:
+        $ref: '#/DashboardRecent'
+DashboardPeriod:
+  type: object
+  description: |
+    The period the request named, or the default: the thirty days that end today, UTC. Both days
+    are inclusive.
+  required: [from, to]
+  properties:
+    from: {type: string, format: date}
+    to: {type: string, format: date}
+DashboardStateCount:
+  type: object
+  required: [project, state, count]
+  properties:
+    project: {type: string, description: The project's key}
+    state:
+      $ref: '#/TicketState'
+    count: {type: integer}
+DashboardSeverityCount:
+  type: object
+  required: [severity, count]
+  properties:
+    severity:
+      $ref: '#/Severity'
+    count: {type: integer}
+DashboardTicket:
+  type: object
+  description: A ticket a tile names, with the time the tile measures it from
+  required: [key, title, since]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    title: {type: string}
+    since: {type: string, format: date-time}
+DashboardSecurity:
+  type: object
+  required: [class, count, oldest]
+  properties:
+    class:
+      $ref: '#/SecurityClass'
+    count: {type: integer}
+    oldest:
+      description: The oldest open ticket of the class; `since` is its filing
+      oneOf:
+        - $ref: '#/DashboardTicket'
+        - type: 'null'
+DashboardBlocked:
+  type: object
+  description: |
+    Tile 4, blocked tickets: the count of open tickets in the state `blocked`, and the one blocked
+    longest with its block's kind (docs/adr/0009 D2) — blocked since its latest recorded
+    transition into `blocked` (docs/adr/0026), or since its last update where no act records one;
+    the earlier id on a tie. `oldest` is `null` while none is blocked.
+  required: [count, oldest]
+  properties:
+    count: {type: integer}
+    oldest:
+      oneOf:
+        - $ref: '#/DashboardBlock'
+        - type: 'null'
+DashboardBlock:
+  type: object
+  required: [key, title, since, kind]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    title: {type: string}
+    since: {type: string, format: date-time, description: When the ticket entered blocked}
+    kind:
+      $ref: '#/BlockKind'
+DashboardAgeBucket:
+  type: object
+  description: The open tickets whose age is at least `from_days` and under `to_days`
+  required: [from_days, to_days, count]
+  properties:
+    from_days: {type: integer}
+    to_days:
+      type: [integer, 'null']
+      description: Null for the last bucket, which has no upper bound
+    count: {type: integer}
+DashboardWeek:
+  type: object
+  required: [week, from, to, done]
+  properties:
+    week: {type: string, description: 'The ISO week, 2026-W40'}
+    from: {type: string, format: date, description: Its Monday}
+    to: {type: string, format: date, description: 'Its Sunday, or the period''s last day for the last week'}
+    done: {type: integer, description: The tickets done in it}
+DashboardLeadTime:
+  type: object
+  description: |
+    Tile 7, lead time: the median time from filing to done (`opened_at` to `done_at`) of the
+    tickets done in the thirty days that end with the period's last day — done now, their
+    `done_at` in that window, as throughput counts them; the median of an even count is the mean
+    of the middle two. `median_seconds` is `null` while no ticket was done in the window.
+  required: [from, to, done, median_seconds]
+  properties:
+    from: {type: string, format: date, description: The window's first day}
+    to: {type: string, format: date, description: 'The window''s last day, the period''s'}
+    done: {type: integer, description: The tickets the median is taken over}
+    median_seconds:
+      type: [integer, 'null']
+      description: Whole seconds, rounded
+DashboardDecisions:
+  type: object
+  description: |
+    Tile 8, open decisions: the count of open questions (docs/adr/0011 D3) on the tickets of the
+    counted projects, whomever they are asked of and whatever state the ticket is in, and the one
+    asked first, the earlier id on a tie; `oldest` is `null` while none is open.
+  required: [count, oldest]
+  properties:
+    count: {type: integer}
+    oldest:
+      oneOf:
+        - $ref: '#/DashboardQuestion'
+        - type: 'null'
+DashboardQuestion:
+  type: object
+  required: [key, title, number, question, since]
+  properties:
+    key: {type: string, description: 'The canonical key of its ticket'}
+    title: {type: string, description: The ticket's title}
+    number: {type: integer, description: The question's number on the ticket}
+    question: {type: string}
+    since: {type: string, format: date-time, description: When it was asked}
+DashboardTime:
+  type: object
+  description: |
+    Tile 9, time booked in the period by project: the minutes of the time entries whose day lies
+    in the period, voided ones left out (docs/adr/0017 D7), per counted project that has any, by
+    project key; only the entries the caller may see count (docs/adr/0034 D5).
+  required: [total_minutes, projects]
+  properties:
+    total_minutes: {type: integer}
+    projects:
+      type: array
+      items:
+        $ref: '#/DashboardProjectTime'
+DashboardProjectTime:
+  type: object
+  required: [project, name, minutes]
+  properties:
+    project: {type: string, description: The project's key}
+    name: {type: string}
+    minutes: {type: integer}
+DashboardRecent:
+  type: object
+  required: [key, type, title, state, updated_at]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    updated_at: {type: string, format: date-time}
+SearchFoundIn:
+  type: string
+  enum: [key, ticket, comment, question, attachment]
+  description: |
+    Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+    the body; one of its comments; one of its questions; an attachment's file name
+SnippetPart:
+  type: object
+  required: [text, match]
+  properties:
+    text: {type: string, description: 'A piece of the matched text, as text'}
+    match: {type: boolean, description: The piece is a word the query found}
+SearchHit:
+  type: object
+  required: [tenant, key, title, type, state, found_in, comment, question, snippet]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)'}
+    title: {type: string}
+    type:
+      $ref: '#/TicketType'
+    state:
+      $ref: '#/TicketState'
+    found_in:
+      $ref: '#/SearchFoundIn'
+    comment: {type: [string, 'null'], format: uuid, description: The comment the hit is in}
+    question: {type: [integer, 'null'], description: The number of the question the hit is in}
+    snippet:
+      type: array
+      description: |
+        The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):
+        the body for a hit in the ticket's own text or its key, the comment, the question with its
+        options, recommendation and answer, the file name. Text, never HTML; empty where that text is
+      items:
+        $ref: '#/SnippetPart'
+SearchHitList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SearchHit'
+    next_cursor:
+      type: [string, 'null']

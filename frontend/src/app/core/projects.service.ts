@@ -1,16 +1,15 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import {
-  archiveProject,
-  createProject,
-  listProjects,
-  setProjectRestriction,
-  updateProject,
-} from '../api/functions';
+import { archiveProject } from '../api/fn/projects/archive-project';
+import { createProject } from '../api/fn/projects/create-project';
+import { listProjects } from '../api/fn/projects/list-projects';
+import { setProjectRestriction } from '../api/fn/projects/set-project-restriction';
+import { updateProject } from '../api/fn/projects/update-project';
 import { Project, ProjectCreate, ProjectPatch } from '../api/models';
+import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';
-import { changesVisibility, EventStreamService } from './event-stream.service';
+import { changesVisibility, EventStreamService, ofTenant } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -26,21 +25,24 @@ export class ProjectsService {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
+  private readonly pages = new ConditionalPages(this.api);
 
   /** The tenant's projects, while the person holds a role in it (docs/adr/0034 D2). */
   readonly projects: ResourceRef<Project[] | undefined> = resource({
     params: () => this.session.workTenant() ?? undefined,
     loader: ({ params: tenant }) =>
-      keepShown(this.projects, async () => {
-        const projects: Project[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listProjects, { tenant, cursor, limit: 200 });
-          projects.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return projects;
-      }),
+      keepShown(this.projects, () =>
+        this.pages.load(async (page) => {
+          const projects: Project[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listProjects, { tenant, cursor, limit: 200 });
+            projects.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return projects;
+        }),
+      ),
   });
 
   readonly list = computed<Project[]>(() =>
@@ -55,6 +57,7 @@ export class ProjectsService {
           event.name === 'resync' ||
           event.name === 'poll' ||
           (event.name === 'membership.changed' &&
+            ofTenant(event, this.session.tenant()) &&
             changesVisibility(event, this.session.person()?.id))
         ) {
           refresh(this.projects, this.injector);
@@ -66,11 +69,15 @@ export class ProjectsService {
     return this.list().find((project) => project.key === key);
   }
 
-  /** Each write reloads the list itself. */
-  async create(body: ProjectCreate): Promise<Project> {
+  /**
+   * Each write reloads the list itself. The key of a creation is the form's, one for each content
+   * it holds, so a retry of a lost answer is answered again instead of being refused as a key that
+   * is taken (docs/adr/0045 D3).
+   */
+  async create(body: ProjectCreate, idempotencyKey: string): Promise<Project> {
     const project = await this.api.invoke(createProject, {
       tenant: this.session.tenant() as string,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     refresh(this.projects, this.injector);

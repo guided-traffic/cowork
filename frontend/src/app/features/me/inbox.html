@@ -1,0 +1,101 @@
+<section class="page">
+  <header class="head">
+    <div>
+      <h1>Inbox</h1>
+      <p class="muted" data-testid="inbox-unread">{{ headline() }}</p>
+    </div>
+    <button
+      pButton
+      type="button"
+      severity="secondary"
+      [outlined]="true"
+      [disabled]="inbox.count() === 0 || entries().length === 0 || marking()"
+      (click)="markAll()"
+      data-testid="mark-all-read"
+    >
+      <i class="pi pi-check-square"></i>
+      <span>Mark all read</span>
+    </button>
+  </header>
+
+  @if (failure(); as problem) {
+    <p class="muted" data-testid="inbox-failed">
+      The inbox could not be loaded: {{ problem.detail || problem.title }}
+    </p>
+  }
+
+  <div class="groups">
+    @for (group of groups(); track group.ticket.key) {
+      <article class="panel group" [attr.data-testid]="'group-' + group.ticket.key">
+        <header class="group-head">
+          <span class="tenant" data-testid="tenant">{{ group.tenant.name }}</span>
+          <a
+            class="ticket"
+            [routerLink]="route(group.ticket.key)"
+            (click)="opened(group)"
+            [attr.data-testid]="'open-' + group.ticket.key"
+          >
+            <span class="ticket-key tabular">{{ shortKey(group.ticket.key) }}</span>
+            <span class="ticket-title">{{ group.ticket.title }}</span>
+          </a>
+          <app-state [value]="group.ticket.state" />
+        </header>
+        <ul class="entries">
+          @for (entry of group.entries; track entry.id) {
+            <li class="entry" [class.unread]="!entry.read" [attr.data-testid]="'entry-' + entry.id">
+              <span class="dot" aria-hidden="true"></span>
+              @if (!entry.read) {
+                <span class="sr-only">Unread:</span>
+              }
+              <span class="what">
+                <strong>{{ actor(entry) }}</strong>
+                @if (entry.act.agent || entry.act.token) {
+                  <app-agent-mark [mark]="entry.act.agent" [token]="entry.act.token" />
+                }
+                {{ happening(entry) }}
+                @if (entry.withdrawn) {
+                  <span class="muted" data-testid="withdrawn">— withdrawn since</span>
+                }
+              </span>
+              <span class="when muted">{{ ago(entry.act.at) }}</span>
+              @if (!entry.read) {
+                <button
+                  pButton
+                  type="button"
+                  [text]="true"
+                  [rounded]="true"
+                  severity="secondary"
+                  [iconOnly]="true"
+                  aria-label="Mark read"
+                  (click)="markRead(entry)"
+                  data-testid="mark-read"
+                >
+                  <i class="pi pi-check"></i>
+                </button>
+              }
+            </li>
+          }
+        </ul>
+      </article>
+    } @empty {
+      @if (list.isLoading()) {
+        <p-skeleton height="6rem" borderRadius="12px" />
+      } @else if (!failure()) {
+        <p class="muted" data-testid="inbox-empty">Nothing in your inbox.</p>
+      }
+    }
+  </div>
+
+  @if (more()) {
+    <button
+      pButton
+      type="button"
+      severity="secondary"
+      [text]="true"
+      (click)="pages.set(pages() + 1)"
+      data-testid="load-more"
+    >
+      Load more
+    </button>
+  }
+</section>

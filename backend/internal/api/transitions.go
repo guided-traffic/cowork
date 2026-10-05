@@ -55,7 +55,7 @@ func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTick
 	if err != nil {
 		return nil, err
 	}
-	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // transition writes a move of the matrix with its act.
@@ -87,8 +87,20 @@ func transition(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCt
 		ev.Refs = append(ev.Refs, waitsOn)
 	}
 	ev.Action, ev.Before, ev.After = actionTransitioned, map[string]any{fieldState: string(from)}, after
+	ev.Notices = stateNotices(to)
 	w.Record(ev)
 	return reread(ctx, w, t, tc.row.ID)
+}
+
+// stateNotices are whom a state change tells (docs/adr/0020 D2): the watchers
+// of the ticket — a block's reason comes only with a move into blocked —, and
+// when it reaches done or dropped the watchers of every ticket it blocks.
+func stateNotices(to domain.TicketState) []store.Notice {
+	n := []store.Notice{{Reason: store.NoticeStateChanged, Watchers: true}}
+	if to.Terminal() {
+		n = append(n, store.Notice{Reason: store.NoticeBlockerClosed, Blocked: true})
+	}
+	return n
 }
 
 // keepDoneByStages withdraws a done by hand from a ticket without children
@@ -264,32 +276,15 @@ type stateChange struct {
 }
 
 // move writes the state and its effects: the rank a reopen brings, the block
-// and the link it names, the urgency of the ticket and — when a decision opens
-// or settles — of the tickets it blocks (docs/adr/0010 D3), and the stages of
-// its parent (docs/adr/0017 D3). It returns the ticket a block waits on,
-// uuid.Nil without one.
+// and the link it names, and the stages of its parent (docs/adr/0017 D3). The
+// horizon stays: a state never moves a ticket to another (docs/adr/0010 D3).
+// It returns the ticket a block waits on, uuid.Nil without one.
 func move(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, c stateChange, after map[string]any) (uuid.UUID, error) {
-	before, err := urgencyInputs(ctx, w.Reader, t, tc.row.ID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	var deps []dependent
-	if tc.row.Type == domain.TypeDecision && c.from.Terminal() != c.to.Terminal() {
-		if deps, err = dependentsOf(ctx, w, t, tc.row.ID); err != nil {
-			return uuid.Nil, err
-		}
-	}
 	waits, err := writeState(ctx, w, t, tc, c, after)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if err := rederive(ctx, w, t, tc.row.ID, before); err != nil {
-		return uuid.Nil, err
-	}
-	if err := refreshProgress(ctx, w, t, tc.row.ParentID); err != nil {
-		return uuid.Nil, err
-	}
-	return waits, rederiveAll(ctx, w, t, deps)
+	return waits, refreshProgress(ctx, w, t, tc.row.ParentID)
 }
 
 // writeState writes the state change: a block entering blocked, with the link

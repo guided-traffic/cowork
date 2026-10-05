@@ -2,7 +2,8 @@
 
 How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
 role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
-ticket, act, event and time entry, as built on 2026-10-04. What a token or an agent may do with
+ticket, act, event, notification and time entry, and what the person-level lists and stream gather
+across a person's tenants, and what a search finds, as built on 2026-10-05. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -147,9 +148,14 @@ accounts, sessions (the groups refresh's among them), repository bindings, membe
 mappings (a role and a version each) and a project's access list (its role), table-wide on
 `ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
 `ticket_interest`, `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`,
-`login_locks`, `memberships`, `group_mappings` and `project_access`, and only
+`login_locks`, `memberships`, `group_mappings`, `project_access`, `saved_filters` and
+`notifications`, and on a ticket and what belongs only to it — its questions, comments and their
+revisions, attachments, time entries and their revisions — where restrictive policies admit the
+purge of a deleted ticket alone ([below](#a-deleted-ticket-answers-like-a-missing-one)), and only
 `INSERT` and `SELECT` on `audit_events`, which makes the audit record append-only by grant
-([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3).
+([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3); the one
+update of an audit row is the purge's, through the owner's function `purge_ticket_audit`, which
+empties the content of a deleted ticket's rows and nothing else.
 `TestTheAuditRecordIsAppendOnly` shows that `UPDATE`, `DELETE`, `TRUNCATE` and switching
 row-level security off are refused, and that a grant to itself grants nothing. The role
 inserts a tenant, a person, a membership, a token, a session, a local account, a group mapping or
@@ -199,7 +205,7 @@ which have no tenant at all:
 | `tenants` | the row inside its own tenant's transaction, and to its members; every row to a global administrator (migration 26); updates only inside its own transaction; read by the login, the start-up synchronisation and the identity provider named in `app.job`, so a login can ask whether any tenant exists; inserted by a global administrator or the synchronisation |
 | `users` | the person, everyone who shares the current tenant with them, the login and the synchronisation, and the identity provider every person; a tenant's administrator also the persons a lookup by address or username names (`app.person_lookup`, below); inserted by an administrator of the current tenant (never a global administrator, never a person of the identity provider), by the synchronisation, or by the identity provider (only a person of the provider, without a username); updated by the administrators of the accounts their tenant manages, by the synchronisation, and by the identity provider (only its own persons) |
 | `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a grant inserted by an administrator into their own tenant, by a global administrator for themselves in any role (migration 26), or by the synchronisation, and changed and removed by an administrator of the tenant — a global administrator's own also changed by them (migration 26); a mapped membership inserted, changed and removed by the identity provider alone |
-| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; inserted for the person's own account only |
+| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; an administrator of the current tenant reads and revokes every token of a member of it that is unrestricted or restricted to it, and no token restricted to another tenant (`app_tenant_reaches_token`, migration 35; [tokens.md](tokens.md#h-57) H-57); inserted for the person's own account only |
 | `idempotency_keys` | the person's own rows, and every row to the expiry job named in `app.job` |
 | `audit_events` | a tenant's rows inside that tenant, an installation-level row to the person it names; a row is inserted only into the context it belongs to |
 | `local_accounts` | the person's own row, the managing tenant's administrators, the login and the synchronisation; inserted for `tenant` by an administrator of that tenant and for `config` by the synchronisation, updated by the person only while a `tenant` account |
@@ -327,17 +333,91 @@ The exemptions, each with its reason written in its query file:
 | `GetWrittenTicket` | a write's answer rereads the row it wrote; a reassignment can take a confidential ticket out of its writer's sight in the same transaction |
 | `TicketFacts` | the publication of a committed act; each event stream filters (below) |
 | `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no (H-3) |
-| `GetUrgencyInputs`, `ListBlockedTickets` | the urgency derivation's inputs and the tickets that depend on them (H-3) |
-| `CanSeeProject`, `CanSeeTicket` | whether another person — an assignee, a person asked — sees what the caller reads |
+| `CanSeeProject` | whether another person — an assignee — sees what the caller reads |
+| `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `person_sees_ticket` ([the person-level lists](#the-person-level-lists-are-unions-one-tenant-at-a-time)) |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
 | `GetRepositoryBinding` | whether the tenant binds a repository at all: the identity and path are unique in the tenant, and the `409 repository_bound` names the project only when the caller sees it |
-| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice (H-3) |
+| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice, and a rebalancing spreads every key, so a hidden ticket keeps its place (H-3) |
+| `GetScoreInputs` | the inputs of the score of a ticket the writer read through the predicate in the same transaction, read again after its write |
+
+`person_sees_ticket` (migration 30) answers whether another person — not the caller — sees a ticket,
+past the caller's predicate: `CanSeeTicket` (the person a question is asked of) and the recipients of a
+notification read through it.
 
 Where the predicate hides a related ticket, the visible one shows less rather than more: a
 parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
 `parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
 hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
-a ticket's `open_prerequisites` count only the blockers the caller sees.
+a ticket's `open_prerequisites` count only the blockers the caller sees. The tenant's dashboard
+counts, names and measures only what the caller sees, and no deleted ticket, every one of its
+queries under the predicate and the deletion filter
+— a median of lead time or the oldest blocked ticket moves for nobody who cannot see the ticket
+that moves it —, and a `project` filter that names a project the caller cannot see answers exactly
+as one that names no project, its weak `ETag` included
+([api_dashboard_test.go](../../backend/test/integration/api_dashboard_test.go)).
+
+## A deleted ticket answers like a missing one
+
+A tenant administrator deletes a ticket into the tenant's bin, restores it from there, and purges
+it — or the job does, thirty days after the deletion
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D1–D3, D7). Deleting, restoring and purging take the tenant role `admin` and `admin` scope; an agent
+— a token's or the chat's — meets the hard-off rule `deleting, restoring or purging`
+([tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list)). The purge, which nothing
+undoes, takes a browser session besides: a token — an administrator's `admin` token included — is
+`403 session_required` before anything is looked up (D7 as amended 2026-10-05,
+[tokens.md](tokens.md#what-only-a-session-does); `TestPurgingTakesABrowserSession`); what a leaked
+token can still do here is H-54. The bin is read with `read` scope; a token restricted to a project
+reaches neither the bin nor any of its routes.
+
+**The deletion is an application filter, not a policy.** Row-level security stays the tenant
+alone (D3). Every query that reads a ticket carries `deleted_at IS NULL` beside the visibility
+predicate — for the tenant's administrators too —, and a second unit test holds the query files to
+it as the first holds them to the predicate (`TestEveryReadOfTicketsCarriesTheDeletionFilter`); the
+list builder adds it in code (`TestTicketListLeavesTheDeletedOut`). Its exemptions name their
+reasons in the query files: the bin and the purge, which read deleted tickets only; a writer's
+reread; the publication of an act; a ticket read through the filter in the same transaction; and the
+rank keys, because a deleted ticket keeps its key. The integrity walks still step over deleted
+tickets, so that a restoration cannot close a cycle. A deleted ticket therefore answers exactly as a
+ticket that does not exist: `404` on its routes — its rendered body included — and on the key
+resolver, absent from every list, the full text and the search, the trees, the person-level lists
+and the inbox and its count, a link to it absent, an act that names it redacted, a block on it
+naming no ticket, a parent shown as hidden; `person_sees_ticket` answers no, so nobody is told of
+it. Its deletion reaches, as `ticket.changed` with the kind `deleted`, the streams that could see
+it — a person-level stream opened in another of the person's tenants included —, with its key and
+version, which they knew already. The integration tier walks all of it for an administrator, a
+member and a viewer (`TestADeletedTicketAnswersLikeAMissingOne`), the search and the person-level
+lists across two tenants (`TestADeletedTicketLeavesSearchAndThePersonLevelLists`), and the bins of
+two tenants apart.
+
+**The purge is the one path that deletes a ticket.** The runtime role may delete a ticket and what
+belongs only to it — its comments and their revisions, questions, attachments, time entries and
+their revisions — only through restrictive policies that name the job `ticket-purge` in `app.job`
+and a deleted ticket ([migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql)):
+a delete outside the purge, a forgotten `WHERE` included, removes nothing, and the purge removes
+nothing of a live ticket (`TestThePurgePoliciesHoldEveryDeleteToTheBin`). The notifications'
+restrictive policies admit the purge for a deleted ticket's notifications only. The audit rows of a
+purged ticket keep its key, the actor and the act, their `before`, `after`, `reason` and `note`
+emptied by `purge_ticket_audit`, a `SECURITY DEFINER` function of the owner role — the one place the
+runtime role reaches an update of the audit record ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md)
+D3): it empties nothing but those four fields, of the rows of one deleted ticket of the current
+tenant, in a transaction that names the purge, and its `search_path` is fixed with `pg_temp` last.
+The job reads the deleted tickets due of every tenant — their ids and tenants only — through
+`tickets_purge_due`, a policy that admits them in a transaction named `ticket-purge` **with no
+tenant set**, and then binds itself to each tenant in turn; a request's purge always has a tenant,
+so it never reads past it.
+
+## Saved filters are their owner's
+
+A saved filter carries its tenant and the canonical policy, and restrictive policies hold reading to
+its owner or a shared filter and every write to its owner
+([migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
+`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`). Its parameters name projects, tickets and
+persons as the lists take them. A member's shared filter that names a project or a ticket another
+reader cannot see — or one that is gone — is answered to that reader `redacted`, its parameters and
+warnings withheld, as an act that names a hidden ticket is; its name and its owner stay, because the
+owner shared them. The name is free text, as a comment's is: what an owner writes into it, every
+member of the tenant reads.
 
 ## Members, grants and group mappings
 
@@ -414,8 +494,12 @@ setting a grant, making or changing a mapping, restricting or opening a project,
 its access list — and making or changing a mapping takes a global administrator besides (above).
 Removing a grant, a mapping or an access entry only takes access away, and an administrator's
 `admin`-scope token may do it too ([tokens.md](tokens.md#what-only-a-session-does)).
-The mappings and a project's access list are read by the tenant's administrators — with a token's
-`read` scope — and the member list by every member; the mappings and the member list also by a
+The mappings, a project's access list and the tokens that can act in the tenant are read by the
+tenant's administrators — with a token's `read` scope — and the member list by every member. The
+token list holds the members' unrestricted tokens and those restricted to this tenant, and never a
+token restricted to another tenant, not even by its name; revoking an unrestricted one ends it in
+the person's other tenants too — an act of a tenant's administrator that reaches past the tenant,
+as the deactivation of an account the tenant manages does ([tokens.md](tokens.md#h-57) H-57). The mappings and the member list are also read by a
 global administrator who holds no role in the tenant, in a browser session.
 
 **`409 last_admin`.** A change of a grant or of a mapping, or the deactivation of a local account
@@ -523,7 +607,8 @@ channel `cowork_events` inside the act's transaction, so it is delivered at comm
 on a rollback ([`store/notify.go`](../../backend/internal/store/notify.go)). The notification
 carries the audit row's id, the tenant, the project, the entity, the action, the ticket's key
 and version, and the inputs of the confidential rule: the flag, the assignee and the reporter.
-One connection per replica listens and hands each notification to the streams of its tenant.
+One connection per replica listens and hands each notification to the streams that follow its
+tenant, each judging it by its filter of that tenant.
 
 A stream (`GET …/events`) passes authentication and the boundary like any route and computes
 its filter when it connects ([`api/events.go`](../../backend/internal/api/events.go)
@@ -552,11 +637,148 @@ restricted to a project hears, of these, only the events that name its project, 
 person and no project: the token knows nothing of the tenant beyond its project
 (`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`).
 
-The filter follows the person: every twenty seconds the heartbeat checks the token and the
-membership again ([tokens.md](tokens.md) H-7) and recomputes the visible projects with the
-person's current role (`Hub.Refilter`). A project restricted away from the person, a lowered
-role or a project created after the stream opened counts within one heartbeat — a change made
-in the database as well as one through the API (`TestStreamFollowsAccess`).
+The filter follows the person. An act that can change what a stream admits — a project
+created, a grant, a derived membership, a mapping, a project's restriction, an entry of an access
+list — makes every stream that follows the tenant compute its filter of the tenant again, with the
+person's role as the boundary reads it then and the projects they see, before it lets the tenant's
+next event through: until it has, the hub hands the stream every event of the tenant unjudged and
+the stream judges them itself, so neither a project the person gains nor one they lose waits for a
+heartbeat (`Hub.Changes`, `Hub.Refilter`, `refilter` in
+[`api/events.go`](../../backend/internal/api/events.go);
+`TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters`,
+`TestTheStreamAdmitsWhatAnActOpensAtOnce`). A project's creation is published for that and sent to
+no client. A person the boundary no longer admits at that moment loses the stream opened on that
+tenant; a person-level stream stops following another tenant they left
+([below](#the-person-level-stream)). Every twenty
+seconds the heartbeat checks the token and the membership again ([tokens.md](tokens.md) H-7) and
+recomputes the filter too, which catches a change made in the database past the API within one
+heartbeat (`TestStreamFollowsAccess`).
+
+## The person-level lists are unions, one tenant at a time
+
+The inbox, "next for me", "assigned to me" and "open decisions" (`GET /api/v1/me/inbox`, `…/next`,
+`…/assigned`, `…/decisions`) are the one kind of answer that spans tenants
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). They are
+built as ADR 0021 D5 has it: the person's memberships are read first, and each tenant is then read in
+a transaction of its own, bound to that tenant and the caller, under the same predicates as the
+tenant's own lists; the parts are merged in the application, and no query names two tenants
+([`api/inbox.go`](../../backend/internal/api/inbox.go) `personTenants`,
+[`api/mylists.go`](../../backend/internal/api/mylists.go)). A tenant the person left is not read at
+all; a global administrator without a role in a tenant has no membership there and reads nothing of
+it. A token restricted to a tenant reads that tenant alone, and one restricted to a project its project
+alone — `app.restricted_project_id` hides every project of another tenant. A `tenant` that names none
+of the person's tenants is the boundary's `404`, whether or not it exists, and "next for me"'s
+`project` names a project within that tenant, one hidden from the person listing nothing. A cursor is
+bound to its person and its narrowing, and carries the score's key and the ticket's id — the score is
+shown on the ticket, computed from its own facts and its stakes, which whoever sees the ticket reads
+([ADR 0013](../adr/0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D2) — so it is
+not sealed. The place in the backlog beside each ticket counts only the open tickets of its horizon
+the reader sees (`ListRankPlaces`, the predicate on every ticket it compares), so it tells nothing of
+a hidden one. "Next for me" holds the person's own and the unassigned open tickets, never a
+colleague's. `TestTheInboxIsThePersonsAcrossTheirTenants`, `TestNextForMeAcrossTenants`,
+`TestAssignedToMeAcrossTenants` and `TestOpenDecisionsAcrossTenants` cover the tenants, the
+restricted project, the confidential ticket, the narrowing and the restricted tokens.
+
+**A notification is its person's.** The act's own transaction writes it for each person the act
+tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an
+active member of the tenant who sees, by `person_sees_ticket`, both the ticket it is about and the
+ticket the act is on — never the actor
+([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). A comment's mention is held to
+the same sight before it is written: each person the comment's `mentions` names must be a member who
+sees the ticket, or the comment is refused at `/mentions/<i>` and tells nobody
+([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5;
+`TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`). That refusal tells the writer — who sees the
+ticket — whether a person sees it, as a question's `asked_of` does: of a restricted project, whether a
+member is on its access list, which only the tenant's administrators read otherwise ([H-58](#h-58)).
+Reading it holds again: a
+notification is listed and counted only while its person sees both tickets, so one whose ticket turned
+confidential, whose project was restricted away, or whose tenant the person left is absent and counts
+nowhere (`TestTheInboxIsThePersonsAcrossTheirTenants`); its act is shown as the ticket's activity shows
+it, without the payload where it names a ticket the person cannot see. Inside the tenant, the
+writer of an act inserts notifications for others, so the canonical policy alone would show any
+person of the tenant another's inbox to a query that forgot its `user_id`; restrictive policies hold
+reading and marking to `user_id = app_user_id()`, and deleting to the retention job
+([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql);
+`TestTheInboxPolicyHoldsAPersonToTheirOwn`). Marking read is the person's recorded act `read` in that
+tenant, so its administrators read in the audit view when a person marked their notifications read —
+the cost of ADR 0026 D1's rule that every write is an act.
+
+## Search finds only what its reader sees
+
+The search — `GET …/search` in a tenant, `GET /api/v1/me/search` across the person's tenants
+([ADR 0025](../adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)) —
+runs in PostgreSQL in the reader's transaction, bound to one tenant, like every other read: no
+external index holds any tenant's text, and isolation is the engine's
+([`queries/read/search.sql`](../../backend/internal/store/queries/read/search.sql) `SearchTickets`).
+Every text it reads — the ticket's title and body, its comments, its questions, its attachments'
+file names, the key built of the project's key and the number, the title by trigram — is read with
+`app_ticket_visible` on the ticket it belongs to, and the hit and its snippet are read through it
+once more, so a restricted project the reader is not on, a confidential ticket of which they are
+neither a tenant administrator, the assignee nor the reporter, and a project-restricted token's other
+projects find nothing, by any word of any of their texts; the lint of the query files holds the
+query to a predicate per read of `tickets`, and to `deleted_at IS NULL` beside each, so a deleted
+ticket finds nothing either ([above](#a-deleted-ticket-answers-like-a-missing-one)). A withdrawn comment is not searched, as its text is
+hidden from every route. The snippet is the matched text of the hit itself — the body, the comment,
+the question, the file name — never another ticket's, and it is answered as text in parts, never as
+markup. The person-level search is a union like the lists above: the person's memberships, a
+restricted token's own tenant, each tenant read in a transaction of its own, the parts merged by rank
+in the application, a narrowing `tenant` that names none of theirs answered like an unknown one; a
+global administrator without a role in a tenant searches nothing of it. A cursor is bound to its
+reader, its narrowing and a hash of its query; it carries the rank of the last hit, which the reader's
+own visible text gave it. `TestSearchNeverShowsWhatTheCallerCannotSee` holds hits and snippets to the
+tenant, the restriction, the confidential rule — in the title, the body, a comment, a question, the
+options, a file name, the key and by trigram — and the restricted tokens to their tenant and project;
+`TestSearchFindsAndRanksWithSnippets` holds a withdrawn comment out. What the query words leave in
+a log is [trust-boundaries.md](trust-boundaries.md#h-14) H-14; what its timing may say is H-53 below.
+
+## The person-level stream
+
+`GET …/events?me=true` is the one stream that spans tenants: besides the person's unread count, it
+carries every event of every tenant the person belongs to that the filter of that tenant admits
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D3 as amended on 2026-10-05, [events.md](../developer/events.md#the-person-level-stream)). It is
+built the way the person-level lists are: the person's memberships are read first (`personTenants`),
+and the filter of each tenant is computed in a transaction of that tenant's own, bound to it and the
+caller — the person's role there, the projects they see there (`ListVisibleProjectIDs`), a
+project-restricted token's project — so an event of a tenant passes on the person-level stream exactly
+what it would pass on that tenant's own stream: its project among those the person sees there, the
+confidential rule with the person's role there, the audience of a membership event
+([`api/events.go`](../../backend/internal/api/events.go) `streamFilters`, `tenantFilter`). The hub
+judges an event by the filter of the event's tenant and no other ([`events/hub.go`](../../backend/internal/events/hub.go)
+`deliver`); the stream still sends keys and versions, never content.
+
+- **A token restricted to a tenant does not span.** Its person-level stream follows its tenant alone —
+  a token restricted to a project included, which is restricted to its project's tenant
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D3, `streamReq.span`).
+- **A role, not the global administrator's flag.** A tenant the person holds no role in is not
+  followed: a global administrator without a role there hears nothing of it, as the person-level
+  lists read nothing of it.
+- **Leaving.** An act that takes a tenant from the person — a grant removed, a membership derived
+  away — makes the stream compute that tenant's filter before the tenant's next event, find no
+  membership, and stop following it. The act itself names the person and reaches them
+  (`{"tenant": "<slug>", "person_id": …}`); nothing of the tenant after it does, a later act that
+  names them there — the removal of an access entry they left behind — included.
+- **Joining.** A membership act that names the person in a tenant the stream does not follow makes
+  the hub follow that tenant with an empty filter: every event of the tenant reaches the stream
+  unjudged until it has read the person's membership there and computed the real filter, and is
+  judged by that filter then, so nothing passes on the empty filter.
+- **The heartbeat** reads every membership again, which catches a membership removed or added in the
+  database past the API within one heartbeat ([tokens.md](tokens.md#h-7) H-7).
+- **The replay** after a reconnect covers the tenants the stream follows at the reconnect, each
+  through its filter as computed then: a tenant left is not replayed, and one joined meanwhile is
+  replayed from the reconnect's id on, under the person's sight there now.
+- **The count** is counted per tenant, as the inbox counts, so a notification the person no longer
+  sees does not count.
+
+`TestThePersonLevelStream` asserts what never arrives: a question on a project restricted away from the
+person, one on a confidential ticket they are neither assignee nor reporter of, and anything of a tenant
+after the act that took it from them; `TestThePersonLevelStreamSpansThePersonsTenants` that nothing of a
+project of another tenant hidden from them or of a confidential ticket there arrives, while a ticket
+assigned to them there does within a second; `TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream`
+the heartbeat's check; and `TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a
+tenant-restricted token hears nothing of another tenant and counts its own tenant's notifications only.
+What a person-level stream costs grows with the person's tenants — one transaction per tenant when it
+opens, at every heartbeat and on every act that changes what it admits of one.
 
 ## Time follows its own rule
 
@@ -606,11 +828,6 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
   by the open prerequisites the closer can see (`ListOpenPrerequisites`): a ticket can be
   closed over an open prerequisite its closer cannot see, without an override and without a
   mention in the act, and its `open_prerequisites` reads 0 to that closer.
-- Rule `v1:icebox-decision` counts an open decision that blocks the ticket whether or not the
-  reader can see it (`GetUrgencyInputs`), and every reader sees the derived urgency and the
-  rule's name. When such a decision opens or settles, the tickets it blocks are derived again;
-  a standing override stays, and no act is recorded on their timelines — the change shows in
-  `urgency_derived` and `urgency_rule` alone.
 - Each derived progress stage is the effort-weighted mean of the same stage of every child not
   dropped, confidential ones included (`ticket_derived_stage`), and a parent whose children are
   all done shows 100 in each.
@@ -626,14 +843,23 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
   Whether a move writes is decided over the tickets the mover can see (`NextSeenRankedTicket`,
   `PreviousSeenRankedTicket`): a ticket that sits next to its neighbour for the mover answers
   unchanged, whatever sits between unseen, and a move that writes puts the ticket where the
-  mover sees it go whether or not a hidden ticket sits there. Two signals remain. A move into a
-  gap that moves of hidden tickets wore down — 635 to 762 moves into one gap — fails as an
-  internal error, as any exhausted gap does. And the one write that ranks the open tickets an
+  mover sees it go whether or not a hidden ticket sits there. Two signals remain. A gap that
+  moves of hidden tickets wore down no longer fails a move: before a key passes 32 characters the
+  project's keys are spread again, every ticket's — a hidden one's included — keeping its place,
+  with no act and no version (`rebalanceRank`); what is left of the signal is the time the move that
+  spreads them takes, and a cursor of the project's list handed out before resumes at its old key's
+  place among the new ones. And the one write that ranks the open tickets an
   earlier release left without a key — a hidden ticket's filing, reopen or move included —
   changes how the list shows them, with no act the caller sees: with `include_terminal` they
   move from among the done and dropped tickets, by number, to before them, and a cursor
-  positioned on one changes. `TestRankAroundAHiddenTicket` and `TestRankKeyIsNeverShown` hold
-  the rest.
+  positioned on one changes. `TestRankAroundAHiddenTicket`, `TestRankKeyIsNeverShown` and
+  `TestEightHundredMovesIntoOneGap` hold the rest.
+- The sort of a project's rank by the score
+  ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D3) reorders only the open
+  tickets the sorter sees, in the keys they hold among themselves: a hidden ticket keeps its key, its
+  place and its version, the act names only the tickets it moved, and the activity of a hidden ticket
+  holds no sort (`TestSortByScore`); a reader who cannot see one of the tickets the act names reads it
+  without its payload, as any act whose refs name a hidden ticket.
 
 Each reveals at most that such a ticket or project exists — for the rank, at most that hidden
 tickets were moved or filed — and who acted on it when — never its content. Live as soon as a
@@ -689,6 +915,74 @@ gap's: only a global administrator who administers the tenant makes one or chang
 ([above](#members-grants-and-group-mappings)). Mitigation: tenants whose administrators must not
 learn about each other's people belong in installations of their own.
 
+<a id="h-53"></a>
+### H-53 — A search's duration depends on matches the reader cannot see
+
+Dormant as far as measured — it was not measured. The search's indexes find every ticket, comment,
+question and file name of the tenant that holds the words, hidden ones included, and the visibility
+predicate drops the hidden ones afterwards, in the same query; the work, and with it the time to the
+answer, grows with the hidden matches as well. A member who times many searches for a word could in
+principle tell whether hidden texts of the tenant hold it — never which ticket, nor anything of its
+text, and only inside a tenant they belong to. The answer itself is the same with and without the
+hidden matches. Mitigation: none in cowork; a tenant whose members must not learn even that much
+keeps such work in an installation of its own.
+
+<a id="h-54"></a>
+### H-54 — An administrator's `admin` token deletes, and the job purges what nobody restores
+
+Live today. The purge takes a browser session
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7 as amended 2026-10-05, [tokens.md](tokens.md#what-only-a-session-does)): a token — a tenant
+administrator's `admin` token included — answers `403 session_required` and purges nothing.
+Deleting does not take one: the bin undoes a deletion, so it stays open to an `admin`-scope token,
+and a leaked token of a tenant administrator can delete every ticket it sees, one request each.
+Each stays in the bin as it was, restorable by an administrator, for thirty days; what nobody
+restores in that time the purge job removes for good, and the audit record keeps who deleted it
+through which token. Nothing tells the administrators that their bin filled — a deletion creates no
+notification; the bin and the audit record show it to whoever looks. Mitigation: give scripts no
+`admin` token; look at the bin; after the purge a backup is the only way back
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
+
+<a id="h-55"></a>
+### H-55 — A release before the deletion shows deleted tickets again in a rollback
+
+Dormant until an image is rolled back over migration 32
+([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4). The
+release before it knows no `deleted_at`: run over this schema, its queries list, show and export a
+deleted ticket to whoever its visibility predicate admits, until the newer release runs again. A
+purge it does not do; the purge job of the newer release takes the ticket in its time. Mitigation:
+roll back across the deletion only with an empty bin, or purge first.
+
+<a id="h-56"></a>
+### H-56 — Deleted is not gone until the purge, and the purge leaves traces outside the tables
+
+Live for every deleted ticket. Until the purge — thirty days, or an administrator's act in a browser
+session — the deleted ticket, everything that hangs off it and its files stay in the database, the
+bucket and the backups as they were; only the queries hide them, for everybody, administrators
+included. After the purge, its key and the ids of its rows stay in the audit record by design
+(ADR 0024 D2), its key in the log lines that name it (`ticket purged`, the request log's paths) and
+in the event ring for the replay window (H-5); the stored answer of a keyed creation of the ticket, a
+question or a comment keeps their text in `idempotency_keys` for up to a day after it was written
+(H-2); and an object whose removal failed after the commit stays in the bucket with no row naming it
+([attachments.md](attachments.md#h-13)). Backups taken before the purge keep everything. A legal
+retention shorter or longer than thirty days is not configurable.
+
+<a id="h-58"></a>
+### H-58 — A question's person asked and a comment's mention tell the writer who sees a ticket
+
+Live today, in every tenant with a confidential ticket or a restricted project. Asking a question of
+a person (`asked_of`) and mentioning a person in a comment (`mentions`) are refused at the field when
+the person does not see the ticket ([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md)
+D5, `checkAskedOf`, `checkMentions`). The writer sees the ticket, and the refusal tells them one fact
+more than the ticket shows: whether that member sees it — for a restricted project, whether the
+member is on its access list, which only the tenant's administrators read otherwise; for a
+confidential ticket, nothing the ticket does not show already, since it names its assignee and
+reporter and the member list names the administrators. A writer can ask it member by member, and
+nothing records a refused attempt. It tells nothing of the ticket's content or of another ticket.
+Mitigation: none in cowork; the access list of a restricted project is a matter of the tenant's own
+members, and an administrator who must keep it from them keeps the project's work in a tenant of
+its own.
+
 ### The owner credential in the serving process
 
 The split of the two roles protects against a compromised serving process only while that
@@ -709,7 +1003,9 @@ names it in `app.job`, and a person's own rows whoever names the person: such a 
 creates tenants, persons, global administrators, memberships, group mappings, sessions and tokens
 for any person, and changes any person's groups and administrator flag. What it still cannot do
 is what the grants withhold: change a policy or switch `FORCE` off, rewrite or delete the audit
-record, change a token's scope, restriction, agent flag, capabilities or expiry, bind a person to
+record — beyond what the purge's owner function does, which such a process reaches as well: it can
+delete any ticket, name the purge and empty the `before`, `after`, `reason` and `note` of that
+ticket's audit rows, never their key, actor, act or time —, change a token's scope, restriction, agent flag, capabilities or expiry, bind a person to
 another username or another identity of the issuer, or clear a token's revocation — the owner's
 trigger `tokens_revocation_is_final` refuses that, and the runtime role can neither drop nor
 disable it. It can revoke any token.

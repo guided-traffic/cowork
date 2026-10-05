@@ -7,14 +7,3 @@ RETURNING id, created_at;
 DELETE FROM ticket_links
 WHERE tenant_id = sqlc.arg(tenant_id) AND type = sqlc.arg(type)
   AND source_id = sqlc.arg(source_id) AND target_id = sqlc.arg(target_id);
-
--- name: RederiveUrgency :exec
--- A new derivation after an input changed (docs/adr/0010 D3). A standing
--- override stays: it holds until a person or an agent withdraws it or sets
--- another, and the new derived value shows beside it. Caused by another
--- entity — a link, another ticket's state — it leaves the ticket's version
--- alone (docs/adr/0050 D1); the ticket's own transitions bump the version
--- themselves.
-UPDATE tickets
-SET urgency_derived = sqlc.arg(urgency_derived), urgency_rule = sqlc.arg(urgency_rule), updated_at = now()
-WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);

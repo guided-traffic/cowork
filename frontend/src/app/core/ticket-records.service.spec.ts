@@ -7,7 +7,8 @@ import { TicketRecords } from './ticket-records.service';
 
 const key = 'acme/VKO-12';
 const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
 const person = { id: '0199aaaa-0000-7000-8000-000000000001', display_name: 'Hans' };
 
@@ -79,7 +80,7 @@ describe('TicketRecords', () => {
 
     it('posts the file as multipart form data to the attachments of the ticket', async () => {
       const upload = file();
-      const done = records.attach(key, upload);
+      const done = records.attach(key, upload, formKey);
 
       const sent = http.expectOne(`${base}/attachments`);
       expect(sent.request.method).toBe('POST');
@@ -96,7 +97,7 @@ describe('TicketRecords', () => {
     });
 
     it('sends the file and nothing else, no comment being named', async () => {
-      const done = records.attach(key, file());
+      const done = records.attach(key, file(), formKey);
 
       const sent = http.expectOne(`${base}/attachments`);
       expect([...(sent.request.body as FormData).keys()]).toEqual(['file']);
@@ -105,7 +106,7 @@ describe('TicketRecords', () => {
     });
 
     it('leaves the content type of the multipart body to the browser, which adds its boundary', async () => {
-      const done = records.attach(key, file());
+      const done = records.attach(key, file(), formKey);
 
       const sent = http.expectOne(`${base}/attachments`);
       expect(sent.request.headers.has('Content-Type')).toBe(false);
@@ -113,24 +114,16 @@ describe('TicketRecords', () => {
       await done;
     });
 
-    it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-      const first = records.attach(key, file());
-      const one = http.expectOne(`${base}/attachments`);
-      one.flush(attachment());
-      await first;
-      const second = records.attach(key, file());
-      const two = http.expectOne(`${base}/attachments`);
-      two.flush(attachment());
-      await second;
-
-      const keys = [one, two].map((sent) => sent.request.headers.get('Idempotency-Key'));
-      expect(keys[0]).toMatch(uuid);
-      expect(keys[1]).toMatch(uuid);
-      expect(keys[0]).not.toBe(keys[1]);
+    it("sends the card's Idempotency-Key, one for each file it sends (docs/adr/0045 D3)", async () => {
+      const done = records.attach(key, file(), formKey);
+      const sent = http.expectOne(`${base}/attachments`);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      sent.flush(attachment());
+      await done;
     });
 
     it('addresses the ticket through the tenant, the project and the number of its key', async () => {
-      const done = records.attach('globex/COW-3', file());
+      const done = records.attach('globex/COW-3', file(), formKey);
 
       http
         .expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/attachments')
@@ -145,7 +138,7 @@ describe('TicketRecords', () => {
     ])(
       'rejects with the HTTP error of a %i, which the caller shows',
       async (status, statusText) => {
-        const outcome = rejection(records.attach(key, file()));
+        const outcome = rejection(records.attach(key, file(), formKey));
 
         http
           .expectOne(`${base}/attachments`)
@@ -160,7 +153,7 @@ describe('TicketRecords', () => {
 
   describe('book', () => {
     it('posts the day and the minutes to the time entries of the ticket', async () => {
-      const done = records.book(key, '2026-10-03', 90, '');
+      const done = records.book(key, '2026-10-03', 90, '', formKey);
 
       const sent = http.expectOne(`${base}/time-entries`);
       expect(sent.request.method).toBe('POST');
@@ -171,7 +164,7 @@ describe('TicketRecords', () => {
     });
 
     it('sends the minutes as a number and the day as it was given', async () => {
-      const done = records.book(key, '2026-01-05', 45, '');
+      const done = records.book(key, '2026-01-05', 45, '', formKey);
 
       const sent = http.expectOne(`${base}/time-entries`);
       const body = sent.request.body as { day: string; minutes: number };
@@ -183,7 +176,7 @@ describe('TicketRecords', () => {
     });
 
     it('sends the note, trimmed, when there is one', async () => {
-      const done = records.book(key, '2026-10-03', 30, '  Reviewed the patch.  \n');
+      const done = records.book(key, '2026-10-03', 30, '  Reviewed the patch.  \n', formKey);
 
       const sent = http.expectOne(`${base}/time-entries`);
       expect(sent.request.body).toEqual({
@@ -198,7 +191,7 @@ describe('TicketRecords', () => {
     it.each(['', ' ', '   ', '\n', '\t \n'])(
       'leaves a note that is empty (%j) out of the body',
       async (note) => {
-        const done = records.book(key, '2026-10-03', 30, note);
+        const done = records.book(key, '2026-10-03', 30, note, formKey);
 
         const sent = http.expectOne(`${base}/time-entries`);
         expect(sent.request.body).toEqual({ day: '2026-10-03', minutes: 30 });
@@ -208,24 +201,16 @@ describe('TicketRecords', () => {
       },
     );
 
-    it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-      const first = records.book(key, '2026-10-03', 30, '');
-      const one = http.expectOne(`${base}/time-entries`);
-      one.flush(entry());
-      await first;
-      const second = records.book(key, '2026-10-03', 30, '');
-      const two = http.expectOne(`${base}/time-entries`);
-      two.flush(entry());
-      await second;
-
-      const keys = [one, two].map((sent) => sent.request.headers.get('Idempotency-Key'));
-      expect(keys[0]).toMatch(uuid);
-      expect(keys[1]).toMatch(uuid);
-      expect(keys[0]).not.toBe(keys[1]);
+    it("sends the form's Idempotency-Key, one for each content it holds (docs/adr/0045 D3)", async () => {
+      const done = records.book(key, '2026-10-03', 30, '', formKey);
+      const sent = http.expectOne(`${base}/time-entries`);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      sent.flush(entry());
+      await done;
     });
 
     it('asks for no version, a booking overwriting nothing', async () => {
-      const done = records.book(key, '2026-10-03', 30, '');
+      const done = records.book(key, '2026-10-03', 30, '', formKey);
 
       const sent = http.expectOne(`${base}/time-entries`);
       expect(sent.request.headers.has('If-Match')).toBe(false);
@@ -234,7 +219,7 @@ describe('TicketRecords', () => {
     });
 
     it('rejects with the HTTP error, such as a day in a locked period', async () => {
-      const outcome = rejection(records.book(key, '2026-01-05', 30, ''));
+      const outcome = rejection(records.book(key, '2026-01-05', 30, '', formKey));
 
       http
         .expectOne(`${base}/time-entries`)
@@ -351,6 +336,38 @@ describe('TicketRecords', () => {
       const error = await outcome;
 
       expect((error as HttpErrorResponse).status).toBe(409);
+    });
+  });
+
+  describe('attach to a comment (docs/adr/0016 D1)', () => {
+    it('names the comment the file belongs to beside the file', async () => {
+      const done = records.attach(
+        key,
+        new File(['hello'], 'shot.png', { type: 'image/png' }),
+        formKey,
+        '0199aaaa-0000-7000-8000-0000000000c1',
+      );
+
+      const sent = http.expectOne(`${base}/attachments`);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      const body = sent.request.body as FormData;
+      expect(body.get('comment_id')).toBe('0199aaaa-0000-7000-8000-0000000000c1');
+      expect((body.get('file') as File).name).toBe('shot.png');
+      sent.flush(attachment({ comment: '0199aaaa-0000-7000-8000-0000000000c1' }));
+
+      expect((await done).comment).toBe('0199aaaa-0000-7000-8000-0000000000c1');
+    });
+  });
+
+  describe('revisions (docs/adr/0017 D7)', () => {
+    it('reads the earlier values of an entry, oldest first, as the API orders them', async () => {
+      const done = records.revisions(key, entry());
+
+      http
+        .expectOne(`${base}/time-entries/0199aaaa-0000-7000-8000-0000000000e1/revisions?limit=200`)
+        .flush({ items: [{ minutes: 60 }, { minutes: 75 }], next_cursor: null });
+
+      expect((await done).map((revision) => revision.minutes)).toEqual([60, 75]);
     });
   });
 });

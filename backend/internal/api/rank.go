@@ -91,7 +91,7 @@ func (s *Server) MoveTicketRank(ctx context.Context, req apigen.MoveTicketRankRe
 		if perr := rankSelf(tc.row.Number, target); perr != nil {
 			return perr
 		}
-		other, err := rankNeighbour(ctx, w.Reader, t, tc, target)
+		other, err := rankNeighbour(ctx, w.Reader, t, tc.project.ID, target)
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func (s *Server) MoveTicketRank(ctx context.Context, req apigen.MoveTicketRankRe
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.MoveTicketRank200JSONResponse{Body: ticketView(t, out), Headers: apigen.MoveTicketRank200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.MoveTicketRank200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.MoveTicketRank200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // rankSelf refuses the ticket as its own neighbour.
@@ -112,16 +112,16 @@ func rankSelf(moved int32, target rankTarget) *problem.Error {
 	return nil
 }
 
-// rankNeighbour reads the ticket a move names, in the moved ticket's project,
+// rankNeighbour reads the ticket a move or a filing names, in the project,
 // through the predicate: one the caller cannot see is answered like one that
 // does not exist, as a parent is (docs/adr/0065 D5).
-func rankNeighbour(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, target rankTarget) (store.TicketRow, error) {
+func rankNeighbour(ctx context.Context, r *store.Reader, t tenantScope, projectID uuid.UUID, target rankTarget) (store.TicketRow, error) {
 	const message = "no such ticket in the project"
 	n, perr := ticketNumber(target.number)
 	if perr != nil {
 		return store.TicketRow{}, problem.Field(target.pointer(), message)
 	}
-	row, err := r.GetTicketByNumber(ctx, readq.GetTicketByNumberParams{TenantID: t.ID, ProjectID: tc.project.ID, Number: n})
+	row, err := r.GetTicketByNumber(ctx, readq.GetTicketByNumberParams{TenantID: t.ID, ProjectID: projectID, Number: n})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.TicketRow{}, problem.Field(target.pointer(), message)
 	}
@@ -185,24 +185,70 @@ func rankStates(moved, neighbour domain.TicketState, target rankTarget) *problem
 	return nil
 }
 
-// placeRank reads what a move is decided on, under the lock: the neighbour's
-// key and, on the side the moved ticket goes to, the ticket the caller sees
-// next to it and the next key of any ticket.
+// placeRank decides a move on what it reads under the lock (gapBeside). A key
+// longer than domain.RankRebalanceLength, or none that fits, means moves have
+// worn the gap down: the project's keys are spread again first
+// (rebalanceRank), and the move is decided on the gap as it is then.
 func placeRank(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, neighbour uuid.UUID, target rankTarget) (string, bool, error) {
+	for spread := false; ; spread = true {
+		near, seen, far, err := gapBeside(ctx, w, t, tc.project.ID, neighbour, target.after)
+		if err != nil {
+			return "", false, err
+		}
+		key, noop, err := planRank(target.after, near, far, seen, tc.row.ID)
+		if noop || spread || !crowded(key, err) {
+			return key, noop, err
+		}
+		if err := rebalanceRank(ctx, w, t, tc.project.ID); err != nil {
+			return "", false, err
+		}
+	}
+}
+
+// gapBeside reads, under the rank lock, the gap a ticket placed next to the
+// neighbour on one side goes into: the neighbour's key, the open ticket the
+// caller sees next to it on that side, and the next key of any ticket there.
+func gapBeside(ctx context.Context, w *store.Writer, t tenantScope, projectID, neighbour uuid.UUID, after bool) (string, uuid.UUID, string, error) {
 	near, err := w.GetTicketRank(ctx, writeq.GetTicketRankParams{TenantID: t.ID, ID: neighbour})
 	if err != nil {
-		return "", false, fmt.Errorf("read the neighbour's rank: %w", err)
+		return "", uuid.Nil, "", fmt.Errorf("read the neighbour's rank: %w", err)
 	}
 	if near.Rank == nil {
 		// Done and dropped take no rank lock: the neighbour left the rank
 		// after its state was read.
-		return "", false, problem.New(problem.StateConflict, "the neighbour's state changed meanwhile; read it again")
+		return "", uuid.Nil, "", problem.New(problem.StateConflict, "the neighbour's state changed meanwhile; read it again")
 	}
-	seen, far, err := beside(ctx, w, t, tc.project.ID, *near.Rank, target.after)
+	seen, far, err := beside(ctx, w, t, projectID, *near.Rank, after)
+	return *near.Rank, seen, far, err
+}
+
+// crowded reports whether a key computed for a place asks for the project's
+// keys to be spread first: longer than domain.RankRebalanceLength, or no key
+// fits the column at all.
+func crowded(key string, err error) bool {
+	return errors.Is(err, domain.ErrRankTooLong) || (err == nil && len(key) > domain.RankRebalanceLength)
+}
+
+// rebalanceRank spreads the keys of the project's open tickets evenly again,
+// in their order (domain.RankSpread, docs/adr/0014 Consequences), every
+// ticket of the project counted, those the caller cannot see included, so
+// each keeps its place; a key a release before the rank left on a done or
+// dropped ticket is taken away with them. Maintenance, not a move: no act and
+// no version. The caller holds the rank lock and has ranked the unranked.
+func rebalanceRank(ctx context.Context, w *store.Writer, t tenantScope, projectID uuid.UUID) error {
+	rows, err := w.ListRankKeys(ctx, writeq.ListRankKeysParams{TenantID: t.ID, ProjectID: projectID})
 	if err != nil {
-		return "", false, err
+		return fmt.Errorf("read the rank keys: %w", err)
 	}
-	return planRank(target.after, *near.Rank, far, seen, tc.row.ID)
+	held := make([]uuid.UUID, 0, len(rows))
+	open := make([]uuid.UUID, 0, len(rows))
+	for _, r := range rows {
+		held = append(held, r.ID)
+		if !r.State.Terminal() {
+			open = append(open, r.ID)
+		}
+	}
+	return writeRanks(ctx, w, t, held, open, domain.RankSpread(len(open)), false)
 }
 
 // beside reads what lies next to a key on one side of the project's rank:
@@ -247,15 +293,26 @@ func planRank(after bool, neighbour, far string, seen, moved uuid.UUID) (key str
 	if seen == moved {
 		return "", true, nil
 	}
+	key, err = between(after, neighbour, far)
+	return key, false, err
+}
+
+// between is a key strictly between the neighbour's key and far, the next key
+// on the side after names ("" at an end).
+func between(after bool, neighbour, far string) (string, error) {
+	var (
+		key string
+		err error
+	)
 	if after {
 		key, err = domain.RankBetween(neighbour, far)
 	} else {
 		key, err = domain.RankBetween(far, neighbour)
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("place the rank: %w", err)
+		return "", fmt.Errorf("place the rank: %w", err)
 	}
-	return key, false, nil
+	return key, nil
 }
 
 // lockRank takes the project's rank lock: its counter row, which a filing
@@ -290,6 +347,53 @@ func rankUnranked(ctx context.Context, w *store.Writer, t tenantScope, projectID
 		}
 	}
 	return last, nil
+}
+
+// rankBeside is the key of a filing placed directly after or before an open
+// ticket of the project in the horizon it is filed into (docs/adr/0014 D2 as
+// amended 2026-10-04), under the rank lock: strictly between that ticket's key
+// and the next key on that side over every ticket, as a move's. It returns
+// the ticket named, for the act.
+func rankBeside(ctx context.Context, w *store.Writer, t tenantScope, projectID uuid.UUID, target rankTarget, horizon domain.Urgency) (store.TicketRow, string, error) {
+	if err := lockRank(ctx, w, t, projectID); err != nil {
+		return store.TicketRow{}, "", err
+	}
+	if _, err := rankUnranked(ctx, w, t, projectID); err != nil {
+		return store.TicketRow{}, "", err
+	}
+	other, err := rankNeighbour(ctx, w.Reader, t, projectID, target)
+	if err != nil {
+		return store.TicketRow{}, "", err
+	}
+	if perr := rankStates(domain.StateFiled, other.State, target); perr != nil {
+		return other, "", perr
+	}
+	if u := horizonOf(other); u != horizon {
+		return other, "", problem.Field(target.pointer(),
+			fmt.Sprintf("%s stands in the horizon %s, not in %s", ticketKey(t, other), u, horizon))
+	}
+	for spread := false; ; spread = true {
+		near, _, far, err := gapBeside(ctx, w, t, projectID, other.ID, target.after)
+		if err != nil {
+			return other, "", err
+		}
+		key, err := between(target.after, near, far)
+		if spread || !crowded(key, err) {
+			return other, key, err
+		}
+		if err := rebalanceRank(ctx, w, t, projectID); err != nil {
+			return other, "", err
+		}
+	}
+}
+
+// horizonOf is the horizon a ticket stands in: the one set on it, else the
+// derived one (docs/adr/0010 D3).
+func horizonOf(r store.TicketRow) domain.Urgency {
+	if r.UrgencyOverride != nil {
+		return *r.UrgencyOverride
+	}
+	return r.UrgencyDerived
 }
 
 // rankAtBottom is the key of a ticket that joins its project's rank at the

@@ -18,12 +18,12 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
 WHERE c.tenant_id = $1 AND c.ticket_id = $2 AND c.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetCommentParams struct {
@@ -44,6 +44,7 @@ type GetCommentRow struct {
 	WithdrawnAt    *time.Time
 	Edited         bool
 	Explains       []string
+	Mentions       []uuid.UUID
 	Version        int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -64,6 +65,7 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 		&i.WithdrawnAt,
 		&i.Edited,
 		&i.Explains,
+		&i.Mentions,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -72,7 +74,7 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 }
 
 const getCommentForWrite = `-- name: GetCommentForWrite :one
-SELECT c.id, c.author_id, c.agent, c.body, c.withdrawn_at, c.version
+SELECT c.id, c.author_id, c.agent, c.body, c.mentions, c.withdrawn_at, c.version
 FROM comments c
 WHERE c.tenant_id = $1 AND c.ticket_id = $2 AND c.id = $3
 `
@@ -88,6 +90,7 @@ type GetCommentForWriteRow struct {
 	AuthorID    uuid.UUID
 	Agent       *string
 	Body        string
+	Mentions    []uuid.UUID
 	WithdrawnAt *time.Time
 	Version     int32
 }
@@ -101,6 +104,7 @@ func (q *Queries) GetCommentForWrite(ctx context.Context, arg GetCommentForWrite
 		&i.AuthorID,
 		&i.Agent,
 		&i.Body,
+		&i.Mentions,
 		&i.WithdrawnAt,
 		&i.Version,
 	)
@@ -115,7 +119,7 @@ JOIN comments c ON c.tenant_id = r.tenant_id AND c.id = r.comment_id
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = r.edited_by
 WHERE r.tenant_id = $1 AND r.comment_id = $2 AND c.withdrawn_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR r.id > $3::uuid)
 ORDER BY r.id
 LIMIT $4
@@ -183,12 +187,12 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
 WHERE c.tenant_id = $1 AND c.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL
        OR ($4::boolean AND c.id < $3::uuid)
        OR (NOT $4::boolean AND c.id > $3::uuid))
@@ -217,6 +221,7 @@ type ListCommentsRow struct {
 	WithdrawnAt    *time.Time
 	Edited         bool
 	Explains       []string
+	Mentions       []uuid.UUID
 	Version        int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -252,6 +257,7 @@ func (q *Queries) ListComments(ctx context.Context, arg ListCommentsParams) ([]L
 			&i.WithdrawnAt,
 			&i.Edited,
 			&i.Explains,
+			&i.Mentions,
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -272,7 +278,9 @@ SELECT a.id, a.actor_user_id, u.username AS actor_username, u.display_name AS ac
        a.explained_by_comment_id, a.refs, a.created_at
 FROM audit_events a
 LEFT JOIN users u ON u.id = a.actor_user_id
-WHERE a.tenant_id = $1 AND a.ticket_id = $2
+WHERE a.tenant_id = $1
+  AND (a.ticket_id = $2
+       OR (a.entity_type = 'project' AND a.action = 'ranked' AND a.refs @> ARRAY[$2::uuid]))
   AND a.entity_type <> 'time_entry' AND a.action NOT IN ('downloaded', 'exported', 'booked', 'voided', 'locked')
   AND ($3::uuid IS NULL
        OR ($4::boolean AND a.id < $3::uuid)
@@ -312,9 +320,11 @@ type ListTicketActivityRow struct {
 }
 
 // The ticket's acts (docs/adr/0015 D1, D6) without time entries
-// (docs/adr/0017 D9) and without data leaving the system (docs/adr/0026 D5).
-// The caller has read the ticket through the predicate; the refs of each act
-// are checked against it before its payload is shown.
+// (docs/adr/0017 D9) and without data leaving the system (docs/adr/0026 D5),
+// and the sorts of its project's rank by the score that moved it: one act of
+// the project, which names every ticket it moved in its refs
+// (docs/adr/0014 D3). The caller has read the ticket through the predicate;
+// the refs of each act are checked against it before its payload is shown.
 func (q *Queries) ListTicketActivity(ctx context.Context, arg ListTicketActivityParams) ([]ListTicketActivityRow, error) {
 	rows, err := q.db.Query(ctx, listTicketActivity,
 		arg.TenantID,
@@ -364,7 +374,7 @@ const visibleTickets = `-- name: VisibleTickets :many
 SELECT t.id
 FROM tickets t
 WHERE t.tenant_id = $1 AND t.id = ANY ($2::uuid[])
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type VisibleTicketsParams struct {

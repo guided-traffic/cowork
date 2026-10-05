@@ -7,6 +7,12 @@
           "type": "string"
         }
       },
+      "ListETag": {
+        "description": "A weak validator of this page for this caller, `W/\"…\"`, for `If-None-Match` (docs/adr/0054 D7)\n",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Location": {
         "description": "The new entity's URL",
         "schema": {
@@ -59,7 +65,7 @@
         "in": "query",
         "name": "cursor",
         "schema": {
-          "maxLength": 512,
+          "maxLength": 1024,
           "minLength": 1,
           "type": "string"
         }
@@ -115,6 +121,20 @@
         "schema": {
           "type": "boolean"
         }
+      },
+      "FilterHorizon": {
+        "description": "A horizon, or !horizon; repeated values combine with OR (docs/adr/0010 D3, docs/adr/0049)",
+        "explode": true,
+        "in": "query",
+        "name": "horizon",
+        "schema": {
+          "items": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
       },
       "FilterInterest": {
         "description": "me — the caller holds a stake; any — anyone does; each negatable with ! (docs/adr/0049 D1)",
@@ -226,6 +246,8 @@
         "style": "form"
       },
       "FilterUrgency": {
+        "deprecated": true,
+        "description": "`horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it\nis 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)\n",
         "explode": true,
         "in": "query",
         "name": "urgency",
@@ -323,6 +345,24 @@
           "default": 50,
           "minimum": 1,
           "type": "integer"
+        }
+      },
+      "MeProject": {
+        "description": "Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it\nneeds `tenant` (`400 validation_failed` without). A key that names no project the person sees\nthere lists nothing\n",
+        "in": "query",
+        "name": "project",
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "type": "string"
+        }
+      },
+      "MeTenant": {
+        "description": "Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names\nnone of them is `404 not_found`, whether or not the tenant exists\n",
+        "in": "query",
+        "name": "tenant",
+        "schema": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
         }
       },
       "OpenedAfter": {
@@ -432,7 +472,7 @@
         }
       },
       "Query": {
-        "description": "Full text over title and body (docs/adr/0025); its length is capped by the server",
+        "description": "A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold\nevery word, in the list's own order, without a rank or a snippet — the ranked search over\ncomments, questions, file names and keys as well is `GET …/search`. Its length is capped by\nthe server\n",
         "in": "query",
         "name": "q",
         "schema": {
@@ -462,6 +502,27 @@
           "type": "string"
         }
       },
+      "SavedFilterID": {
+        "description": "The saved filter's id",
+        "in": "path",
+        "name": "filter",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "SearchQuery": {
+        "description": "The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length\nis capped by the server, and a query of white space alone is `validation_failed`\n",
+        "in": "query",
+        "name": "q",
+        "required": true,
+        "schema": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
       "TenantSlug": {
         "description": "The tenant's slug (docs/adr/0005 D4)",
         "in": "path",
@@ -469,6 +530,16 @@
         "required": true,
         "schema": {
           "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
+        }
+      },
+      "TicketKeyPath": {
+        "description": "The ticket's short key, \u003cPROJECT\u003e-\u003cnumber\u003e, in one path segment (docs/adr/0007 D3)",
+        "in": "path",
+        "name": "key",
+        "required": true,
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
           "type": "string"
         }
       },
@@ -557,6 +628,14 @@
       }
     },
     "responses": {
+      "NotModified": {
+        "description": "The page is unchanged since the weak `ETag` in `If-None-Match`; the client keeps what it holds\n(docs/adr/0054 D7)\n",
+        "headers": {
+          "ETag": {
+            "$ref": "#/components/headers/ListETag"
+          }
+        }
+      },
       "Problem": {
         "content": {
           "application/problem+json": {
@@ -959,6 +1038,35 @@
         ],
         "type": "object"
       },
+      "AttachmentUsage": {
+        "description": "What the tenant's attachments hold against its quota (docs/adr/0016 D6)",
+        "properties": {
+          "attachments": {
+            "description": "How many attachments the tenant holds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quota_bytes": {
+            "description": "COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "used_bytes": {
+            "description": "The sizes of every attachment of the tenant, summed",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used_bytes",
+          "attachments",
+          "quota_bytes"
+        ],
+        "type": "object"
+      },
       "AuditAction": {
         "enum": [
           "created",
@@ -997,7 +1105,8 @@
           "password_changed",
           "password_reset",
           "deactivated",
-          "reactivated"
+          "reactivated",
+          "read"
         ],
         "type": "string"
       },
@@ -1133,10 +1242,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -1166,13 +1286,19 @@
             "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
             "minimum": 1,
             "type": "integer"
+          },
+          "token_max_lifetime_days": {
+            "description": "The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded\ndown (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the\nmaximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A\nform that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes\n",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "local",
           "oidc",
           "oidc_name",
-          "password_min_length"
+          "password_min_length",
+          "token_max_lifetime_days"
         ],
         "type": "object"
       },
@@ -1244,17 +1370,18 @@
         "type": "object"
       },
       "Capability": {
-        "description": "An agent capability (docs/adr/0043 D4)",
+        "description": "An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of\n`set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in\n`request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;\na later release removes the name (docs/adr/0046 D7).\n",
         "enum": [
           "decide",
           "close",
           "drop",
           "rank",
-          "override-urgency",
+          "set-horizon",
           "interest",
           "upload",
           "create-project",
-          "record-answer"
+          "record-answer",
+          "override-urgency"
         ],
         "type": "string"
       },
@@ -1614,6 +1741,13 @@
               "null"
             ]
           },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside\nthe Markdown; null once withdrawn\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -1632,6 +1766,14 @@
           "id": {
             "format": "uuid",
             "type": "string"
+          },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the\nticket while the comment stands; empty once it is withdrawn\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
           },
           "token": {
             "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
@@ -1668,10 +1810,12 @@
           "agent",
           "token",
           "body",
+          "body_html",
           "withdrawn",
           "withdrawn_at",
           "edited",
           "explains",
+          "mentions",
           "version",
           "created_at",
           "updated_at"
@@ -1768,6 +1912,16 @@
             "maxLength": 100000,
             "minLength": 1,
             "type": "string"
+          },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be\na member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/\u003ci\u003e`.\nEach is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The\ntext names them as the writer likes — the API reads no text, so a name typed without the list\ntells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the\nmentions stay as they are, and a list given replaces them — a person it adds is told, a person\nit drops is no longer a watcher by it.\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -1802,23 +1956,564 @@
             "properties": {
               "request": {
                 "$ref": "#/components/schemas/RequestMark"
-              },
-              "restricted_project": {
-                "description": "The key of the project the token is restricted to",
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             },
             "required": [
-              "restricted_project",
               "request"
             ],
             "type": "object"
           }
         ],
         "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)"
+      },
+      "Dashboard": {
+        "description": "The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only\ntransaction. Every tile counts only what the caller can see: the visibility predicate holds\neach ticket, question and time entry it reads, so a restricted project or a confidential\nticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,\ndocs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034\nD5). A deleted ticket counts nowhere either — nor its questions and its time — until it is\nrestored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they\nstand at the request; throughput and lead time end with the period's last day; the time is\nthe period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them\n(docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without\na plain value, every project the caller sees that is not archived; a negated value leaves its\nproject out, and a key that names no project the caller sees counts nothing.\n",
+        "properties": {
+          "age": {
+            "description": "Tile 5, the age distribution of the open tickets, the age being the time since filing\n(`opened_at`) at the request: five buckets in this order, every one present — under 7\ndays, 7 to under 30, 30 to under 90, 90 to under 365, and 365 days or more, a day being\n24 hours.\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardAgeBucket"
+            },
+            "type": "array"
+          },
+          "blocked": {
+            "$ref": "#/components/schemas/DashboardBlocked"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/DashboardDecisions"
+          },
+          "lead_time": {
+            "$ref": "#/components/schemas/DashboardLeadTime"
+          },
+          "open_by_severity": {
+            "description": "Tile 2, open tickets by severity: every severity of docs/adr/0010 D1 in its order,\n`critical` first, with the count of open tickets that carry it, zero included.\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardSeverityCount"
+            },
+            "type": "array"
+          },
+          "open_by_state": {
+            "description": "Tile 1, open tickets by state: the open tickets of each counted project per state, by\nproject key; a project and state without an open ticket is left out. Their sum per state\nis the tile, their sum per project the project's open count.\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardStateCount"
+            },
+            "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/DashboardPeriod"
+          },
+          "recent": {
+            "description": "Beside the tiles, kept from the front page before the dashboard: the eight open tickets of\nthe counted projects updated last, newest first (the later id on a tie).\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardRecent"
+            },
+            "type": "array"
+          },
+          "security": {
+            "description": "Tile 3, open security findings: `live`, then `boundary` (docs/adr/0010 D1, D2), each with\nthe count of open tickets of that class and the oldest of them by filing (`opened_at`, the\nearlier id on a tie), `null` while there is none.\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardSecurity"
+            },
+            "type": "array"
+          },
+          "throughput": {
+            "description": "Tile 6, throughput: the tickets done per ISO week (docs/adr/0019 D2) for the eight weeks\nthat end with the one holding the period's last day, oldest first, every week present. A\nticket counts in the week of its `done_at` while it is done: one reopened since counts\nnowhere, one done again counts once, in the week of its last done. The last week counts\nup to the period's last day.\n",
+            "items": {
+              "$ref": "#/components/schemas/DashboardWeek"
+            },
+            "type": "array"
+          },
+          "time": {
+            "$ref": "#/components/schemas/DashboardTime"
+          }
+        },
+        "required": [
+          "period",
+          "open_by_state",
+          "open_by_severity",
+          "security",
+          "blocked",
+          "age",
+          "throughput",
+          "lead_time",
+          "decisions",
+          "time",
+          "recent"
+        ],
+        "type": "object"
+      },
+      "DashboardAgeBucket": {
+        "description": "The open tickets whose age is at least `from_days` and under `to_days`",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "from_days": {
+            "type": "integer"
+          },
+          "to_days": {
+            "description": "Null for the last bucket, which has no upper bound",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "from_days",
+          "to_days",
+          "count"
+        ],
+        "type": "object"
+      },
+      "DashboardBlock": {
+        "properties": {
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BlockKind"
+          },
+          "since": {
+            "description": "When the ticket entered blocked",
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "since",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "DashboardBlocked": {
+        "description": "Tile 4, blocked tickets: the count of open tickets in the state `blocked`, and the one blocked\nlongest with its block's kind (docs/adr/0009 D2) — blocked since its latest recorded\ntransition into `blocked` (docs/adr/0026), or since its last update where no act records one;\nthe earlier id on a tie. `oldest` is `null` while none is blocked.\n",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "oldest": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DashboardBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "oldest"
+        ],
+        "type": "object"
+      },
+      "DashboardDecisions": {
+        "description": "Tile 8, open decisions: the count of open questions (docs/adr/0011 D3) on the tickets of the\ncounted projects, whomever they are asked of and whatever state the ticket is in, and the one\nasked first, the earlier id on a tie; `oldest` is `null` while none is open.\n",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "oldest": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DashboardQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "oldest"
+        ],
+        "type": "object"
+      },
+      "DashboardLeadTime": {
+        "description": "Tile 7, lead time: the median time from filing to done (`opened_at` to `done_at`) of the\ntickets done in the thirty days that end with the period's last day — done now, their\n`done_at` in that window, as throughput counts them; the median of an even count is the mean\nof the middle two. `median_seconds` is `null` while no ticket was done in the window.\n",
+        "properties": {
+          "done": {
+            "description": "The tickets the median is taken over",
+            "type": "integer"
+          },
+          "from": {
+            "description": "The window's first day",
+            "format": "date",
+            "type": "string"
+          },
+          "median_seconds": {
+            "description": "Whole seconds, rounded",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "to": {
+            "description": "The window's last day, the period's",
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "done",
+          "median_seconds"
+        ],
+        "type": "object"
+      },
+      "DashboardPeriod": {
+        "description": "The period the request named, or the default: the thirty days that end today, UTC. Both days\nare inclusive.\n",
+        "properties": {
+          "from": {
+            "format": "date",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "DashboardProjectTime": {
+        "properties": {
+          "minutes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "description": "The project's key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "name",
+          "minutes"
+        ],
+        "type": "object"
+      },
+      "DashboardQuestion": {
+        "properties": {
+          "key": {
+            "description": "The canonical key of its ticket",
+            "type": "string"
+          },
+          "number": {
+            "description": "The question's number on the ticket",
+            "type": "integer"
+          },
+          "question": {
+            "type": "string"
+          },
+          "since": {
+            "description": "When it was asked",
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "description": "The ticket's title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "number",
+          "question",
+          "since"
+        ],
+        "type": "object"
+      },
+      "DashboardRecent": {
+        "properties": {
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "title",
+          "state",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "DashboardSecurity": {
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/SecurityClass"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "oldest": {
+            "description": "The oldest open ticket of the class; `since` is its filing",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DashboardTicket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "class",
+          "count",
+          "oldest"
+        ],
+        "type": "object"
+      },
+      "DashboardSeverityCount": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          }
+        },
+        "required": [
+          "severity",
+          "count"
+        ],
+        "type": "object"
+      },
+      "DashboardStateCount": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "project": {
+            "description": "The project's key",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          }
+        },
+        "required": [
+          "project",
+          "state",
+          "count"
+        ],
+        "type": "object"
+      },
+      "DashboardTicket": {
+        "description": "A ticket a tile names, with the time the tile measures it from",
+        "properties": {
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "since"
+        ],
+        "type": "object"
+      },
+      "DashboardTime": {
+        "description": "Tile 9, time booked in the period by project: the minutes of the time entries whose day lies\nin the period, voided ones left out (docs/adr/0017 D7), per counted project that has any, by\nproject key; only the entries the caller may see count (docs/adr/0034 D5).\n",
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardProjectTime"
+            },
+            "type": "array"
+          },
+          "total_minutes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_minutes",
+          "projects"
+        ],
+        "type": "object"
+      },
+      "DashboardWeek": {
+        "properties": {
+          "done": {
+            "description": "The tickets done in it",
+            "type": "integer"
+          },
+          "from": {
+            "description": "Its Monday",
+            "format": "date",
+            "type": "string"
+          },
+          "to": {
+            "description": "Its Sunday, or the period's last day for the last week",
+            "format": "date",
+            "type": "string"
+          },
+          "week": {
+            "description": "The ISO week, 2026-W40",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week",
+          "from",
+          "to",
+          "done"
+        ],
+        "type": "object"
+      },
+      "Decision": {
+        "properties": {
+          "question": {
+            "$ref": "#/components/schemas/Question"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketRef"
+          }
+        },
+        "required": [
+          "tenant",
+          "ticket",
+          "question"
+        ],
+        "type": "object"
+      },
+      "DecisionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "DeletedTicket": {
+        "description": "A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or\npurge it.\n",
+        "properties": {
+          "confidential": {
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deleted_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "key": {
+            "description": "\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "purge_at": {
+            "description": "When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "key",
+          "project",
+          "number",
+          "type",
+          "title",
+          "state",
+          "confidential",
+          "deleted_at",
+          "deleted_by",
+          "purge_at"
+        ],
+        "type": "object"
+      },
+      "DeletedTicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedTicket"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "Effort": {
         "enum": [
@@ -1948,6 +2643,190 @@
         },
         "required": [
           "role"
+        ],
+        "type": "object"
+      },
+      "Horizon": {
+        "description": "The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket\nis, and nothing else changes (docs/adr/0010 D3): now, to be worked on now; release, to be in the\nnext release; next, taken up when now is empty; later, maybe some day; icebox, frozen until what\nit waits for changes\n",
+        "enum": [
+          "now",
+          "release",
+          "next",
+          "later",
+          "icebox"
+        ],
+        "type": "string"
+      },
+      "HorizonSet": {
+        "description": "The horizon a person or an agent set on the ticket (docs/adr/0010 D3)",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "by": {
+            "description": "Who set it; null for a horizon a migration kept, which nobody set",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "description": "Null when a person set the horizon without one (docs/adr/0010 D3)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "$ref": "#/components/schemas/Horizon"
+          }
+        },
+        "required": [
+          "value",
+          "reason",
+          "at"
+        ],
+        "type": "object"
+      },
+      "HorizonUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "Optional for a person, required of an agent (docs/adr/0010 D3)",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Horizon"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "InboxEntry": {
+        "properties": {
+          "act": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "blocker": {
+            "description": "For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/InboxReason"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketRef"
+          },
+          "withdrawn": {
+            "description": "The comment or question the act is on has been withdrawn since",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "ticket",
+          "reason",
+          "act",
+          "blocker",
+          "withdrawn",
+          "read",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "InboxList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread": {
+            "description": "The person's unread notifications in the tenants the request reaches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "unread"
+        ],
+        "type": "object"
+      },
+      "InboxReadThrough": {
+        "additionalProperties": false,
+        "properties": {
+          "through": {
+            "description": "The newest notification the person saw; it and every older one are marked read",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "through"
+        ],
+        "type": "object"
+      },
+      "InboxReason": {
+        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a\ncomment that mentions them (docs/adr/0015 D5)\n",
+        "enum": [
+          "assigned",
+          "asked",
+          "answered",
+          "state_changed",
+          "blocker_closed",
+          "commented",
+          "urgent",
+          "mentioned"
+        ],
+        "type": "string"
+      },
+      "InboxState": {
+        "properties": {
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread"
         ],
         "type": "object"
       },
@@ -2312,10 +3191,138 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "MemberToken": {
+        "description": "A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):\nits person and its metadata, never its secret, hash or prefix\n",
+        "properties": {
+          "agent": {
+            "description": "The agent flag; every request of the token is an agent's (docs/adr/0036 D2)",
+            "type": "boolean"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_used_on": {
+            "description": "The last day it was used, wherever; for an unrestricted token possibly in another tenant",
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The name its person gave it, free text that may say more than what it is for",
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "restricted_project": {
+            "description": "The key of the project of this tenant the token is restricted to; null for none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restricted_tenant": {
+            "description": "This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches\nevery tenant its person belongs to, so revoking it ends it in all of them\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "person",
+          "scope",
+          "agent",
+          "capabilities",
+          "restricted_tenant",
+          "restricted_project",
+          "created_at",
+          "expires_at",
+          "last_used_on",
+          "revoked_at",
+          "state"
+        ],
+        "type": "object"
+      },
+      "MemberTokenList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberToken"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -2370,6 +3377,48 @@
         ],
         "type": "string"
       },
+      "MyTicket": {
+        "properties": {
+          "place": {
+            "description": "The ticket's place in its project's rank among the open tickets of its horizon the caller can\nsee, 1 for the first — where the backlog's group shows it: the secondary indicator beside the\nscore's order (docs/adr/0014 D5)\n",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/Ticket"
+          }
+        },
+        "required": [
+          "tenant",
+          "ticket",
+          "place"
+        ],
+        "type": "object"
+      },
+      "MyTicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MyTicket"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "PasswordChange": {
         "additionalProperties": false,
         "properties": {
@@ -2411,6 +3460,118 @@
         "required": [
           "id",
           "display_name"
+        ],
+        "type": "object"
+      },
+      "PrerequisiteNode": {
+        "description": "A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)",
+        "properties": {
+          "assignee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocked_from": {
+            "description": "The state a blocked ticket came from; null unless it is blocked (docs/adr/0009 D2)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "description": "1 for a ticket next to the one asked about — blocking it, or blocked by it read upward",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "key": {
+            "description": "The canonical key; a ticket of another project names it",
+            "type": "string"
+          },
+          "progress": {
+            "description": "The implementation stage as the ticket shows it (docs/adr/0017 D2, D3)",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_derived": {
+            "description": "The stages are derived from the ticket's children",
+            "type": "boolean"
+          },
+          "progress_refinement": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_review": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeated": {
+            "description": "The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it",
+            "type": "boolean"
+          },
+          "settled": {
+            "description": "Done or dropped (docs/adr/0012 D6)",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "state",
+          "blocked_from",
+          "assignee",
+          "progress",
+          "progress_refinement",
+          "progress_review",
+          "progress_derived",
+          "depth",
+          "settled",
+          "repeated"
+        ],
+        "type": "object"
+      },
+      "PrerequisiteTree": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrerequisiteNode"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open": {
+            "description": "The open tickets of the whole tree the caller can see, each counted once, on every page",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "open"
         ],
         "type": "object"
       },
@@ -2489,6 +3650,7 @@
           "open_prerequisites",
           "period_locked",
           "attachment_limit",
+          "attachment_quota",
           "uploads_disabled",
           "chat_unavailable",
           "precondition_failed",
@@ -2667,10 +3829,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -2696,6 +3869,41 @@
             "$ref": "#/components/schemas/WipLimits"
           }
         },
+        "type": "object"
+      },
+      "ProjectRankSort": {
+        "additionalProperties": false,
+        "description": "What the project's rank is set to (docs/adr/0014 D3)",
+        "properties": {
+          "by": {
+            "description": "The order the open tickets take — the score's, the one order there is to adopt",
+            "enum": [
+              "score"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "by"
+        ],
+        "type": "object"
+      },
+      "ProjectRankSorted": {
+        "properties": {
+          "moved": {
+            "description": "How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score_version": {
+            "description": "The version of the score function the rank was sorted by (docs/adr/0014 D4)",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moved",
+          "score_version"
+        ],
         "type": "object"
       },
       "ProjectRef": {
@@ -2750,6 +3958,13 @@
         "properties": {
           "answer": {
             "description": "Markdown",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answer_html": {
+            "description": "The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer",
             "type": [
               "string",
               "null"
@@ -2832,6 +4047,10 @@
             "description": "Markdown: the context and the options",
             "type": "string"
           },
+          "options_html": {
+            "description": "The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options",
+            "type": "string"
+          },
           "question": {
             "type": "string"
           },
@@ -2865,8 +4084,10 @@
           "number",
           "question",
           "options",
+          "options_html",
           "recommendation",
           "answer",
+          "answer_html",
           "status",
           "asked_by",
           "asked_by_agent",
@@ -3191,7 +4412,7 @@
             ]
           },
           "capabilities": {
-            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4), the person's chat\ncapabilities for a session the header marks (D5); empty for a person's request, which the\ncapabilities do not bound\n",
+            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4), the person's chat\ncapabilities for a session the header marks (D5); empty for a person's request, which the\ncapabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`\nfollows it, for the cowork-mcp of the release before, until a later release removes it\n(docs/adr/0046 D7)\n",
             "items": {
               "$ref": "#/components/schemas/Capability"
             },
@@ -3214,6 +4435,287 @@
         ],
         "type": "string"
       },
+      "SavedFilter": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "redacted": {
+            "description": "Another person's filter names a project or a ticket the caller cannot see, or one that no\nlonger exists; its parameters and warnings are withheld (docs/adr/0065 D5)\n",
+            "type": "boolean"
+          },
+          "shared": {
+            "description": "Shown to every member of the tenant, with its owner",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner",
+          "shared",
+          "parameters",
+          "redacted",
+          "warnings",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SavedFilterCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "parameters"
+        ],
+        "type": "object"
+      },
+      "SavedFilterList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilter"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "SavedFilterParameters": {
+        "additionalProperties": false,
+        "description": "The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each\nrepeatable parameter an array of its values — `!` negates one —, the bounds and the booleans\nsingle values. What a list's query string would carry, without the paging.\n",
+        "properties": {
+          "assignee": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "done_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effort": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "has_open_questions": {
+            "type": "boolean"
+          },
+          "horizon": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "include_terminal": {
+            "type": "boolean"
+          },
+          "interest": {
+            "items": {
+              "maxLength": 8,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "opened_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "opened_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "parent": {
+            "items": {
+              "maxLength": 80,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "progress_max": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_min": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "project": {
+            "items": {
+              "maxLength": 16,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "q": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reporter": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "security": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "severity": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "state": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "type": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "updated_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "urgency": {
+            "deprecated": true,
+            "description": "`horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back\nas `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release\n(docs/adr/0046 D7)\n",
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterWarning": {
+        "description": "A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "message"
+        ],
+        "type": "object"
+      },
       "Scope": {
         "description": "A token's scope (docs/adr/0035 D3)",
         "enum": [
@@ -3222,6 +4724,95 @@
           "admin"
         ],
         "type": "string"
+      },
+      "SearchFoundIn": {
+        "description": "Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and\nthe body; one of its comments; one of its questions; an attachment's file name\n",
+        "enum": [
+          "key",
+          "ticket",
+          "comment",
+          "question",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "SearchHit": {
+        "properties": {
+          "comment": {
+            "description": "The comment the hit is in",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found_in": {
+            "$ref": "#/components/schemas/SearchFoundIn"
+          },
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e (docs/adr/0007 D2)",
+            "type": "string"
+          },
+          "question": {
+            "description": "The number of the question the hit is in",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snippet": {
+            "description": "The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):\nthe body for a hit in the ticket's own text or its key, the comment, the question with its\noptions, recommendation and answer, the file name. Text, never HTML; empty where that text is\n",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "tenant",
+          "key",
+          "title",
+          "type",
+          "state",
+          "found_in",
+          "comment",
+          "question",
+          "snippet"
+        ],
+        "type": "object"
+      },
+      "SearchHitList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "SecurityClass": {
         "enum": [
@@ -3241,6 +4832,23 @@
           "cosmetic"
         ],
         "type": "string"
+      },
+      "SnippetPart": {
+        "properties": {
+          "match": {
+            "description": "The piece is a word the query found",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "A piece of the matched text, as text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "type": "object"
       },
       "Tenant": {
         "properties": {
@@ -3463,6 +5071,20 @@
           "effort": {
             "$ref": "#/components/schemas/Effort"
           },
+          "horizon": {
+            "$ref": "#/components/schemas/Horizon"
+          },
+          "horizon_set": {
+            "description": "The horizon a person or an agent set; null for a ticket nobody placed, which stands in later",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HorizonSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -3537,6 +5159,21 @@
               }
             ]
           },
+          "score": {
+            "description": "The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of\nthe severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days\nsince `opened_at`. It warns where the facts disagree with the project's rank and orders the\nperson-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a\nrelease before the score filed until an input of it changes.\n",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "score_version": {
+            "description": "The version of the function that computed `score` (docs/adr/0014 D4); null with it",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "security": {
             "$ref": "#/components/schemas/SecurityClass"
           },
@@ -3563,12 +5200,26 @@
             "type": "string"
           },
           "urgency": {
-            "$ref": "#/components/schemas/Urgency"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Urgency"
+              }
+            ],
+            "deprecated": true,
+            "description": "The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which\nreplaces it; removed in a later release (docs/adr/0046 D7)\n"
           },
           "urgency_derived": {
-            "$ref": "#/components/schemas/Urgency"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Urgency"
+              }
+            ],
+            "deprecated": true,
+            "description": "What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more\n(docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)\n"
           },
           "urgency_override": {
+            "deprecated": true,
+            "description": "The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which\nreplaces it; removed in a later release (docs/adr/0046 D7)\n",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/UrgencyOverride"
@@ -3579,7 +5230,8 @@
             ]
           },
           "urgency_rule": {
-            "description": "The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)",
+            "deprecated": true,
+            "description": "The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04\n(docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)\n",
             "type": "string"
           },
           "version": {
@@ -3599,6 +5251,8 @@
           "severity",
           "security",
           "threat",
+          "horizon",
+          "horizon_set",
           "urgency",
           "urgency_derived",
           "urgency_rule",
@@ -3620,9 +5274,33 @@
           "done_from",
           "done_by_hand",
           "open_prerequisites",
+          "score",
+          "score_version",
           "version",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketBody": {
+        "properties": {
+          "body": {
+            "description": "Markdown, as written (docs/adr/0011 D1)",
+            "type": "string"
+          },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body\n",
+            "type": "string"
+          },
+          "version": {
+            "description": "The ticket's version the body belongs to",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body",
+          "body_html",
+          "version"
         ],
         "type": "object"
       },
@@ -3648,10 +5326,22 @@
       "TicketCreate": {
         "additionalProperties": false,
         "properties": {
+          "after": {
+            "description": "The open ticket of the same horizon this one is filed directly after; not with before",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "assignee": {
             "description": "A member of the tenant",
             "format": "uuid",
             "type": "string"
+          },
+          "before": {
+            "description": "The open ticket of the same horizon this one is filed directly before; not with after",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
           },
           "body": {
             "maxLength": 200000,
@@ -3659,6 +5349,14 @@
           },
           "effort": {
             "$ref": "#/components/schemas/Effort"
+          },
+          "horizon": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Horizon"
+              }
+            ],
+            "description": "The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)"
           },
           "parent": {
             "description": "A ticket key of the same project, short or full",
@@ -3682,6 +5380,15 @@
           },
           "type": {
             "$ref": "#/components/schemas/TicketType"
+          },
+          "urgency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Urgency"
+              }
+            ],
+            "deprecated": true,
+            "description": "The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it\nanother value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)\n"
           }
         },
         "required": [
@@ -4178,8 +5885,16 @@
           "name": {
             "type": "string"
           },
+          "restricted_project": {
+            "description": "The key of the project the token is restricted to (docs/adr/0035 D3); null for a token\nwithout a project restriction, and for one whose project the person no longer sees or\nwhose tenant they no longer belong to — such a token reaches nothing\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "restricted_project_id": {
-            "description": "The id of the project the token is restricted to",
+            "deprecated": true,
+            "description": "The id of the project the token is restricted to. Replaced by `restricted_project`, which\nnames the project by its key, as a person knows it; kept in `/api/v1` for the clients that\nread it, since taking a field away is a breaking change (docs/adr/0046 D7)\n",
             "format": "uuid",
             "type": [
               "string",
@@ -4213,6 +5928,7 @@
           "scope",
           "agent",
           "capabilities",
+          "restricted_project",
           "created_at",
           "expires_at",
           "state"
@@ -4293,10 +6009,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -4376,6 +6103,8 @@
         "type": "object"
       },
       "Urgency": {
+        "deprecated": true,
+        "description": "The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by\n`Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release\n(docs/adr/0046 D7).\n",
         "enum": [
           "now",
           "release",
@@ -4386,6 +6115,8 @@
         "type": "string"
       },
       "UrgencyOverride": {
+        "deprecated": true,
+        "description": "The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in\n`/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).\n",
         "properties": {
           "at": {
             "format": "date-time",
@@ -4421,6 +6152,8 @@
       },
       "UrgencyOverrideSet": {
         "additionalProperties": false,
+        "deprecated": true,
+        "description": "The body of the deprecated `overrideUrgency`; replaced by `HorizonUpdate` and `setHorizon`, and\nremoved in a later release (docs/adr/0046 D7)\n",
         "properties": {
           "reason": {
             "description": "Optional for a person, required of an agent (docs/adr/0010 D3)",
@@ -4499,7 +6232,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -4552,6 +6285,53 @@
         ]
       }
     },
+    "/api/v1/me/assigned": {
+      "get": {
+        "description": "\"Assigned to me\" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is\nassigned to the person, in every tenant they belong to, each with its tenant and its place in\nits project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the\ntenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without\none last — then by the ticket's id; the place is the secondary indicator. Cursor paging only\n(docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a\nproject that project (docs/adr/0035 D3).\n",
+        "operationId": "listMyAssigned",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTicketList"
+                }
+              }
+            },
+            "description": "A page of the person's tickets",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The open tickets assigned to the person, across their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/chat": {
       "get": {
         "description": "The chat acts as the person's agent, and its requests hold exactly this set\n(docs/adr/0043 D5, docs/adr/0076): an act that needs another capability is refused\nto the chat with `403 agent_forbidden` and stays the person's. A person who never chose\nholds the default — every capability but `decide`, `close`, `drop` and `record-answer` —,\nand `chosen` is false.\n",
@@ -4563,7 +6343,7 @@
                 "example": {
                   "capabilities": [
                     "rank",
-                    "override-urgency",
+                    "set-horizon",
                     "interest",
                     "upload",
                     "create-project"
@@ -4595,7 +6375,7 @@
               "example": {
                 "capabilities": [
                   "rank",
-                  "override-urgency"
+                  "set-horizon"
                 ]
               },
               "schema": {
@@ -4626,6 +6406,227 @@
           }
         ],
         "summary": "Choose the capabilities the person gives the chat in the UI",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/decisions": {
+      "get": {
+        "description": "\"Open decisions\" (docs/adr/0018 D3): the open questions asked of the person and those open in\ntheir tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its\ntenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the\nticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones\n— then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A\nrestricted token reads as on `GET /api/v1/me/assigned`.\n",
+        "operationId": "listMyDecisions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionList"
+                }
+              }
+            },
+            "description": "A page of the open decisions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The open decisions of the person, across their tenants",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox": {
+      "get": {
+        "description": "One inbox per person, a union over the tenants they belong to — one read per tenant, never one\nquery across them (docs/adr/0020 D1, docs/adr/0021 D5). A notification is written by the act\nthat caused it, for the events of docs/adr/0020 D2: a ticket assigned to the person, a\nquestion asked of them, a question they asked answered, a state change of — or a comment on —\na ticket they watch (docs/adr/0013 D6: a stake, the assignee, the reporter, an open question\nasked by or of them), a ticket that blocks one they watch reaching `done` or `dropped`, and an\n`urgent` stake on a ticket assigned to them. Their own acts and their agents' tell them\nnothing. Each entry names its tenant beside the ticket and renders from the act (D3): the\nticket as it is now, the act as the ticket's activity shows it — without its payload where\nit names a ticket the person cannot see — and whether the comment or question it is on has\nbeen withdrawn since. A notification of a ticket the person no longer sees, or of a tenant\nthey left, is absent and counts nowhere (docs/adr/0065 D5).\n\n`unread` counts the person's unread notifications in the tenants the request reaches. A\ntoken restricted to a tenant reads that tenant's, one restricted to a project that project's\n(docs/adr/0035 D3). Cursor paging only; the cursor holds the place, so a notification that\narrives while the person reads shifts nothing (docs/adr/0048 D3).\n",
+        "operationId": "listMyInbox",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxList"
+                }
+              }
+            },
+            "description": "A page of the inbox and the unread count",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The person's notifications across their tenants, newest first",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox/read": {
+      "put": {
+        "description": "\"Mark all read\" (docs/adr/0020 D6): every unread notification of the person up to and\nincluding `through`, in the tenants the request reaches; one that arrived after it stays\nunread. One act `read` per tenant where something changed; none where nothing did. Needs\n`write` scope. Read notifications are kept ninety days, unread ones until they are read.\n",
+        "operationId": "markMyInboxRead",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxReadThrough"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxState"
+                }
+              }
+            },
+            "description": "The unread count after the marking"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Mark the person's notifications read, up to one they saw",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/inbox/{notification}/read": {
+      "parameters": [
+        {
+          "description": "The notification's id",
+          "in": "path",
+          "name": "notification",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "description": "Recorded as the act `read`; one already read changes nothing and records nothing. A\nnotification that is not the person's, or of a ticket they no longer see, is `404 not_found`.\nNeeds `write` scope.\n",
+        "operationId": "markNotificationRead",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxState"
+                }
+              }
+            },
+            "description": "The unread count after the marking"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Mark one of the person's notifications read",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/next": {
+      "get": {
+        "description": "\"Next for me\" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor\n`dropped` and is assigned to the person or to nobody, in the projects they see of every tenant\nthey belong to, each with its tenant and its place in its project's rank — one read per tenant\n(docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket\nis not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one\nlast — then by the ticket's id; the place is the secondary indicator. Cursor paging only\n(docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one\nproject of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one\nrestricted to a project that project (docs/adr/0035 D3).\n",
+        "operationId": "listMyNext",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/MeProject"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTicketList"
+                }
+              }
+            },
+            "description": "A page of what the person could take up next",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "What the person could take up next, across their tenants",
         "tags": [
           "me"
         ]
@@ -4743,6 +6744,45 @@
         ]
       }
     },
+    "/api/v1/me/search": {
+      "get": {
+        "description": "The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —\none read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit\nnames its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that\ntenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator\nwithout a role in a tenant searches nothing of it (docs/adr/0034 D2).\n",
+        "operationId": "searchMyTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tickets of every tenant of the person",
+        "tags": [
+          "search"
+        ]
+      }
+    },
     "/api/v1/me/token": {
       "get": {
         "description": "The token's metadata as the list shows it, the key of the project it is\nrestricted to, and the request's mark: whether it is an agent's — by the\ntoken's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the\nagent recorded on its acts, and the capabilities it holds\n(docs/adr/0043 D4). The MCP server reads it at start to tell the model what\nit may do (D6), and `cowork-mcp token check` to tell a person\n(docs/adr/0070 D2). A browser session presents no token: `404 not_found`.\n",
@@ -4770,7 +6810,7 @@
     },
     "/api/v1/me/tokens": {
       "get": {
-        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with\na total (docs/adr/0048 D2).\n",
         "operationId": "listMyTokens",
         "parameters": [
           {
@@ -4778,6 +6818,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5315,9 +7361,57 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/attachment-usage": {
+      "get": {
+        "description": "Every attachment of the tenant counts, on every ticket, confidential ones and those of\nrestricted projects included, and a deleted ticket's until the purge removes them — they\noccupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The\ntenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the\nsum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,\nnull where the installation sets none. An answer the client holds unchanged is `304` to its\nweak `ETag` (docs/adr/0054 D7).\n",
+        "operationId": "getAttachmentUsage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "attachments": 41,
+                  "quota_bytes": 10737418240,
+                  "used_bytes": 73400320
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentUsage"
+                }
+              }
+            },
+            "description": "The usage",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The bytes the tenant's attachments hold, and the quota",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
-        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe.\n",
+        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
         "operationId": "listAudit",
         "parameters": [
           {
@@ -5382,6 +7476,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5543,9 +7643,179 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/dashboard": {
+      "get": {
+        "description": "`read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by\nseverity, the open `live` and `boundary` findings, the blocked tickets, the age of the open\ntickets, throughput, lead time, open decisions and the time booked — and, beside them, the\nopen tickets updated last. Each tile is defined in its field of `Dashboard`, and each counts\nonly what the caller can see.\n\nThe filters are the ticket lists' `project` (docs/adr/0049 D6), repeatable, `!` leaving a\nproject out, and the period, `from` and `to`, both days inclusive — by default the thirty\ndays that end today (UTC); `from` after `to` is `400 validation_failed`. The period bounds\nthe time booked; throughput and lead time end with its last day; the open tiles stand as\nthe tickets do at the request.\n\nOne route for all nine: the page shows them together under one set of filters, one\ntransaction gives counts that agree with each other, and a reload after an event costs one\nrequest, which `If-None-Match` answers with `304` while nothing the caller sees changed\n(docs/adr/0054 D7). A token restricted to a project does not reach it.\n",
+        "operationId": "getDashboard",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FilterProject"
+          },
+          {
+            "$ref": "#/components/parameters/FromDay"
+          },
+          {
+            "$ref": "#/components/parameters/ToDay"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            },
+            "description": "The tiles",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's dashboard, its nine tiles over what the caller can see",
+        "tags": [
+          "dashboard"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets": {
+      "get": {
+        "description": "The tenant administrators' view of the deleted tickets they can see, the last deleted first,\neach with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one\nlist in which a deleted ticket exists. An administrator's, with `read` scope; a token\nrestricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listDeletedTickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedTicketList"
+                }
+              }
+            },
+            "description": "A page of the bin",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's bin of deleted tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}": {
+      "delete": {
+        "description": "A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),\n**in a browser session only**: the one irreversible act on a ticket, so a token — an\nadministrator's `admin` token included — answers `403 session_required`, and the purge job\ndoes the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a\nticket of the bin only — any other key is 404. The ticket, its\ncomments, questions, links, stakes, time entries, notifications and attachments are removed,\nand the attachments' objects after them; its children become roots, and a block that waited\non it waits on its key as an external reference. Its audit rows stay with their content\nemptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.\nIrreversible: the browser asks a second time. Recorded as `purged` and published.\n",
+        "operationId": "purgeTicket",
+        "responses": {
+          "204": {
+            "description": "Purged"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Purge a deleted ticket for good",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ],
+      "put": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,\ndocs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back\nas it was, its links, comments and place in the rank with it; the version rises. Recorded as\n`restored` and published.\n",
+        "operationId": "restoreTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The restored ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Restore a deleted ticket from the bin",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's rank was set as a whole — the sort by the score\n(docs/adr/0014 D3) — with `data: {\"key\": \"\u003ctenant\u003e/\u003cPROJECT\u003e\", \"kind\": \"ranked\"}`; `id:` is\nthe act's id. It reaches whoever sees the project, and the client reloads the lists it\nshows.\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -5555,6 +7825,15 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "description": "Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)",
+            "in": "query",
+            "name": "me",
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -5584,6 +7863,198 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/filters": {
+      "get": {
+        "description": "The caller's own filters and every filter a member shared with the tenant, oldest first, each\nwith its owner. Every filter is checked against the vocabularies as it is read\n(docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody\nelse that names a project or a ticket the caller cannot see — or one that no longer exists —\nis answered `redacted`, without its parameters, as an act that names a hidden ticket is\n(docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listSavedFilters",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterList"
+                }
+              }
+            },
+            "description": "A page of saved filters",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The caller's saved filters and those shared with the tenant",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'\n(docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value\noutside its vocabulary is 400 at `/parameters/\u003cname\u003e` (D4). `me` stays `me`: whoever applies\nthe filter is meant. `shared` shows it to every member of the tenant with the owner beside\nit. Recorded as `created`.\n",
+        "operationId": "createSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Save a filter",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/filters/{filter}": {
+      "delete": {
+        "description": "Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a\nfilter the caller cannot see — or one already gone — 404. Recorded as `deleted`.\n",
+        "operationId": "deleteSavedFilter",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "get": {
+        "description": "The caller's own, or a shared one; any other is 404.",
+        "operationId": "getSavedFilter",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/SavedFilterID"
+        }
+      ],
+      "patch": {
+        "description": "Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's\nshared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces\nthe whole set, checked as on creation. Recorded as `updated` with the fields that changed.\n",
+        "operationId": "updateSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The changed filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Rename, change, share or unshare a saved filter",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/group-mappings": {
       "get": {
         "description": "Each mapping gives its role to every person whose groups include its\ngroup; several matches yield the highest role (docs/adr/0030 D2).\n`includes_caller` says the calling person is one of them, so the editor\ncan warn before a change takes the editor's own role away. The tenant's\nadministrators read them, and a global administrator who holds no role\nin the tenant, in a browser session (docs/adr/0034 D2).\n",
@@ -5594,6 +8065,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5605,7 +8079,15 @@
                 }
               }
             },
-            "description": "A page of mappings"
+            "description": "A page of mappings",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5756,7 +8238,7 @@
     },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
-        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2).\n",
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2). Paged by cursor, or by number\nwith a total (docs/adr/0048 D2).\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -5764,6 +8246,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5775,7 +8266,15 @@
                 }
               }
             },
-            "description": "A page of members, by person id"
+            "description": "A page of members, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5924,6 +8423,7 @@
     },
     "/api/v1/tenants/{tenant}/projects": {
       "get": {
+        "description": "By key, paged by cursor, or by number with a total (docs/adr/0048 D2).\n",
         "operationId": "listProjects",
         "parameters": [
           {
@@ -5939,6 +8439,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5950,7 +8459,15 @@
                 }
               }
             },
-            "description": "A page of projects, by key"
+            "description": "A page of projects, by key",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6129,6 +8646,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6140,7 +8660,15 @@
                 }
               }
             },
-            "description": "A page of entries, by person id"
+            "description": "A page of entries, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6265,6 +8793,52 @@
         "summary": "Archive a project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/rank": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "put": {
+        "description": "\"Sort by score\" (docs/adr/0014 D3): the open tickets of the project the caller can see take\nthe places they hold among themselves in the score's order — highest first, each scored anew\nwith the function as it stands — so every horizon's group and every parent's children read in\nthe score's order; a ticket the caller cannot see keeps its key and its place. One act,\n`ranked` on the project with `{\"by\": \"score\", \"score_version\", \"moved\"}`, naming the tickets\nit moved, whose activity shows it, published as `project.changed`; each ticket it moved gets\na new version, as a move gives one. A rank that follows the score already answers `moved: 0`\nand records nothing. Never automatic. A member's act with `write` scope; an agent\nneeds `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites\n(docs/adr/0050 D4).\n",
+        "operationId": "sortProjectRank",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "by": "score"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRankSort"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRankSorted"
+                }
+              }
+            },
+            "description": "How many tickets changed their place"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Reorder the project's open tickets by their score",
+        "tags": [
+          "tickets"
         ]
       }
     },
@@ -6456,7 +9030,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets": {
       "get": {
-        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5). `state=done\u0026done_after=\u003ctime\u003e` counts what the board shows for done\n(docs/adr/0018 D1).\n",
+        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5). `state=done\u0026done_after=\u003ctime\u003e` counts what the board shows for done\n(docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that\nnames both is 400 at `query:urgency`.\n",
         "operationId": "listProjectTickets",
         "parameters": [
           {
@@ -6470,6 +9044,9 @@
           },
           {
             "$ref": "#/components/parameters/FilterSecurity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterHorizon"
           },
           {
             "$ref": "#/components/parameters/FilterUrgency"
@@ -6586,7 +9163,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived\n(docs/adr/0010 D3); a live or boundary security class makes the ticket confidential\n(docs/adr/0065 D2). An archived project refuses.\n",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken\nas `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank\nat the bottom, the end of its horizon, or directly `after` or `before` the open ticket of\nthe project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2). An archived project refuses.\n",
         "operationId": "createTicket",
         "parameters": [
           {
@@ -6640,6 +9217,22 @@
       }
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}": {
+      "delete": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,\ndocs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers\nlike a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of\nit and under it is 404, and it leaves every list, the prerequisite trees, the person-level\nlists, the inbox and the context; links to it are hidden, not removed, and its key stays taken\n(docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and\npublished. A restoration brings everything back; thirty days after the deletion the purge job\nremoves it for good (D2). Deleting a ticket that others depend on is not refused — the browser\nshows the dependents and asks first (D7).\n",
+        "operationId": "deleteTicket",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a ticket into the tenant's bin",
+        "tags": [
+          "tickets"
+        ]
+      },
       "get": {
         "operationId": "getTicket",
         "responses": {
@@ -6735,6 +9328,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6746,7 +9342,15 @@
                 }
               }
             },
-            "description": "A page of acts"
+            "description": "A page of acts",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6778,6 +9382,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6789,7 +9396,15 @@
                 }
               }
             },
-            "description": "A page of attachments"
+            "description": "A page of attachments",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6812,7 +9427,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage\n501 `uploads_disabled`.\n",
+        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds\nCOWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take\nthe tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,\nchecked under the tenant's lock before the bytes are stored; without object storage\n501 `uploads_disabled`.\n",
         "operationId": "uploadAttachment",
         "parameters": [
           {
@@ -6986,6 +9601,39 @@
       ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body": {
+      "get": {
+        "description": "The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its\nown: the ticket lists carry the Markdown of every row, and rendering every body of a page\nis work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown\nas text; a link keeps only an `http`, `https` or `mailto` address or one relative to the\ninstallation, opens in a new tab and carries `rel=\"noopener noreferrer nofollow\"`; an\nimage shows only when it names a raster attachment of this ticket, from that attachment's\nown path (docs/adr/0016 D7), and any other image is a link to its address. Shown through\nAngular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a\nreplacement of the body names in `If-Match`; the HTML changes with the ticket's\nattachments as well, which raise no version.\n",
+        "operationId": "getTicketBody",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "body": "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7).",
+                  "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eThe gate fails on \u003ccode\u003ereadyReplicas\u003c/code\u003e — see \u003ca href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\"\u003ethe run\u003c/a\u003e.\u003c/p\u003e",
+                  "version": 4
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/TicketBody"
+                }
+              }
+            },
+            "description": "The body",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's body, as Markdown and rendered",
+        "tags": [
+          "tickets"
+        ]
+      },
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
@@ -7053,6 +9701,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7064,7 +9715,15 @@
                 }
               }
             },
-            "description": "A page of comments; a withdrawn one without its text"
+            "description": "A page of comments; a withdrawn one without its text",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7087,7 +9746,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the\nticket's watchers, and the persons `mentions` names — each a member who sees the ticket —\nthat they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).\n",
         "operationId": "addComment",
         "parameters": [
           {
@@ -7176,7 +9835,7 @@
         }
       ],
       "patch": {
-        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.\n",
+        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`\nleft out keeps the comment's mentions; a list replaces them, and tells the persons it adds\n(D5).\n",
         "operationId": "editComment",
         "parameters": [
           {
@@ -7425,6 +10084,66 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/horizon": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ],
+      "put": {
+        "description": "Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning\ncategory independent of the state, which holds until a person or an agent sets another;\nnothing changes it on its own (docs/adr/0010 D3). `later` is where a ticket nobody placed\nstands: setting it clears the set horizon, so `horizon_set` is null afterwards, and on a\nticket with none set it changes nothing. The reason is optional for a person and required\nof an agent, whose request without one is 400 at `/reason`; it is recorded on the act and,\nfor a horizon other than `later`, shown with it. An agent needs the set-horizon capability\n(docs/adr/0043 D4). A 412 names the current `horizon` and `horizon_set`.\n",
+        "operationId": "setHorizon",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "reason": "Taken up once the import works",
+                "value": "next"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/HorizonUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Set the horizon",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest": {
       "delete": {
         "description": "Idempotent.",
@@ -7450,6 +10169,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7461,7 +10183,15 @@
                 }
               }
             },
-            "description": "A page of stakes"
+            "description": "A page of stakes",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7537,6 +10267,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7548,7 +10281,15 @@
                 }
               }
             },
-            "description": "A page of links"
+            "description": "A page of links",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7680,6 +10421,98 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites": {
+      "get": {
+        "description": "docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
+        "operationId": "listPrerequisites",
+        "parameters": [
+          {
+            "description": "down for the prerequisites, the default; up for the dependents",
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "down",
+              "enum": [
+                "down",
+                "up"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "assignee": {
+                        "display_name": "Ada",
+                        "id": "0190f4c2-6f1e-7a3b-9c2d-1e2f3a4b5c6d",
+                        "username": "ada"
+                      },
+                      "blocked_from": null,
+                      "depth": 1,
+                      "key": "acme/COW-7",
+                      "progress": 40,
+                      "progress_derived": false,
+                      "progress_refinement": 100,
+                      "progress_review": 0,
+                      "repeated": false,
+                      "settled": false,
+                      "state": "in-progress",
+                      "title": "Pick the format"
+                    }
+                  ],
+                  "next_cursor": null,
+                  "open": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/PrerequisiteTree"
+                }
+              }
+            },
+            "description": "A page of the tree, depth first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's prerequisite tree, or read upward its dependents",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions": {
       "get": {
         "operationId": "listQuestions",
@@ -7689,6 +10522,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7700,7 +10536,15 @@
                 }
               }
             },
-            "description": "A page of questions"
+            "description": "A page of questions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8021,6 +10865,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8032,7 +10879,15 @@
                 }
               }
             },
-            "description": "A page of entries with the ticket's visible total"
+            "description": "A page of entries with the ticket's visible total",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8340,7 +11195,8 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override": {
       "delete": {
-        "description": "The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).",
+        "deprecated": true,
+        "description": "Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and\nremoved in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the\nderived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon\ncapability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).\n",
         "operationId": "withdrawUrgencyOverride",
         "parameters": [
           {
@@ -8367,7 +11223,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Withdraw the urgency override",
+        "summary": "Return the ticket to the horizon later, under the name it had before",
         "tags": [
           "tickets"
         ]
@@ -8384,7 +11240,8 @@
         }
       ],
       "put": {
-        "description": "The override holds until a person or an agent withdraws it or sets another; when an input of\nthe derivation changes, the derived value and its rule change beside it and the override stays\n(docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request\nwithout one is 400 at `/reason`. An agent needs the override-urgency capability\n(docs/adr/0043 D4).\n",
+        "deprecated": true,
+        "description": "Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,\nand removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,\n`release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which\nholds until a person or an agent withdraws it or sets another; nothing derives it, the\nderived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a\nperson and required of an agent, whose request without one is 400 at `/reason`. An agent\nneeds the set-horizon capability, which its deprecated name override-urgency names as well\n(docs/adr/0043 D4).\n",
         "operationId": "overrideUrgency",
         "parameters": [
           {
@@ -8421,15 +11278,88 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Override the derived urgency",
+        "summary": "Set the horizon, under the name it had before",
         "tags": [
           "tickets"
         ]
       }
     },
+    "/api/v1/tenants/{tenant}/search": {
+      "get": {
+        "description": "Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —\nover a ticket's title and body, its comments but a withdrawn one, its questions (the question,\nthe options, the recommendation and the answer) and its attachments' file names; a text\nmatches when it holds every word of `q`. A ticket's key matches by its beginning as well —\n`COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram\nsimilarity, so a word half typed or misspelt still finds it (D3).\n\nOne hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the\ntitle above the body above comments, questions and file names, a title found by trigram\nbelow them (D4). A hit names the ticket — its key, title, type and state —, where it matched\n(`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an\nattachment's name) and a snippet of that text with the matched words marked (`ts_headline`,\nD5). The snippet is text in parts, never HTML: a client shows every part as text.\n\nOnly what the caller can see is searched, snippets included: a restricted project they are\nnot on, a confidential ticket of which they are neither a tenant administrator, the assignee\nnor the reporter, and a project-restricted token's other projects find nothing\n(docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a\ncursor belongs to its query.\n\nThe `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose\ntitle and body hold every word, in the list's own order, with no rank and no snippet.\n",
+        "operationId": "searchTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "comment": "0199a3c2-1d2e-7f00-8000-0000000000c1",
+                      "found_in": "comment",
+                      "key": "acme/COW-12",
+                      "question": null,
+                      "snippet": [
+                        {
+                          "match": false,
+                          "text": "the "
+                        },
+                        {
+                          "match": true,
+                          "text": "readyReplicas"
+                        },
+                        {
+                          "match": false,
+                          "text": " count is 0 after the rollout"
+                        }
+                      ],
+                      "state": "in-progress",
+                      "tenant": {
+                        "name": "Acme",
+                        "slug": "acme"
+                      },
+                      "title": "The gate fails on a fresh cluster",
+                      "type": "bug"
+                    }
+                  ],
+                  "next_cursor": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tenant's tickets",
+        "tags": [
+          "search"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
-        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time.\n",
+        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time. `urgency` is the deprecated name of `horizon`, and a request that names\nboth is 400 at `query:urgency`.\n",
         "operationId": "listTenantTickets",
         "parameters": [
           {
@@ -8446,6 +11376,9 @@
           },
           {
             "$ref": "#/components/parameters/FilterSecurity"
+          },
+          {
+            "$ref": "#/components/parameters/FilterHorizon"
           },
           {
             "$ref": "#/components/parameters/FilterUrgency"
@@ -8675,6 +11608,93 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens": {
+      "get": {
+        "description": "Every token of a member of the tenant that is unrestricted or restricted\nto this tenant, revoked and expired ones included, with its person:\nmetadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`\nnull marks an unrestricted token, which reaches every tenant its person\nbelongs to — revoking it ends it there too. An unrestricted token's name\nand last-used day are its person's across their tenants, and so may say\nsomething of their work elsewhere. The tenant's administrators, a token's\n`read` scope; anybody else is `403 forbidden`. Newest first, paged by\ncursor, or by number with a total (docs/adr/0048 D2); a page the client\nholds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).\n",
+        "operationId": "listTenantTokens",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTokenList"
+                }
+              }
+            },
+            "description": "A page of tokens, newest first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The members' tokens that can act in the tenant, for its administrators",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens/{token_id}": {
+      "delete": {
+        "description": "Immediate and final, the row kept (docs/adr/0035 D6), and recorded in\nthe tenant's audit as the administrator's act `revoked` (D9). Revoking an\nunrestricted token ends it in every tenant of its person, not only in\nthis one; the person makes a new one in a session. A token this tenant's\nlist does not show — restricted to another tenant, or of a person who is\nno member here — is `404 not_found`, as one that does not exist.\nRevoking a revoked token changes nothing. It only takes access away, so\nan administrator's `admin`-scope token may; an agent may not\n(docs/adr/0043 D3).\n",
+        "operationId": "revokeTenantToken",
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Revoke a member's token that can act in the tenant",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "in": "path",
+          "name": "token_id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
         }
       ]
     },
@@ -8960,7 +11980,7 @@
     },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3).\n",
+        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3), and the longest lifetime of a\nnew token the bound of the token form (docs/adr/0035 D4) — the policies\nof the installation, public like the rest of this answer.\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -8970,7 +11990,8 @@
                   "local": true,
                   "oidc": true,
                   "oidc_name": "Acme SSO",
-                  "password_min_length": 12
+                  "password_min_length": 12,
+                  "token_max_lifetime_days": 365
                 },
                 "schema": {
                   "$ref": "#/components/schemas/AuthOptions"
@@ -9030,6 +12051,12 @@
       "name": "tickets"
     },
     {
+      "name": "filters"
+    },
+    {
+      "name": "search"
+    },
+    {
       "name": "questions"
     },
     {
@@ -9046,6 +12073,9 @@
     },
     {
       "name": "chat"
+    },
+    {
+      "name": "dashboard"
     }
   ]
 }

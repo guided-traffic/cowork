@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -11,10 +11,15 @@ import type { MockInstance } from 'vitest';
 import { Member, Problem, Ticket } from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { ProblemView } from '../../core/problem.service';
+import { SessionService } from '../../core/session.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
+import { TicketsService } from '../../core/tickets.service';
 import { Stage, stages } from '../../shared/stages';
 import { Clock, dateTime } from '../../shared/time';
+import { meanings } from '../../shared/vocabulary';
+import { ConfidentialDialog } from './confidential-dialog';
 import { MoveDialog } from './move-dialog';
+import { ParentPicker } from './parent-picker';
 import { shown, TicketFields } from './ticket-fields';
 
 const now = Date.parse('2026-10-03T12:00:00Z');
@@ -46,6 +51,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     progress_derived: false,
     progress_refinement: 0,
     progress_review: 0,
+    horizon: 'next',
+    horizon_set: null,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -58,6 +65,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 3,
     ...overrides,
   };
@@ -106,12 +115,16 @@ describe('shown', () => {
 
 describe('TicketFields', () => {
   let update: MockInstance<TicketActions['update']>;
+  let setHorizon: MockInstance<TicketActions['setHorizon']>;
   let confirm: MockInstance<ConfirmationService['confirm']>;
   let people: WritableSignal<Member[]>;
+  let role: WritableSignal<'admin' | 'member'>;
 
   beforeEach(() => {
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
+    setHorizon = vi.fn<TicketActions['setHorizon']>().mockResolvedValue(ticket());
     confirm = vi.fn<ConfirmationService['confirm']>();
+    role = signal<'admin' | 'member'>('member');
     people = signal<Member[]>([
       {
         role: 'admin',
@@ -132,8 +145,16 @@ describe('TicketFields', () => {
       providers: [
         MessageService,
         { provide: ConfirmationService, useValue: { confirm } },
-        { provide: TicketActions, useValue: { update } },
+        {
+          provide: TicketActions,
+          useValue: { update, setHorizon, setConfidential: vi.fn() },
+        },
         { provide: MembersService, useValue: { list: people } },
+        {
+          provide: SessionService,
+          useValue: { membership: computed(() => ({ role: role() })) },
+        },
+        { provide: TicketsService, useValue: { openTickets: vi.fn().mockResolvedValue([]) } },
         { provide: Clock, useValue: { now: signal(now) } },
       ],
     });
@@ -271,36 +292,54 @@ describe('TicketFields', () => {
       expect(tooltipOf('5 minutes ago')).toBe(dateTime('2026-10-03T11:55:00Z'));
     });
 
-    it('shows the urgency, explained with the rule that derived it', async () => {
-      const fixture = await render(ticket({ urgency: 'next', urgency_rule: 'v1:default' }));
-
-      expect(fields(fixture)['Urgency']).toBe('next');
-      const urgency = fixture.debugElement
+    const horizonTip = (fixture: ComponentFixture<TicketFields>, value: string) =>
+      fixture.debugElement
         .queryAll(By.directive(Tooltip))
-        .find((candidate) => candidate.nativeElement.textContent.trim() === 'next');
-      expect(urgency?.injector.get(Tooltip).content()).toBe(
-        'Medium or worse, and its trigger is live (rule v1:default)',
+        .find((candidate) => candidate.nativeElement.textContent.trim() === value)
+        ?.injector.get(Tooltip)
+        .content();
+
+    it('shows the horizon, explained by its meaning alone', async () => {
+      const fixture = await render(ticket({ horizon: 'next' }));
+
+      expect(fields(fixture)).not.toHaveProperty('Urgency');
+      expect(fields(fixture)['Horizon']).toBe('next');
+      expect(horizonTip(fixture, 'next')).toBe(
+        'Next: taken up when now is empty, to move the project forward',
       );
     });
 
-    it('marks an urgency that a person overrode', async () => {
+    it('adds the reason the horizon was set with to its meaning, and marks nothing else', async () => {
       const fixture = await render(
         ticket({
-          urgency: 'now',
-          urgency_override: { value: 'now', reason: 'Today', at: '2026-10-03T09:00:00Z' },
+          horizon: 'now',
+          horizon_set: { value: 'now', reason: 'Today', at: '2026-10-03T09:00:00Z' },
         }),
       );
 
-      expect(fields(fixture)['Urgency']).toBe('now overridden');
+      expect(fields(fixture)['Horizon']).toBe('now');
+      expect(horizonTip(fixture, 'now')).toBe(`${meanings.horizon.now} — Today`);
     });
 
-    it('names the parent when there is one and shows none otherwise', async () => {
+    it('shows the meaning alone for a horizon set without a reason', async () => {
+      const fixture = await render(
+        ticket({
+          horizon: 'release',
+          horizon_set: { value: 'release', reason: null, at: '2026-10-03T09:00:00Z' },
+        }),
+      );
+
+      expect(fields(fixture)['Horizon']).toBe('release');
+      expect(horizonTip(fixture, 'release')).toBe('Release: has to be in the next release');
+    });
+
+    it('shows the parent by its short key in its picker, and none where there is none', async () => {
       const fixture = await render(ticket({ parent: 'acme/COW-1' }));
-      expect(fields(fixture)['Parent']).toBe('acme/COW-1');
+      expect(label(fixture, 'parent-picker')).toBe('COW-1');
 
       fixture.componentRef.setInput('ticket', ticket());
       await settle(fixture);
-      expect(fields(fixture)).not.toHaveProperty('Parent');
+      expect(label(fixture, 'parent-picker')).toBe('No parent');
     });
 
     it('shows the three progress stages with their values, and names the one the ticket works on', async () => {
@@ -1203,6 +1242,293 @@ describe('TicketFields', () => {
       expect(add).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ severity: 'error', summary: 'The backend cannot be reached' }),
       );
+    });
+  });
+
+  describe('the horizon (docs/adr/0010 D3)', () => {
+    const reasonField = (fixture: ComponentFixture<TicketFields>) =>
+      el(fixture, 'field-horizon-reason') as HTMLInputElement | null;
+
+    function type(fixture: ComponentFixture<TicketFields>, text: string) {
+      const field = reasonField(fixture) as HTMLInputElement;
+      field.value = text;
+      field.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+
+    function key(fixture: ComponentFixture<TicketFields>, name: string) {
+      reasonField(fixture)?.dispatchEvent(new KeyboardEvent('keydown', { key: name }));
+    }
+
+    it('offers the five horizons in their order', async () => {
+      const fixture = await render();
+
+      expect(
+        (
+          fixture.debugElement.query(By.css('[data-testid="field-horizon"]'))
+            .componentInstance as Select
+        ).options(),
+      ).toEqual(['now', 'release', 'next', 'later', 'icebox']);
+    });
+
+    it('sets the horizon chosen, without a reason, and then offers the reason', async () => {
+      const fixture = await render(ticket({ horizon: 'later' }));
+
+      change(fixture, 'field-horizon', 'now');
+      await settle(fixture);
+
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'now');
+      expect(reasonField(fixture)?.placeholder).toBe('Why now? Enter saves, Esc skips');
+    });
+
+    it('sends the reason typed with the same horizon once more, and then closes the field', async () => {
+      const fixture = await render(ticket({ horizon: 'later' }));
+      change(fixture, 'field-horizon', 'now');
+      await settle(fixture);
+
+      type(fixture, '  The release is on Friday ');
+      key(fixture, 'Enter');
+      await settle(fixture);
+
+      expect(setHorizon).toHaveBeenLastCalledWith(
+        'acme/COW-12',
+        'now',
+        'The release is on Friday',
+      );
+      expect(reasonField(fixture)).toBeNull();
+    });
+
+    it.each(['Enter', 'Escape'])(
+      'leaves the horizon as set, without a reason, on %s in an empty field',
+      async (name) => {
+        const fixture = await render(ticket({ horizon: 'later' }));
+        change(fixture, 'field-horizon', 'next');
+        await settle(fixture);
+
+        key(fixture, name);
+        await settle(fixture);
+
+        expect(setHorizon).toHaveBeenCalledOnce();
+        expect(reasonField(fixture)).toBeNull();
+      },
+    );
+
+    it('returns the ticket to later through the same route, which clears the horizon set, and asks no reason', async () => {
+      const fixture = await render(
+        ticket({
+          horizon: 'now',
+          horizon_set: { value: 'now', reason: null, at: '2026-10-03T09:00:00Z' },
+        }),
+      );
+
+      change(fixture, 'field-horizon', 'later');
+      await settle(fixture);
+
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'later');
+      expect(reasonField(fixture)).toBeNull();
+    });
+
+    it('writes nothing for the horizon the ticket has', async () => {
+      const fixture = await render(ticket({ horizon: 'next' }));
+
+      change(fixture, 'field-horizon', 'next');
+      await settle(fixture);
+
+      expect(setHorizon).not.toHaveBeenCalled();
+    });
+
+    it('asks whether to set it over a horizon somebody else set meanwhile, and does on request', async () => {
+      setHorizon.mockRejectedValueOnce(stale({ horizon: 'icebox' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
+
+      change(fixture, 'field-horizon', 'now');
+      await settle(fixture);
+
+      expect(confirm.mock.calls[0][0]).toMatchObject({
+        header: 'Changed meanwhile',
+        message:
+          'Someone set the horizon of this ticket while you chose: now icebox, yours now. Set yours over it?',
+      });
+      expect(reasonField(fixture)).toBeNull();
+      fixture.componentRef.setInput('ticket', ticket({ horizon: 'icebox', version: 4 }));
+      confirm.mock.calls[0][0].accept?.();
+      await settle(fixture);
+      expect(setHorizon).toHaveBeenCalledTimes(2);
+      expect(setHorizon).toHaveBeenLastCalledWith('acme/COW-12', 'now');
+    });
+
+    it('toasts a refusal and offers no reason', async () => {
+      setHorizon.mockRejectedValueOnce(refused());
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await render(ticket({ horizon: 'later' }));
+
+      change(fixture, 'field-horizon', 'now');
+      await settle(fixture);
+
+      expect(add).toHaveBeenCalledOnce();
+      expect(reasonField(fixture)).toBeNull();
+    });
+  });
+
+  describe('the parent (docs/adr/0008 D2)', () => {
+    const picker = (fixture: ComponentFixture<TicketFields>) =>
+      fixture.debugElement.query(By.directive(ParentPicker)).componentInstance as ParentPicker;
+
+    it('is chosen among the tickets of the project, the ticket itself not among them', async () => {
+      const fixture = await render(ticket({ parent: 'acme/COW-1' }));
+
+      expect(picker(fixture).tenant()).toBe('acme');
+      expect(picker(fixture).project()).toBe('COW');
+      expect(picker(fixture).value()).toBe('acme/COW-1');
+      expect(picker(fixture).exclude()).toBe('acme/COW-12');
+    });
+
+    it('writes the parent chosen, and none when the choice is cleared', async () => {
+      const fixture = await render();
+
+      picker(fixture).picked.emit('acme/COW-3');
+      await settle(fixture);
+      picker(fixture).picked.emit(null);
+      await settle(fixture);
+
+      expect(update.mock.calls).toEqual([
+        ['acme/COW-12', { parent: 'acme/COW-3' }],
+        ['acme/COW-12', { parent: null }],
+      ]);
+    });
+  });
+
+  describe('the confidential flag (docs/adr/0065)', () => {
+    const dialog = (fixture: ComponentFixture<TicketFields>) =>
+      fixture.debugElement.query(By.directive(ConfidentialDialog))?.componentInstance as
+        ConfidentialDialog | undefined;
+
+    it('is offered to a tenant administrator only', async () => {
+      const fixture = await render();
+      expect(el(fixture, 'field-confidential')).toBeNull();
+      expect(dialog(fixture)).toBeUndefined();
+
+      role.set('admin');
+      await settle(fixture);
+
+      expect(el(fixture, 'field-confidential')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'no Make confidential…',
+      );
+    });
+
+    it('offers to lift the flag of a confidential ticket', async () => {
+      role.set('admin');
+      const fixture = await render(ticket({ confidential: true }));
+
+      expect(el(fixture, 'field-confidential-change')?.textContent?.trim()).toBe('Lift…');
+    });
+
+    it('opens its dialog on request, and closes it when the dialog is over', async () => {
+      role.set('admin');
+      const fixture = await render();
+      expect(dialog(fixture)?.open()).toBe(false);
+
+      el(fixture, 'field-confidential-change')?.click();
+      await settle(fixture);
+      expect(dialog(fixture)?.open()).toBe(true);
+
+      dialog(fixture)?.closed.emit();
+      await settle(fixture);
+      expect(dialog(fixture)?.open()).toBe(false);
+    });
+  });
+
+  describe('a turn of the page to another ticket', () => {
+    const other = () => ticket({ key: 'acme/COW-13', number: 13, id: 't-13' });
+
+    async function turn(fixture: ComponentFixture<TicketFields>) {
+      fixture.componentRef.setInput('ticket', other());
+      await settle(fixture);
+    }
+
+    it('closes the threat editor, and nothing is written', async () => {
+      const fixture = await render();
+      change(fixture, 'field-security', 'boundary');
+      await settle(fixture);
+      expect(el(fixture, 'field-threat')).not.toBeNull();
+
+      await turn(fixture);
+
+      expect(el(fixture, 'field-threat')).toBeNull();
+      expect(label(fixture, 'field-security')).toBe('none');
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('starts the threat editor of the next ticket from its own threat', async () => {
+      const fixture = await render(ticket({ security: 'hardening', threat: 'Theirs' }));
+      change(fixture, 'field-security', 'live');
+      await settle(fixture);
+
+      await turn(fixture);
+      change(fixture, 'field-security', 'boundary');
+      await settle(fixture);
+
+      expect((el(fixture, 'field-threat') as HTMLTextAreaElement).value).toBe('');
+    });
+
+    it('closes the reason of a horizon set on the ticket before, and nothing more is written', async () => {
+      const fixture = await render(ticket({ horizon: 'later' }));
+      change(fixture, 'field-horizon', 'now');
+      await settle(fixture);
+      expect(el(fixture, 'field-horizon-reason')).not.toBeNull();
+
+      await turn(fixture);
+
+      expect(el(fixture, 'field-horizon-reason')).toBeNull();
+      expect(setHorizon).toHaveBeenCalledOnce();
+    });
+
+    it('closes the confidential dialog, which wrote nothing', async () => {
+      role.set('admin');
+      const fixture = await render();
+      el(fixture, 'field-confidential-change')?.click();
+      await settle(fixture);
+
+      await turn(fixture);
+
+      expect(
+        (
+          fixture.debugElement.query(By.directive(ConfidentialDialog))
+            .componentInstance as ConfidentialDialog
+        ).open(),
+      ).toBe(false);
+    });
+
+    describe('with the stage dialog open', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('closes the dialog that waits for the verification note, and nothing is written', () => {
+        const fixture = TestBed.createComponent(TicketFields);
+        fixture.componentRef.setInput(
+          'ticket',
+          ticket({ state: 'review', progress_refinement: 100, progress: 100, progress_review: 75 }),
+        );
+        fixture.detectChanges();
+        change(fixture, 'field-review', 100);
+        vi.advanceTimersByTime(400);
+        fixture.detectChanges();
+        const dialog = fixture.debugElement.query(By.directive(MoveDialog))
+          .componentInstance as MoveDialog;
+        expect(dialog.request()).not.toBeNull();
+
+        fixture.componentRef.setInput('ticket', other());
+        fixture.detectChanges();
+        vi.advanceTimersByTime(400);
+
+        expect(dialog.request()).toBeNull();
+        expect(update).not.toHaveBeenCalled();
+      });
     });
   });
 });

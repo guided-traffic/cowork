@@ -8,16 +8,20 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
 RETURNING last_number;
 
 -- name: InsertTicket :one
--- A new ticket, with its key at the bottom of its project's rank
--- (docs/adr/0014 D2).
+-- A new ticket, with its key at its place in its project's rank
+-- (docs/adr/0014 D2), and the horizon it was filed into as its override, set
+-- by the filer, when that is not the derived one (docs/adr/0010 D3).
 INSERT INTO tickets (
     tenant_id, project_id, number, type, title, body, severity, security, threat,
-    urgency_derived, urgency_rule, effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
+    urgency_derived, urgency_rule, urgency_override, urgency_override_by, urgency_override_at,
+    effort, parent_id, reporter_id, reporter_agent, reporter_token_id,
     reporter_token_name, assignee_id, confidential, rank
 ) VALUES (
     sqlc.arg(tenant_id), sqlc.arg(project_id), sqlc.arg(number), sqlc.arg(type), sqlc.arg(title),
     sqlc.arg(body), sqlc.arg(severity), sqlc.arg(security), sqlc.narg(threat), sqlc.arg(urgency_derived),
-    sqlc.arg(urgency_rule), sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
+    sqlc.arg(urgency_rule), sqlc.narg(urgency_override)::urgency, sqlc.narg(urgency_override_by)::uuid,
+    CASE WHEN sqlc.narg(urgency_override)::urgency IS NULL THEN NULL ELSE now() END,
+    sqlc.arg(effort), sqlc.narg(parent_id), sqlc.arg(reporter_id),
     sqlc.narg(reporter_agent), sqlc.narg(reporter_token_id), sqlc.narg(reporter_token_name),
     sqlc.narg(assignee_id), sqlc.arg(confidential), sqlc.arg(rank)::text
 )
@@ -65,6 +69,7 @@ RETURNING version;
 -- ticket reassigned away from its assignee), and the answer then shows what
 -- the writer sent and read a moment ago. Linked tickets keep their predicate.
 -- visibility: exempt (the writer's reread of the row it wrote)
+-- deletion: exempt (the writer's reread of the row it wrote; the tickets it names keep the filter)
 SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.body, t.state,
        t.blocked_from, t.block_kind, t.block_reason, t.block_ticket_id, t.block_external_ref,
        bp.key AS block_project_key, bt.number AS block_number,
@@ -75,21 +80,21 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
 WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id);
 
@@ -164,6 +169,7 @@ RETURNING t.parent_id;
 -- What a published act carries of its ticket: the project, the version and
 -- the confidential rule's inputs (docs/adr/0054 D2, D3).
 -- visibility: exempt (the publication of a committed act; subscribers filter)
+-- deletion: exempt (a deletion and a restoration are published too)
 SELECT project_id, version, confidential, assignee_id, reporter_id
 FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
@@ -185,6 +191,7 @@ FOR UPDATE;
 -- before the rank (docs/adr/0028 D3) — in number order: they are ranked at the
 -- bottom before the next key is handed out, where the list already shows them.
 -- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket takes its key too, so that its restoration finds one)
 SELECT id FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id)
   AND rank IS NULL AND state NOT IN ('done', 'dropped')
@@ -205,6 +212,7 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND rank IS NULL
 -- whatever the caller can see and whatever its state, so a key is never handed
 -- out twice.
 -- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 SELECT coalesce(max(rank), '')::text AS last
 FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id);
@@ -212,6 +220,7 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id);
 -- name: GetTicketRank :one
 -- A ticket's state and key as they are under the rank lock.
 -- visibility: exempt (a ticket the caller read through the predicate in this transaction)
+-- deletion: exempt (a ticket the caller read through the filter in this transaction)
 SELECT state, rank FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
@@ -220,6 +229,7 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 -- caller can see and whatever its state: a new key lies strictly between two
 -- keys that exist, so it never equals or passes one the caller cannot see.
 -- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 SELECT rank::text AS rank FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank > sqlc.arg(after)::text
 ORDER BY rank
@@ -229,6 +239,7 @@ LIMIT 1;
 -- The key of the last ticket before a key in the project's rank, as
 -- NextRankedTicket.
 -- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 SELECT rank::text AS rank FROM tickets
 WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank < sqlc.arg(before)::text
 ORDER BY rank DESC
@@ -242,7 +253,7 @@ LIMIT 1;
 SELECT t.id FROM tickets t
 WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
   AND t.rank > sqlc.arg(after)::text AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY t.rank
 LIMIT 1;
 
@@ -252,7 +263,7 @@ LIMIT 1;
 SELECT t.id FROM tickets t
 WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
   AND t.rank < sqlc.arg(before)::text AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY t.rank DESC
 LIMIT 1;
 
@@ -264,3 +275,74 @@ UPDATE tickets
 SET rank = sqlc.arg(rank)::text, version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND state NOT IN ('done', 'dropped')
 RETURNING version;
+
+-- name: ListRankKeys :many
+-- Every ticket of the project that holds a key, in the key's order, whoever
+-- can see it, whatever its state and whether or not it is deleted: what a
+-- rebalancing spreads again (docs/adr/0014 Consequences).
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket keeps its key, spread with the others, which its restoration brings back)
+SELECT id, state FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank IS NOT NULL
+ORDER BY rank;
+
+-- name: ReleaseRanks :exec
+-- Takes the keys of the tickets away before they get others in the same
+-- transaction: a key belongs to one ticket of its project, and the unique
+-- index is checked row by row, so keys that change hands are released first.
+-- No act and no version: a sort records its own act, a rebalancing none.
+UPDATE tickets
+SET rank = NULL
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = ANY (sqlc.arg(ids)::uuid[]);
+
+-- name: SetRanks :exec
+-- Gives each ticket its key, ids and keys pairwise, after ReleaseRanks. moved
+-- raises the version of each, as a move does (docs/adr/0050 D1): a sort by the
+-- score moves them; a rebalancing keeps every ticket's place and raises none.
+UPDATE tickets AS t
+SET rank = u.rank,
+    version = t.version + CASE WHEN sqlc.arg(moved)::boolean THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN sqlc.arg(moved)::boolean THEN now() ELSE t.updated_at END
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(ranks)::text[]) AS rank) AS u
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = u.id;
+
+-- name: GetScoreInputs :one
+-- What a ticket's score reads (docs/adr/0014 D4): its severity, the horizon it
+-- shows (docs/adr/0010 D3), how many people hold a need and how many an
+-- urgent stake (docs/adr/0013 D3), and when it was opened — read after the
+-- write in this transaction that changed one of them.
+-- visibility: exempt (a ticket the caller read through the predicate in this transaction)
+-- deletion: exempt (a ticket the caller read through the filter in this transaction)
+SELECT t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon, t.opened_at,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id);
+
+-- name: SetTicketScore :exec
+-- A ticket's score, stored as its key with the version of the function that
+-- computed it (docs/adr/0014 D4). It is derived from the ticket's and its
+-- stakes' writes, so neither the version nor updated_at moves
+-- (docs/adr/0050 D1).
+UPDATE tickets
+SET score_key = sqlc.arg(score_key), score_version = sqlc.arg(score_version)
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
+
+-- name: ListScoredTickets :many
+-- The open, ranked tickets of a project that the caller can see, in the order
+-- of the rank, with what their scores read: what a sort by the score reorders
+-- (docs/adr/0014 D3). A deleted ticket keeps its key and its place, as a hidden
+-- one does. The caller holds the rank lock and has ranked the unranked ones.
+SELECT t.id, t.rank::text AS rank, t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon,
+       t.opened_at, t.score_key, t.score_version,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
+  AND t.rank IS NOT NULL AND t.state NOT IN ('done', 'dropped')
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank;

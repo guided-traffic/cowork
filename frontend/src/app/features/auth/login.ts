@@ -5,7 +5,7 @@ import { ButtonDirective } from 'primeng/button';
 import { Divider } from 'primeng/divider';
 import { InputText } from 'primeng/inputtext';
 import { InputPassword } from 'primeng/inputpassword';
-import { loginOidc } from '../../api/functions';
+import { loginOidc } from '../../api/fn/auth/login-oidc';
 import { Wordmark } from '../../brand/logo';
 import { AuthService } from '../../core/auth.service';
 import { HARD_NAVIGATION } from '../../core/hard-navigation';

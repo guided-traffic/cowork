@@ -181,12 +181,12 @@ func bound(s *jsonschema.Schema, property string, lo, hi float64) {
 }
 
 // Catalogue is the tool set of the first release (docs/adr/0042 D1, D2): the
-// twelve workflow tools, record_answer, create_project and set_urgency, and
+// twelve workflow tools, record_answer, create_project and place_ticket, and
 // the api escape hatch. surfaces narrows it; none is every tool.
 func Catalogue(surfaces ...Surface) []Tool {
 	all := []Tool{
 		sessionStartTool(), getTicketTool(), searchTool(), fileTicketTool(), recordStateTool(), openQuestionTool(),
-		recordAnswerTool(), commentTool(), transitionTool(), setProgressTool(), linkTool(), watchTool(), setUrgencyTool(),
+		recordAnswerTool(), commentTool(), transitionTool(), setProgressTool(), linkTool(), watchTool(), placeTicketTool(),
 		finishWorkTool(), createProjectTool(), apiTool(),
 	}
 	if len(surfaces) == 0 {

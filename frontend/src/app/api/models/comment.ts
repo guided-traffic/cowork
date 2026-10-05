@@ -16,6 +16,12 @@ export interface Comment {
    * Markdown; null once withdrawn (docs/adr/0015 D3)
    */
   body: (string | null);
+
+  /**
+   * The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+   * the Markdown; null once withdrawn
+   */
+  body_html: (string | null);
   created_at: string;
 
   /**
@@ -28,6 +34,12 @@ export interface Comment {
    */
   explains: Array<AuditAction>;
   id: string;
+
+  /**
+   * The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+   * ticket while the comment stands; empty once it is withdrawn
+   */
+  mentions: Array<string>;
 
   /**
    * The token the act came through; null for a person's own browser session (docs/adr/0036 D6)

@@ -54,6 +54,7 @@ const (
 	AuditActionDeactivated        AuditAction = "deactivated"
 	AuditActionReactivated        AuditAction = "reactivated"
 	AuditActionLoginRefused       AuditAction = "login_refused"
+	AuditActionRead               AuditAction = "read"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -308,6 +309,54 @@ func (ns NullMembershipSource) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.MembershipSource), nil
+}
+
+type NotificationReason string
+
+const (
+	NotificationReasonAssigned      NotificationReason = "assigned"
+	NotificationReasonAsked         NotificationReason = "asked"
+	NotificationReasonAnswered      NotificationReason = "answered"
+	NotificationReasonStateChanged  NotificationReason = "state_changed"
+	NotificationReasonBlockerClosed NotificationReason = "blocker_closed"
+	NotificationReasonCommented     NotificationReason = "commented"
+	NotificationReasonUrgent        NotificationReason = "urgent"
+	NotificationReasonMentioned     NotificationReason = "mentioned"
+)
+
+func (e *NotificationReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = NotificationReason(s)
+	case string:
+		*e = NotificationReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for NotificationReason: %T", src)
+	}
+	return nil
+}
+
+type NullNotificationReason struct {
+	NotificationReason NotificationReason
+	Valid              bool // Valid is true if NotificationReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullNotificationReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.NotificationReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.NotificationReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullNotificationReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.NotificationReason), nil
 }
 
 type QuestionStatus string
@@ -730,6 +779,7 @@ type Comment struct {
 	UpdatedAt   time.Time
 	TokenID     *uuid.UUID
 	TokenName   *string
+	Mentions    []uuid.UUID
 }
 
 type CommentRevision struct {
@@ -805,6 +855,17 @@ type Membership struct {
 	UpdatedAt time.Time
 }
 
+type Notification struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	UserID       uuid.UUID
+	TicketID     uuid.UUID
+	AuditEventID uuid.UUID
+	Reason       string
+	ReadAt       *time.Time
+	CreatedAt    time.Time
+}
+
 type Project struct {
 	ID          uuid.UUID
 	TenantID    uuid.UUID
@@ -865,6 +926,18 @@ type Question struct {
 	AskedByTokenName    *string
 	AnsweredByTokenID   *uuid.UUID
 	AnsweredByTokenName *string
+}
+
+type SavedFilter struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	OwnerID    uuid.UUID
+	Name       string
+	Parameters []byte
+	Shared     bool
+	Version    int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type Session struct {
@@ -941,6 +1014,10 @@ type Ticket struct {
 	ReporterAgent             *string
 	ReporterTokenID           *uuid.UUID
 	ReporterTokenName         *string
+	DeletedAt                 *time.Time
+	DeletedBy                 *uuid.UUID
+	ScoreKey                  float64
+	ScoreVersion              int16
 }
 
 type TicketCounter struct {

@@ -1,13 +1,16 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 )
@@ -17,6 +20,8 @@ const (
 	stateInProgress = string(apigen.TicketStateInProgress)
 	stateReview     = string(apigen.TicketStateReview)
 	opGetTicket     = "getTicket"
+	opGetMe         = "getMe"
+	opListMembers   = "listMembers"
 	// scopeProject is the search scope of one project, the one a search
 	// without words lists.
 	scopeProject = "project"
@@ -96,7 +101,7 @@ func searchTool() Tool {
 			"get_ticket reads one. Without a query, lists a project's tickets in rank order. Done and dropped tickets only with " +
 			"include_terminal.",
 		ReadOnly:   true,
-		Operations: []string{"listProjectTickets", "listTenantTickets", "getMe"},
+		Operations: []string{"listProjectTickets", "listTenantTickets", opGetMe},
 	}, func(s *jsonschema.Schema) {
 		enum(s, "scope", scopeProject, "tenant", "all")
 		enum(s, "state", ticketStates...)
@@ -229,19 +234,25 @@ type fileTicketInput struct {
 	Effort   string     `json:"effort" jsonschema:"a size, not a time"`
 	Parent   string     `json:"parent,omitempty" jsonschema:"a ticket of the same project this one is part of"`
 	Links    []linkSpec `json:"links,omitempty" jsonschema:"links to make once the ticket exists"`
+	Horizon  string     `json:"horizon,omitempty" jsonschema:"the horizon to file it into; later when left out"`
+	After    string     `json:"after,omitempty" jsonschema:"a ticket of that horizon in the same project to place it directly after; at the end of the horizon when after and before are left out"`
+	Before   string     `json:"before,omitempty" jsonschema:"a ticket of that horizon in the same project to place it directly before"`
 }
 
 func fileTicketTool() Tool {
 	return define(Tool{
 		Name: "file_ticket",
-		Description: "File a ticket in the bound project, or another, and link it; answers its canonical key. Filing, the body, " +
-			"links, comments, questions, progress and watching are what every agent token may do (docs/adr/0043 D2). " +
-			"A live or boundary security finding becomes confidential: only the tenant's administrators, its assignee " +
-			"and its reporter see it.",
+		Description: "File a ticket in the bound project, or another, into a horizon at a place in it, and link it; answers " +
+			"its canonical key. Filing, the body, links, comments, questions, progress and watching are what every agent " +
+			"token may do (docs/adr/0043 D2). " + horizonMeaning + " Without a horizon the ticket is later; without a " +
+			"place it lands at the end of its horizon. A live or boundary security finding becomes confidential: only the " +
+			"tenant's administrators, its assignee and its reporter see it.",
 		Operations: []string{"createTicket", "linkTickets"},
-		limits:     limitsOf(refusalNote),
+		limits: limitsOf("An agent needs set-horizon to file into a horizon other than later, and rank to name a place. "+
+			refusalNote, capSetHorizon, capRank),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "type", ticketTypes...)
+		enum(s, "horizon", horizons...)
 		enum(s, "severity", severities...)
 		enum(s, "security", securityLevels...)
 		enum(s, "effort", efforts...)
@@ -269,6 +280,13 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 	if in.Parent != "" {
 		body.Parent = &in.Parent
 	}
+	if in.Horizon != "" {
+		horizon := apigen.Horizon(in.Horizon)
+		body.Horizon = &horizon
+	}
+	if body.After, body.Before, err = placeIn(s, tenant, project, in.After, in.Before); err != nil {
+		return "", err
+	}
 	res, err := s.API.CreateTicketWithResponse(ctx, tenant, project, &apigen.CreateTicketParams{IdempotencyKey: s.key()}, body)
 	if err := check(res, err, http.StatusCreated); err != nil {
 		return "", err
@@ -279,7 +297,8 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 		return "", err
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "Filed %s — %s (%s, %s).", tk.Key, tk.Title, tk.Type, tk.State)
+	fmt.Fprintf(&out, "Filed %s — %s (%s, %s), in the horizon %s%s.", tk.Key, tk.Title, tk.Type, tk.State, tk.Horizon,
+		placed(in.After, in.Before))
 	if tk.Confidential {
 		out.WriteString(" It is confidential.")
 	}
@@ -349,8 +368,9 @@ func recordStateTool() Tool {
 }
 
 type commentInput struct {
-	Key  string `json:"key"`
-	Text string `json:"text" jsonschema:"Markdown"`
+	Key      string   `json:"key"`
+	Text     string   `json:"text" jsonschema:"Markdown"`
+	Mentions []string `json:"mentions,omitempty" jsonschema:"the persons the comment mentions, each told in their inbox and a watcher of the ticket: me, a username, a display name of a member of the tenant, or a person id; name them in the text as well"`
 }
 
 func commentTool() Tool {
@@ -358,28 +378,53 @@ func commentTool() Tool {
 		Name: "comment",
 		Description: "Comment on a ticket, in the person's name with the agent's mark. To explain an act of your own, " +
 			"pass the explanation as the comment argument of record_state, transition or set_progress instead: it is " +
-			"then written with the act and points at it.",
-		Operations: []string{"addComment", opGetTicket},
+			"then written with the act and points at it. To mention a person — tell them in their inbox and make them " +
+			"watch the ticket — name them in mentions as well as in the text; a name in the text alone tells nobody. " +
+			"Only a member who sees the ticket can be mentioned.",
+		Operations: []string{"addComment", opGetTicket, opGetMe, opListMembers},
 		limits:     limitsOf(refusalNote),
 	}, func(s *jsonschema.Schema) {
 		minLen := 1
 		s.Properties["text"].MinLength = &minLen
-	}, func(ctx context.Context, s *Session, in commentInput) (string, error) {
-		ref, err := s.resolveKey(in.Key)
+		maxMentions := 50
+		s.Properties["mentions"].MaxItems = &maxMentions
+	}, runComment)
+}
+
+func runComment(ctx context.Context, s *Session, in commentInput) (string, error) {
+	ref, err := s.resolveKey(in.Key)
+	if err != nil {
+		return "", err
+	}
+	body := apigen.CommentWrite{Body: in.Text}
+	var ids []openapi_types.UUID
+	var names []string
+	for _, who := range in.Mentions {
+		id, name, err := person(ctx, s, ref.Tenant, who)
 		if err != nil {
 			return "", err
 		}
-		res, err := s.API.AddCommentWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
-			&apigen.AddCommentParams{IdempotencyKey: s.key()}, apigen.CommentWrite{Body: in.Text})
-		if err := check(res, err, http.StatusCreated); err != nil {
-			return "", err
+		if !slices.Contains(ids, id) {
+			ids, names = append(ids, id), append(names, name)
 		}
-		tk, _, err := getTicket(ctx, s, ref)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Commented on %s (comment %s).\n%s", ref.Full(), res.JSON201.Id, commitLines(ref, string(tk.Type), tk.Title)), nil
-	})
+	}
+	if len(ids) > 0 {
+		body.Mentions = &ids
+	}
+	res, err := s.API.AddCommentWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+		&apigen.AddCommentParams{IdempotencyKey: s.key()}, body)
+	if err := check(res, err, http.StatusCreated); err != nil {
+		return "", err
+	}
+	tk, _, err := getTicket(ctx, s, ref)
+	if err != nil {
+		return "", err
+	}
+	mentioned := ""
+	if len(names) > 0 {
+		mentioned = ", mentioning " + strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("Commented on %s (comment %s%s).\n%s", ref.Full(), res.JSON201.Id, mentioned, commitLines(ref, string(tk.Type), tk.Title)), nil
 }
 
 type linkInput struct {
@@ -436,64 +481,172 @@ func watchTool() Tool {
 	})
 }
 
-// urgencies are the urgencies a ticket holds, the most pressing first
-// (docs/adr/0010 D3).
-var urgencies = []string{"now", "release", "next", "later", "icebox"}
+// horizons are the horizons a ticket stands in, the nearest first
+// (docs/adr/0010 D3 as amended 2026-10-04).
+var horizons = []string{"now", "release", "next", "later", "icebox"}
 
-type setUrgencyInput struct {
-	Key      string `json:"key"`
-	Urgency  string `json:"urgency,omitempty" jsonschema:"the urgency the ticket holds from now on, over the derived one; left out with withdraw"`
-	Reason   string `json:"reason,omitempty" jsonschema:"why — needed with urgency: an agent never sets an override without a reason"`
-	Withdraw bool   `json:"withdraw,omitempty" jsonschema:"withdraw the override, so the derived urgency holds again"`
+// horizonMeaning is what every tool that sets a horizon says of it: asked to
+// file a ticket into next, an agent took the horizon for a state.
+const horizonMeaning = "A horizon is a planning category, not a state — a ticket stands in any horizon in any state, and " +
+	"no move between states changes it: now (to be worked on now, refined first if need be), release (has to be in " +
+	"the next release), next (taken up when now is empty), later (maybe some day, maybe never; kept so it is not " +
+	"forgotten), icebox (frozen until what it waits for changes)."
+
+// placeIn reads a place in a project's backlog — at most one neighbour, a
+// ticket of that project — as the numbers the API takes.
+func placeIn(s *Session, tenant, project, after, before string) (*int, *int, error) {
+	if after != "" && before != "" {
+		return nil, nil, usage("pass after or before, not both")
+	}
+	key := after + before
+	if key == "" {
+		return nil, nil, nil
+	}
+	ref, err := s.resolveKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ref.Tenant != tenant || ref.Project != project {
+		return nil, nil, usage("a place is next to a ticket of the same project: %s is not in %s/%s", ref.Full(), tenant, project)
+	}
+	n := int(ref.Number)
+	if after != "" {
+		return &n, nil, nil
+	}
+	return nil, &n, nil
 }
 
-func setUrgencyTool() Tool {
+// placed says where a ticket was placed, "" at the end of its horizon.
+func placed(after, before string) string {
+	switch {
+	case after != "":
+		return ", directly after " + after
+	case before != "":
+		return ", directly before " + before
+	}
+	return ""
+}
+
+type placeTicketInput struct {
+	Key     string `json:"key"`
+	Horizon string `json:"horizon,omitempty" jsonschema:"the horizon to move the ticket to; left out, it stays in its own"`
+	After   string `json:"after,omitempty" jsonschema:"a ticket of that horizon in the same project to place it directly after"`
+	Before  string `json:"before,omitempty" jsonschema:"a ticket of that horizon in the same project to place it directly before"`
+	Reason  string `json:"reason,omitempty" jsonschema:"why — needed with horizon: an agent never moves a ticket to another horizon without a reason"`
+}
+
+func placeTicketTool() Tool {
 	return define(Tool{
-		Name: "set_urgency",
-		Description: "Override a ticket's derived urgency — now, release, next, later or icebox — with a reason, or withdraw " +
-			"the override so the derived urgency holds again (docs/adr/0010 D3). The override stays when what the urgency " +
-			"is derived from changes. Ranking a ticket to now is the urgency now; its place within a column is a move on " +
-			"the board, a person's.",
-		Operations: []string{opGetTicket, "overrideUrgency", "withdrawUrgencyOverride"},
-		limits:     limitsOf("An agent needs override-urgency, and gives a reason for every override it sets. "+refusalNote, capOverrideUrgency),
+		Name: "place_ticket",
+		Description: "Place a ticket in the backlog of its project: move it to another horizon, to a place in its horizon — " +
+			"directly after or before another ticket of it —, or both in one call (docs/adr/0010 D3, docs/adr/0014 D2). " +
+			horizonMeaning + " Within a horizon the order is the person's: re-sort it when asked, one ticket per call, " +
+			"top down.",
+		Operations: []string{opGetTicket, "setHorizon", "moveTicketRank"},
+		limits: limitsOf("An agent needs set-horizon to move a ticket to another horizon, and gives a reason; rank to "+
+			"change its place. "+refusalNote, capSetHorizon, capRank),
 	}, func(s *jsonschema.Schema) {
-		enum(s, "urgency", urgencies...)
-	}, runSetUrgency)
+		enum(s, "horizon", horizons...)
+	}, runPlaceTicket)
 }
 
-func runSetUrgency(ctx context.Context, s *Session, in setUrgencyInput) (string, error) {
+// reasonOf holds a call to something to do, and a move to another horizon to
+// its reason, which it answers trimmed.
+func (in placeTicketInput) reasonOf() (string, error) {
 	reason := strings.TrimSpace(in.Reason)
 	switch {
-	case in.Withdraw && in.Urgency != "":
-		return "", usage("pass urgency to override, or withdraw to withdraw the override, not both")
-	case !in.Withdraw && in.Urgency == "":
-		return "", usage("pass urgency — %s — with a reason, or withdraw", strings.Join(urgencies, ", "))
-	case !in.Withdraw && reason == "":
-		return "", usage("an urgency override needs a reason: an agent never sets one without")
+	case in.Horizon == "" && in.After == "" && in.Before == "":
+		return "", usage("pass a horizon — %s —, a place (after or before), or both", strings.Join(horizons, ", "))
+	case in.Horizon != "" && reason == "":
+		return "", usage("a move to another horizon needs a reason: an agent never moves one without")
+	}
+	return reason, nil
+}
+
+func runPlaceTicket(ctx context.Context, s *Session, in placeTicketInput) (string, error) {
+	reason, err := in.reasonOf()
+	if err != nil {
+		return "", err
 	}
 	ref, err := s.resolveKey(in.Key)
 	if err != nil {
 		return "", err
 	}
-	_, etag, err := getTicket(ctx, s, ref)
+	after, before, err := placeIn(s, ref.Tenant, ref.Project, in.After, in.Before)
 	if err != nil {
 		return "", err
 	}
-	if in.Withdraw {
-		res, err := s.API.WithdrawUrgencyOverrideWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
-			&apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})
-		if err := check(res, err, http.StatusOK); err != nil {
+	tk, etag, err := getTicket(ctx, s, ref)
+	if err != nil {
+		return "", err
+	}
+	horizon := cmp.Or(in.Horizon, string(tk.Horizon))
+	placing := after != nil || before != nil
+	if placing {
+		if err := sameHorizon(ctx, s, ref, in.After+in.Before, horizon); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Withdrew the urgency override of %s: its derived urgency, %s, holds.", res.JSON200.Key, res.JSON200.UrgencyDerived), nil
 	}
-	res, err := s.API.OverrideUrgencyWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
-		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.Urgency(in.Urgency), Reason: &reason})
+	var done []string
+	if in.Horizon != "" {
+		line, err := moveToHorizon(ctx, s, ref, tk, etag, in.Horizon, reason)
+		if err != nil {
+			return "", err
+		}
+		done = append(done, line)
+	}
+	if placing {
+		res, err := s.API.MoveTicketRankWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number), apigen.TicketRankSet{After: after, Before: before})
+		if err := check(res, err, http.StatusOK); err != nil {
+			return partly(done, "Not placed: ", err)
+		}
+		done = append(done, fmt.Sprintf("Placed %s%s", tk.Key, placed(in.After, in.Before)))
+	}
+	return strings.Join(done, ".\n") + ".", nil
+}
+
+// partly answers a refusal after earlier steps of the call went through: as
+// what was done and what was not, or as the refusal alone when nothing was.
+func partly(done []string, what string, err error) (string, error) {
+	if len(done) == 0 {
+		return "", err
+	}
+	return strings.Join(append(done, what+failure(err)), ".\n"), nil
+}
+
+// moveToHorizon sets a ticket's horizon with the version read and the reason,
+// and says what it did; one the ticket stands in already sends nothing.
+func moveToHorizon(ctx context.Context, s *Session, ref ticketRef, tk apigen.Ticket, etag, horizon, reason string) (string, error) {
+	if string(tk.Horizon) == horizon {
+		return fmt.Sprintf("%s stands in the horizon %s already", tk.Key, horizon), nil
+	}
+	res, err := s.API.SetHorizonWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+		&apigen.SetHorizonParams{IfMatch: &etag}, apigen.HorizonUpdate{Value: apigen.Horizon(horizon), Reason: &reason})
 	if err := check(res, err, http.StatusOK); err != nil {
 		return "", err
 	}
-	tk := res.JSON200
-	return fmt.Sprintf("Set the urgency of %s to %s, over the derived %s, with the reason: %s", tk.Key, tk.Urgency, tk.UrgencyDerived, reason), nil
+	return fmt.Sprintf("Moved %s from the horizon %s to %s, with the reason: %s", tk.Key, tk.Horizon, horizon, reason), nil
+}
+
+// sameHorizon refuses a place next to a ticket of another horizon: in the
+// backlog a horizon's tickets are a group of their own, and a place beside one
+// of another group says nothing about the ticket's own.
+func sameHorizon(ctx context.Context, s *Session, ref ticketRef, key, horizon string) error {
+	other, err := s.resolveKey(key)
+	if err != nil {
+		return err
+	}
+	if other == ref {
+		return usage("a ticket is not placed next to itself")
+	}
+	tk, _, err := getTicket(ctx, s, other)
+	if err != nil {
+		return err
+	}
+	if string(tk.Horizon) != horizon {
+		return usage("%s stands in the horizon %s, not in %s: name a ticket of %s", tk.Key, tk.Horizon, horizon, horizon)
+	}
+	return nil
 }
 
 // uuidOf reads a person id the model passed.

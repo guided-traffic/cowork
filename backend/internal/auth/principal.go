@@ -21,28 +21,63 @@ const UnknownAgent = "unknown-agent"
 
 // The agent capabilities (docs/adr/0043 D4).
 const (
-	CapDecide          = "decide"
-	CapClose           = "close"
-	CapDrop            = "drop"
-	CapRank            = "rank"
-	CapOverrideUrgency = "override-urgency"
-	CapInterest        = "interest"
-	CapUpload          = "upload"
-	CapCreateProject   = "create-project"
-	CapRecordAnswer    = "record-answer"
+	CapDecide        = "decide"
+	CapClose         = "close"
+	CapDrop          = "drop"
+	CapRank          = "rank"
+	CapSetHorizon    = "set-horizon"
+	CapInterest      = "interest"
+	CapUpload        = "upload"
+	CapCreateProject = "create-project"
+	CapRecordAnswer  = "record-answer"
 )
+
+// CapOverrideUrgency is the name set-horizon had before (docs/adr/0043 D4 as
+// amended 2026-10-05). A set sent with it means set-horizon, and a set stored
+// before keeps it, which the release before reads; a later release rewrites
+// the stored sets and drops the name (docs/adr/0028 D3).
+const CapOverrideUrgency = "override-urgency"
 
 // AllCapabilities is the "full" set, every selectable capability on: the
 // default of an agent token, and the set of a request a plain token marks as
 // an agent's with the header (docs/adr/0043 D4).
-var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapOverrideUrgency,
+var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapSetHorizon,
 	CapInterest, CapUpload, CapCreateProject, CapRecordAnswer}
 
 // DefaultChatCapabilities is what the chat in the UI holds for a person who
 // never chose (docs/adr/0043 D5): every capability but decide, close and drop,
 // which the owner keeps a person's, and record-answer, because without a
 // confirmation an injected text could record an answer in the person's name.
-var DefaultChatCapabilities = []string{CapRank, CapOverrideUrgency, CapInterest, CapUpload, CapCreateProject}
+var DefaultChatCapabilities = []string{CapRank, CapSetHorizon, CapInterest, CapUpload, CapCreateProject}
+
+// Canonical is a capability set under the names of this release, in the order
+// given and each once: override-urgency, the name set-horizon had before, is
+// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
+func Canonical(capabilities []string) []string {
+	out := make([]string, 0, len(capabilities))
+	for _, c := range capabilities {
+		if c == CapOverrideUrgency {
+			c = CapSetHorizon
+		}
+		if !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Stored is a capability set as this release writes it until a later release
+// rewrites the stored sets (docs/adr/0043 D4 as amended 2026-10-05):
+// set-horizon is followed by override-urgency, its name before, so that the
+// release before, which knows only that name, still grants the act after a
+// rollback. Reads take it back to this release's names (Canonical).
+func Stored(capabilities []string) []string {
+	out := slices.Clone(capabilities)
+	if slices.Contains(out, CapSetHorizon) && !slices.Contains(out, CapOverrideUrgency) {
+		out = append(out, CapOverrideUrgency)
+	}
+	return out
+}
 
 // Principal is who a request acts for, after authentication: a person through
 // a personal access token or through a browser session, resolved by one
@@ -134,13 +169,14 @@ func checkAgentPart(part string) error {
 // so, and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
 // header is the validated header value or empty. A session the header marks
 // holds the person's chat capabilities instead (docs/adr/0043 D5), which the
-// session's resolver reads.
+// session's resolver reads. The token's set is read under this release's
+// names (Canonical).
 func Mark(flagged bool, tokenCapabilities []string, header string) (agent string, capabilities []string) {
 	switch {
 	case flagged && header != "":
-		return header, slices.Clone(tokenCapabilities)
+		return header, Canonical(tokenCapabilities)
 	case flagged:
-		return UnknownAgent, slices.Clone(tokenCapabilities)
+		return UnknownAgent, Canonical(tokenCapabilities)
 	case header != "":
 		return header, slices.Clone(AllCapabilities)
 	default:

@@ -168,14 +168,18 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 		"recommendation": "retry", "asked_of": "me"})
 	assert.Contains(t, asked, "Asked Q1 on "+key)
 	assert.Contains(t, mustCall(t, cs, "record_answer", map[string]any{"key": "VO-1", "question": 1, "answer": "retry"}), "marked as recorded by the agent")
-	mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now."})
+	commented := mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now, @admin-a.", "mentions": []any{"admin-a"}})
+	assert.Contains(t, commented, "mentioning admin-a", "a display name resolves through the member list")
 	mustCall(t, cs, "set_progress", map[string]any{"key": "VO-1", "percent": 50})
 	mustCall(t, cs, "watch", map[string]any{"key": key})
-	ranked := mustCall(t, cs, "set_urgency", map[string]any{"key": "VO-1", "urgency": "now", "reason": "the failover gates the release"})
-	assert.Contains(t, ranked, "Set the urgency of "+key+" to now")
+	ranked := mustCall(t, cs, "place_ticket", map[string]any{"key": "VO-1", "horizon": "now", "reason": "the failover gates the release"})
+	assert.Contains(t, ranked, "Moved "+key+" from the horizon later to now")
 	other := mustCall(t, cs, "file_ticket", map[string]any{"type": "task", "title": "Write the retry", "severity": "low",
-		"security": "none", "effort": "S", "links": []any{map[string]any{"type": "relates-to", "key": "VO-1"}}})
+		"security": "none", "effort": "S", "horizon": "now", "before": "VO-1",
+		"links": []any{map[string]any{"type": "relates-to", "key": "VO-1"}}})
+	assert.Contains(t, other, "Filed "+e.SlugA+"/VO-2 — Write the retry (task, filed), in the horizon now, directly before VO-1.")
 	assert.Contains(t, other, "Linked: "+e.SlugA+"/VO-2 relates-to "+key)
+	assert.Contains(t, mustCall(t, cs, "place_ticket", map[string]any{"key": "VO-1", "before": "VO-2"}), "Placed "+key+", directly before VO-2.")
 	assert.Contains(t, mustCall(t, cs, "search", map[string]any{"query": "failover"}), key)
 
 	start = mustCall(t, cs, "session_start", nil)
@@ -185,7 +189,13 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 
 	ticket := mustCall(t, cs, "get_ticket", map[string]any{"key": key})
 	assert.Contains(t, ticket, "## Links\n\n- relates to "+e.SlugA+"/VO-2")
-	assert.Contains(t, ticket, "> Retrying now.")
+	assert.Contains(t, ticket, "> Retrying now, @admin-a.")
+	// What an agent reads names the horizon by its word (docs/adr/0010 D1).
+	whole := mustCall(t, cs, "get_ticket", map[string]any{"key": key, "activity": 50})
+	assert.Contains(t, whole, "\nhorizon: now\n")
+	assert.Contains(t, whole, `set the horizon to now — reason: "the failover gates the release"`)
+	assert.NotContains(t, whole, "urgency")
+	assert.NotContains(t, whole, "overridden")
 	assert.Contains(t, mustCall(t, cs, "api", map[string]any{"method": "GET", "path": "/api/v1/me"}), "200 OK")
 
 	finished := mustCall(t, cs, "finish_work", map[string]any{"key": "VO-1", "verification_note": "go test ./... passed against the fixture"})
@@ -237,6 +247,43 @@ func TestTheMCPServerKnowsAnAssistedToken(t *testing.T) {
 	finished := mustCall(t, cs, "finish_work", map[string]any{"key": key, "verification_note": "checked by hand"})
 	assert.Contains(t, finished, "(now review)")
 	assert.Contains(t, finished, "this agent lacks close, so done is the person's")
+}
+
+// docs/adr/0024 D7, docs/adr/0043 D3: an agent never deletes — not through the
+// escape hatch with an administrator's admin token either —, and a deleted
+// ticket answers the tools like a missing one.
+func TestTheToolsNeverDeleteAndMissADeletedTicket(t *testing.T) {
+	e := newMCPEnv(t)
+	cs := e.serve(t, e.tk.AdminA)
+	created, err := e.s.client(t, caller{Token: e.tk.MemberA}).CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA",
+		&apigen.CreateTicketParams{}, task("Pasted into the wrong tenant"))
+	require.NoError(t, err)
+	n := created.JSON201.Number
+	key := fmt.Sprintf("%s/ALPHA-%d", e.SlugA, n)
+	path := fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/tickets/%d", e.SlugA, n)
+
+	refused, isError := callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": path})
+	assert.True(t, isError)
+	assert.Contains(t, refused, "403")
+	assert.Contains(t, refused, "hard-off: deleting, restoring or purging")
+	assert.Contains(t, mustCall(t, cs, "get_ticket", map[string]any{"key": key}), "Pasted into the wrong tenant", "nothing was deleted")
+
+	res, err := e.s.client(t, caller{Token: e.tk.AdminA}).DeleteTicketWithResponse(e.ctx, e.SlugA, "ALPHA", n)
+	require.NoError(t, err)
+	require.Equal(t, 204, res.StatusCode(), string(res.Body))
+	var missing string
+	missing, isError = callTool(t, cs, "get_ticket", map[string]any{"key": key})
+	assert.True(t, isError)
+	assert.Contains(t, missing, "404")
+	assert.NotContains(t, missing, "Pasted into the wrong tenant")
+	assert.NotContains(t, mustCall(t, cs, "search", map[string]any{"query": "wrong tenant"}), key)
+	inBin := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/ALPHA-%d", e.SlugA, n)
+	answer, isError := callTool(t, cs, "api", map[string]any{"method": "PUT", "path": inBin + "/restore"})
+	assert.True(t, isError)
+	assert.Contains(t, answer, "hard-off: deleting, restoring or purging", "an agent restores nothing")
+	answer, isError = callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": inBin})
+	assert.True(t, isError)
+	assert.Contains(t, answer, "session_required", "nor purges: a token never does (docs/adr/0024 D7)")
 }
 
 // docs/adr/0067, docs/adr/0070 D6: the hook modes and the subcommands run

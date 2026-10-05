@@ -1,6 +1,9 @@
 import { inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
-import { changeMyPassword, getAuthOptions, loginLocal, logout } from '../api/functions';
+import { getAuthOptions } from '../api/fn/auth/get-auth-options';
+import { loginLocal } from '../api/fn/auth/login-local';
+import { logout } from '../api/fn/auth/logout';
+import { changeMyPassword } from '../api/fn/me/change-my-password';
 import { LocalLoginResult, LogoutResult } from '../api/models';
 import { SessionService } from './session.service';
 
@@ -30,6 +33,10 @@ export class AuthService {
     await this.api.invoke(changeMyPassword, {
       body: { current_password: current, new_password: next },
     });
+    // The answer ends the requirement (docs/adr/0033 D4). Said here before the page goes on: the
+    // shell sends a person who must change it to the password page, and while `me` loads again it
+    // shows the answer before — a page reached in that moment was sent back to change it again.
+    this.session.me.update((me) => (me ? { ...me, password_change_required: false } : me));
     this.session.me.reload();
   }
 

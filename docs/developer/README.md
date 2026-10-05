@@ -40,9 +40,9 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, sixteen routes take a session only — what can give access, or outlive a leaked
-  token, the chat's turn, its stop and its capabilities, and a global administrator's list of every
-  tenant — and a temporary
+  CSRF-checked, seventeen routes take a session only — what can give access, or outlive a leaked
+  token, the purge of a deleted ticket among them, the chat's turn, its stop and its capabilities,
+  and a global administrator's list of every tenant — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
   every act made through a token records and shows the token's id and name beside the agent mark
@@ -93,13 +93,15 @@ change.
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant boundary, authorization, errors, idempotency, versions, paging, filters |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, the deprecated names a rename keeps for a release |
 | [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
 | [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
+| [rendered-markdown.md](rendered-markdown.md) | You touch how a body, a comment, a question's options or its answer becomes HTML: the renderer, the sanitiser's allow-list, the fields and the route that answer it, the component that shows it |
+| [search.md](search.md) | You touch the search: the two routes, the query that ranks and cuts snippets, the union across tenants, the cursor, the search box and its results, and how the lists' `q` filter and the MCP tool `search` relate |
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
 | [chat.md](chat.md) | You touch the chat in the UI: the turn and its stop, the loop, the loopback, the person's capabilities, the providers and the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
@@ -119,7 +121,11 @@ change.
 | A login through the identity provider | The start seals the state, the nonce and the PKCE verifier into a cookie and redirects; the callback checks them, redeems the code, verifies the ID token, and one transaction under the person's advisory lock applies the gate, keeps the person, derives the memberships and makes the session | [architecture.md](architecture.md#the-two-logins), [identity provider](../security/identity-provider.md) |
 | A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
 | A write | `Mutate` commits the change with one audit row per act, stores a keyed response, and publishes a ticket's acts and the membership acts with `NOTIFY` (not downloads, exports or time entries) — or commits nothing | [data-access.md](data-access.md#mutate-acts-idempotency-publication) |
+| A search | One statement per tenant, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's tenants one read each, merged by rank | [search.md](search.md) |
+| Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
+| A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
+| A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
 | Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
@@ -128,11 +134,22 @@ change.
 
 ## What has no page here
 
-The tenant board, the score beside the rank, the person-level lists, deletion, import, the
-notification inbox, metrics and the end-to-end tier are not built
-([architecture.md](architecture.md#what-is-not-built)); the rank itself is a section of
-[domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
+The deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
+deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
+[domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
+the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog), the tenant's
+dashboard in [api.md](api.md#the-dashboard), [data-access.md](data-access.md#the-dashboards-queries)
+and [frontend.md](frontend.md#the-dashboard); the inbox
+and the person-level lists — "next for me" among them — are sections of [data-access.md](data-access.md#notifications),
+[api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
+[frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
+[frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
+they are, and the tenant's ticket list one of [frontend.md](frontend.md#the-tenants-ticket-list),
+whose address is its filter and which applies the saved filters as the backlog does; the rank
+itself, its rebalancing and the score are sections of
+[domain.md](domain.md#rank) and [domain.md](domain.md#the-score), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
-its own security page, [identity-provider.md](../security/identity-provider.md).
+its own security page, [identity-provider.md](../security/identity-provider.md), and the
+end-to-end tier a section of [testing.md](testing.md#end-to-end-tests).
 The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
 each gets its page here when it exists.

@@ -207,6 +207,34 @@ describe('MembersService', () => {
 
       expect(names()).toEqual(['Gus']);
     });
+
+    // docs/adr/0048 D2, D4: the member list reads numbered pages; the pickers every member.
+    it('reads one numbered page for the member list, and a page unchanged since is a 304', async () => {
+      page('acme').flush(pageOf(['Ada'], null));
+      await settle();
+      const numbered = (number: string) =>
+        http.expectOne(
+          (request) =>
+            request.url === '/api/v1/tenants/acme/members' &&
+            request.params.get('page') === number,
+        );
+
+      const first = service.page('acme', 1, 25);
+      const sent = numbered('1');
+      expect(sent.request.params.get('per_page')).toBe('25');
+      expect(sent.request.params.has('cursor')).toBe(false);
+      sent.flush(
+        { ...pageOf(['Ada'], null), total: 1, page: 1, per_page: 25 },
+        { headers: { ETag: 'W/"one"' } },
+      );
+      expect((await first).total).toBe(1);
+
+      const again = service.page('acme', 1, 25);
+      const conditional = numbered('1');
+      expect(conditional.request.headers.get('If-None-Match')).toBe('W/"one"');
+      conditional.flush(null, { status: 304, statusText: 'Not Modified' });
+      expect((await again).items.map((each) => each.person.display_name)).toEqual(['Ada']);
+    });
   });
 
   describe('when the tenant changes', () => {
@@ -250,6 +278,7 @@ describe('MembersService', () => {
       { name: 'membership.changed', id: 'e1', personId: 'p9' },
       { name: 'membership.changed', id: 'e1', mappingId: 'm1' },
       { name: 'membership.changed', id: 'e1', personId: 'p9', projectId: 'j1' },
+      { name: 'membership.changed', id: 'e1', tenant: 'acme', personId: 'p9' },
       { name: 'resync' },
       { name: 'poll' },
     ])('loads the members again on %j', async (event) => {
@@ -261,6 +290,33 @@ describe('MembersService', () => {
       http.expectOne('/api/v1/me').flush(hans);
       await settle();
 
+      expect(names()).toEqual(['Ada', 'Bob']);
+    });
+
+    it("leaves the members alone on an act of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p9' });
+      await settle();
+
+      http.expectNone((request) => request.url === '/api/v1/tenants/acme/members');
+      http.expectNone('/api/v1/me');
+    });
+
+    it("sends the list's weak ETag on a poll and keeps the members on a 304 (docs/adr/0054 D7)", async () => {
+      stream.next({ name: 'resync' });
+      await settle();
+      page('acme').flush(pageOf(['Ada', 'Bob'], null), { headers: { ETag: 'W/"one"' } });
+      http.expectOne('/api/v1/me').flush(hans);
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const again = page('acme');
+      expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+      again.flush(null, { status: 304, statusText: 'Not Modified' });
+      http.expectOne('/api/v1/me').flush(hans);
+      await settle();
+
+      expect(service.members.status()).toBe('resolved');
       expect(names()).toEqual(['Ada', 'Bob']);
     });
 

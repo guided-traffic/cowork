@@ -4,7 +4,7 @@ Where an attachment's bytes live and how they get there and back: the object key
 the upload flow and its limits, the type detection, the delivery headers, and the S3 server
 the tests run against. The decisions are [ADR 0016] (attachments) and [ADR 0058] (external
 storage, the chart's references); the variables are in
-[README.md, Configuration](../../README.md#configuration). Read against the tree on 2026-10-02.
+[README.md, Configuration](../../README.md#configuration). Read against the tree on 2026-10-05.
 
 ## Keys and metadata
 
@@ -49,15 +49,28 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
    naming what was detected. The name is sanitised and given an extension of the detected type.
 5. The idempotency fingerprint covers the file's SHA-256, the name and the comment, keyed like
    every fingerprint ([api.md](api.md)).
-6. In `Mutate`: the ticket through the predicate; the ticket's attachment lock
+6. In `Mutate`: the ticket through the predicate; where `COWORK_ATTACHMENT_TENANT_QUOTA` is set,
+   the tenant's quota lock (`Writer.LockAttachmentQuota`, `lockQuota`), first, so the tenant's
+   uploads check the quota one after the other; the ticket's attachment lock
    (`Writer.LockAttachments`), so simultaneous uploads to it count one after the other; the
    project role; a `comment_id` must name a comment of this ticket written by the caller's
    person; the ticket's attachment count must be below `COWORK_ATTACHMENT_MAX_PER_TICKET`
-   (0: no limit), else `409 attachment_limit`. Then the
+   (0: no limit), else `409 attachment_limit`; the tenant's attachments summed
+   (`TenantAttachmentUsage`, every ticket's — the query is exempt from the predicate — and a
+   deleted ticket's until the purge removes its rows: they occupy the bucket until then) plus the
+   file must not exceed the quota, else `409 attachment_quota`, whose detail names the quota and
+   the file's size and never the sum (`withinQuota`). Then the
    row and its `uploaded` act, then `Put`, then the stored `201` response.
 7. When the object was written and the row did not commit — or a concurrent request with the same
    key committed first and this one replays — the object is deleted again: no row names those
    bytes.
+
+`GetAttachmentUsage` (`GET /api/v1/tenants/{tenant}/attachment-usage`) answers the same sum, the
+count and the quota to the tenant's administrators (`adminRead`), with a weak `ETag` and `304` for an
+answer the client holds: the sum counts files of tickets a member may not see, and a deleted
+ticket's until the purge. The tenant's settings page shows it
+([frontend.md](frontend.md#the-tenants-administration)). The quota is off by default, and why is
+[runtime.md](../operations/runtime.md#the-tenants-attachment-quota).
 
 ## Type detection
 
@@ -83,12 +96,28 @@ extension to a name that ends in none of the type's (`run.bat` stored as text be
 | no storage configured, or the object is missing | `404`; a missing object says so — a restore can bring the database back without its bytes ([ADR 0059] D4) |
 | otherwise | `200`, the bytes streamed, recorded as `downloaded` ([ADR 0026] D5) |
 
+The UI shows a raster attachment as a preview: an `<img>` of its `content_url`, which the
+browser loads with the session cookie, each load a `200` that is recorded
+([frontend.md](frontend.md#the-detail-page)). It uploads to a comment from the comment, whose
+author it must be (step 6 above).
+
 The headers make the browser treat the bytes as data (D5): `Content-Type` is the stored type;
 `Content-Disposition` is `inline` for the four raster types and `attachment` for everything else,
 with the file name encoded by `mime.FormatMediaType` (RFC 2231 for what is not ASCII);
 `X-Content-Type-Options: nosniff`; `Content-Security-Policy: sandbox`; `ETag` is the quoted hex
 SHA-256; `Cache-Control: no-store` comes from the pipeline. `downloaded` acts are on neither the
 activity list nor the event stream.
+
+## The purge
+
+The purge of a deleted ticket ([ADR 0024] D2, [data-access.md](data-access.md#deletion-and-the-purge))
+deletes its attachment rows in its transaction and returns their ids; once that committed,
+`api.RemovePurgedObjects` deletes each object, `<tenant-id>/<attachment-id>` — an administrator's
+purge in its request, the job after its run. Removing first would leave rows that name missing
+bytes after a rollback. An object whose removal fails, or one left because no object storage is
+configured, stays in the bucket with no row naming it, and the log says which; nothing sweeps such
+objects. A deleted ticket's files stay readable to nobody — every route of the ticket is `404` —
+and stay in the bucket until the purge.
 
 ## The test server
 
@@ -107,6 +136,7 @@ with `make minio-up` ([ci-and-release.md](ci-and-release.md)).
 and the bucket they name must exist — the server never creates it.
 
 [ADR 0016]: ../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0058]: ../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md

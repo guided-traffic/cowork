@@ -51,7 +51,7 @@ func attachmentView(t tenantScope, tc ticketCtx, a attachment) apigen.Attachment
 		ContentType: apigen.AttachmentContentType(a.ContentType), Comment: nullableOf(a.CommentID),
 		UploadedBy: personView(a.UploadedBy, a.UploadedByUsername, a.UploadedByName), Agent: nullableOf(a.Agent),
 		Token: tokenMarkView(a.TokenID, a.TokenName), CreatedAt: a.CreatedAt,
-		ContentUrl: ticketURL(t, tc.project.Key, tc.row.Number) + "/attachments/" + a.ID.String() + "/content",
+		ContentUrl: attachmentContentURL(t, ticketAt{project: tc.project.Key, number: tc.row.Number}, a.ID),
 	}
 }
 
@@ -210,10 +210,16 @@ func (s *Server) storeFile(ctx context.Context, w *store.Writer, t tenantScope, 
 	if err != nil {
 		return apigen.Attachment{}, false, err
 	}
+	if err := s.lockQuota(ctx, w); err != nil {
+		return apigen.Attachment{}, false, err
+	}
 	if err := w.LockAttachments(ctx, tc.row.ID); err != nil {
 		return apigen.Attachment{}, false, err
 	}
 	if err := s.mayAttach(ctx, w.Reader, t, tc, uploadNeed, f.comment); err != nil {
+		return apigen.Attachment{}, false, err
+	}
+	if err := s.withinQuota(ctx, w.Reader, t, int64(len(f.data))); err != nil {
 		return apigen.Attachment{}, false, err
 	}
 	id := uuid.MustParse(key[strings.LastIndex(key, "/")+1:])
@@ -244,6 +250,66 @@ func (s *Server) storeFile(ctx context.Context, w *store.Writer, t tenantScope, 
 	}
 	w.Respond(res)
 	return out, true, nil
+}
+
+// lockQuota takes the tenant's attachment quota lock where a quota is set,
+// first, before the ticket's attachment lock: the upload holds it until it
+// commits, so two uploads of the tenant cannot both pass the quota
+// (docs/adr/0016 D6 as amended 2026-10-05). Without a quota it takes none.
+func (s *Server) lockQuota(ctx context.Context, w *store.Writer) error {
+	if s.h.opts.AttachmentTenantQuota <= 0 {
+		return nil
+	}
+	return w.LockAttachmentQuota(ctx)
+}
+
+// withinQuota refuses a file that would take the tenant's attachments above
+// its quota, before any byte is stored, read under the lock of lockQuota.
+// Every attachment of the tenant counts, whether or not the uploader sees its
+// ticket, and the refusal names no sum.
+func (s *Server) withinQuota(ctx context.Context, r *store.Reader, t tenantScope, size int64) error {
+	quota := s.h.opts.AttachmentTenantQuota
+	if quota <= 0 {
+		return nil
+	}
+	usage, err := r.TenantAttachmentUsage(ctx, t.ID)
+	if err != nil {
+		return fmt.Errorf("read the tenant's attachment usage: %w", err)
+	}
+	if usage.UsedBytes+size > quota {
+		return problem.New(problem.AttachmentQuota, fmt.Sprintf("the tenant's attachments may hold %d bytes together, and this file of %d bytes does not fit", quota, size))
+	}
+	return nil
+}
+
+// GetAttachmentUsage answers the bytes and the count of the tenant's
+// attachments against its quota, for its administrators (docs/adr/0016 D6):
+// the sum counts files of tickets a member may not see, and a deleted
+// ticket's until the purge. An answer the client holds unchanged is a 304
+// (docs/adr/0054 D7).
+func (s *Server) GetAttachmentUsage(ctx context.Context, req apigen.GetAttachmentUsageRequestObject) (apigen.GetAttachmentUsageResponseObject, error) {
+	t := tenantFrom(ctx)
+	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
+		return nil, perr
+	}
+	var usage readq.TenantAttachmentUsageRow
+	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
+		var err error
+		usage, err = r.TenantAttachmentUsage(ctx, t.ID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := apigen.AttachmentUsage{UsedBytes: usage.UsedBytes, Attachments: usage.Attachments, QuotaBytes: nullableOf[int64](nil)}
+	if quota := s.h.opts.AttachmentTenantQuota; quota > 0 {
+		out.QuotaBytes = nullableOf(&quota)
+	}
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.GetAttachmentUsage304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.GetAttachmentUsage200JSONResponse{Body: out, Headers: apigen.GetAttachmentUsage200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // mayAttach holds an upload to the ticket's role, the comment it names —
@@ -316,11 +382,15 @@ func (s *Server) ListAttachments(ctx context.Context, req apigen.ListAttachments
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(a readq.ListAttachmentsRow) string { return a.ID.String() })
-	out := apigen.ListAttachments200JSONResponse{Items: make([]apigen.Attachment, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.AttachmentList{Items: make([]apigen.Attachment, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, a := range rows {
 		out.Items = append(out.Items, attachmentView(t, tc, attachment(a)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListAttachments304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListAttachments200JSONResponse{Body: out, Headers: apigen.ListAttachments200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetAttachment answers an attachment's metadata.

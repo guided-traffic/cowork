@@ -3,7 +3,7 @@
 <section class="page">
   <nav class="crumbs muted">
     @if (at(); as a) {
-      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'backlog']">{{ a.project }}</a>
+      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'board']">{{ a.project }}</a>
       <span>/</span>
       <span class="tabular">{{ key() }}</span>
     }
@@ -14,7 +14,7 @@
       <div class="head-top">
         <div class="badges">
           <app-type [value]="t.type" [showLabel]="true" />
-          <app-state [value]="t.state" />
+          <app-state [value]="t.state" data-testid="ticket-state" />
           <app-severity [value]="t.severity" />
           <app-security [value]="t.security" />
           @if (t.confidential) {
@@ -25,9 +25,14 @@
             >
           }
         </div>
-        <app-ticket-moves [ticket]="t" />
+        <span class="head-acts">
+          <app-ticket-moves [ticket]="t" />
+          @if (administers()) {
+            <app-ticket-delete [ticket]="t" />
+          }
+        </span>
       </div>
-      <h1 data-testid="ticket-title">{{ t.title }}</h1>
+      <app-ticket-title [ticket]="t" />
       @if (t.block; as block) {
         <div class="block" data-testid="block">
           <i class="pi pi-ban"></i>
@@ -47,12 +52,14 @@
     <div class="layout">
       <div class="main">
         <section class="card">
-          <h2>Description</h2>
-          @if (t.body) {
-            <div class="body" data-testid="body">{{ t.body }}</div>
-          } @else {
-            <p class="muted">No description.</p>
-          }
+          <app-ticket-body
+            [ticket]="t"
+            [rendered]="relations.body.hasValue() ? relations.body.value() : undefined"
+          />
+        </section>
+
+        <section class="card">
+          <app-prerequisite-tree />
         </section>
 
         <section class="card">
@@ -63,10 +70,17 @@
             <p class="muted" data-testid="questions-failed">{{ failure(error) }}</p>
           }
           @for (question of openQuestions(); track question.id) {
-            <article class="question open" [attr.data-testid]="'question-' + question.number">
+            <article
+              class="question open"
+              [attr.id]="'question-' + question.number"
+              [attr.data-testid]="'question-' + question.number"
+            >
               <p class="ask">{{ question.question }}</p>
               @if (question.options) {
-                <p class="muted small"><strong>Options:</strong> {{ question.options }}</p>
+                <div class="muted small options" data-testid="question-options">
+                  <strong>Options:</strong>
+                  <app-rendered-text [html]="question.options_html" />
+                </div>
               }
               @if (question.recommendation) {
                 <p class="muted small">
@@ -84,21 +98,23 @@
                 {{ question.asked_of ? '· of ' + question.asked_of.display_name : '' }} ·
                 {{ ago(question.created_at) }}
               </p>
+              <app-edit-question [ticketKey]="t.key" [question]="question" />
               <app-answer-question [ticketKey]="t.key" [question]="question" />
             </article>
           } @empty {
             <p class="muted">No open question.</p>
           }
           @for (question of settledQuestions(); track question.id) {
-            <article class="question settled">
+            <article class="question settled" [attr.id]="'question-' + question.number">
               <p class="ask">{{ question.question }}</p>
-              <p class="small">
-                @if (question.status === 'answered') {
-                  <strong>Answer:</strong> {{ question.answer }}
-                } @else {
-                  <span class="muted">withdrawn</span>
-                }
-              </p>
+              @if (question.status === 'answered') {
+                <div class="small answer" data-testid="question-answer">
+                  <strong>Answer:</strong>
+                  <app-rendered-text [html]="question.answer_html ?? ''" />
+                </div>
+              } @else {
+                <p class="small"><span class="muted">withdrawn</span></p>
+              }
               @if (question.status === 'answered' && question.answered_by) {
                 <p class="meta muted">
                   answered by {{ question.answered_by.display_name }}
@@ -128,20 +144,19 @@
             <p class="muted" data-testid="comments-failed">{{ failure(error) }}</p>
           } @else if (relations.comments.hasValue()) {
             @for (comment of relations.comments.value().items; track comment.id) {
-              <article class="comment" [attr.data-testid]="'comment-' + comment.id">
-                <p class="meta muted">
-                  <strong>{{ comment.author.display_name }}</strong>
-                  @if (comment.agent || comment.token) {
-                    <app-agent-mark [mark]="comment.agent" [token]="comment.token" />
-                  }
-                  · {{ ago(comment.created_at) }}
-                  {{ comment.edited ? '· edited' : '' }}
-                </p>
-                @if (comment.withdrawn) {
-                  <p class="muted">withdrawn</p>
-                } @else {
-                  <p class="text">{{ comment.body }}</p>
-                }
+              <article
+                class="comment"
+                [attr.id]="'comment-' + comment.id"
+                [attr.data-testid]="'comment-' + comment.id"
+              >
+                <app-comment
+                  [ticketKey]="t.key"
+                  [comment]="comment"
+                  [files]="commentFiles().get(comment.id) ?? []"
+                  [me]="session.person()?.id"
+                  [administers]="administers()"
+                  [ticket]="t"
+                />
               </article>
             } @empty {
               <p class="muted">No comments yet.</p>
@@ -149,7 +164,7 @@
           } @else {
             <p-skeleton height="4rem" />
           }
-          <app-comment-composer [ticketKey]="t.key" />
+          <app-comment-composer [ticketKey]="t.key" [ticket]="t" />
         </section>
 
         <section class="card">

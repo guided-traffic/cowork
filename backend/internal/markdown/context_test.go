@@ -16,7 +16,7 @@ import (
 func TestRenderContext(t *testing.T) {
 	ticket := Ticket{
 		Key: "acme/VKO-12", Title: "Export drops attachments", Type: "bug", State: "in-progress", Severity: "high",
-		Security: "none", Urgency: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace",
+		Security: "none", Horizon: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace",
 		Opened: *at("2026-10-01T08:00:00Z"), Decided: at("2026-10-02T09:00:00Z"),
 		Attachments: []string{"trace.txt"},
 		Body:        "## Current state\n\nThe zip has no files.\n",
@@ -46,12 +46,19 @@ func TestRenderContext(t *testing.T) {
 					After: map[string]any{"type": "blocks", "source": "acme/VKO-3", "target": "acme/VKO-12"}},
 				{At: *at("2026-10-03T11:00:00Z"), Actor: "Sam", Action: "updated", Before: map[string]any{"effort": "S", "title": "x"},
 					After: map[string]any{"effort": "M", "title": "y"}, Reason: "bigger than \"it looked\"\nat first"},
+				// The acts on the horizon, recorded as overridden (docs/adr/0010 D1).
+				{At: *at("2026-10-03T12:00:00Z"), Actor: "Ada Lovelace", Agent: "claude-code/unknown/7f3a", Action: "overridden",
+					Before: map[string]any{"urgency_override": "next"}, After: map[string]any{"urgency_override": nil},
+					Reason: "not in this release"},
+				{At: *at("2026-10-03T13:00:00Z"), Actor: "Sam", Action: "overridden",
+					Before: map[string]any{"urgency_override": nil}, After: map[string]any{"urgency_override": "now"},
+					Reason: "a customer is down"},
 				{At: *at("2026-10-04T08:00:00Z"), Actor: "Ada Lovelace", Agent: "claude-code/unknown/7f3a", Action: "linked", Redacted: true},
 			},
 		},
 		"context-quiet": {
 			Ticket: Ticket{Key: "acme/VKO-13", Title: "Nothing around it", Type: "task", State: "filed", Severity: "low",
-				Security: "none", Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
+				Security: "none", Horizon: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
 			Exported: *at("2026-10-04T09:12:00Z"), By: "Sam",
 			Comments: []Comment{}, Activity: nil,
 		},
@@ -72,7 +79,7 @@ func TestRenderContext(t *testing.T) {
 // and the canonical document follows unchanged.
 func TestContextCarriesTheCanonicalDocument(t *testing.T) {
 	tk := Ticket{Key: "acme/VKO-14", Title: "t", Type: "task", State: "filed", Severity: "low", Security: "none",
-		Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")}
+		Horizon: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")}
 	got := string(RenderContext(Context{Ticket: tk, Exported: *at("2026-10-04T00:00:00Z"), By: "Sam"}))
 	first, rest, _ := strings.Cut(got, "\n")
 	assert.True(t, strings.HasPrefix(first, "<!-- cowork: context of acme/VKO-14, exported 2026-10-04T00:00:00Z by Sam — not an import format -->"))
@@ -89,7 +96,7 @@ func TestContextCarriesTheCanonicalDocument(t *testing.T) {
 func TestRenderContextNamesTheTokenOfAPersonsAct(t *testing.T) {
 	c := Context{
 		Ticket: Ticket{Key: "acme/VKO-15", Title: "Marked", Type: "task", State: "filed", Severity: "low",
-			Security: "none", Urgency: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
+			Security: "none", Horizon: "later", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
 		Exported: *at("2026-10-04T09:12:00Z"), By: "Sam", Token: &Token{Name: "ci-script"},
 		Comments: []Comment{
 			{Author: "Sam", Token: &Token{Name: "ci-script"}, At: *at("2026-10-03T10:00:00Z"), Body: "Built."},
@@ -114,6 +121,15 @@ func TestRenderContextNamesTheTokenOfAPersonsAct(t *testing.T) {
 	want, err := os.ReadFile(path)
 	require.NoError(t, err, "run with -update to write %s", path)
 	assert.Equal(t, string(want), string(got))
+}
+
+// docs/adr/0014 D3: the sort of a project's rank by the score is told apart
+// from a move in the rank.
+func TestSummaryOfASortByScore(t *testing.T) {
+	assert.Equal(t, "ranked by score", summary(Act{Action: "ranked", After: map[string]any{"by": "score", "moved": 3}}))
+	assert.Equal(t, "ranked", summary(Act{Action: "ranked", After: map[string]any{"after": "acme/COW-2"}}))
+	assert.Equal(t, "ranked (the details name a ticket you cannot see)",
+		summary(Act{Action: "ranked", After: map[string]any{"by": "score"}, Redacted: true}))
 }
 
 func TestSize(t *testing.T) {

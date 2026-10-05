@@ -33,6 +33,7 @@ type Notification struct {
 	Reporter     uuid.UUID  `json:"reporter"`
 	// Person and Mapping are the keys of a membership act besides Project;
 	// Audience says who of the tenant may hear of it (MembershipChange).
+	// Person is also the person an inbox change is addressed to (EntityInbox).
 	Person   *uuid.UUID `json:"person,omitempty"`
 	Mapping  *uuid.UUID `json:"mapping,omitempty"`
 	Audience string     `json:"audience,omitempty"`
@@ -42,6 +43,11 @@ type Notification struct {
 // a grant, a derived membership, a group mapping, a project's restriction or
 // access list (docs/adr/0054 D2).
 const EntityMembership = "membership"
+
+// EntityProject is the entity of the notification of a project's creation,
+// which changes what the tenant's streams may admit and is sent to no client
+// (docs/adr/0054 D3).
+const EntityProject = "project"
 
 // The audiences of a membership act. Every member of the tenant hears of a
 // membership or a project's restriction — the member list is theirs to read
@@ -63,28 +69,55 @@ type MembershipChange struct {
 	Audience                 string
 }
 
+// EntityProjectRank is the entity of the notification of a project's rank set
+// as a whole — the sort by the score (docs/adr/0014 D3) —, whose stream event
+// is project.changed (docs/adr/0054 D2).
+const EntityProjectRank = "project-rank"
+
+// ProjectChange is what an act on a project's rank as a whole announces: the
+// project, which the streams filter by as they filter its tickets' acts, and
+// its key, <tenant>/<PROJECT>.
+type ProjectChange struct {
+	ID  uuid.UUID
+	Key string
+}
+
 // silent are the acts a stream does not carry: data leaving the system
 // changes nothing a client shows, and time follows its own visibility
 // (docs/adr/0026 D5, docs/adr/0034 D5).
 var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
 
-// publish notifies the listeners of a ticket's act or of a membership act of
-// a tenant. NOTIFY inside the transaction is delivered when it commits and
-// never when it rolls back (docs/adr/0054 D4).
+// publish notifies the listeners of a ticket's act, a membership act, a
+// project's creation or its rank sorted by the score in a tenant. NOTIFY
+// inside the transaction is delivered when it commits and never when it rolls
+// back (docs/adr/0054 D4).
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
 	if tenantID != uuid.Nil && e.Membership != nil {
 		return w.notify(ctx, membershipNotification(tenantID, id, e))
 	}
+	if tenantID != uuid.Nil && e.NewProject != uuid.Nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.NewProject, Entity: EntityProject, Action: e.Action})
+	}
+	if tenantID != uuid.Nil && e.ProjectRank != nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.ProjectRank.ID, Entity: EntityProjectRank,
+			Action: e.Action, Key: e.ProjectRank.Key})
+	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil
 	}
-	facts, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
-	if err != nil {
-		return fmt.Errorf("read the published ticket: %w", err)
+	facts := e.Published
+	if facts == nil {
+		row, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
+		if err != nil {
+			return fmt.Errorf("read the published ticket: %w", err)
+		}
+		facts = &TicketFacts{Project: row.ProjectID, Version: row.Version, Confidential: row.Confidential,
+			Assignee: row.AssigneeID, Reporter: row.ReporterID}
 	}
-	return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
+	n := Notification{ID: id, Tenant: tenantID, Project: facts.Project, Entity: e.EntityType,
 		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
-		Assignee: facts.AssigneeID, Reporter: facts.ReporterID})
+		Assignee: facts.Assignee, Reporter: facts.Reporter}
+	return w.notify(ctx, n)
 }
 
 func membershipNotification(tenantID, id uuid.UUID, e Event) Notification {

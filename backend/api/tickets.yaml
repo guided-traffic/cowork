@@ -41,13 +41,19 @@ links:
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of links
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/LinkList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 link:
@@ -184,6 +190,63 @@ rank:
               $ref: './components/schemas.yaml#/Ticket'
       default:
         $ref: './components/responses.yaml#/Problem'
+prerequisites:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listPrerequisites
+    tags: [tickets]
+    summary: The ticket's prerequisite tree, or read upward its dependents
+    description: |
+      docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
+      blocks those, and so on — what has to be done before it can be finished. `direction=up`:
+      its dependents, the tickets it blocks and what those block. To a depth of eight, depth
+      first, siblings in the order they were filed. The walk never passes a ticket the caller
+      cannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065
+      D5). A ticket that stands in the tree under two others is shown in full once, under the
+      first of them nearest the ticket asked about, and under each other one as `repeated`,
+      without what lies behind it. `open` counts the open tickets of the whole tree, each once,
+      on every page; the done and dropped ones are `settled`.
+    parameters:
+      - name: direction
+        in: query
+        description: down for the prerequisites, the default; up for the dependents
+        schema: {type: string, enum: [down, up], default: down}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the tree, depth first
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/PrerequisiteTree'
+            example:
+              items:
+                - key: acme/COW-7
+                  title: Pick the format
+                  state: in-progress
+                  blocked_from: null
+                  assignee: {id: 0190f4c2-6f1e-7a3b-9c2d-1e2f3a4b5c6d, username: ada, display_name: Ada}
+                  progress: 40
+                  progress_refinement: 100
+                  progress_review: 0
+                  progress_derived: false
+                  depth: 1
+                  settled: false
+                  repeated: false
+              next_cursor: null
+              open: 1
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 interest:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -196,13 +259,19 @@ interest:
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of stakes
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/InterestList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   put:

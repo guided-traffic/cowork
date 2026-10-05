@@ -4,7 +4,7 @@ What a personal access token is, how a request presenting one is checked, what i
 — through its scope, its person's role, its restriction and, for an agent, the capabilities
 and the hard-off list — what only a browser session may do instead, how a dead token and a token
 of a person outside the identity provider's gate are answered, and what is recorded, as built on
-2026-10-04. Which tenants, projects and tickets a person can see at all is
+2026-10-05. Which tenants, projects and tickets a person can see at all is
 [tenancy.md](tenancy.md); how a token comes to exist — its person, in a browser session — is
 below and in [sessions.md](sessions.md); the identity provider whose groups a token's person is
 held to is [identity-provider.md](identity-provider.md); the chat in the UI, an agent that holds no
@@ -49,7 +49,10 @@ token, is [chat.md](chat.md).
   answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
   request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
   longer request is shortened and the answer says what the token got
-  (`TestATokensLifetimeIsClampedToTheMaximum`). An agent token has at most `write` scope and
+  (`TestATokensLifetimeIsClampedToTheMaximum`); the token form knows the bound before it asks, from
+  `GET /auth/options`, which names it in whole days — public, like the password policy beside it:
+  it tells an anonymous reader how long a token of the installation can live at most, and nothing
+  of any token (`TestAuthOptions`). An agent token has at most `write` scope and
   every capability when the request leaves `capabilities` out; a list is the capabilities, and
   an empty one is none, the baseline only (ADR 0043 D4's nine switches all off); a restriction names a tenant the person belongs to
   and a project of it they see, and a tenant or project they cannot reach is "no such" in the
@@ -76,7 +79,29 @@ token, is [chat.md](chat.md).
   development database only.
 - **Listing.** `GET /api/v1/me/tokens` shows the person's tokens with their metadata — name,
   scope, agent flag, capabilities, restriction, dates, state — never the hash or the
-  plaintext; revoked and expired tokens stay listed (ADR 0035 D6).
+  plaintext; revoked and expired tokens stay listed (ADR 0035 D6). A restriction names its
+  project by key only while the person sees the project in a tenant they belong to — read in that
+  tenant's transaction under the project predicate — and `null` otherwise, so the list names no
+  project the person could not read (`projectKeys` in [`api/me.go`](../../backend/internal/api/me.go),
+  `TestATokenNamesItsProjectByKey`); the project's id, deprecated beside it, is the token's own
+  column.
+- **A tenant's administrators see the tokens that can act in the tenant.**
+  `GET /api/v1/tenants/{tenant}/tokens` lists every token of a member of the tenant that is
+  unrestricted or restricted to this tenant, with its person and the same metadata, never the hash
+  or the plaintext ([ADR 0035](../adr/0035-personal-access-tokens.md) D5 as amended 2026-10-05;
+  [`api/tenanttokens.go`](../../backend/internal/api/tenanttokens.go)). A token restricted to
+  another tenant is not in the list — not its name, not its id, not that it exists — and neither is
+  a token of a person who is no member here. The query names exactly these rows, and so does the
+  tokens policy of [migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql)
+  for an administrator of the current tenant (`app_tenant_reaches_token`), so a forgotten filter in a
+  later query of a tenant transaction still shows no token restricted to another tenant
+  (`TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant`,
+  `TestPoliciesOfThePersonsAndTheirAccounts`). The administrators of a tenant that manages a local
+  account read every token of that account in the data layer, as they did before, because its
+  deactivation revokes them all ([local-accounts.md](local-accounts.md)); the route shows them only
+  the tokens that can act in their tenant. Listing takes the administrator role and `read` scope;
+  anybody else is `403 forbidden`. In the browser it is the tenant's page *Tokens*, after the audit
+  record ([`features/tenant/tenant-tokens.ts`](../../frontend/src/app/features/tenant/tenant-tokens.ts)).
 
 ## What a request with a token may do
 
@@ -93,16 +118,16 @@ reaches further than its person does at that moment.
 
 | Scope | Reaches |
 |---|---|
-| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings and a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) |
+| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) and the tokens that can act in the tenant |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
-Sixteen operations take a browser session only, and answer a token — whatever its scope, an
+Seventeen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these sixteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these seventeen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -123,6 +148,7 @@ set to exactly these sixteen ([`backend/api/document_test.go`](../../backend/api
 | `stopChatTurns` | `DELETE …/chat/turns` | — it stops the session's person's turns, which a token never starts ([chat.md](chat.md#stop)) |
 | `setMyChat` | `PUT /api/v1/me/chat` | what the person's agent in the browser may do, in every tenant of the person ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)) |
 | `listTenants` | `GET /api/v1/tenants` | — it leaves nothing; it shows a global administrator every client of the installation, which a token of theirs does not reach ([tenancy.md](tenancy.md#a-global-administrator-without-a-role)) |
+| `purgeTicket` | `DELETE …/deleted-tickets/{key}` | a ticket gone for good — its texts, its files and its time, its audit rows emptied; nothing undoes a purge ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 as amended 2026-10-05, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
 takes a session; an act that only takes access away does not.** A route that does both — a grant
@@ -131,11 +157,14 @@ stays open to an administrator's `admin`-scope token removes or restricts access
 behind: listing, unlocking, deactivating a local account and ending its sessions
 ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person
 from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMappingsDeriveAtOnce`,
-`TestProjectRestrictionAndAccessList`). No agent makes any administration act: an agent token's
+`TestProjectRestrictionAndAccessList`). Deleting a ticket and restoring it stay open as well,
+because the bin undoes either for thirty days; the purge, which nothing undoes, does not
+(`TestPurgingTakesABrowserSession`; what a leaked token can still delete is
+[tenancy.md H-54](tenancy.md#h-54)). No agent makes any administration act: an agent token's
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
 
-A session's request that the agent header marks is refused all sixteen,
+A session's request that the agent header marks is refused all seventeen,
 with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
 ([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
 
@@ -189,16 +218,23 @@ administrator reads no client of the installation the person is not a member of.
   or twice at the same moment, answers `204` and records one act. A revocation is final: a
   trigger refuses any update that clears or changes `revoked_at` or `revoked_by`, whoever
   writes it ([migration 4](../../backend/internal/store/migrations/000004_tokens.up.sql)
-  `tokens_revocation_is_final`; `TestRevocationIsFinal`). The `refused`
-  and `revoked` acts are installation-level rows, readable in the database only: no route
-  shows them, and the per-token view of
+  `tokens_revocation_is_final`; `TestRevocationIsFinal`). The `refused` act and the person's own
+  `revoked` are installation-level rows, readable in the database only: no route shows them, and
+  the per-token view of
   [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D6 is not
-  built. A person's deactivation revokes every token they hold — an administrator's
+  built. **A tenant's administrator revokes** a token of that tenant's list with
+  `DELETE /api/v1/tenants/{tenant}/tokens/{token_id}`: immediate and final like the person's own,
+  `revoked_by` the administrator, and recorded as the administrator's act `revoked` in the
+  tenant's audit, naming the person, the token's name and whether it was unrestricted. A token the
+  list does not show is `404`, as one that does not exist. It only takes access away, so an
+  administrator's `admin`-scope token may; it is an administration act, so no agent may (the hard-off
+  rule "administration"). **Revoking an unrestricted token ends it in every tenant of its person**
+  — the page asks first and says so — and the record of it is in this tenant's audit alone
+  ([H-57](#h-57)). A person's deactivation revokes every token they hold — an administrator's
   `PUT …/accounts/{username}/deactivation` on an account their tenant manages, and the
   start-up synchronisation for the local administrator — a `NULL` `revoked_by` meaning a
   system act ([local-accounts.md](local-accounts.md)); a password reset does not. No route
-  deactivates a person of the identity provider. Not built either: an administrator's view and
-  revocation of their members' tokens (ADR 0035 D5).
+  deactivates a person of the identity provider.
 - **Last use.** The last-used day is written at most once per token and UTC day — a note per
   replica and a conditional update — as bookkeeping, not as an act (ADR 0035 D2).
 - **Open streams.** An event stream is not a next request: at every heartbeat it checks the
@@ -290,7 +326,8 @@ the columns released before keep their places. The mark tells, it does not bind:
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
   filters the tenant's audit view (`GET …/audit`) by token, person, action, entity type and
-  period, as JSON or CSV. In CSV, a cell a spreadsheet would read as a formula — one starting
+  period, as JSON or CSV — in the browser on the tenant's audit page, where an act's token is one
+  click away from the acts it made ([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)). In CSV, a cell a spreadsheet would read as a formula — one starting
   with `=`, `+`, `-`, `@`, a tab or a carriage return — is prefixed with an apostrophe
   ([`api/tenants.go`](../../backend/internal/api/tenants.go) `neutralise`).
 
@@ -325,7 +362,10 @@ the columns released before keep their places. The mark tells, it does not bind:
   [ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D6). It shows a token nothing but itself, never another of its person's, and a browser session
   has no token to show (`404`). The MCP client reads it to tell the model the limits it will run
-  into ([agent-client.md](agent-client.md)).
+  into ([agent-client.md](agent-client.md)). Where the request holds `set-horizon`, its set names
+  `override-urgency` after it — the capability's name before 2026-10-05, which the `cowork-mcp` of
+  the release before looks for —: a second name of the same capability, granting nothing more
+  (`requestCapabilities` in [`api/token.go`](../../backend/internal/api/token.go)).
 
 ## Capabilities, the baseline and the hard-off list
 
@@ -334,19 +374,19 @@ the columns released before keep their places. The mark tells, it does not bind:
 | `decide` | `analysed → decided` |
 | `close` | the done act, both ways to `done` ([ADR 0009](../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5): done by hand, and the `PATCH` that brings the last of a ticket's three progress stages to 100 — only from `in-progress` or `review`, otherwise `agent_forbidden` (`mayClose` in [`api/transitions.go`](../../backend/internal/api/transitions.go)); the verification note stays required, and the open prerequisites the agent can see still refuse. Without it that `PATCH` is refused whole, and the stage keeps its value |
 | `drop` | a move to `dropped` from any state but `done` and `dropped` |
-| `override-urgency` | setting and withdrawing an urgency override |
+| `set-horizon` | setting a ticket's horizon, `later` included, and naming one other than `later` at a filing. Named `override-urgency` until 2026-10-05 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D4 as amended): a set sent with the old name is stored with the new one, a set stored before keeps the old name — which the checks of migration 37 still take — and `auth.Canonical` reads it as `set-horizon` wherever a set comes in, so both names guard the same acts and no other |
 | `interest` | a `need` or `urgent` stake |
 | `upload` | uploading an attachment |
 | `create-project` | creating a project |
 | `record-answer` | answering a question, which for an agent writes its person's answer down: the answer is marked `recorded_by_agent`, and an agent changes only an answer an agent recorded |
-| `rank` | a move in the rank (`moveTicketRank`); adopting the score is not built |
+| `rank` | a move in the rank (`moveTicketRank`), a filing's place, and adopting the score — the sort of a project's rank by it (`sortProjectRank`) |
 
 Without a capability, an agent with `write` scope whose person is a member has the baseline
 (ADR 0043 D2, as the handlers build it): filing a ticket and editing its fields and its body,
 comments, links, questions, the progress stages short of the done act, a `watch` stake, the
 transitions `filed → analysed`, `decided → in-progress`, `in-progress → review`, into `blocked`
-and back, and the acts of H-6. An agent's urgency override needs a reason as well as
-`override-urgency` (`400` without one; a person may leave it out,
+and back, and the acts of H-6. An agent's horizon needs a reason as well as `set-horizon`, for
+`later` too on `PUT …/horizon` (`400` without one; a person may leave it out,
 [ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3).
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
@@ -356,6 +396,7 @@ and back, and the acts of H-6. An agent's urgency override needs a reason as wel
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
+| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does) |
 
 Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
 edits or withdraws only comments an agent of the same person wrote
@@ -414,19 +455,28 @@ the capability set that applied:
   `mayEdit`).
 - **Editing a project's** name, description and WIP limits, while creating one needs
   `create-project` ([`api/projects.go`](../../backend/internal/api/projects.go) `edit`).
+- **Saving, changing, sharing and deleting its person's saved filter** ([`api/filters.go`](../../backend/internal/api/filters.go)):
+  a shared filter shows every member of the tenant its name and conditions, with the person as its
+  owner.
 
-The integration tests assert all six as allowed, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
+The integration tests assert the first six as allowed and an agent's saved filter as its marked act, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
 agent a `read` token, and an administrator finds them in the tenant's audit view by token.
 
 <a id="h-7"></a>
 ### H-7 — An open event stream outlives a revocation by up to one heartbeat
 
-Live today. A stream checks its token — or its session — and its person's membership at every
+Live today. A stream checks its token — or its session — and its person's memberships at every
 heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
-stream whose token was revoked or expired, whose session ended, whose person left the tenant,
-or whose person lost a project still receives the events its filter admitted at the last
-heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
-makes with the dead token or session is refused at once; the window is the stream's alone.
+stream whose token was revoked or expired, whose session ended or whose person was deactivated
+still receives the events its filters admitted at the last heartbeat — the keys, versions and
+kinds of the acts, no content, of every tenant a person-level stream follows. A person who leaves a
+tenant or loses a project by an act — a grant removed, a membership derived away, a restriction, an
+access entry — loses it at the stream before that tenant's next event, because every such act makes
+the stream compute its filter of the tenant again
+([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read),
+[the person-level stream](tenancy.md#the-person-level-stream)); only such a change made in the
+database past the API waits for the heartbeat. Every request the
+client makes with the dead token or session is refused at once; the window is the stream's alone.
 
 <a id="h-30"></a>
 ### H-30 — With the server key, an audit row's address hash gives the address back
@@ -465,8 +515,27 @@ names its token's id and not its name, so the activity shows the act as made thr
 cannot name; a comment, a file, a question, a time entry, a filing or a stake of that time carries
 no mark, and a plain token's act there reads as its person's — the activity still marks the act,
 except a booking, which the activity leaves out, and the tenant's audit view filters the record by
-token. Nothing is backfilled. **Two fields of the API**: a link's `created_by` and an urgency
-override's `by` name the person whether the person, an agent or a plain token made it; no view of
-the UI shows either, and the act behind each — `linked`, `overridden` — is marked in the activity.
+token. Nothing is backfilled. **Two fields of the API**: a link's `created_by` and a set
+horizon's `by` (`horizon_set.by`, and `urgency_override.by` under its deprecated name) name the
+person whether the person, an agent or a plain token made it; no view of the UI shows either, and
+the act behind each — `linked`, `overridden` — is marked in the activity.
 An image rolled back to the release before migration 27 writes no mark on any of these rows.
 Mitigation: the activity, and the tenant's audit view by token.
+
+<a id="h-57"></a>
+### H-57 — A tenant's administrators read an unrestricted token's metadata and end it everywhere
+
+Live by design, the owner's choice of 2026-10-05
+([ADR 0035](../adr/0035-personal-access-tokens.md) D5). An unrestricted token reaches every tenant
+its person belongs to, so it is in the token list of each of them. **What its administrators read
+of it is the person's across their tenants**: the token's name — free text, which may name a client,
+a host or a project of another tenant ([H-49](#h-49)) — and its last-used day, which may be a day it
+was used only in another tenant, so an administrator learns that the person worked with it
+somewhere that day. **What its administrators do to it reaches the person's other tenants**: a
+revocation ends it there too, and is recorded in the revoking tenant's audit alone; the other
+tenants' administrators see their requests with it refused, and their own token list shows it
+revoked, but not by whom or why. A token restricted to a tenant shows in that tenant's list only.
+Mitigation: a token for one tenant's work is restricted to that tenant, and named for its use; a
+person who works for several clients keeps an unrestricted token for nothing a client's
+administrator should not see or end.
+

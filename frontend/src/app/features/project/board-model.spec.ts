@@ -1,7 +1,7 @@
-import { Block, Ticket, TicketState, Urgency } from '../../api/models';
+import { Block, Horizon, Ticket, TicketState } from '../../api/models';
 import {
   arrange,
-  boardUrgencies,
+  boardHorizons,
   cardAction,
   ColumnId,
   columnOf,
@@ -18,7 +18,7 @@ function ticket(number: number, fields: Partial<Ticket> = {}): Ticket {
     key: `acme/COW-${number}`,
     number,
     state: 'in-progress',
-    urgency: 'now',
+    horizon: 'now',
     progress_derived: false,
     block: null,
     done_from: null,
@@ -64,55 +64,55 @@ describe('the columns (docs/adr/0018 D1, docs/adr/0019 D3)', () => {
     expect(specOf('review').title).toBe('Review');
   });
 
-  it('show the urgencies now, release and next', () => {
-    expect(boardUrgencies).toEqual(['now', 'release', 'next']);
+  it('show the horizons now, release and next', () => {
+    expect(boardHorizons).toEqual(['now', 'release', 'next']);
   });
 });
 
 describe('placeOf', () => {
-  it.each(['now', 'release'] as Urgency[])(
-    'puts an open leaf of urgency %s in the column of its state',
-    (urgency) => {
-      expect(placeOf(ticket(1, { urgency, state: 'filed' }))).toBe('refinement');
-      expect(placeOf(ticket(1, { urgency, state: 'decided' }))).toBe('ready');
-      expect(placeOf(ticket(1, { urgency, state: 'review' }))).toBe('review');
+  it.each(['now', 'release'] as Horizon[])(
+    'puts an open leaf of horizon %s in the column of its state',
+    (horizon) => {
+      expect(placeOf(ticket(1, { horizon, state: 'filed' }))).toBe('refinement');
+      expect(placeOf(ticket(1, { horizon, state: 'decided' }))).toBe('ready');
+      expect(placeOf(ticket(1, { horizon, state: 'review' }))).toBe('review');
     },
   );
 
   it.each(['filed', 'decided', 'in-progress', 'review', 'blocked'] as TicketState[])(
-    'puts a leaf of urgency next in the column next, also when it is %s',
+    'puts a leaf of horizon next in the column next, also when it is %s',
     (state) => {
-      expect(placeOf(ticket(1, { urgency: 'next', state }))).toBe('next');
+      expect(placeOf(ticket(1, { horizon: 'next', state }))).toBe('next');
     },
   );
 
-  it.each(['later', 'icebox'] as Urgency[])(
-    'leaves a ticket of urgency %s off the board',
-    (urgency) => {
-      expect(placeOf(ticket(1, { urgency }))).toBeNull();
+  it.each(['later', 'icebox'] as Horizon[])(
+    'leaves a ticket of horizon %s off the board',
+    (horizon) => {
+      expect(placeOf(ticket(1, { horizon }))).toBeNull();
     },
   );
 
   it('leaves a parent off the board: its children carry the work', () => {
     expect(placeOf(ticket(1, { progress_derived: true }))).toBeNull();
-    expect(placeOf(ticket(1, { progress_derived: true, urgency: 'next' }))).toBeNull();
+    expect(placeOf(ticket(1, { progress_derived: true, horizon: 'next' }))).toBeNull();
   });
 
   it.each(['done', 'dropped'] as TicketState[])('leaves a %s ticket off the board', (state) => {
     expect(placeOf(ticket(1, { state }))).toBeNull();
-    expect(placeOf(ticket(1, { state, urgency: 'next' }))).toBeNull();
+    expect(placeOf(ticket(1, { state, horizon: 'next' }))).toBeNull();
   });
 });
 
 describe('arrange', () => {
   const tickets = [
     ticket(1, { state: 'in-progress' }),
-    ticket(2, { state: 'filed', urgency: 'next' }),
+    ticket(2, { state: 'filed', horizon: 'next' }),
     ticket(3, { state: 'analysed' }),
-    ticket(4, { state: 'filed', urgency: 'release' }),
-    ticket(5, { state: 'review', urgency: 'later' }),
+    ticket(4, { state: 'filed', horizon: 'release' }),
+    ticket(5, { state: 'review', horizon: 'later' }),
     ticket(6, { state: 'in-progress' }),
-    ticket(7, { state: 'decided', urgency: 'next' }),
+    ticket(7, { state: 'decided', horizon: 'next' }),
   ];
 
   it('puts every ticket where it belongs, in the order it came in, which is the rank', () => {

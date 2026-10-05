@@ -1,0 +1,154 @@
+<app-confirm-dialog />
+
+<section class="page">
+  <header class="head">
+    <h1>Tokens</h1>
+  </header>
+
+  @if (tenantInfo.isAdmin()) {
+    <p class="muted lead" data-testid="tenant-tokens-lead">
+      The personal access tokens that can act in this tenant: every member's tokens that are not
+      restricted to a tenant — they reach every tenant the member belongs to — and those restricted
+      to this one. A token restricted to another tenant is not shown. You see what a token is, never
+      the token itself; revoking an unrestricted one ends it in all of its person's tenants.
+    </p>
+
+    <div class="panel">
+      <p-table
+        [value]="table.items()"
+        [rowTrackBy]="byId"
+        [loading]="table.rows.isLoading()"
+        [showLoader]="false"
+        size="small"
+        data-testid="tenant-tokens"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Name</th>
+            <th>Person</th>
+            <th>Scope</th>
+            <th>Agent</th>
+            <th>Reach</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>Last used</th>
+            <th>State</th>
+            <th class="col-actions" aria-label="Actions"></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-token>
+          <tr
+            [attr.data-testid]="'tenant-token-' + token.id"
+            [class.dead]="token.state !== 'active'"
+          >
+            <td class="name">{{ token.name }}</td>
+            <td>
+              {{ token.person.display_name }}
+              @if (token.person.username) {
+                <span class="muted username">{{ token.person.username }}</span>
+              }
+            </td>
+            <td>
+              <span
+                class="pill outline"
+                [style.--accent]="scopeAccent(token.scope)"
+                [pTooltip]="scopeMeaning(token.scope)"
+                [showDelay]="400"
+                >{{ token.scope }}</span
+              >
+            </td>
+            <td>
+              @if (token.agent) {
+                <span class="agent">
+                  <span class="pill outline" data-testid="agent"
+                    ><i class="pi pi-microchip-ai"></i>agent</span
+                  >
+                  <span class="muted capabilities">{{ capabilitiesText(token) }}</span>
+                </span>
+              } @else {
+                <span class="muted">—</span>
+              }
+            </td>
+            <td data-testid="reach">
+              @if (unrestricted(token)) {
+                <span
+                  class="everywhere"
+                  tabindex="0"
+                  pTooltip="Not restricted to a tenant: it acts in every tenant its person belongs to, and revoking it ends it in all of them."
+                  tooltipEvent="both"
+                  [showDelay]="400"
+                  >every tenant of the person</span
+                >
+              } @else {
+                this tenant
+                @if (token.restricted_project; as project) {
+                  <span class="muted"> / </span><span class="key">{{ project }}</span>
+                }
+              }
+            </td>
+            <td class="when">{{ dateTime(token.created_at) }}</td>
+            <td class="when">{{ dateTime(token.expires_at) }}</td>
+            <td class="when">
+              @if (token.last_used_on) {
+                {{ day(token.last_used_on) }}
+              } @else {
+                <span class="muted">never</span>
+              }
+            </td>
+            <td>
+              <span
+                class="pill"
+                data-testid="state"
+                [style.--accent]="stateAccent(token.state)"
+                [pTooltip]="stateMeaning(token.state)"
+                [showDelay]="400"
+                ><span class="dot"></span>{{ token.state }}</span
+              >
+            </td>
+            <td class="col-actions">
+              @if (token.state === 'active') {
+                <button
+                  pButton
+                  type="button"
+                  [text]="true"
+                  severity="danger"
+                  size="small"
+                  [attr.aria-label]="'Revoke ' + token.name + ' of ' + token.person.display_name"
+                  [attr.data-testid]="'tenant-token-revoke-' + token.id"
+                  (click)="revoke(token)"
+                >
+                  Revoke
+                </button>
+              }
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr>
+            <td colspan="10" class="muted empty" data-testid="tenant-tokens-empty">
+              {{ failure() ?? 'No token can act in this tenant.' }}
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+      @if (table.total() > 0) {
+        <p-paginator
+          [first]="(table.page() - 1) * table.perPage()"
+          [rows]="table.perPage()"
+          [totalRecords]="table.total()"
+          [rowsPerPageOptions]="perPageOptions"
+          [showCurrentPageReport]="true"
+          currentPageReportTemplate="{first}–{last} of {totalRecords}"
+          (onPageChange)="table.turn($event)"
+          data-testid="tenant-tokens-pages"
+        />
+      }
+    </div>
+  } @else if (session.me.isLoading()) {
+    <p-skeleton width="24rem" height="2rem" />
+  } @else {
+    <p class="muted" data-testid="tenant-tokens-notice">
+      The tokens of the tenant's members are its administrators' to see.
+    </p>
+  }
+</section>

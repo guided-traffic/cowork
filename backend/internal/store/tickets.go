@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,12 +33,12 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at`
 
 const ticketFrom = `FROM tickets t
@@ -45,9 +46,9 @@ JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id`
 
 // ValueSet is one repeatable filter parameter: any of In, none of NotIn
@@ -79,10 +80,12 @@ type TicketFilter struct {
 	Types      ValueSet
 	Severities ValueSet
 	Securities ValueSet
-	Urgencies  ValueSet
-	Efforts    ValueSet
-	Assignees  PersonSet
-	Reporters  PersonSet
+	// Horizons filters by the horizon a ticket stands in, which the columns
+	// keep as the urgency (docs/adr/0010 D1): the one set, else the derived.
+	Horizons  ValueSet
+	Efforts   ValueSet
+	Assignees PersonSet
+	Reporters PersonSet
 	// Parents filters by parent ticket id, None for roots.
 	Parents       PersonSet
 	ProgressMin   *int
@@ -119,7 +122,7 @@ type InterestFilter struct {
 // TicketOrder is a list's fixed sort (docs/adr/0048 D6).
 type TicketOrder int
 
-// The two ticket orders.
+// The three ticket orders.
 const (
 	// ByRank is a project's list: the ranked tickets by their key, then the
 	// unranked — the terminal ones, and the open ones a release before the
@@ -127,6 +130,10 @@ const (
 	ByRank TicketOrder = iota
 	// NewestFirst is the tenant-wide list.
 	NewestFirst
+	// ByScore is a tenant's part of a person-level list: the score's order,
+	// highest first, then the id (docs/adr/0014 D5). The ids are unique across
+	// tenants, so the parts of every tenant merge into one order.
+	ByScore
 )
 
 // rankedKey is the key a ticket is listed by in its project's rank: none
@@ -136,17 +143,51 @@ const (
 const rankedKey = "(CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END)"
 
 // Position is the cursor position after r in the order: the id (NewestFirst),
-// or the key and the number, "<key>.<number>", the key empty for an unranked
-// ticket, a done or dropped one included whatever its column holds (ByRank).
+// the score's key and the id (ByScore), or the key and the number,
+// "<key>.<number>", the key empty for an unranked ticket, a done or dropped
+// one included whatever its column holds (ByRank).
 func (o TicketOrder) Position(r TicketRow) string {
-	if o == NewestFirst {
+	switch o {
+	case NewestFirst:
 		return r.ID.String()
+	case ByScore:
+		return ScorePosition(r.ScoreKey, r.ID)
 	}
+	return RankPosition(r.Rank, r.State, r.Number)
+}
+
+// ScorePosition is a place in the score's order as a cursor position:
+// "<score key>/<id>", the key written so that it reads back to the same
+// float64 — "-Inf" for a ticket without a score. A score is shown on the
+// ticket, so the position needs no sealing.
+func ScorePosition(key float64, id uuid.UUID) string {
+	return strconv.FormatFloat(key, 'g', -1, 64) + "/" + id.String()
+}
+
+// ParseScorePosition reads a ScorePosition.
+func ParseScorePosition(position string) (float64, uuid.UUID, error) {
+	key, id, _ := strings.Cut(position, "/")
+	k, err := strconv.ParseFloat(key, 64)
+	if err != nil || math.IsNaN(k) || math.IsInf(k, 1) {
+		return 0, uuid.Nil, fmt.Errorf("bad score position %q", position)
+	}
+	u, err := uuid.Parse(id)
+	if err != nil {
+		return 0, uuid.Nil, fmt.Errorf("bad score position %q: %w", position, err)
+	}
+	return k, u, nil
+}
+
+// RankPosition is a ticket's place in its project's rank as a cursor position:
+// "<key>.<number>", the key empty for an unranked ticket, a done or dropped one
+// included whatever its column holds (docs/adr/0014 D2). It is computed over
+// tickets the caller may not see, so the API seals it.
+func RankPosition(rank *string, state domain.TicketState, number int32) string {
 	var key string
-	if r.Rank != nil && !r.State.Terminal() {
-		key = *r.Rank
+	if rank != nil && !state.Terminal() {
+		key = *rank
 	}
-	return key + "." + strconv.Itoa(int(r.Number))
+	return key + "." + strconv.Itoa(int(number))
 }
 
 // TicketPage selects a page: after a cursor's position with a limit, or a
@@ -169,12 +210,14 @@ type TicketList struct {
 }
 
 // ListTickets renders a ticket list under the tenant and visibility
-// predicates (docs/adr/0021 D4, docs/adr/0034 D4, docs/adr/0065 D4): the one
-// place in the data layer that builds SQL at run time (docs/adr/0027 D4).
+// predicates (docs/adr/0021 D4, docs/adr/0034 D4, docs/adr/0065 D4) and
+// without the deleted tickets (docs/adr/0024 D3): the one place in the data
+// layer that builds SQL at run time (docs/adr/0027 D4).
 func (r *Reader) ListTickets(ctx context.Context, f TicketFilter, page TicketPage) (TicketList, error) {
 	b := &queryBuilder{}
 	b.where("t.tenant_id = " + b.arg(r.TenantID))
 	b.where("app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)")
+	b.live()
 	b.filter(f)
 
 	var out TicketList
@@ -220,8 +263,11 @@ func (r *Reader) countTickets(ctx context.Context, b *queryBuilder) (int64, erro
 }
 
 func orderBy(o TicketOrder) string {
-	if o == NewestFirst {
+	switch o {
+	case NewestFirst:
 		return "ORDER BY t.id DESC"
+	case ByScore:
+		return "ORDER BY t.score_key DESC, t.id"
 	}
 	return "ORDER BY " + rankedKey + " NULLS LAST, t.number"
 }
@@ -240,14 +286,26 @@ func (b *queryBuilder) arg(v any) string {
 
 func (b *queryBuilder) where(cond string) { b.conds = append(b.conds, cond) }
 
+// live leaves the deleted tickets out, as every named query does
+// (docs/adr/0024 D3).
+func (b *queryBuilder) live() { b.where("t.deleted_at IS NULL") }
+
 // after is the cursor's condition: the position the previous page ended at.
 func (b *queryBuilder) after(o TicketOrder, after string) (string, error) {
-	if o == NewestFirst {
+	switch o {
+	case NewestFirst:
 		id, err := uuid.Parse(after)
 		if err != nil {
 			return "", fmt.Errorf("list tickets: bad cursor position: %w", err)
 		}
 		return "t.id < " + b.arg(id), nil
+	case ByScore:
+		key, id, err := ParseScorePosition(after)
+		if err != nil {
+			return "", fmt.Errorf("list tickets: %w", err)
+		}
+		k := b.arg(key)
+		return "(t.score_key < " + k + " OR (t.score_key = " + k + " AND t.id > " + b.arg(id) + "))", nil
 	}
 	key, number, _ := strings.Cut(after, ".")
 	n, err := strconv.Atoi(number)
@@ -274,7 +332,7 @@ func (b *queryBuilder) filter(f TicketFilter) {
 	b.textSet("t.type::text", f.Types)
 	b.textSet("t.severity::text", f.Severities)
 	b.textSet("t.security::text", f.Securities)
-	b.textSet("coalesce(t.urgency_override, t.urgency_derived)::text", f.Urgencies)
+	b.textSet("coalesce(t.urgency_override, t.urgency_derived)::text", f.Horizons)
 	b.textSet("t.effort::text", f.Efforts)
 	b.personSet("t.assignee_id", f.Assignees)
 	b.personSet("t.reporter_id", f.Reporters)
@@ -349,7 +407,7 @@ const openBlocker = `EXISTS (SELECT 1 FROM ticket_links bl
         JOIN tickets bs ON bs.tenant_id = bl.tenant_id AND bs.id = bl.source_id
         WHERE bl.tenant_id = t.tenant_id AND bl.target_id = t.id AND bl.type = 'blocks'
           AND bs.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(bs.project_id, bs.confidential, bs.assignee_id, bs.reporter_id))`
+          AND bs.deleted_at IS NULL AND app_ticket_visible(bs.project_id, bs.confidential, bs.assignee_id, bs.reporter_id))`
 
 func (b *queryBuilder) textSet(expr string, s ValueSet) {
 	if len(s.In) > 0 {

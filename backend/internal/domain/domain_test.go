@@ -56,29 +56,6 @@ func TestKeyInTenant(t *testing.T) {
 	assert.Error(t, err, "a full key of another tenant is refused")
 }
 
-// docs/adr/0010 D3, rule set v1, first match.
-func TestDeriveUrgency(t *testing.T) {
-	cases := []struct {
-		in   UrgencyInputs
-		u    Urgency
-		rule string
-	}{
-		{UrgencyInputs{State: StateFiled}, UrgencyLater, "v1:default"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockRelease}, UrgencyRelease, "v1:release-block"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockDecision}, UrgencyIcebox, "v1:icebox-block"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockHuman}, UrgencyIcebox, "v1:icebox-block"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockProduct}, UrgencyIcebox, "v1:icebox-block"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockExternal}, UrgencyLater, "v1:default"},
-		{UrgencyInputs{State: StateInProgress, OpenDecisionBlocker: true}, UrgencyIcebox, "v1:icebox-decision"},
-		{UrgencyInputs{State: StateBlocked, BlockKind: BlockRelease, OpenDecisionBlocker: true}, UrgencyRelease, "v1:release-block"},
-	}
-	for _, c := range cases {
-		u, rule := DeriveUrgency(c.in)
-		assert.Equal(t, c.u, u, "%+v", c.in)
-		assert.Equal(t, c.rule, rule, "%+v", c.in)
-	}
-}
-
 func TestValidProgress(t *testing.T) {
 	for _, p := range []int{0, 5, 50, 95, 100} {
 		assert.True(t, ValidProgress(p), p)
