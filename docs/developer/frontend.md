@@ -67,14 +67,14 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on `membership.changed`, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
-| `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
-| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only: the person-level stream also names tickets of the person's other tenants |
-| `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events, `membership.changed` and `inbox.changed` |
-| `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync` and `poll`; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current tenant or one that names the person in any of their tenants — a tenant joined appears in the tenant switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
+| `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current tenant may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
+| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only (`ofTenant`): the person-level stream carries the events of every tenant of the person |
+| `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events and `membership.changed` of every tenant of the person, and `inbox.changed`. `ofTenant(event, tenant)` says whether an event concerns a page of the tenant, `changesMemberships(event, tenant)` whether it may have changed who belongs to it |
+| `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync`, `poll` and a `membership.changed` that may change what the person sees in any of their tenants (`changesVisibility`) — a tenant left takes its notifications out of the count; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
 | `ThemeService` | The colour scheme |
-| `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on `membership.changed`, a `resync` and a `poll` |
+| `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on a `membership.changed` of the current tenant, a `resync` and a `poll` |
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
@@ -224,14 +224,24 @@ TicketRelations (detail page): comment/question/link of its key ─► that part
 ```
 
 ```
-an administrator's act, or the identity provider's groups ─► SSE: event membership.changed {person_id | project_id | mapping_id}
+an administrator's act, or the identity provider's groups ─► SSE: event membership.changed {tenant, person_id | project_id | mapping_id}
         │
         ▼
-EventStreamService.events ─► SessionService: GET /api/v1/me ─► the role, the navigation, the controls a page offers
-                         ├─► MembersService, GroupMappingsService, an open AccessList: load again
-                         └─► a project_id, or the person's own person_id: ProjectsService loads again,
-                             TicketsService refetches what is shown and reloads the open lists
+EventStreamService.events ─► SessionService: of the current tenant, or naming the person in any ─► GET /api/v1/me ─► the role, the tenants, the navigation
+                         ├─► of the current tenant: MembersService, GroupMappingsService, an open AccessList load again
+                         ├─► of the current tenant, a project_id or the person's own person_id: ProjectsService loads again,
+                         │   TicketsService refetches what is shown and reloads the open lists
+                         └─► of any tenant, a project_id or the person's own person_id: the bell's count and the person-level pages load again
 ```
+
+The person-level stream carries the events of every tenant of the person
+([events.md](events.md#the-person-level-stream)), whichever tenant it is opened on. What shows one
+tenant — every service above but `InboxService`, and `TicketRelations` — reacts to that tenant's events
+alone: a ticket event's key names its tenant, a membership event says it in `tenant`, and
+`ofTenant(event, session.tenant())` in
+[`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) is the check. A
+membership event without `tenant`, from a backend that does not send it yet, counts for every
+tenant: a reload too many, never one too few.
 
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
 board, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
@@ -250,8 +260,8 @@ an act that tells the person, or their notifications marked read ─► SSE on t
         │
         ▼
 EventStreamService.events ─► InboxService: the count of the bell and of the navigation
-                         └─► the inbox, "assigned to me" and "open decisions": load again
-a question asked of the person in another tenant ─► question.changed {key} without an id ─► "open decisions" loads again
+                         └─► the inbox: loads again
+any act of any tenant of the person ─► its event, with its id ─► reloadOn: the person-level pages that follow it load again
 ```
 
 **The fallback** (ADR 0054 D7): three `EventSource` errors in a row, a `CLOSED` source, or
@@ -284,16 +294,30 @@ order stays the server's — and links each ticket to `/t/<tenant>/tickets/<PROJ
 ([`person-list.ts`](../../frontend/src/app/features/me/person-list.ts) `ticketRoute`). A page reads the
 person's id as a primitive in its `params`, so that `me` loaded again leaves the list alone.
 
-| Page | Shows | Loads again on |
-|---|---|---|
-| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, `resync`, `poll` |
-| Assigned to me | the person's open tickets: the tenant, the type, the key and title, the severity, the state, the last change | `inbox.changed` — an assignment tells the assignee —, `ticket.changed` of the stream's tenant, `resync`, `poll` |
-| Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` — of any of the person's tenants for a question asked of them —, `inbox.changed`, `resync`, `poll` |
+**Every person-level page follows every tenant of the person through one call**, `reloadOn(list,
+changes)` in [`person-list.ts`](../../frontend/src/app/features/me/person-list.ts), made in the
+page's constructor with the page's list resource and a predicate over the stream's events — of any
+tenant, since the person-level stream carries them all
+([events.md](events.md#the-person-level-stream)). Besides the events the predicate picks, it loads
+the list again on what every person-level list depends on: a `membership.changed` that names the
+person or a project in any of their tenants (`changesVisibility` — a tenant joined or left, a role
+changed, a project restricted, opened or put on an access list), a `resync` and the fallback's
+`poll`. It reloads through `refresh`, so a burst of events, of one tenant or of several, costs one
+load in flight and one after it. A new person-level page — "next for me" among them — does the same:
 
-A change in another tenant that is not the person's own — a ticket unassigned there, a question open
-in that tenant answered by somebody else — shows at the next reload: the person-level stream carries
-the person's own events across their tenants and the events of one tenant
-([events.md](events.md#the-person-level-stream)); `/` still lists the tenants.
+```ts
+constructor() {
+  reloadOn(this.list, (event) => event.name === 'ticket.changed');
+}
+```
+
+| Page | Shows | Its predicate, besides what `reloadOn` follows for every page |
+|---|---|---|
+| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed` |
+| Assigned to me | the person's open tickets: the tenant, the type, the key and title, the severity, the state, the last change | `ticket.changed` of any tenant — an assignment, an unassignment, a move |
+| Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` of any tenant |
+
+`/` still lists the tenants.
 
 ## The backlog
 

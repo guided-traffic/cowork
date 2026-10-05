@@ -250,6 +250,7 @@ describe('MembersService', () => {
       { name: 'membership.changed', id: 'e1', personId: 'p9' },
       { name: 'membership.changed', id: 'e1', mappingId: 'm1' },
       { name: 'membership.changed', id: 'e1', personId: 'p9', projectId: 'j1' },
+      { name: 'membership.changed', id: 'e1', tenant: 'acme', personId: 'p9' },
       { name: 'resync' },
       { name: 'poll' },
     ])('loads the members again on %j', async (event) => {
@@ -262,6 +263,14 @@ describe('MembersService', () => {
       await settle();
 
       expect(names()).toEqual(['Ada', 'Bob']);
+    });
+
+    it("leaves the members alone on an act of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p9' });
+      await settle();
+
+      http.expectNone((request) => request.url === '/api/v1/tenants/acme/members');
+      http.expectNone('/api/v1/me');
     });
 
     it("sends the list's weak ETag on a poll and keeps the members on a 304 (docs/adr/0054 D7)", async () => {

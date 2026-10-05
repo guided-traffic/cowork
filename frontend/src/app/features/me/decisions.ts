@@ -33,9 +33,8 @@ export function askedOf(decision: Decision, person: string | undefined): string 
  * "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
  * their tenants, across every tenant they belong to, each beside its tenant and its ticket, in the
  * order of the tenant, the project and the ticket's place in its rank until the score exists
- * (docs/adr/0014 D5). It loads again when a question asked of the person changes in any of their
- * tenants or their inbox does, when a question of the stream's tenant changes, and on `resync` and
- * `poll` (docs/adr/0054 D1).
+ * (docs/adr/0014 D5). It loads again when a question of any of the person's tenants changes, and
+ * on what {@link reloadOn} follows for every person-level page (docs/adr/0054 D1).
  */
 @Component({
   selector: 'app-decisions',
@@ -143,10 +142,7 @@ export class Decisions {
   });
 
   constructor() {
-    reloadOn(
-      this.list,
-      (event) => event.name === 'question.changed' || event.name === 'inbox.changed',
-    );
+    reloadOn(this.list, (event) => event.name === 'question.changed');
   }
 
   protected ago(iso: string): string {

@@ -206,28 +206,89 @@ describe('the person-level lists', () => {
       expect(byTestId(page, 'assigned-count')?.textContent?.trim()).toBe('2 open tickets');
     });
 
-    it('loads again on an inbox change and a ticket change, not on a comment', async () => {
+    it("loads again on a ticket change of any of the person's tenants, not on a comment or the count (docs/adr/0054 D1)", async () => {
       configure(() => first);
       const { fixture } = await render(Assigned);
       invoke.mockClear();
 
-      stream.next({ name: 'inbox.changed', unread: 1 });
-      await fixture.whenStable();
       stream.next({
         name: 'ticket.changed',
-        id: 'e',
+        id: 'e1',
         key: 'acme/COW-2',
         version: 2,
         kind: 'assigned',
       });
       await fixture.whenStable();
       stream.next({
+        name: 'ticket.changed',
+        id: 'e2',
+        key: 'globex/OPS-1',
+        version: 3,
+        kind: 'unassigned',
+      });
+      await fixture.whenStable();
+      stream.next({
         name: 'comment.changed',
-        id: 'e',
+        id: 'e3',
         key: 'acme/COW-2',
         version: 2,
         kind: 'commented',
       });
+      await fixture.whenStable();
+      stream.next({ name: 'inbox.changed', unread: 1 });
+      await fixture.whenStable();
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+    });
+
+    it.each<[string, StreamEvent, number]>([
+      [
+        'an act that names the person in any of their tenants, a tenant left among them',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', personId: 'p1' },
+        1,
+      ],
+      [
+        'a project restricted or opened in any of their tenants',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', projectId: 'j1' },
+        1,
+      ],
+      [
+        "somebody else's membership",
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', personId: 'p2' },
+        0,
+      ],
+      [
+        'a group mapping',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', mappingId: 'm1' },
+        0,
+      ],
+      ['a resync', { name: 'resync' }, 1],
+      ["the fallback's poll", { name: 'poll' }, 1],
+    ])('follows what every person-level page follows: %s', async (_what, event, loads) => {
+      configure(() => first);
+      const { fixture } = await render(Assigned);
+      invoke.mockClear();
+
+      stream.next(event);
+      await fixture.whenStable();
+
+      expect(invoke).toHaveBeenCalledTimes(loads);
+    });
+
+    it('loads once more after a burst of events of several tenants, not once for each', async () => {
+      let release: () => void = () => undefined;
+      configure(() => first);
+      const { fixture } = await render(Assigned);
+      invoke.mockClear();
+      invoke.mockImplementationOnce(
+        () => new Promise((resolve) => (release = () => resolve(first))),
+      );
+
+      for (const key of ['acme/COW-2', 'globex/OPS-1', 'initech/HR-4', 'acme/COW-3']) {
+        stream.next({ name: 'ticket.changed', id: key, key, version: 2, kind: 'edited' });
+      }
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+      release();
       await fixture.whenStable();
 
       expect(invoke).toHaveBeenCalledTimes(2);
