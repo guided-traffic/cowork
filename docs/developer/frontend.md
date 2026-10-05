@@ -1,10 +1,11 @@
 # The frontend
 
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
-how a change reaches the screen, the person-level pages and the inbox, the search, the backlog and
-the two boards, the assistant, the generated client, and the development loop.
-Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets and the
-saved filters on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+how a change reaches the screen, the person-level pages and the inbox, the search, the backlog,
+the two boards and the tenant's ticket list, the assistant, the generated client, and the
+development loop.
+Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets, the
+saved filters and the tenant's ticket list on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -70,7 +71,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 |---|---|
 | `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current tenant or one that names the person in any of their tenants — a tenant joined appears in the tenant switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
 | `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current tenant may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
-| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only (`ofTenant`): the person-level stream carries the events of every tenant of the person |
+| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets` (the tenant's front page and [its ticket list](#the-tenants-ticket-list), a numbered page each), and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only (`ofTenant`): the person-level stream carries the events of every tenant of the person |
 | `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events and `membership.changed` of every tenant of the person, and `inbox.changed`. `ofTenant(event, tenant)` says whether an event concerns a page of the tenant, `changesMemberships(event, tenant)` whether it may have changed who belongs to it, `changesExistence(event)` whether a ticket was deleted, restored or purged — what changes lists no other event tells of, the inbox and its count among them |
 | `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync`, `poll` and a `membership.changed` that may change what the person sees in any of their tenants (`changesVisibility`) — a tenant left takes its notifications out of the count; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
@@ -247,7 +248,7 @@ membership event without `tenant`, from a backend that does not send it yet, cou
 tenant: a reload too many, never one too few.
 
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
-boards, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
+boards, the overview, the tenant's ticket list and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
 moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); a board holds
 itself while a card is dragged ([the board](#the-board)), the tenant board every swimlane
 ([the tenant board](#the-tenant-board)). `comment.changed` and `interest.changed` do not refetch the
@@ -428,16 +429,19 @@ ticket; a `done_after` that is no time is left out.
 
 **Saved filters** ([ADR 0018] D5). The filter bar holds
 [`SavedFilters`](../../frontend/src/app/features/project/saved-filters.ts),
-`<app-saved-filters [current] [applied] (chosen)>`: a select of the person's filters by name and the
+`<app-saved-filters [current] [applied] [leftOut] (chosen)>`, the part [the tenant's ticket
+list](#the-tenants-ticket-list) holds as well: a select of the person's filters by name and the
 shared ones with their owner — another member's that the server answers `redacted` is listed and
 disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
 deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
-the conditions the bar applies now (`current`); and the applied filter's warnings under the bar.
+the conditions the bar applies now (`current`); and under the bar the applied filter's warnings and
+each of its conditions the list does not apply, with why (`leftOut`, `notesOf`).
 What a backlog makes of a filter is
 [`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts): `toBacklog`
 puts its `q` into the search and the plain open states into the state select, and keeps every other
 condition — a negated or closed state included — in the page's `extra`, which both lists take as
-they are (`listParameters`); `project`, no parameter of a project's list, stays out and is noted.
+they are (`listParameters`); `project`, no parameter of a project's list, stays out, and the
+backlog's `leftOut`, `backlogLeftOut`, says so under the bar: the tenant's ticket list applies it.
 Applying one starts the lists at one page; choosing none clears the search, the states and the
 rest. `fromBacklog` is what saving keeps. A saved filter belongs to its tenant: another tenant's
 page starts without one.
@@ -573,6 +577,57 @@ project on a board: COW-12 stays in COW.* No list sorts, and nothing here edits 
 
 **Live.** The swimlanes' lists are the service's: an event reloads those in or near view and
 refetches the cached tickets, so a card moves where another person moved it.
+
+## The tenant's ticket list
+
+The tenant's tickets across its projects
+([`tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts), `/t/:tenant/tickets`,
+mirroring `GET …/tickets`; [ADR 0018] D5, [ADR 0023] D4) are *Tickets* in the navigation, right
+after *Board*, marked active on the list whatever its query and not on a ticket's own page; under
+`oversight` the link is not there and the page shows none of the work. It is a table over
+`TicketsService.tenantTickets`, newest first: the key, the project beside it — its name from
+`ProjectsService`, linked to the project's board, or its key where that list does not hold it, an
+archived project's —, the title with the type and the security class, the horizon with its meaning
+as the tooltip, the state, the severity, the effort, the assignee and the last update. A row opens
+its ticket. A deleted ticket is never in it: the API leaves deleted tickets out.
+
+**The address is the filter.** Every filter of the ticket lists ([ADR 0049] D1) is a query
+parameter of the page, read by `filterOf` and written by `queryOf` in
+[`tenant-tickets-model.ts`](../../frontend/src/app/features/tenant/tenant-tickets-model.ts), whose
+table `parameterKinds` is held to the generated `SavedFilterParameters`: a filter the API document
+adds does not compile until it has its kind there. The bar has a field for the text (`q`, written
+250 ms after the last keystroke) and a select of several values for the project and for each of the
+backlog's filters — state, type, severity, security, horizon (the API's `urgency`), effort, assignee
+(*Me*, *Unassigned* for `none`, the members) and reporter (*Me*, the members). A choice goes into the
+address with `replaceUrl` and is read back from it, so a filtered list is a link that comes back as
+it was after a reload. A select shows the plain values; a negated one (`state=!blocked`) stays
+applied when the select changes (`choosing`) and is named under the bar, *Also filtered by …*, with
+every parameter the bar has no control for — `parent`, `interest`, `blocked`, `has_open_questions`,
+`include_terminal`, the progress bounds and the times (`beyondBar`). A value a select does not
+offer — a project the list does not hold, a person who left, a value no longer in a vocabulary — is
+offered under its own name (`withChosen`); a value the API refuses fails the list, and the failure
+names each refused filter. A number or a flag of the address that does not read as one is sent as
+it is written, so that the server refuses it by name ([ADR 0049] D4) rather than the page dropping
+it unseen. *Clear filters* empties the address. A select keeps its options and its choice while
+they hold the same, because a choice made in an open select goes through the address and back.
+
+**Numbered pages** ([ADR 0048] D2, D4): 50 a page to begin with, the API's default, and 25, 50 or
+100 through PrimeNG's `Paginator`; another tenant, filter or size starts at the first page (a
+`linkedSignal`). The rows and the total of the last answer stay while the next page loads, so the
+pages do not move under the focus. A list that shrank under a later page — its tickets closed
+meanwhile — goes to its last page in one step: the paginator itself steps back one page only, and
+shows nothing where no ticket is left.
+
+**Saved filters** apply as on the backlog, through the same `SavedFilters` with the address's
+filter as `current` and nothing left out: applying one replaces the address's conditions with its
+own — `project` among them, which a backlog leaves out — and its text goes into the field; choosing
+none clears them, and so does *Clear filters*. The applied filter belongs to its tenant: another
+tenant's page starts without one.
+
+**Live.** The list is the service's: an event of the tenant the pages show (`ofTenant`) reloads the
+page shown, at its number, and refetches the cached ticket the event names where its version is
+newer; a `resync`, a `poll` and a change of what the person sees reload it as well, each through
+`ConditionalPages`, so a poll that finds the page unchanged costs a `304`.
 
 ## The progress stages and the done dialog
 

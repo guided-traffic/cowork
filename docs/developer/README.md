@@ -142,7 +142,9 @@ and the person-level lists are sections of [data-access.md](data-access.md#notif
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
 [frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
-they are; the rank itself is a section of
+they are, and the tenant's ticket list one of [frontend.md](frontend.md#the-tenants-ticket-list),
+whose address is its filter and which applies the saved filters as the backlog does; the rank
+itself is a section of
 [domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
 its own security page, [identity-provider.md](../security/identity-provider.md), and the

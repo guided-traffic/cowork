@@ -311,7 +311,7 @@ revocation of a refresh token at the issuer when a session ends; "next for me" â
 lists "assigned to me" and "open decisions" and the inbox exist ([api.md](api.md#the-person-level-routes),
 [frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries every
 tenant of the person ([events.md](events.md#the-person-level-stream)) â€”; a mention in a
-comment; the saved filters of the tenant-wide list and the tenant board, and the dashboard; the
+comment; the saved filters of the tenant board, and the dashboard; the
 score beside the rank and the rebalancing of the rank's keys; the deletion of a project; import;
 metrics. The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a

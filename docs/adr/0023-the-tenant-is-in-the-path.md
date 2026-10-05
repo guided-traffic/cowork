@@ -32,7 +32,9 @@ each hit naming its tenant, `?tenant=<slug>` narrowing to one as on the other li
 list. *(2026-10-05:)* D1's tenant-bound resources gain the bin, `…/deleted-tickets` with
 `…/deleted-tickets/{key}` and its `restore` — `{key}` one segment, `<PROJECT>-<number>`, as D3's —,
 and the saved filters, `…/filters` and `…/filters/{filter}`; D4's UI mirrors the bin as
-`/t/{slug}/deleted-tickets`.
+`/t/{slug}/deleted-tickets`. *(2026-10-05:)* D4's UI mirrors the tenant's tickets, `GET …/tickets`,
+as `/t/{slug}/tickets`, a route D4 did not list, its filters the page's query parameters; a ticket's
+own page stays `/t/{slug}/tickets/{KEY}-{number}`.
 
 ## Context
 
