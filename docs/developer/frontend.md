@@ -1,8 +1,8 @@
 # The frontend
 
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
-how a change reaches the screen, the person-level pages and the inbox, the assistant, the generated
-client, and the development loop.
+how a change reaches the screen, the person-level pages and the inbox, the backlog and the two
+boards, the assistant, the generated client, and the development loop.
 Read against the tree on 2026-10-04. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
@@ -234,9 +234,10 @@ EventStreamService.events ─► SessionService: GET /api/v1/me ─► the role,
 ```
 
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
-board, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
-moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); the board holds
-itself while a card is dragged ([the board](#the-board)). `comment.changed` and `interest.changed` do not refetch the
+boards, the overview and the detail page at once. The backlog holds a reload back while a row is dragged and keeps its own
+moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); a board holds
+itself while a card is dragged ([the board](#the-board)), the tenant board every swimlane
+([the tenant board](#the-tenant-board)). `comment.changed` and `interest.changed` do not refetch the
 ticket — its version counts its own fields only ([ADR 0050] D1) — and neither does
 `question.changed`, while `link.changed` does, because a link changes the ticket's
 `open_prerequisites` without a new version. `resync` (the stream could not replay a
@@ -412,6 +413,15 @@ functions in [`board-model.ts`](../../frontend/src/app/features/project/board-mo
 | `dropMove`, `dropTargets` | The transition a drop on a column is — the move of [`transitions.ts`](../../frontend/src/app/shared/transitions.ts) to a state of that column, forward, back, into `blocked` or out of it — or none |
 | `cardAction`, `menuMoves` | The move inside the card's own column (`filed → analysed`), and the card's menu: that action, then a move to each column that takes the card |
 
+The page is three parts it shares with [the tenant board](#the-tenant-board), so that a card stands
+in the same column and moves the same way on both:
+
+| Part | What it is |
+|---|---|
+| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for |
+| [`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts) `BoardColumns` | The grid: *Next* and the five state columns with their counts, the cards, the drag with its marks and its hold, and the card's menu; `idPrefix` keeps the ids of its headings unique where a page shows several, `headingLevel` puts its headings one level below a swimlane's (`aria-level`), `hold` holds it while a card is dragged elsewhere on the page |
+| [`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts) `BoardMoves` | The moves, provided by the page: what a move on its way shows, the transition at once or after the dialog, *Now*, the live region's sentence and where the keyboard goes after a move; the page shows the dialog and the live region |
+
 **The columns.** Each state column shows its count against the project's WIP limit as `2 / 3` and
 is marked where it holds more ([ADR 0019] D3), the limit never refusing a card; *Next* counts its
 cards. The project's settings
@@ -461,6 +471,55 @@ to the card's menu button where the card went, or to its *Now* where a refused *
 ticket, and a card moves where another person moved it. While a card is dragged the board shows the
 columns as they were when it was picked up — the CDK measures its lists as the drag starts, and the
 card must not be moved from under the pointer — and applies what changed once it is put down.
+
+## The tenant board
+
+The tenant board ([`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts),
+`/t/:tenant/board`, [ADR 0018] D4 as amended 2026-10-05) is *Board* in the navigation, right after
+*Overview*; under `oversight` the link is not there and the page shows nothing of the work. It has
+a swimlane, [`BoardLane`](../../frontend/src/app/features/tenant/board-lane.ts), for each project of
+`ProjectsService` — the projects the person sees, which the list gives without the archived ones —
+in the order of the list, the projects' keys. A swimlane names its project with a link to the
+project's board, counts its cards, and shows the project board's columns over the same list
+(`boardList`, `BoardColumns`, [the board](#the-board)), counted against its own project's WIP
+limits; the count of the tickets done is the project board's alone. The decisions are pure
+functions in [`tenant-board-model.ts`](../../frontend/src/app/features/tenant/tenant-board-model.ts):
+
+| Function | Decides |
+|---|---|
+| `chosenKeys` | The filter of the address: `?project=`, repeated, each key once; none, every project |
+| `lanesOf` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list |
+| `laneOf` | The swimlane an element is in, by the `data-lane` of the swimlane's element |
+| `refusingLane` | The swimlane that says no to a dragged card: any but the card's own |
+
+**Lazy.** A swimlane asks for its list only while it is in view or near it: an
+`IntersectionObserver` per swimlane, whose root is the shell's content area — the scrollable the
+`ScrollDispatcher` names, because the page scrolls there and a margin on the window would end at
+the area's edge — with the margin `100% 0px` (`nearMargin`), a screen's height above and below.
+Before its first answer a swimlane's columns say nothing. A swimlane that leaves that area gives
+its list's parameters up, so the event stream no longer reloads it, and keeps showing what it
+showed — its cards read through the cache, which an event about a cached ticket still refetches;
+back near the view it asks again with the pages' `ETag`s, so an unchanged list costs a `304`.
+Without an `IntersectionObserver` every swimlane loads.
+
+**The filter** is a select of every project with a search, *Every project* when nothing is
+chosen. The choice is the address's `project`, repeated as the API's filters are ([ADR 0049] D1),
+written with `replaceUrl` and read back as the page's input, so a board can be linked and comes
+back as it was; a filter that names no project here says so and offers every project.
+
+**Drags.** Each swimlane is a `cdkDropListGroup` of its own: a card goes among the columns of its
+swimlane with the project board's rules, menu and dialogs (one `BoardMoves`, one dialog and one
+live region for the page). While a card is dragged every swimlane holds still — the CDK measures the
+card's swimlane as the drag starts, and a swimlane above it that grew would move it from under the
+pointer — and the other swimlanes step back. A drag into another swimlane is refused, visibly:
+the CDK does not let the card in, the page follows the pointer (`cdkDragMoved` and
+`document.elementFromPoint`, which the drag's preview lets through because it takes no pointer
+events), and the swimlane under it is outlined and says *A ticket never changes project on a
+board*; let go there, the card goes back and a toast says *Not moved*, *A ticket never changes
+project on a board: COW-12 stays in COW.* No list sorts, and nothing here edits the rank.
+
+**Live.** The swimlanes' lists are the service's: an event reloads those in or near view and
+refetches the cached tickets, so a card moves where another person moved it.
 
 ## The progress stages and the done dialog
 
@@ -783,6 +842,7 @@ attributes it finds things by are part of a page's contract, and `ng lint` cover
 [ADR 0038]: ../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
+[ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0052]: ../adr/0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md
 [ADR 0053]: ../adr/0053-signals-and-services-no-store-framework.md

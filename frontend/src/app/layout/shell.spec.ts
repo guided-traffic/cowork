@@ -817,19 +817,33 @@ describe('Shell', () => {
   });
 
   describe('the navigation', () => {
-    it('links the overview, the members, the time and the settings of the tenant', async () => {
+    it('links the overview, the board, the members, the time and the settings of the tenant', async () => {
       const { page } = await render();
 
-      const links = ['nav-overview', 'nav-members', 'nav-time', 'nav-settings'].map((testId) => [
-        page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
-        page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
-      ]);
+      const links = ['nav-overview', 'nav-board', 'nav-members', 'nav-time', 'nav-settings'].map(
+        (testId) => [
+          page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
+          page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
+        ],
+      );
       expect(links).toEqual([
         ['/t/acme', 'Overview'],
+        ['/t/acme/board', 'Board'],
         ['/t/acme/members', 'Members'],
         ['/t/acme/time', 'Time'],
         ['/t/acme/settings', 'Settings'],
       ]);
+    });
+
+    // docs/adr/0018 D4: the tenant's board stands beside its front page.
+    it('links the board of the tenant right after its overview', async () => {
+      const { page } = await render();
+
+      expect(
+        page
+          .querySelector('[data-testid="nav-board"]')
+          ?.previousElementSibling?.getAttribute('data-testid'),
+      ).toBe('nav-overview');
     });
 
     it('lists the projects of the tenant, each linked to its board', async () => {
@@ -939,6 +953,7 @@ describe('Shell', () => {
       expect(page.querySelector('[data-testid="nav-members"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-board"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
@@ -962,6 +977,14 @@ describe('Shell', () => {
       await TestBed.inject(Router).navigateByUrl('/t/acme');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-overview']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/board');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-board']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/board?project=COW');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-board']);
 
       await TestBed.inject(Router).navigateByUrl('/t/acme/members');
       await fixture.whenStable();
