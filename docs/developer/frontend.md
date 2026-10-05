@@ -3,7 +3,7 @@
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
 how a change reaches the screen, the person-level pages and the inbox, the assistant, the generated
 client, and the development loop.
-Read against the tree on 2026-10-04. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+Read against the tree on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -78,12 +78,14 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, and the confidential flag. A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, the confidential flag, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
+| `DeletedTicketsService` | The current tenant's bin of deleted tickets, every page of it, loaded only while the person is its administrator; a restoration, whose answer goes into the ticket cache, and a purge; loads again on a `ticket.changed` of its tenant whose kind is `deleted`, `restored` or `purged` — the purge job's included —, on `resync` and on `poll` |
+| `SavedFiltersService` | The saved filters of `workTenant` — the person's own and the shared ones —, every page of them; `create` with a key of its own, `update` with the filter's version as `If-Match`, `remove`; filters are not on the event stream, so the list loads again after each act, on `resync`, `poll` and when a filter bar opens its select |
 | `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
 
 **A resource loads again every time its `params` function runs** — Angular 22 wraps each result
@@ -369,6 +371,22 @@ done tickets links it, the section is the tickets done after that time (`state=d
 `done_after`), headed *done since* that time, until *Show all closed* goes back to every closed
 ticket; a `done_after` that is no time is left out.
 
+**Saved filters** ([ADR 0018] D5). The filter bar holds
+[`SavedFilters`](../../frontend/src/app/features/project/saved-filters.ts),
+`<app-saved-filters [current] [applied] (chosen)>`: a select of the person's filters by name and the
+shared ones with their owner — another member's that the server answers `redacted` is listed and
+disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
+deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
+the conditions the bar applies now (`current`); and the applied filter's warnings under the bar.
+What a backlog makes of a filter is
+[`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts): `toBacklog`
+puts its `q` into the search and the plain open states into the state select, and keeps every other
+condition — a negated or closed state included — in the page's `extra`, which both lists take as
+they are (`listParameters`); `project`, no parameter of a project's list, stays out and is noted.
+Applying one starts the lists at one page; choosing none clears the search, the states and the
+rest. `fromBacklog` is what saving keeps. A saved filter belongs to its tenant: another tenant's
+page starts without one.
+
 **The size.** [`SizeIcon`](../../frontend/src/app/shared/size.ts), `<app-size [value]="ticket.effort" />`,
 draws the effort as a T-shirt outline in inline SVG in the muted text colour with the letter on it,
 names itself `Effort M` as an image, and says so in its tooltip. The board's cards carry it as
@@ -498,6 +516,11 @@ text; Markdown is not rendered.
 | [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
+| [`TicketDelete`](../../frontend/src/app/features/ticket/ticket-delete.ts), beside the moves for a tenant administrator | The deletion ([ADR 0024] D1, D7): the open tickets that wait on it read first (`TicketActions.dependents`), then the page's dialog names them — a deletion does not refuse over them — and says that the ticket can be restored from the deleted tickets for thirty days; confirmed, `DELETE …/{number}`, a toast, and the project's backlog | — |
+
+**A ticket that goes while it is shown** — deleted, or out of the person's sight — leaves the cache
+when the refetch its event starts answers `404`, and the page says *No such ticket* as for a key that
+names nothing: the load succeeded for this key, and the cache holds no entry for it any more.
 
 **The parent** is chosen among the open tickets of the project, every page of them, read the first
 time the picker opens (`TicketsService.openTickets`) and filtered by short key and title as the
@@ -615,6 +638,15 @@ page that holds the meaning, each meaning once.
 | [`members.ts`](../../frontend/src/app/features/tenant/members.ts), `/t/:tenant/members` | Every member: name — for administrators with the e-mail address under it, which tells two persons of one name apart —, username, the effective role, and each origin as a badge — `mapping` and `grant` with their roles, `local account` where the person has one — a username and a password of their own, wherever the account was made. For administrators: *Add member* ([`add-member-dialog.ts`](../../frontend/src/app/features/tenant/add-member-dialog.ts), by e-mail address or username, the refusals `person_not_found`, `person_ambiguous` and `grant_exists` under the field), the grant as a select in the row (`PUT …/grant`), and its removal, which asks first and says what stays — the mapped role, or nothing. A change that takes the administrator's own administrator role away asks first. Anybody else sees the list without the controls |
 | [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role and its removal; for a global administrator without a role there, the list alone. A global administrator who administers the tenant (`global_admin` of `/api/v1/me` and the `admin` role, `mayMap`) gets the role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)), which sends the group as typed, without the spaces around it; any other administrator reads the role as text under one line that says only a global administrator creates and changes mappings ([ADR 0030] D7). A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
 | [`project-access.ts`](../../frontend/src/app/features/project/project-access.ts), in the project's settings | For administrators: the restriction switch (`PUT …/restriction` with the project's `If-Match`; a `412` says so and reloads the projects) and the access list of [`AccessList`](../../frontend/src/app/features/project/access-list.ts), which the section provides, so it lives as long as the page. A restriction asks first with its own [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), saying how many people are on the list — or, when nobody is, that only the tenant's administrators will see the project, and no number while the list is not loaded; opening asks as well, saying that the project and its tickets become visible to every member of the tenant, a confidential ticket excepted ([ADR 0065] D1). The list shows whether the project is restricted or not, because it may be filled before the restriction so that nobody on it loses the project in between: a tenant member is added with `member` or `viewer`, changed in the row, taken off. A row shows the person's e-mail address under the name, and the picker offers each member as *name (address)* where the member list has one, the label its options are named by and its filter searches. A row's select and its removal are disabled while the row's change or removal is out, and a removal takes the entry out of the list at once. The section starts again — its choice, an open question and its message gone — only for another project's key: the projects load again on events and hand in a new object for the same project |
+
+**The deleted tickets** ([`deleted-tickets.ts`](../../frontend/src/app/features/tenant/deleted-tickets.ts),
+`/t/:tenant/deleted-tickets`, mirroring `GET …/deleted-tickets`; [ADR 0024] D1, D2), linked for a
+tenant's administrators below *Time*: the bin of `DeletedTicketsService`, each ticket with its key,
+type, title, confidential mark, state, who deleted it and when, and when the purge removes it.
+*Restore* brings one back at once — it undoes a deletion and asks nothing. *Purge* asks twice: first
+naming the day the job would purge it and what goes, then *Purge for good*, a danger button, with
+the focus on *Keep it*, saying that nothing brings it back; a question belongs to the tenant it was
+asked in. Anybody else reads that the page is the administrators'.
 
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
@@ -735,6 +767,7 @@ attributes it finds things by are part of a page's contract, and `ng lint` cover
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md

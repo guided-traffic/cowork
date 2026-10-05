@@ -4,7 +4,7 @@ How a committed act reaches the clients that may see it: publication in the act'
 one listener per replica, the hub that fans out, the filter per stream, the person-level stream,
 the replay, the heartbeat, the limits, the shutdown, and what the Ingress must do for it. The decision is the one of
 [ADR 0054] — events carry keys and versions, never content, and polling is the fallback. Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ```
 Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► DB.Listen (one per replica)
@@ -25,6 +25,13 @@ transaction: PostgreSQL delivers it at commit and never after a rollback (D4). T
 `store.Notification`, is what the filter needs and what the event tells: the audit row's id, the
 tenant, the project, the entity, the action, the ticket key, the ticket's version, and the
 confidential rule's inputs — the flag, the assignee, the reporter.
+
+**A deletion, a restoration and a purge** are ticket acts like any other — `ticket.changed` with the
+kind `deleted`, `restored` or `purged` — and reach whoever could see the ticket by the facts it had:
+a client that refetches the ticket gets `404` after a deletion or a purge and drops it, and the bin
+of an administrator loads again. A purge's act carries the facts the ticket had (`Event.Published`),
+because the row is gone when the act is written ([ADR 0024] D1, D2). Saved filters are not
+published.
 
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
@@ -219,5 +226,6 @@ an id, and assert what never arrives: another person's question, a question on a
 away from the person, one on a confidential ticket they cannot see, one of a tenant they left, and
 anything of another tenant on a token restricted to one.
 
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

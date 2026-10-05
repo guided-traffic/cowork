@@ -95,7 +95,7 @@ reaches further than its person does at that moment.
 |---|---|
 | `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings and a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket, restoring and purging it ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), H-51), withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
@@ -356,6 +356,7 @@ and back, and the acts of H-6. An agent's urgency override needs a reason as wel
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
+| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) |
 
 Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
 edits or withdraws only comments an agent of the same person wrote
@@ -414,8 +415,11 @@ the capability set that applied:
   `mayEdit`).
 - **Editing a project's** name, description and WIP limits, while creating one needs
   `create-project` ([`api/projects.go`](../../backend/internal/api/projects.go) `edit`).
+- **Saving, changing, sharing and deleting its person's saved filter** ([`api/filters.go`](../../backend/internal/api/filters.go)):
+  a shared filter shows every member of the tenant its name and conditions, with the person as its
+  owner.
 
-The integration tests assert all six as allowed, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
+The integration tests assert the first six as allowed and an agent's saved filter as its marked act, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
 agent a `read` token, and an administrator finds them in the tenant's audit view by token.
 
 <a id="h-7"></a>

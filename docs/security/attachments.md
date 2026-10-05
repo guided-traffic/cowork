@@ -245,11 +245,16 @@ read attachment rows. Withdrawing the comment a file was attached to hides the c
 the file stays listed, downloadable and named in the export for every reader of the ticket. A
 screenshot uploaded by mistake with a secret in it stays readable until someone with the
 administrative database credential and access to the bucket removes both — outside the API,
-with the `uploaded` act left in the record. The purge of a ticket, which would remove its
-attachments
-([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)),
-is not built. Inside the API, a tenant administrator can narrow who reads the file by setting
-the ticket confidential ([tenancy.md](tenancy.md) "The confidential flag").
+with the `uploaded` act left in the record. Inside the API, a tenant administrator can narrow who
+reads the file by setting the ticket confidential ([tenancy.md](tenancy.md) "The confidential
+flag"), or take it back only with the whole ticket: deleting the ticket hides its files at once,
+and purging it removes their rows and then their objects
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)). The objects go after the
+purge committed, so that a rollback leaves no row naming missing bytes; an object whose removal
+fails then — or that no configured storage could remove — stays in the bucket with no row naming
+it, and the log names its key (`an attachment object of a purged ticket could not be removed`).
+Nothing sweeps such objects.
 
 ### The bucket's own controls
 

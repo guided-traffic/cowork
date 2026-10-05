@@ -148,9 +148,14 @@ accounts, sessions (the groups refresh's among them), repository bindings, membe
 mappings (a role and a version each) and a project's access list (its role), table-wide on
 `ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
 `ticket_interest`, `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`,
-`login_locks`, `memberships`, `group_mappings` and `project_access`, and only
+`login_locks`, `memberships`, `group_mappings`, `project_access`, `saved_filters` and
+`notifications`, and on a ticket and what belongs only to it — its questions, comments and their
+revisions, attachments, time entries and their revisions — where restrictive policies admit the
+purge of a deleted ticket alone ([below](#a-deleted-ticket-answers-like-a-missing-one)), and only
 `INSERT` and `SELECT` on `audit_events`, which makes the audit record append-only by grant
-([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3).
+([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D3); the one
+update of an audit row is the purge's, through the owner's function `purge_ticket_audit`, which
+empties the content of a deleted ticket's rows and nothing else.
 `TestTheAuditRecordIsAppendOnly` shows that `UPDATE`, `DELETE`, `TRUNCATE` and switching
 row-level security off are refused, and that a grant to itself grants nothing. The role
 inserts a tenant, a person, a membership, a token, a session, a local account, a group mapping or
@@ -343,6 +348,62 @@ parent or a ticket a block waits on that the caller cannot see is left out of th
 `parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
 hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
 a ticket's `open_prerequisites` count only the blockers the caller sees.
+
+## A deleted ticket answers like a missing one
+
+A tenant administrator deletes a ticket into the tenant's bin, restores it from there, and purges
+it — or the job does, thirty days after the deletion
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D1–D3, D7). Deleting, restoring and purging take the tenant role `admin` and `admin` scope; an agent
+— a token's or the chat's — meets the hard-off rule `deleting, restoring or purging`
+([tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list)). The bin is read with
+`read` scope; a token restricted to a project reaches neither the bin nor any of its routes.
+
+**The deletion is an application filter, not a policy.** Row-level security stays the tenant
+alone (D3). Every query that reads a ticket carries `deleted_at IS NULL` beside the visibility
+predicate — for the tenant's administrators too —, and a second unit test holds the query files to
+it as the first holds them to the predicate (`TestEveryReadOfTicketsCarriesTheDeletionFilter`); the
+list builder adds it in code (`TestTicketListLeavesTheDeletedOut`). Its exemptions name their
+reasons in the query files: the bin and the purge, which read deleted tickets only; a writer's
+reread; the publication of an act; a ticket read through the filter in the same transaction; and the
+rank keys, because a deleted ticket keeps its key. The integrity walks still step over deleted
+tickets, so that a restoration cannot close a cycle. A deleted ticket therefore answers exactly as a
+ticket that does not exist: `404` on its routes and on the key resolver, absent from every list,
+the full text, the trees, the person-level lists and the inbox, a link to it absent, an act that
+names it redacted, a block on it naming no ticket, a parent shown as hidden; `person_sees_ticket`
+answers no, so nobody is told of it. Its deletion reaches, as `ticket.changed` with the kind
+`deleted`, the streams that could see it, with its key and version, which they knew already. The
+integration tier walks all of it for an administrator, a member and a viewer
+(`TestADeletedTicketAnswersLikeAMissingOne`), and the bins of two tenants apart.
+
+**The purge is the one path that deletes a ticket.** The runtime role may delete a ticket and what
+belongs only to it — its comments and their revisions, questions, attachments, time entries and
+their revisions — only through restrictive policies that name the job `ticket-purge` in `app.job`
+and a deleted ticket ([migration 35](../../backend/internal/store/migrations/000035_ticket_deletion.up.sql)):
+a delete outside the purge, a forgotten `WHERE` included, removes nothing, and the purge removes
+nothing of a live ticket (`TestThePurgePoliciesHoldEveryDeleteToTheBin`). The notifications'
+restrictive policies admit the purge for a deleted ticket's notifications only. The audit rows of a
+purged ticket keep its key, the actor and the act, their `before`, `after`, `reason` and `note`
+emptied by `purge_ticket_audit`, a `SECURITY DEFINER` function of the owner role — the one place the
+runtime role reaches an update of the audit record ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md)
+D3): it empties nothing but those four fields, of the rows of one deleted ticket of the current
+tenant, in a transaction that names the purge, and its `search_path` is fixed with `pg_temp` last.
+The job reads the deleted tickets due of every tenant — their ids and tenants only — through
+`tickets_purge_due`, a policy that admits them in a transaction named `ticket-purge` **with no
+tenant set**, and then binds itself to each tenant in turn; a request's purge always has a tenant,
+so it never reads past it.
+
+## Saved filters are their owner's
+
+A saved filter carries its tenant and the canonical policy, and restrictive policies hold reading to
+its owner or a shared filter and every write to its owner
+([migration 36](../../backend/internal/store/migrations/000036_saved_filters.up.sql);
+`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`). Its parameters name projects, tickets and
+persons as the lists take them. A member's shared filter that names a project or a ticket another
+reader cannot see — or one that is gone — is answered to that reader `redacted`, its parameters and
+warnings withheld, as an act that names a hidden ticket is; its name and its owner stay, because the
+owner shared them. The name is free text, as a comment's is: what an owner writes into it, every
+member of the tenant reads.
 
 ## Members, grants and group mappings
 
@@ -744,6 +805,43 @@ gap's: only a global administrator who administers the tenant makes one or chang
 ([above](#members-grants-and-group-mappings)). Mitigation: tenants whose administrators must not
 learn about each other's people belong in installations of their own.
 
+<a id="h-51"></a>
+### H-51 — An administrator's `admin` token purges for good
+
+Live today. Deleting and purging take `admin` scope and no browser session, by the rule of
+[tokens.md](tokens.md#what-only-a-session-does) — an act that gives access, or leaves something
+behind a revoked token, takes a session; one that takes something away does not. A leaked token of
+a tenant administrator with `admin` scope can therefore delete every ticket it sees and purge each
+at once, two requests per ticket: the content, the comments, the files and the time of the tenant
+are gone, irreversibly, before anyone looks at the bin, and the audit record keeps only who did it
+through which token. The browser asks twice before a purge; the API does not. Mitigation: give
+scripts no `admin` token; a backup is the only way back
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
+
+<a id="h-52"></a>
+### H-52 — A release before the deletion shows deleted tickets again in a rollback
+
+Dormant until an image is rolled back over migration 35
+([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4). The
+release before it knows no `deleted_at`: run over this schema, its queries list, show and export a
+deleted ticket to whoever its visibility predicate admits, until the newer release runs again. A
+purge it does not do; the purge job of the newer release takes the ticket in its time. Mitigation:
+roll back across the deletion only with an empty bin, or purge first.
+
+<a id="h-53"></a>
+### H-53 — Deleted is not gone until the purge, and the purge leaves traces outside the tables
+
+Live for every deleted ticket. Until the purge — thirty days, or an administrator's act — the
+deleted ticket, everything that hangs off it and its files stay in the database, the bucket and the
+backups as they were; only the queries hide them, for everybody, administrators included. After the
+purge, its key and the ids of its rows stay in the audit record by design (ADR 0024 D2), its key in
+the log lines that name it (`ticket purged`, the request log's paths) and in the event ring for the
+replay window (H-5); the stored answer of a keyed creation of the ticket, a question or a comment
+keeps their text in `idempotency_keys` for up to a day after it was written (H-2); and an object
+whose removal failed after the commit stays in the bucket with no row naming it
+([attachments.md](attachments.md#h-13)). Backups taken before the purge keep everything. A legal
+retention shorter or longer than thirty days is not configurable.
+
 ### The owner credential in the serving process
 
 The split of the two roles protects against a compromised serving process only while that
@@ -764,7 +862,9 @@ names it in `app.job`, and a person's own rows whoever names the person: such a 
 creates tenants, persons, global administrators, memberships, group mappings, sessions and tokens
 for any person, and changes any person's groups and administrator flag. What it still cannot do
 is what the grants withhold: change a policy or switch `FORCE` off, rewrite or delete the audit
-record, change a token's scope, restriction, agent flag, capabilities or expiry, bind a person to
+record — beyond what the purge's owner function does, which such a process reaches as well: it can
+delete any ticket, name the purge and empty the `before`, `after`, `reason` and `note` of that
+ticket's audit rows, never their key, actor, act or time —, change a token's scope, restriction, agent flag, capabilities or expiry, bind a person to
 another username or another identity of the issuer, or clear a token's revocation — the owner's
 trigger `tokens_revocation_is_final` refuses that, and the runtime role can neither drop nor
 disable it. It can revoke any token.

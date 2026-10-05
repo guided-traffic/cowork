@@ -9,8 +9,30 @@ soft delete for tickets alone, and over hard delete. The additional rules of D7 
 the owner with the question and confirmed.
 
 **Partly built** (phase 2, 2026-10-02): D4 for projects (archived, never deleted) and people
-(a `deactivated_at` column a token's person is refused by). Ticket deletion, the purge, its
-filter on every list and the tenant deletion are not built; no route deletes anything.
+(a `deactivated_at` column a token's person is refused by). ~~Ticket deletion, the purge, its
+filter on every list and the tenant deletion are not built; no route deletes anything.~~ *(Ticket
+deletion and the purge built 2026-10-05, below; the tenant deletion is not.)*
+
+**Built** (phase 3, 2026-10-05): D1–D3 and D7 for tickets.
+[Migration 35](../../backend/internal/store/migrations/000035_ticket_deletion.up.sql) adds
+`deleted_at` and `deleted_by`; `DELETE …/projects/{project}/tickets/{number}` deletes,
+`GET …/deleted-tickets` is the bin, `PUT …/deleted-tickets/{key}/restore` restores and
+`DELETE …/deleted-tickets/{key}` purges — a tenant administrator's acts with `admin` scope, never an
+agent's ([`api/deletion.go`](../../backend/internal/api/deletion.go)), each recorded and published.
+D3 as built: every query of the data layer that reads a ticket carries `deleted_at IS NULL` beside
+the visibility predicate, held to it by a unit test over the query files; the bin's two queries and
+the purge's invert it, and the rank keys, a writer's reread, the publication of an act and the
+integrity walks name their exemptions. D2 as built: the job `ticket-purge` runs every hour on every
+replica under its advisory lock ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
+D5), up to 200 tickets a run, and the explicit purge asks twice in the browser and nothing more in
+the API; deleting what belongs to the ticket is held to the purge of a deleted ticket by restrictive
+policies, the audit rows' content is emptied by an owner's function
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D3 as amended
+2026-10-05), and the attachment objects go after the commit. Two consequences the record did not
+name were decided in building: a purged ticket's children become roots, and a block that waited on
+it waits on its key as an external reference, an act on that ticket. D1's "dashboard tile" and
+"search" are covered by the same filter where they exist (the `q` filter of the lists); the
+dashboard and the search of ADR 0025 are not built. D4's deletion of a project and D6 are not built.
 
 **Partly built** (phase 3, 2026-10-03): D5 for local accounts — a tenant's administrator
 deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the

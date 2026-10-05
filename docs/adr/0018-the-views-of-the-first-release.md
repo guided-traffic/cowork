@@ -60,7 +60,13 @@ of the person as a union of per-tenant reads with the tenant beside each key, in
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
 "assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
+Status. *(2026-10-05:)* D5 on the backlog: saved filters as named parameter sets of the lists
+([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D6, D7), a
+person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
+from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
+[`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
+Not built: the score's marker in the backlog, D3's "next for me", D4, D5 on the tenant list view —
+no page lists a tenant's tickets — and on the tenant board, D6, D7.
 
 ## Context
 

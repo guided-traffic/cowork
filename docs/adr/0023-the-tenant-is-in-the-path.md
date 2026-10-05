@@ -25,7 +25,10 @@ each one read per tenant of the person, every item naming its tenant, `?tenant=<
 one and answering a slug that names none of the person's tenants like D5's unknown slug
 ([`api/inbox.go`](../../backend/internal/api/inbox.go), [`api/mylists.go`](../../backend/internal/api/mylists.go));
 D4's `/me/inbox`, `/me/assigned` and `/me/decisions`. Not built: D2's `next` and `search`, D4's
-`/me/next`.
+`/me/next`. *(2026-10-05:)* D1's tenant-bound resources gain the bin, `…/deleted-tickets` with
+`…/deleted-tickets/{key}` and its `restore` — `{key}` one segment, `<PROJECT>-<number>`, as D3's —,
+and the saved filters, `…/filters` and `…/filters/{filter}`; D4's UI mirrors the bin as
+`/t/{slug}/deleted-tickets`.
 
 ## Context
 

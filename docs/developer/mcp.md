@@ -83,7 +83,11 @@ func watchTool() Tool {
   failure: `check` turns an answer other than the wanted status into an `APIError`, rendered
   with the API's code, its message, the fields it named and — for `agent_forbidden` — that a
   refusal is the API's no; `usage` is a call the tool refuses itself, a key it cannot resolve; a
-  `textError` (the `api` tool) is the answer as it is.
+  `textError` (the `api` tool) is the answer as it is. A deleted ticket is a `404` to every tool, as
+  a missing one is, and no tool deletes: through `api`, the deletion, the restoration and the purge
+  meet the hard-off rule `deleting, restoring or purging` with any token
+  ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+  D7; `TestTheToolsNeverDeleteAndMissADeletedTicket`).
 - **A creating `POST`** sends `IdempotencyKey: s.key()`, from the session's `NewKey` — a fresh
   UUIDv7 per act in `cowork-mcp`, a key derived from the conversation and the call in the chat; a
   write that overwrites reads the ticket first and sends its `ETag` in `If-Match`; a transition sends
