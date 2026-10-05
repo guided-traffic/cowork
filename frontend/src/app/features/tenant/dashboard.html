@@ -1,0 +1,375 @@
+<section class="page">
+  <header class="head">
+    <div>
+      <h1>{{ session.shown()?.name ?? session.tenant() }}</h1>
+      @if (tiles()) {
+        <p class="muted" data-testid="open-count">{{ headline() }}</p>
+      }
+    </div>
+  </header>
+
+  @if (!session.oversight()) {
+    <form class="filters" ngNoForm (submit)="$event.preventDefault()" aria-label="Filters">
+      <div class="field">
+        <span id="dashboard-projects-label">Projects</span>
+        <p-select
+          [options]="projectOptions()"
+          [multiple]="true"
+          [ngModel]="chosen()"
+          (ngModelChange)="chooseProjects($event)"
+          placeholder="Every project"
+          [filter]="true"
+          size="small"
+          ariaLabelledBy="dashboard-projects-label"
+          data-testid="dashboard-projects"
+        />
+      </div>
+      <div class="field">
+        <label for="dashboard-from">From</label>
+        <input
+          pInputText
+          id="dashboard-from"
+          type="date"
+          pSize="small"
+          [ngModel]="period().from"
+          (ngModelChange)="choosePeriod('from', $event)"
+          data-testid="dashboard-from"
+        />
+      </div>
+      <div class="field">
+        <label for="dashboard-to">To</label>
+        <input
+          pInputText
+          id="dashboard-to"
+          type="date"
+          pSize="small"
+          [ngModel]="period().to"
+          (ngModelChange)="choosePeriod('to', $event)"
+          data-testid="dashboard-to"
+        />
+      </div>
+      @if (filtered()) {
+        <button
+          pButton
+          type="button"
+          size="small"
+          [text]="true"
+          severity="secondary"
+          (click)="clear()"
+          data-testid="dashboard-clear"
+        >
+          <i class="pi pi-filter-slash"></i>
+          <span>Every project, last thirty days</span>
+        </button>
+      }
+    </form>
+
+    @if (backwards()) {
+      <p class="muted" role="alert" data-testid="dashboard-backwards">
+        The period ends before it begins: choose a first day on or before the last.
+      </p>
+    } @else if (failure(); as problem) {
+      <p class="muted" role="alert" data-testid="dashboard-failed">
+        The dashboard could not be loaded: {{ problem.detail || problem.title }}
+      </p>
+    }
+
+    <div class="tiles">
+      <section class="tile" aria-labelledby="tile-state-title" data-testid="tile-state">
+        <h2 id="tile-state-title">Open tickets</h2>
+        @if (tiles()) {
+          <p class="figure tabular">{{ openTotal() }}</p>
+          <div class="stack" aria-hidden="true">
+            @for (part of states(); track part.state) {
+              @if (part.count > 0) {
+                <span
+                  class="segment"
+                  [style.width]="share(part.count, openTotal())"
+                  [style.background]="'var(--p-state-' + part.state + ')'"
+                ></span>
+              }
+            }
+          </div>
+          <div class="legend">
+            @for (part of states(); track part.state) {
+              @if (part.count > 0) {
+                <span class="tabular" [attr.data-testid]="'state-' + part.state"
+                  ><app-state [value]="part.state" /> {{ part.count }}</span
+                >
+              }
+            }
+            @if (openTotal() === 0) {
+              <span class="muted">Nothing open</span>
+            }
+          </div>
+        } @else {
+          <p-skeleton height="5rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-severity-title" data-testid="tile-severity">
+        <h2 id="tile-severity-title">Open by severity</h2>
+        @if (tiles(); as d) {
+          <div class="bars">
+            @for (part of d.open_by_severity; track part.severity) {
+              <div class="bar-row" [attr.data-testid]="'severity-' + part.severity">
+                <span class="label"><app-severity [value]="part.severity" /></span>
+                <span class="track" aria-hidden="true"
+                  ><span
+                    [style.width]="share(part.count, severityMax())"
+                    [style.background]="'var(--p-severity-' + part.severity + ')'"
+                  ></span
+                ></span>
+                <span class="count tabular">{{ part.count }}</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <p-skeleton height="7rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-security-title" data-testid="tile-security">
+        <h2 id="tile-security-title">Open security findings</h2>
+        @if (tiles(); as d) {
+          @for (finding of d.security; track finding.class) {
+            <div class="named" [attr.data-testid]="'security-' + finding.class">
+              <div class="named-head">
+                <app-security [value]="finding.class" />
+                <span class="count tabular">{{ finding.count }}</span>
+              </div>
+              @if (finding.oldest; as oldest) {
+                <a
+                  class="ticket-link"
+                  [routerLink]="['/t', session.tenant(), 'tickets', shortKey(oldest.key)]"
+                  [attr.data-testid]="'security-' + finding.class + '-oldest'"
+                >
+                  <span class="ticket-key tabular">{{ shortKey(oldest.key) }}</span>
+                  <span class="ticket-title">{{ oldest.title }}</span>
+                </a>
+                <span class="muted small">oldest, filed {{ ago(oldest.since) }}</span>
+              } @else {
+                <span class="muted small">None open</span>
+              }
+            </div>
+          }
+        } @else {
+          <p-skeleton height="7rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-blocked-title" data-testid="tile-blocked">
+        <h2 id="tile-blocked-title">Blocked</h2>
+        @if (tiles(); as d) {
+          <p class="figure tabular">{{ d.blocked.count }}</p>
+          @if (d.blocked.oldest; as oldest) {
+            <a
+              class="ticket-link"
+              [routerLink]="['/t', session.tenant(), 'tickets', shortKey(oldest.key)]"
+              data-testid="blocked-oldest"
+            >
+              <span class="ticket-key tabular">{{ shortKey(oldest.key) }}</span>
+              <span class="ticket-title">{{ oldest.title }}</span>
+            </a>
+            <span class="muted small" data-testid="blocked-since"
+              >blocked longest, since {{ ago(oldest.since) }}, waits on
+              <strong>{{ oldest.kind }}</strong></span
+            >
+          } @else {
+            <span class="muted small">Nothing is blocked</span>
+          }
+        } @else {
+          <p-skeleton height="5rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-age-title" data-testid="tile-age">
+        <h2 id="tile-age-title">Age of the open tickets</h2>
+        @if (tiles(); as d) {
+          <div class="bars">
+            @for (bucket of d.age; track bucket.from_days) {
+              <div class="bar-row" [attr.data-testid]="'age-' + bucket.from_days">
+                <span class="label">{{ ageLabel(bucket) }}</span>
+                <span class="track" aria-hidden="true"
+                  ><span [style.width]="share(bucket.count, ageMax())"></span
+                ></span>
+                <span class="count tabular">{{ bucket.count }}</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <p-skeleton height="7rem" />
+        }
+      </section>
+
+      <section
+        class="tile wide"
+        aria-labelledby="tile-throughput-title"
+        data-testid="tile-throughput"
+      >
+        <h2 id="tile-throughput-title">Done per week</h2>
+        @if (tiles(); as d) {
+          <ol class="columns">
+            @for (week of d.throughput; track week.week) {
+              <li [attr.data-testid]="'week-' + week.week">
+                <span class="count tabular">{{ week.done }}</span>
+                <span class="column" aria-hidden="true"
+                  ><span [style.height]="share(week.done, weekMax())"></span
+                ></span>
+                <span
+                  class="muted small"
+                  [attr.title]="week.week + ', ' + week.from + ' to ' + week.to"
+                  >{{ shortDay(week.from) }}
+                  @if (partialWeek(week)) {
+                    <span> so far</span>
+                  }
+                </span>
+              </li>
+            }
+          </ol>
+        } @else {
+          <p-skeleton height="8rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-lead-title" data-testid="tile-lead-time">
+        <h2 id="tile-lead-title">Lead time</h2>
+        @if (tiles(); as d) {
+          @if (d.lead_time.median_seconds !== null) {
+            <p class="figure tabular" data-testid="lead-time">
+              {{ leadTime(d.lead_time.median_seconds) }}
+            </p>
+            <span class="muted small"
+              >median from filed to done, of {{ d.lead_time.done }} done
+              {{ shortDay(d.lead_time.from) }} to {{ shortDay(d.lead_time.to) }}</span
+            >
+          } @else {
+            <p class="figure muted" data-testid="lead-time">—</p>
+            <span class="muted small"
+              >Nothing done {{ shortDay(d.lead_time.from) }} to {{ shortDay(d.lead_time.to) }}</span
+            >
+          }
+        } @else {
+          <p-skeleton height="5rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-decisions-title" data-testid="tile-decisions">
+        <h2 id="tile-decisions-title">Open decisions</h2>
+        @if (tiles(); as d) {
+          <p class="figure tabular">{{ d.decisions.count }}</p>
+          @if (d.decisions.oldest; as oldest) {
+            <a
+              class="question-link"
+              [routerLink]="['/t', session.tenant(), 'tickets', shortKey(oldest.key)]"
+              data-testid="decisions-oldest"
+            >
+              <span class="question">{{ oldest.question }}</span>
+              <span class="muted small"
+                >Q{{ oldest.number }} on {{ shortKey(oldest.key) }}, asked
+                {{ ago(oldest.since) }}</span
+              >
+            </a>
+          } @else {
+            <span class="muted small">No question is open</span>
+          }
+        } @else {
+          <p-skeleton height="5rem" />
+        }
+      </section>
+
+      <section class="tile" aria-labelledby="tile-time-title" data-testid="tile-time">
+        <h2 id="tile-time-title">Time booked</h2>
+        @if (tiles(); as d) {
+          <p class="figure tabular">{{ duration(d.time.total_minutes) }}</p>
+          <div class="bars">
+            @for (part of d.time.projects; track part.project) {
+              <div class="bar-row" [attr.data-testid]="'time-' + part.project">
+                <span class="label" [attr.title]="part.name">{{ part.project }}</span>
+                <span class="track" aria-hidden="true"
+                  ><span [style.width]="share(part.minutes, timeMax())"></span
+                ></span>
+                <span class="count tabular">{{ duration(part.minutes) }}</span>
+              </div>
+            } @empty {
+              <span class="muted small"
+                >Nothing booked {{ shortDay(d.period.from) }} to {{ shortDay(d.period.to) }}</span
+              >
+            }
+          </div>
+        } @else {
+          <p-skeleton height="5rem" />
+        }
+      </section>
+    </div>
+
+    <h2>Projects</h2>
+    <div class="projects">
+      @for (project of cards(); track project.key) {
+        <a
+          class="project"
+          [routerLink]="['/t', session.tenant(), 'p', project.key, 'board']"
+          [attr.data-testid]="'project-' + project.key"
+        >
+          <div class="title">
+            <span class="key">{{ project.key }}</span>
+            <span class="name">{{ project.name }}</span>
+            <span class="count tabular">{{ project.open }}</span>
+          </div>
+          @if (project.description) {
+            <p class="description muted">{{ project.description }}</p>
+          }
+          <div class="stack" aria-hidden="true">
+            @for (part of project.byState; track part.state) {
+              <span
+                class="segment"
+                [style.width]="share(part.count, project.open)"
+                [style.background]="'var(--p-state-' + part.state + ')'"
+              ></span>
+            }
+          </div>
+          <div class="legend">
+            @for (part of project.byState; track part.state) {
+              <span class="tabular"><app-state [value]="part.state" /> {{ part.count }}</span>
+            } @empty {
+              <span class="muted">Nothing open</span>
+            }
+          </div>
+        </a>
+      } @empty {
+        @if (projects.projects.isLoading()) {
+          @for (i of [1, 2, 3]; track i) {
+            <p-skeleton height="8.5rem" borderRadius="12px" />
+          }
+        } @else if (filter().length > 0) {
+          <p class="muted">No project of the tenant matches the filter.</p>
+        } @else {
+          <p class="muted">This tenant has no projects yet.</p>
+        }
+      }
+    </div>
+
+    <h2>Recently updated</h2>
+    <div class="recent panel">
+      @for (ticket of tiles()?.recent ?? []; track ticket.key) {
+        <a
+          class="row"
+          [routerLink]="['/t', session.tenant(), 'tickets', shortKey(ticket.key)]"
+          [attr.data-testid]="'recent-' + ticket.key"
+        >
+          <app-type [value]="ticket.type" />
+          <span class="ticket-key tabular">{{ shortKey(ticket.key) }}</span>
+          <span class="ticket-title">{{ ticket.title }}</span>
+          <app-state [value]="ticket.state" />
+          <span class="when muted">{{ ago(ticket.updated_at) }}</span>
+        </a>
+      } @empty {
+        @if (tiles()) {
+          <p class="muted empty">No open tickets.</p>
+        } @else {
+          <p-skeleton height="12rem" />
+        }
+      }
+    </div>
+  }
+</section>

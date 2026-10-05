@@ -23,9 +23,9 @@ import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
 import { Accounts } from './features/tenant/accounts';
 import { Audit } from './features/tenant/audit';
+import { TenantDashboard } from './features/tenant/dashboard';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
-import { TenantOverview } from './features/tenant/overview';
 import { TenantSettings } from './features/tenant/tenant-settings';
 import { TicketDetail } from './features/ticket/ticket-detail';
 import { TimeReport } from './features/time/time-report';
@@ -54,7 +54,7 @@ const pages: [string, Type<unknown>][] = [
   ['me/inbox', Inbox],
   ['me/assigned', Assigned],
   ['me/decisions', Decisions],
-  ['t/:tenant', TenantOverview],
+  ['t/:tenant', TenantDashboard],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
   ['t/:tenant/p/:project/settings', ProjectSettings],
@@ -148,7 +148,7 @@ describe('the routes', () => {
       named('/login', Login),
       named('/', Shell, Home),
       named('/me/tokens', Shell, Tokens),
-      named('/t/acme', Shell, TenantScope, TenantOverview),
+      named('/t/acme', Shell, TenantScope, TenantDashboard),
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),
       named('/t/acme/group-mappings', Shell, TenantScope, GroupMappings),

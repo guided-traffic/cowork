@@ -87,6 +87,8 @@ export type { RunChatTurn$Params as RunChatTurn$Params } from './fn/chat/run-cha
 export { runChatTurn as runChatTurn } from './fn/chat/run-chat-turn';
 export type { StopChatTurns$Params as StopChatTurns$Params } from './fn/chat/stop-chat-turns';
 export { stopChatTurns as stopChatTurns } from './fn/chat/stop-chat-turns';
+export type { GetDashboard$Params as GetDashboard$Params } from './fn/dashboard/get-dashboard';
+export { getDashboard as getDashboard } from './fn/dashboard/get-dashboard';
 export type { StreamEvents$Params as StreamEvents$Params } from './fn/events/stream-events';
 export { streamEvents as streamEvents } from './fn/events/stream-events';
 export type { ListProjects$Params as ListProjects$Params } from './fn/projects/list-projects';
