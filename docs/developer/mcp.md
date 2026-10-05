@@ -14,7 +14,7 @@ D5 (the keys), [ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised
 (the commit strings) and [ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md)
 (the subcommands). Setting it up is [docs/operations/claude-code.md](../operations/claude-code.md);
 what it holds and leaves open, [docs/security/agent-client.md](../security/agent-client.md).
-Read against the tree on 2026-10-04.
+Read against the tree on 2026-10-05.
 
 ## Three layers
 
@@ -122,8 +122,11 @@ bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not 
    with the exact `create_project` call. No remote and no file is silence for the hook.
 3. Bound: the person's tickets `in-progress` in the project, in rank order. The first is active:
    its `/context` with five comments and ten acts, cut to the budget, then the commit strings and
-   its page. None: the top five of the backlog for the person — `review`, `decided`, `analysed`,
-   `filed`, assigned to them or to nobody, waiting on no open prerequisite — in rank order.
+   its page. None: the top five of "next for me" in the bound project — `GET /api/v1/me/next` with
+   the binding's `tenant` and `project`, a page of 25, the person's open tickets and the unassigned
+   ones by score ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D5) — passing
+   over those in progress, blocked or waiting on an open prerequisite, each with its score and its
+   place in its horizon of the backlog (`candidatesSection`).
 4. With a previous start in the memory: the acts since then on the person's other tickets in
    progress, the count of them on the active one, and the project's tickets that changed.
 5. The start is recorded in the memory — by the tool and the hook, not by `lookup`, and not

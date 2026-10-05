@@ -3,7 +3,7 @@
 How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
 role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
 ticket, act, event, notification and time entry, and what the person-level lists and stream gather
-across a person's tenants, as built on 2026-10-04. What a token or an agent may do with
+across a person's tenants, as built on 2026-10-05. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -332,7 +332,8 @@ The exemptions, each with its reason written in its query file:
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `person_sees_ticket` ([the person-level lists](#the-person-level-lists-are-unions-one-tenant-at-a-time)) |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
 | `GetRepositoryBinding` | whether the tenant binds a repository at all: the identity and path are unique in the tenant, and the `409 repository_bound` names the project only when the caller sees it |
-| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice (H-3) |
+| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, a hidden ticket's included, so none is handed out twice, and a rebalancing spreads every key, so a hidden ticket keeps its place (H-3) |
+| `GetScoreInputs` | the inputs of the score of a ticket the writer read through the predicate in the same transaction, read again after its write |
 
 `person_sees_ticket` (migration 30) answers whether another person — not the caller — sees a ticket,
 past the caller's predicate: `CanSeeTicket` (the person a question is asked of) and the recipients of a
@@ -565,8 +566,8 @@ in the database as well as one through the API (`TestStreamFollowsAccess`).
 
 ## The person-level lists are unions, one tenant at a time
 
-The inbox, "assigned to me" and "open decisions" (`GET /api/v1/me/inbox`, `…/assigned`,
-`…/decisions`) are the one kind of answer that spans tenants
+The inbox, "next for me", "assigned to me" and "open decisions" (`GET /api/v1/me/inbox`, `…/next`,
+`…/assigned`, `…/decisions`) are the one kind of answer that spans tenants
 ([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). They are
 built as ADR 0021 D5 has it: the person's memberships are read first, and each tenant is then read in
 a transaction of its own, bound to that tenant and the caller, under the same predicates as the
@@ -576,11 +577,17 @@ tenant's own lists; the parts are merged in the application, and no query names 
 all; a global administrator without a role in a tenant has no membership there and reads nothing of
 it. A token restricted to a tenant reads that tenant alone, and one restricted to a project its project
 alone — `app.restricted_project_id` hides every project of another tenant. A `tenant` that names none
-of the person's tenants is the boundary's `404`, whether or not it exists. A cursor is bound to its
-person and its narrowing, and carries the rank of a ticket sealed as a project's list does (H-3).
-`TestTheInboxIsThePersonsAcrossTheirTenants`, `TestAssignedToMeAcrossTenants` and
-`TestOpenDecisionsAcrossTenants` cover the tenants, the restricted project, the narrowing and the
-restricted tokens.
+of the person's tenants is the boundary's `404`, whether or not it exists, and "next for me"'s
+`project` names a project within that tenant, one hidden from the person listing nothing. A cursor is
+bound to its person and its narrowing, and carries the score's key and the ticket's id — the score is
+shown on the ticket, computed from its own facts and its stakes, which whoever sees the ticket reads
+([ADR 0013](../adr/0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D2) — so it is
+not sealed. The place in the backlog beside each ticket counts only the open tickets of its horizon
+the reader sees (`ListRankPlaces`, the predicate on every ticket it compares), so it tells nothing of
+a hidden one. "Next for me" holds the person's own and the unassigned open tickets, never a
+colleague's. `TestTheInboxIsThePersonsAcrossTheirTenants`, `TestNextForMeAcrossTenants`,
+`TestAssignedToMeAcrossTenants` and `TestOpenDecisionsAcrossTenants` cover the tenants, the
+restricted project, the confidential ticket, the narrowing and the restricted tokens.
 
 **A notification is its person's.** The act's own transaction writes it for each person the act
 tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an
@@ -681,14 +688,23 @@ that asks only what its caller sees lets a hidden ticket slip by. Both kinds exi
   Whether a move writes is decided over the tickets the mover can see (`NextSeenRankedTicket`,
   `PreviousSeenRankedTicket`): a ticket that sits next to its neighbour for the mover answers
   unchanged, whatever sits between unseen, and a move that writes puts the ticket where the
-  mover sees it go whether or not a hidden ticket sits there. Two signals remain. A move into a
-  gap that moves of hidden tickets wore down — 635 to 762 moves into one gap — fails as an
-  internal error, as any exhausted gap does. And the one write that ranks the open tickets an
+  mover sees it go whether or not a hidden ticket sits there. Two signals remain. A gap that
+  moves of hidden tickets wore down no longer fails a move: before a key passes 32 characters the
+  project's keys are spread again, every ticket's — a hidden one's included — keeping its place,
+  with no act and no version (`rebalanceRank`); what is left of the signal is the time the move that
+  spreads them takes, and a cursor of the project's list handed out before resumes at its old key's
+  place among the new ones. And the one write that ranks the open tickets an
   earlier release left without a key — a hidden ticket's filing, reopen or move included —
   changes how the list shows them, with no act the caller sees: with `include_terminal` they
   move from among the done and dropped tickets, by number, to before them, and a cursor
-  positioned on one changes. `TestRankAroundAHiddenTicket` and `TestRankKeyIsNeverShown` hold
-  the rest.
+  positioned on one changes. `TestRankAroundAHiddenTicket`, `TestRankKeyIsNeverShown` and
+  `TestEightHundredMovesIntoOneGap` hold the rest.
+- The sort of a project's rank by the score
+  ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D3) reorders only the open
+  tickets the sorter sees, in the keys they hold among themselves: a hidden ticket keeps its key, its
+  place and its version, the act names only the tickets it moved, and the activity of a hidden ticket
+  holds no sort (`TestSortByScore`); a reader who cannot see one of the tickets the act names reads it
+  without its payload, as any act whose refs name a hidden ticket.
 
 Each reveals at most that such a ticket or project exists — for the rank, at most that hidden
 tickets were moved or filed — and who acted on it when — never its content. Live as soon as a

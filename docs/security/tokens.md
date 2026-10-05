@@ -339,7 +339,7 @@ the columns released before keep their places. The mark tells, it does not bind:
 | `upload` | uploading an attachment |
 | `create-project` | creating a project |
 | `record-answer` | answering a question, which for an agent writes its person's answer down: the answer is marked `recorded_by_agent`, and an agent changes only an answer an agent recorded |
-| `rank` | a move in the rank (`moveTicketRank`); adopting the score is not built |
+| `rank` | a move in the rank (`moveTicketRank`), a filing's place, and adopting the score — the sort of a project's rank by it (`sortProjectRank`) |
 
 Without a capability, an agent with `write` scope whose person is a member has the baseline
 (ADR 0043 D2, as the handlers build it): filing a ticket and editing its fields and its body,

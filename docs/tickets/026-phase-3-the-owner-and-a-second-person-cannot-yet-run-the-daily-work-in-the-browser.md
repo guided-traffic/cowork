@@ -28,7 +28,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
 - **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
-  verification goes, exist; what is left of them is "next for me" (T35) and the mention (T36). The
+  verification goes, exist, and so does "next for me" as the start page; what is left of them is the
+  person-level pages following every tenant (T35) and the mention (T36). The
   end-to-end tier (T29) is built with the login's paths, filing and moving, the board and the
   backlog; its path with two identities through "assigned to me" and the inbox, and its required
   check, are left. And what is left of each child below.
@@ -59,7 +60,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
     reload and demo data;
   - high line coverage in the frontend's unit tier, measured and reported per pull request as
     [ADR 0003](../adr/0003-test-and-ci-policy.md) D5 has it, not gated by a number.
-- **Carried over from phase 2:** rank (built; its score and the rebalancing of its keys are T34),
+- **Carried over from phase 2:** rank (built, with its score and the rebalancing of its keys; their
+  end-to-end path is T34),
   deletion and purge (T39), numbered pages on the audit view, members, tokens and projects (T40),
   the attachment quota (T32), the server-side
   Markdown sanitiser (T33).
@@ -83,9 +85,10 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T32 — the attachment quota (the upload to a comment, the raster preview and the correction
      of a time entry are built)
    - T33 — the rendered Markdown body and the server-side sanitiser
-   - T34 — the score beside the rank, and the rebalancing of the rank keys (the backlog's
-     end-to-end path is built)
-   - T35 — next for me, the person-level pages following every tenant, the lists in the score's order
+   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look at
+     them (the score, the sort, the marker and the rebalancing are built)
+   - T35 — the person-level pages following every tenant (next for me and the score's order are
+     built)
    - T36 — the mention in a comment, and the inbox's end-to-end path
    - T37 — search
    - T38 — saved filters

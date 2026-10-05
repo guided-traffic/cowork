@@ -52,7 +52,10 @@ count; the urgency re-derived from a link or another ticket's change and a paren
 progress do not.)* *(Amended 2026-10-03: a move in the rank counts; the first key the rank
 gives a ticket a release before the rank left without one does not — it is no move, and it
 comes with another ticket's write ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
-D2).)*
+D2).)* *(Made concrete 2026-10-05: the score of ADR 0014 D4 does not count — it is derived, and a
+stake, an entity of its own, moves it —; a sort of the project's rank by the score counts for
+every ticket it moves, as a move does; a rebalancing of the rank's keys, which keeps every
+ticket's place, does not.)*
 
 **D2 — The version is the strong `ETag`.** Every `GET` of an entity, including
 `…/markdown` and `…/context` ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)),

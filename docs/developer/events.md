@@ -142,7 +142,7 @@ data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 
 with the audit row's id as `id`, `kind` the act's action, and the name by entity:
 `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
-everything else `ticket.changed` — an upload included (`# example` values above). A membership
+`project.changed`, everything else `ticket.changed` — an upload included (`# example` values above). A membership
 event's `data` is the keys of what changed instead, each only where it applies, and no `kind`:
 
 ```
@@ -153,7 +153,18 @@ data: {"person_id":"0199a3c2-1d2e-7f00-8000-000000000002","project_id":"0199a3c2
 
 (`# example`, an access entry). The client reloads what it shows of members, mappings and access
 lists, its projects when `project_id` is there, and `GET /api/v1/me`
-([frontend.md](frontend.md#how-a-change-reaches-the-screen)). A control message is
+([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project as a whole — the
+sort of its rank by the score ([domain.md](domain.md#rank)) — is `project.changed` with the
+project's key and the kind and no version, since it is no ticket's; the filter admits it as it
+admits the project's tickets, and the client loads its open lists again:
+
+```
+id: 0199a3c2-1d2e-7f00-8000-0000000000ac
+event: project.changed
+data: {"key":"acme/VKO","kind":"ranked"}
+```
+
+(`# example`). A control message is
 `event: resync` or `event: unavailable` with `data: {}`. At connect, `resync` only says that the
 gap cannot be replayed, and the stream goes on; any later control message ends the stream.
 

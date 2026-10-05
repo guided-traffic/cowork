@@ -7,7 +7,7 @@ filters, and the media types beside JSON. The decisions are [ADR 0046] (spec fir
 (errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
 (versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ## The document
 
@@ -19,9 +19,9 @@ into the file of its path family.
 |---|---|
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
@@ -227,9 +227,9 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 
 ## The person-level routes
 
-The routes under `/api/v1/me/` that list what spans tenants — the inbox, the tickets assigned to the
-person, the open decisions ([ADR 0023] D2) — name no tenant in their path, so no boundary admits them
-to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
+The routes under `/api/v1/me/` that list what spans tenants — the inbox, "next for me", the tickets
+assigned to the person, the open decisions ([ADR 0023] D2) — name no tenant in their path, so no
+boundary admits them to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
 memberships in an `Installation` transaction, keeps a token restricted to a tenant to that tenant
 (`restricted`), narrows to the `tenant` query parameter — a slug that names none of the person's is
 the boundary's `404 not_found`, whether or not it exists — and sorts them by slug. Each tenant is then
@@ -237,6 +237,12 @@ read in a transaction of its own (`InTenant`, [ADR 0021] D5), under the visibili
 tenant's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
 project of another tenant invisible — and the parts are merged in Go
 ([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go)).
+"Next for me" (`ListMyNext`) and "assigned to me" (`ListMyAssigned`) share `listMine`: each tenant's
+part is the list builder's `ByScore` page after the cursor, with the assignee filter — the person or
+nobody for "next for me", the person for "assigned to me" — and the places of its tickets in their
+project's rank (`ListRankPlaces`) in the same transaction; the parts are merged in the score's order
+and cut to the page. `GET /api/v1/me/next` also takes `project`, a project key within the tenant
+`tenant` names — without `tenant` it is `400 validation_failed` at `query:project`.
 A global administrator without a role in a tenant holds no membership there, and these lists leave it
 out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
@@ -299,7 +305,7 @@ another token and marking notifications read (`write` scope,
 | `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
-| `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
+| `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go): a move; the sort by the score in [`score.go`](../../backend/internal/api/score.go) |
 | `booking` | member, `write` | hard-off `booking time` | [`time.go`](../../backend/internal/api/time.go) |
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
@@ -425,18 +431,20 @@ list answers that `invalid_cursor`.
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
   mappings by group; the installation's tenants by slug; the person's inbox newest first, merged
-  across the tenants by the notifications' ids, which order by time; the tickets assigned to the
-  person and the open decisions by the tenant's slug, the project's key and the project's rank — the
-  decisions by the ticket's place, `done` and `dropped` after the ranked ones, then the question's
-  number — until the score exists ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
+  across the tenants by the notifications' ids, which order by time; "next for me" and the tickets
+  assigned to the person by the score, highest first, then the ticket's id, and the open decisions
+  by the score of their ticket — a done or dropped ticket's after the others — then the ticket's id
+  and the question's number ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
   D5); the other lists by id.
-- A person-level list's cursor is bound to the person and the `tenant` it was narrowed to. Its position
-  is the notification's id, or for the two ordered lists `<slug>/<PROJECT>/<sealed>[/<question>]`
-  (`listPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)): the rank's place
-  (`store.RankPosition`) sealed as a project's list seals it, so a client reads neither the rank key
-  nor its length. Each tenant from the cursor's on is read for what the page still needs; a tenant
-  whose slug sorts before the cursor's has been read. The `cursor` parameter takes up to 1024
-  characters, because these positions carry the slug and the key beside the sealed rank.
+- A person-level list's cursor is bound to the person and the `tenant` it was narrowed to — "next
+  for me"'s to its `project` as well. Its position is the notification's id, or for the lists in the
+  score's order `<score key>/<ticket id>` (`store.ScorePosition`), for the open decisions
+  `/<question>` after it (`decisionPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)):
+  the stored key, written so that it reads back to the same `float64` (`-Inf` for a ticket without a
+  score), and the id, unique across tenants, so every tenant's part resumes at the same place of one
+  order. A score is shown on the ticket, so the position is not sealed. Every tenant is read for a
+  page after the position, and the parts are merged. The `cursor` parameter takes up to 1024
+  characters.
 
 ## Filters
 

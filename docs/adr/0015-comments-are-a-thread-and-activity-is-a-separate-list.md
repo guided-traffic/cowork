@@ -26,7 +26,10 @@ is built, and a comment tells the ticket's watchers; the mention is not: D5 name
 saying how a comment's text names a person — a username, which only a local account has, an e-mail
 address, which only administrators read, or an id the UI writes — and that is an open decision.)* *(2026-10-04.)* In the browser the author edits a comment over its
 version and reads its earlier texts, and the author or a tenant administrator withdraws it after a
-confirmation.
+confirmation. *(2026-10-05:)* D1's score adoption: the sort of a project's rank by the score
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3) is one act of the project that
+names every ticket it moved, and the activity of each of them lists it (`ListTicketActivity` in
+[`queries/read/comments.sql`](../../backend/internal/store/queries/read/comments.sql)).
 
 ## Context
 

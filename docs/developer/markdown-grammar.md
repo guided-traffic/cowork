@@ -136,7 +136,8 @@ charset=utf-8` without an `ETag`. In order:
 6. `## Attachments`: `- <name> — <type>, <size> — <URL>`.
 7. `## Recent activity` — left out for `activity=0` —: the last acts of the ticket's activity
    list, which leaves out time entries and what took data out (the exports among them), each
-   `- <time UTC> — <actor> via <agent> — <action>`, with the states of a transition, the ends of a link, the fields of an update, the
+   `- <time UTC> — <actor> via <agent> — <action>`, with the states of a transition, the ends of a link, the fields of an update,
+   `by score` after the sort of the project's rank that moved the ticket, the
    reason and the note quoted and cut to 200 characters; an act that names a ticket the reader
    cannot see says so instead.
 

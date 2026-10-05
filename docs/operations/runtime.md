@@ -371,6 +371,8 @@ A change of who belongs to the tenant or who sees a project is `membership.chang
 what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
+A project's rank sorted by the score is `project.changed`, with the project's key and the kind and
+no version, and reaches whoever sees the project.
 
 Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it also
 carries `inbox.changed` with `data: {"unread": n}`, the person's unread notifications in every

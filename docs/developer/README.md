@@ -129,11 +129,11 @@ change.
 
 ## What has no page here
 
-The tenant board, the score beside the rank, "next for me", deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
-and the person-level lists are sections of [data-access.md](data-access.md#notifications),
+The tenant board, deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
+and the person-level lists — "next for me" among them — are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
-[frontend.md](frontend.md#the-person-level-pages); the rank itself is a section of
-[domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
+[frontend.md](frontend.md#the-person-level-pages); the rank itself, its rebalancing and the score are
+sections of [domain.md](domain.md#rank) and [domain.md](domain.md#the-score), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
 its own security page, [identity-provider.md](../security/identity-provider.md), and the
 end-to-end tier a section of [testing.md](testing.md#end-to-end-tests).

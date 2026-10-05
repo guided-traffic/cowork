@@ -11,7 +11,8 @@ here.
 **Partly built** (phase 2, 2026-10-02): D1, D3 and D4 — people with identities of their own,
 memberships, assignment, every act attributed to a person (and agent) in the audit record, the
 tenant boundary equal for everyone. D2's views and D5's priority participation arrive with the
-UI and the score. D4's global administrator exists since phase 3 (2026-10-03) as
+UI and the score *(2026-10-05: the score is built — a stake of `need` or `urgent` counts in it,
+[ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D4)*. D4's global administrator exists since phase 3 (2026-10-03) as
 `users.global_admin`: set by the start-up synchronisation for the one local administrator, and
 revoked by emptying its variables; the data layer gives it no bypass.
 

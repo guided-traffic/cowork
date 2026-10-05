@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-04.
+tree on 2026-10-05.
 
 ## Projects, keys and the counter
 
@@ -133,12 +133,14 @@ row it wrote (`GetWrittenTicket`).
 
 `UpdateTicketFields` (the fields of `PATCH`: type, title, severity, security, threat, effort,
 parent, assignee, the three progress stages, the flag set with a class), `UpdateTicketBody`,
-`SetUrgencyOverride`, `SetConfidential`, `TransitionTicket`, `EndDoneByHand` and
-`MoveTicketRank` (a move in the rank) raise `version` by one. A `PATCH` whose stages close or
+`SetUrgencyOverride`, `SetConfidential`, `TransitionTicket`, `EndDoneByHand`,
+`MoveTicketRank` (a move in the rank) and `SetRanks` with `moved` (a ticket the sort by the score
+moved) raise `version` by one. A `PATCH` whose stages close or
 reopen the ticket writes its state with `TransitionTicket` too, with `bump` false: one request,
-one version. Derived stages and the first key the rank gives an unranked ticket
-(`RankUnrankedTicket`) do not: they are caused by other tickets' writes and would fail a
-concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
+one version. Derived stages, the score (`SetTicketScore`), the first key the rank gives an
+unranked ticket (`RankUnrankedTicket`) and the keys a rebalancing spreads (`SetRanks` without
+`moved`) do not: they are derived, or caused by other tickets' and entities' writes, and would fail
+a concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
 attachments and time entries are entities of their own and leave the ticket's version alone.
 
 ## Urgency, the horizon
@@ -281,8 +283,8 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
   of the distance to that end, so runs of filings at the bottom or moves to the top stay within
   five characters for ten thousand keys. A gap that keeps taking moves halves each time; after
   635 moves directly before the same ticket, or 762 directly after it (`TestRankOneGapRunsOut`),
-  the next key would pass 128 characters, and `ErrRankTooLong` fails the move as an internal
-  error — no rebalancing is built.
+  the next key would pass 128 characters (`ErrRankTooLong`) — which the rebalancing below keeps
+  from happening.
 - **The rank lock** is the project's `ticket_counters` row. A filing holds it from
   `NextTicketNumber`; a move and a return to an open state — a reopen, a withdrawal, a lower
   stage that reopens — take it with `LockProjectRank` first. Every key is
@@ -322,10 +324,60 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
   read as none: the list orders by `rankedKey` in
   [`store/tickets.go`](../../backend/internal/store/tickets.go), `TicketOrder.Position` leaves it
   out, and a move's `NextSeenRankedTicket` counts open tickets only.
+- **The rebalancing** ([ADR 0014] Consequences): a move or a filing with a place whose key would
+  be longer than `domain.RankRebalanceLength`, 32 characters, or for which none fits, first spreads
+  the project's keys again (`rebalanceRank`, `crowded` in [`rank.go`](../../backend/internal/api/rank.go))
+  and then decides the place on the gap as it is. `ListRankKeys` reads every ticket that holds a
+  key, in the key's order, those the caller cannot see included; the open ones get
+  `domain.RankSpread(n)` — n keys of one width, evenly spaced with at least 62 places between two,
+  as migration 17 spread the first keys — and a key a release before the rank left on a done or
+  dropped ticket is taken away. `ReleaseRanks` frees every key first, because the unique index is
+  checked row by row and keys change hands; `SetRanks` writes the new ones. No act, no version:
+  every ticket keeps its place. 800 moves into one gap succeed (`TestEightHundredMovesIntoOneGap`).
+- **The sort by the score** — `PUT …/projects/{project}/rank` with `{"by": "score"}`,
+  `SortProjectRank` in [`score.go`](../../backend/internal/api/score.go), a member's act with
+  `write` scope, an agent's with `rank` (`rankNeed`) — takes the rank lock, ranks the unranked,
+  reads the open ranked tickets the caller sees (`ListScoredTickets`), scores each anew where its
+  stored score differs from the function's, and gives them the keys they hold among themselves in
+  the score's order, highest first, an equal score keeping the rank's order (`sortByScore`). A
+  hidden ticket's key and place stay. The tickets whose key changed get a new version
+  (`SetRanks` with `moved`); one act `ranked` on the project with
+  `{"by": "score", "score_version", "moved"}` names them in `Refs`, which their activity reads
+  (`ListTicketActivity`), and is published as `project.changed`. Nothing to move answers
+  `moved: 0` and records nothing ([ADR 0014] D3).
 - **The project's list** orders the ranked tickets by their key, then the unranked — done,
   dropped, and open ones of the previous release — by number. Its cursor carries the key and
   the number sealed ([api.md](api.md#paging)). Migration 17 ranked every project's open tickets
   in number order, evenly spaced.
+
+## The score
+
+The score of [ADR 0014] D3–D5, version 1 of [`domain.ScoreKey`](../../backend/internal/domain/score.go):
+the severity's weight (critical 8, high 5, medium 3, low 1, cosmetic 0), the horizon's (now 8,
+release 5, next 3, later 1, icebox −5), one per `need` and two per `urgent` stake of anybody
+([ADR 0013] D3) — a watch nothing —, and one per thirty days since `opened_at`.
+
+- **Stored as a key time does not move.** The age is elapsed time, not whole days, so time adds
+  the same to every ticket and the order of two scores changes only with an input. The ticket
+  stores `score_key` — the weights less `opened_at` in units of thirty days since the Unix epoch —
+  and `score_version` ([migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql));
+  `domain.ScoreAt(key, now)` is the score at a moment, rounded to one decimal, which `ticketView`
+  shows as `score` with `score_version`, both `null` for a done or dropped ticket and for one with
+  version 0 — filed by a release before the score, its key `-Infinity`, below every scored one.
+- **Scored again by the write that changes an input**, in its own transaction, without an act or a
+  version: a filing (`insertTicket`), a `PATCH` that changes the severity, a horizon set or withdrawn
+  (`setOverride`), a stake set or removed (`SetInterest`, `RemoveInterest`) — `refreshScore` reads
+  the inputs as the write left them (`GetScoreInputs`) and stores the key (`SetTicketScore`). A
+  transition changes no input: a reopened ticket has the score it had.
+- **Ordered by its key**: the person-level lists by `score_key DESC, id` (`store.ByScore`, the
+  index `tickets_by_score`), the open decisions by their ticket's key, a done or dropped ticket's
+  as `-Infinity`.
+- **A new version** is a new function and a migration that writes it out in SQL once more and
+  scores every ticket, held to the function by an integration test, as migration 33 is
+  (`TestScoreMigrationScoresEveryTicket`).
+- **The secondary indicator** of the person-level lists is a ticket's place in its project's rank
+  among the open tickets of its horizon that the reader sees (`ListRankPlaces`), counted under the
+  predicate on every ticket it compares, so a hidden one never counts.
 
 ## Questions
 
@@ -376,6 +428,8 @@ sets the caller's own (`201` new, `200` changed or unchanged), `DELETE` removes 
 when there is none). `watch` is open to viewers; `need` and `urgent` need a member, and an agent
 needs `interest`; an agent may remove its person's stake. The act is `interest`, with the person
 as entity; the stake carries the mark of the write that set it ([who made an act](#who-made-an-act)).
+A stake set or removed scores its ticket again ([the score](#the-score)), and the client refetches
+a ticket it holds on `interest.changed`, since the score moved without a new version.
 
 ## Progress
 
@@ -489,9 +543,7 @@ comment names a person is not decided.
 
 ## Not built
 
-The score of [ADR 0014] D3–D5 is not built — no score beside the rank; the person-level lists,
-which it would order, are ordered by the tenant, the project and the project's rank meanwhile — nor
-is the rebalancing of the rank's keys. There is no `deleted_at` and
+There is no `deleted_at` and
 no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).

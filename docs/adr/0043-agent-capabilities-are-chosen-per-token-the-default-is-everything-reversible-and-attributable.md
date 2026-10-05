@@ -23,7 +23,8 @@ to.
 **Built** (phase 2, 2026-10-02) for the acts that exist: D1, D2, D3, D4 and D5 — the capability
 set on the token, the baseline, the hard-off list and the capabilities checked by
 [`auth.Authorize`](../../backend/internal/auth/authorize.go) on every marked request — `rank`
-on a move in the rank since 2026-10-03 and on adopting the score with the score, `rank` and
+on a move in the rank since 2026-10-03 and on adopting the score with the score (since 2026-10-05,
+`sortProjectRank` in [`api/score.go`](../../backend/internal/api/score.go)), `rank` and
 `override-urgency` on a filing's place and horizon since 2026-10-04 (`filing.capabilities` in
 [`tickets.go`](../../backend/internal/api/tickets.go)),
 `create-project`'s repository binding with that binding (since 2026-10-04 on binding and

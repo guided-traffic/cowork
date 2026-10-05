@@ -21,7 +21,11 @@ the chat in the UI (D9: the shutdown ends the chat's turns as well; built the sa
 `TestTheChatsTurnLimitAndShutdown`), and on 2026-10-04 by the owner's decision on the routing
 recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3 (D6: the Ingress routes the stream to the backend and the frontend's nginx has no location for
-it; built the same day).
+it; built the same day), and on 2026-10-05 (D2: `project.changed`, for the sort of a project's
+rank by the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3, which is
+one act of the project, with no event of the tickets it moved; built the same day — `ProjectChange` in
+[`store/notify.go`](../../backend/internal/store/notify.go), the client's reload of the open lists
+in [`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts)).
 
 **Partly built** (phase 2, 2026-10-02): D1 without ~~`?me=true` (the person-level events arrive
 with the inbox)~~ — built 2026-10-04, below —, D2 without ~~`inbox.changed`~~ — built 2026-10-04,
@@ -93,6 +97,9 @@ two moments; a group mapping reaches the tenant's administrators, who alone read
 entry of a restricted project's access list reaches the administrators and the person it names, so
 no member who does not see the project hears of it. The client reloads its members, mappings and
 access lists, its projects when a `project_id` is there, and the person's own `GET /api/v1/me`.)*
+*(Added 2026-10-05:)* `project.changed`, `{"key": "<tenant>/<PROJECT>", "kind": "ranked"}` without a
+version, says that a project's rank was set as a whole — the sort by the score — and reaches whoever
+sees the project, as its tickets' events do (D3); the client loads its open lists again.
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on

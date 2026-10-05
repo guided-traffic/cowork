@@ -31,7 +31,8 @@ administrator, the flag set by the provider's login and by no route.
 **Partly built** (phase 3, 2026-10-04): D3's person-level lists "assigned to me", "open decisions"
 and the inbox, each a union of per-tenant reads under that tenant's rules, a membership that ends
 taking its part out at once ([`api/inbox.go`](../../backend/internal/api/inbox.go)
-`personTenants`); "next for me" is not built.
+`personTenants`); ~~"next for me" is not built.~~ *(2026-10-05:)* and "next for me", built the
+same way ([`api/mylists.go`](../../backend/internal/api/mylists.go)).
 
 ## Context
 
