@@ -247,8 +247,9 @@ func (h *handler) stillAdmitted(ctx context.Context, t tenantScope, p auth.Princ
 // eventData is what an event tells: a key and a version, never content
 // (docs/adr/0054 D2).
 type eventData struct {
-	Key     string `json:"key"`
-	Version int32  `json:"version"`
+	Key string `json:"key"`
+	// Version is the ticket's; a project's act carries none (project.changed).
+	Version int32  `json:"version,omitempty"`
 	Kind    string `json:"kind"`
 }
 

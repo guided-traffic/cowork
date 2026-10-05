@@ -1000,6 +1000,8 @@ type Ticket struct {
 	ReporterAgent             *string
 	ReporterTokenID           *uuid.UUID
 	ReporterTokenName         *string
+	ScoreKey                  float64
+	ScoreVersion              int16
 }
 
 type TicketCounter struct {

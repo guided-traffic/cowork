@@ -84,6 +84,8 @@ paths:
     $ref: './me.yaml#/inboxRead'
   /api/v1/me/inbox/{notification}/read:
     $ref: './me.yaml#/notificationRead'
+  /api/v1/me/next:
+    $ref: './me.yaml#/next'
   /api/v1/me/assigned:
     $ref: './me.yaml#/assigned'
   /api/v1/me/decisions:
@@ -118,6 +120,8 @@ paths:
     $ref: './tenants.yaml#/project'
   /api/v1/tenants/{tenant}/projects/{project}/archive:
     $ref: './tenants.yaml#/projectArchive'
+  /api/v1/tenants/{tenant}/projects/{project}/rank:
+    $ref: './tenants.yaml#/projectRank'
   /api/v1/tenants/{tenant}/projects/{project}/restriction:
     $ref: './members.yaml#/projectRestriction'
   /api/v1/tenants/{tenant}/projects/{project}/access:

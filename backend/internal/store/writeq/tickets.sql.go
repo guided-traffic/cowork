@@ -35,6 +35,47 @@ func (q *Queries) EndDoneByHand(ctx context.Context, arg EndDoneByHandParams) (i
 	return version, err
 }
 
+const getScoreInputs = `-- name: GetScoreInputs :one
+SELECT t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon, t.opened_at,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = $1 AND t.id = $2
+`
+
+type GetScoreInputsParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetScoreInputsRow struct {
+	Severity domain.Severity
+	Horizon  domain.Urgency
+	OpenedAt time.Time
+	Need     int32
+	Urgent   int32
+}
+
+// What a ticket's score reads (docs/adr/0014 D4): its severity, the horizon it
+// shows (docs/adr/0010 D3), how many people hold a need and how many an
+// urgent stake (docs/adr/0013 D3), and when it was opened — read after the
+// write in this transaction that changed one of them.
+// visibility: exempt (a ticket the caller read through the predicate in this transaction)
+func (q *Queries) GetScoreInputs(ctx context.Context, arg GetScoreInputsParams) (GetScoreInputsRow, error) {
+	row := q.db.QueryRow(ctx, getScoreInputs, arg.TenantID, arg.ID)
+	var i GetScoreInputsRow
+	err := row.Scan(
+		&i.Severity,
+		&i.Horizon,
+		&i.OpenedAt,
+		&i.Need,
+		&i.Urgent,
+	)
+	return i, err
+}
+
 const getTicketRank = `-- name: GetTicketRank :one
 SELECT state, rank FROM tickets
 WHERE tenant_id = $1 AND id = $2
@@ -70,7 +111,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
@@ -139,6 +180,8 @@ type GetWrittenTicketRow struct {
 	AssigneeName              *string
 	Confidential              bool
 	Rank                      *string
+	ScoreKey                  float64
+	ScoreVersion              int16
 	OpenedAt                  time.Time
 	DecidedAt                 *time.Time
 	DoneAt                    *time.Time
@@ -204,6 +247,8 @@ func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketPara
 		&i.AssigneeName,
 		&i.Confidential,
 		&i.Rank,
+		&i.ScoreKey,
+		&i.ScoreVersion,
 		&i.OpenedAt,
 		&i.DecidedAt,
 		&i.DoneAt,
@@ -313,6 +358,111 @@ func (q *Queries) LastRank(ctx context.Context, arg LastRankParams) (string, err
 	var last string
 	err := row.Scan(&last)
 	return last, err
+}
+
+const listRankKeys = `-- name: ListRankKeys :many
+SELECT id, state FROM tickets
+WHERE tenant_id = $1 AND project_id = $2 AND rank IS NOT NULL
+ORDER BY rank
+`
+
+type ListRankKeysParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+}
+
+type ListRankKeysRow struct {
+	ID    uuid.UUID
+	State domain.TicketState
+}
+
+// Every ticket of the project that holds a key, in the key's order, whoever
+// can see it and whatever its state: what a rebalancing spreads again
+// (docs/adr/0014 Consequences).
+// visibility: exempt (the rank keys of the project the caller writes in, never shown)
+func (q *Queries) ListRankKeys(ctx context.Context, arg ListRankKeysParams) ([]ListRankKeysRow, error) {
+	rows, err := q.db.Query(ctx, listRankKeys, arg.TenantID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRankKeysRow{}
+	for rows.Next() {
+		var i ListRankKeysRow
+		if err := rows.Scan(&i.ID, &i.State); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScoredTickets = `-- name: ListScoredTickets :many
+SELECT t.id, t.rank::text AS rank, t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon,
+       t.opened_at, t.score_key, t.score_version,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = $1 AND t.project_id = $2
+  AND t.rank IS NOT NULL AND t.state NOT IN ('done', 'dropped')
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank
+`
+
+type ListScoredTicketsParams struct {
+	TenantID  uuid.UUID
+	ProjectID uuid.UUID
+}
+
+type ListScoredTicketsRow struct {
+	ID           uuid.UUID
+	Rank         string
+	Severity     domain.Severity
+	Horizon      domain.Urgency
+	OpenedAt     time.Time
+	ScoreKey     float64
+	ScoreVersion int16
+	Need         int32
+	Urgent       int32
+}
+
+// The open, ranked tickets of a project that the caller can see, in the order
+// of the rank, with what their scores read: what a sort by the score reorders
+// (docs/adr/0014 D3). The caller holds the rank lock and has ranked the
+// unranked ones.
+func (q *Queries) ListScoredTickets(ctx context.Context, arg ListScoredTicketsParams) ([]ListScoredTicketsRow, error) {
+	rows, err := q.db.Query(ctx, listScoredTickets, arg.TenantID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListScoredTicketsRow{}
+	for rows.Next() {
+		var i ListScoredTicketsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Rank,
+			&i.Severity,
+			&i.Horizon,
+			&i.OpenedAt,
+			&i.ScoreKey,
+			&i.ScoreVersion,
+			&i.Need,
+			&i.Urgent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUnrankedTickets = `-- name: ListUnrankedTickets :many
@@ -582,6 +732,26 @@ func (q *Queries) RefreshDerivedProgress(ctx context.Context, arg RefreshDerived
 	return parent_id, err
 }
 
+const releaseRanks = `-- name: ReleaseRanks :exec
+UPDATE tickets
+SET rank = NULL
+WHERE tenant_id = $1 AND id = ANY ($2::uuid[])
+`
+
+type ReleaseRanksParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+}
+
+// Takes the keys of the tickets away before they get others in the same
+// transaction: a key belongs to one ticket of its project, and the unique
+// index is checked row by row, so keys that change hands are released first.
+// No act and no version: a sort records its own act, a rebalancing none.
+func (q *Queries) ReleaseRanks(ctx context.Context, arg ReleaseRanksParams) error {
+	_, err := q.db.Exec(ctx, releaseRanks, arg.TenantID, arg.Ids)
+	return err
+}
+
 const setConfidential = `-- name: SetConfidential :one
 UPDATE tickets
 SET confidential = $1, version = version + 1, updated_at = now()
@@ -606,6 +776,52 @@ func (q *Queries) SetConfidential(ctx context.Context, arg SetConfidentialParams
 	var version int32
 	err := row.Scan(&version)
 	return version, err
+}
+
+const setRanks = `-- name: SetRanks :exec
+UPDATE tickets AS t
+SET rank = u.rank
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::text[]) AS rank) AS u
+WHERE t.tenant_id = $1 AND t.id = u.id
+`
+
+type SetRanksParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+	Ranks    []string
+}
+
+// Gives each ticket its key, ids and keys pairwise, after ReleaseRanks.
+func (q *Queries) SetRanks(ctx context.Context, arg SetRanksParams) error {
+	_, err := q.db.Exec(ctx, setRanks, arg.TenantID, arg.Ids, arg.Ranks)
+	return err
+}
+
+const setTicketScore = `-- name: SetTicketScore :exec
+UPDATE tickets
+SET score_key = $1, score_version = $2
+WHERE tenant_id = $3 AND id = $4
+`
+
+type SetTicketScoreParams struct {
+	ScoreKey     float64
+	ScoreVersion int16
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+}
+
+// A ticket's score, stored as its key with the version of the function that
+// computed it (docs/adr/0014 D4). It is derived from the ticket's and its
+// stakes' writes, so neither the version nor updated_at moves
+// (docs/adr/0050 D1).
+func (q *Queries) SetTicketScore(ctx context.Context, arg SetTicketScoreParams) error {
+	_, err := q.db.Exec(ctx, setTicketScore,
+		arg.ScoreKey,
+		arg.ScoreVersion,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
 }
 
 const setUrgencyOverride = `-- name: SetUrgencyOverride :one

@@ -46,6 +46,19 @@ func TestFilter(t *testing.T) {
 	assert.True(t, flt.Admits(e), "an administrator")
 }
 
+// docs/adr/0014 D3, docs/adr/0054 D2: an act on a project as a whole — the
+// sort by the score — is project.changed, and reaches whoever sees the project.
+func TestProjectEvents(t *testing.T) {
+	f := newFixtures()
+	event := func(project uuid.UUID) Event {
+		return Event{Notification: store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Project: project,
+			Entity: store.EntityProject, Action: "ranked", Key: "acme/A"}}
+	}
+	assert.Equal(t, "project.changed", event(f.project).Name())
+	assert.True(t, f.filter().Admits(event(f.project)))
+	assert.False(t, f.filter().Admits(event(f.hidden)), "a project the person cannot see")
+}
+
 // docs/adr/0054 D2, docs/adr/0034 D3: a membership act reaches its audience —
 // every member, the administrators, or the administrators and the person an
 // access entry names — and never through the project filter, which a

@@ -55,7 +55,7 @@ func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTick
 	if err != nil {
 		return nil, err
 	}
-	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // transition writes a move of the matrix with its act.

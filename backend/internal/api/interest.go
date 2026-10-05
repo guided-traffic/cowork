@@ -109,6 +109,10 @@ func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestO
 		if err != nil {
 			return fmt.Errorf("write the interest: %w", err)
 		}
+		// need and urgent count in the ticket's score (docs/adr/0013 D3).
+		if err := refreshScore(ctx, w, t, tc.row.ID); err != nil {
+			return err
+		}
 		if weight == weightUrgent && cur.Weight != weightUrgent && tc.row.AssigneeID != nil {
 			// An urgent stake registered on an assigned ticket (docs/adr/0020 D2).
 			ev.Notices = []store.Notice{{Reason: store.NoticeUrgent, People: []uuid.UUID{*tc.row.AssigneeID}}}
@@ -151,6 +155,9 @@ func (s *Server) RemoveInterest(ctx context.Context, req apigen.RemoveInterestRe
 		}
 		if _, err := w.DeleteInterest(ctx, writeq.DeleteInterestParams(key)); err != nil {
 			return fmt.Errorf("remove the interest: %w", err)
+		}
+		if err := refreshScore(ctx, w, t, tc.row.ID); err != nil {
+			return err
 		}
 		w.Record(store.Event{EntityType: entityInterest, EntityID: p.PersonID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 			Action: actionInterest, Before: map[string]any{fieldWeight: cur.Weight, fieldNote: cur.Note}})

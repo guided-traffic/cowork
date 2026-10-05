@@ -21,6 +21,12 @@ const rankBase = len(rankDigits)
 // MaxRankLength is the longest key the rank column takes.
 const MaxRankLength = 128
 
+// RankRebalanceLength is the longest key a place is given before its
+// project's keys are spread again (docs/adr/0014 Consequences): a key longer
+// than this means moves have worn its gap down, and RankSpread gives every
+// key of the project room again long before a gap runs out at MaxRankLength.
+const RankRebalanceLength = 32
+
 // The errors of RankBetween.
 var (
 	// ErrRankKey is a bound that is not a rank key.
@@ -75,6 +81,27 @@ func RankBetween(a, b string) (string, error) {
 		return "", ErrRankTooLong
 	}
 	return key, nil
+}
+
+// RankSpread returns n keys in ascending order, evenly spaced over keys of
+// one width with at least 62 places between two of them and around the ends —
+// the room of the next moves, as migration 17 spread the first keys. The width
+// is the smallest that gives that room, so the keys are as short as n allows:
+// two characters up to 61 tickets, three up to 3,843.
+func RankSpread(n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	width := 2
+	for rankScale(width-1).Cmp(big.NewInt(int64(n)+1)) < 0 {
+		width++
+	}
+	step := new(big.Int).Quo(rankScale(width), big.NewInt(int64(n)+1))
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = rankFormat(new(big.Int).Mul(step, big.NewInt(int64(i)+1)), width)
+	}
+	return keys
 }
 
 // rankMiddle is the middle key between a and b, a < b, b not empty ("" for b

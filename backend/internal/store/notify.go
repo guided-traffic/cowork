@@ -68,6 +68,18 @@ type MembershipChange struct {
 	Audience                 string
 }
 
+// EntityProject is the entity of the notification of an act on a project as
+// a whole, whose stream event is project.changed (docs/adr/0054 D2).
+const EntityProject = "project"
+
+// ProjectChange is what an act on a project as a whole announces: the
+// project, which the streams filter by as they filter its tickets' acts, and
+// its key, <tenant>/<PROJECT>.
+type ProjectChange struct {
+	ID  uuid.UUID
+	Key string
+}
+
 // silent are the acts a stream does not carry: data leaving the system
 // changes nothing a client shows, and time follows its own visibility
 // (docs/adr/0026 D5, docs/adr/0034 D5).
@@ -79,6 +91,10 @@ var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry":
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
 	if tenantID != uuid.Nil && e.Membership != nil {
 		return w.notify(ctx, membershipNotification(tenantID, id, e))
+	}
+	if tenantID != uuid.Nil && e.Project != nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.Project.ID, Entity: EntityProject,
+			Action: e.Action, Key: e.Project.Key})
 	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil

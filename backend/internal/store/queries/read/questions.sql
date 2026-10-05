@@ -44,10 +44,12 @@ SELECT person_sees_ticket(sqlc.arg(tenant_id), sqlc.arg(ticket_id), sqlc.arg(use
 -- name: ListOpenDecisions :many
 -- The open decisions of a person in the tenant (docs/adr/0018 D3): the open
 -- questions asked of them and those open in the tenant, on tickets they see.
--- Ordered as the person-level lists are until the score exists
--- (docs/adr/0014 D5): the project's key, the ticket's rank — a done or
--- dropped ticket, which has none, after the ranked ones —, its number, the
--- question's. The cursor resumes after a position of that order.
+-- Ordered by the score of the ticket (docs/adr/0014 D5) — its stored key,
+-- whose order is the score's at every moment; a done or dropped ticket, which
+-- has no score, after the scored ones (D3) — then the ticket's id and the
+-- question's number. The cursor resumes after a position of that order: the
+-- ids are unique across tenants, so the order of every tenant's part is one
+-- order across them.
 SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.status,
        q.asked_by, ab.username AS asked_by_username, ab.display_name AS asked_by_name, q.asked_by_agent,
        q.asked_by_token_id, q.asked_by_token_name,
@@ -56,7 +58,9 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.rank AS ticket_rank
+       t.id AS ticket_id,
+       (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)::double precision
+           AS ticket_score_key
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -67,15 +71,11 @@ WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.status = 'open'
   AND (q.asked_of = sqlc.arg(user_id)::uuid OR q.asked_of IS NULL)
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT sqlc.arg(has_after)::boolean
-       OR p.key > sqlc.arg(after_project)::text
-       OR (p.key = sqlc.arg(after_project)::text
-           AND CASE WHEN sqlc.narg(after_rank)::text IS NULL
-                    THEN (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
-                         AND (t.number, q.number) > (sqlc.arg(after_number)::integer, sqlc.arg(after_question)::integer)
-                    ELSE (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
-                         OR (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) > sqlc.narg(after_rank)::text
-                         OR ((CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) = sqlc.narg(after_rank)::text
-                             AND (t.number, q.number) > (sqlc.arg(after_number)::integer, sqlc.arg(after_question)::integer))
-               END))
-ORDER BY p.key, (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) NULLS LAST, t.number, q.number
+       OR (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)
+          < sqlc.arg(after_key)::double precision
+       OR ((CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)
+           = sqlc.arg(after_key)::double precision
+           AND (t.id, q.number) > (sqlc.arg(after_ticket)::uuid, sqlc.arg(after_question)::integer)))
+ORDER BY (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END) DESC,
+         t.id, q.number
 LIMIT sqlc.arg(page_size);

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -35,11 +36,13 @@ func ticketURL(t tenantScope, project string, number int32) string {
 	return projectURL(t, project) + "/tickets/" + strconv.Itoa(int(number))
 }
 
-// ticketView is a ticket as the API shows it. The rank key is not shown: it is
-// computed over tickets the caller may not see (docs/adr/0014 D2), and the
+// ticketView is a ticket as the API shows it at the moment now, which its
+// score's age is counted to (docs/adr/0014 D4). The rank key is not shown: it
+// is computed over tickets the caller may not see (docs/adr/0014 D2), and the
 // list's order is what the caller reads of the rank.
-func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
+func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 	stages := stagesOf(r)
+	score, version := scoreView(r, now)
 	v := apigen.Ticket{
 		Id: r.ID, Key: domain.FullKey(t.Slug, r.ProjectKey, r.Number), Project: r.ProjectKey, Number: int(r.Number),
 		Type: apigen.TicketType(r.Type), Title: r.Title, Body: r.Body, State: apigen.TicketState(r.State),
@@ -49,8 +52,8 @@ func ticketView(t tenantScope, r store.TicketRow) apigen.Ticket {
 		ProgressReview: stages.Review, ProgressDerived: hasChildren(r), Confidential: r.Confidential,
 		OpenedAt: r.OpenedAt, DecidedAt: nullableOf(r.DecidedAt), DoneAt: nullableOf(r.DoneAt),
 		DoneFrom: nullableOf[apigen.TicketState](nil), DoneByHand: doneByHand(r),
-		OpenPrerequisites: int(r.OpenPrerequisites),
-		Version:           int(r.Version), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		OpenPrerequisites: int(r.OpenPrerequisites), Score: score, ScoreVersion: version,
+		Version: int(r.Version), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Reporter: personView(r.ReporterID, r.ReporterUsername, r.ReporterName), ReporterAgent: nullableOf(r.ReporterAgent),
 		ReporterToken: tokenMarkView(r.ReporterTokenID, r.ReporterTokenName), Block: nullableOf[apigen.Block](nil),
 		UrgencyOverride: nullableOf[apigen.UrgencyOverride](nil), Assignee: nullableOf[apigen.Person](nil),
@@ -247,7 +250,7 @@ func (s *Server) GetTicket(ctx context.Context, req apigen.GetTicketRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTicket200JSONResponse{Body: ticketView(t, row), Headers: apigen.GetTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.GetTicket200JSONResponse{Body: ticketView(t, row, s.h.opts.Now()), Headers: apigen.GetTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
 }
 
 // ResolveTicket answers a ticket by its key under the tenant it names
@@ -262,7 +265,7 @@ func (s *Server) ResolveTicket(ctx context.Context, req apigen.ResolveTicketRequ
 	if err != nil {
 		return nil, err
 	}
-	return apigen.ResolveTicket200JSONResponse{Body: ticketView(t, row), Headers: apigen.ResolveTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.ResolveTicket200JSONResponse{Body: ticketView(t, row, s.h.opts.Now()), Headers: apigen.ResolveTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
 }
 
 func (s *Server) readTicket(ctx context.Context, t tenantScope, projectKey string, number int) (store.TicketRow, error) {
@@ -304,11 +307,8 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		if err != nil {
 			return err
 		}
-		id, err := w.InsertTicket(ctx, ins)
+		id, err := insertTicket(ctx, w, t, ins)
 		if err != nil {
-			return err
-		}
-		if err := refreshProgress(ctx, w, t, ins.ParentID); err != nil {
 			return err
 		}
 		key := domain.FullKey(t.Slug, p.Key, ins.Number)
@@ -326,7 +326,7 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		if created, err = reread(ctx, w, t, id); err != nil {
 			return err
 		}
-		res, err := stored(ticketView(t, created), map[string]string{
+		res, err := stored(ticketView(t, created, s.h.opts.Now()), map[string]string{
 			headerETag: *etag(created.Version), headerLocation: ticketURL(t, p.Key, created.Number)})
 		if err != nil {
 			return err
@@ -346,8 +346,21 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
 	location := ticketURL(t, created.ProjectKey, created.Number)
-	return apigen.CreateTicket201JSONResponse{Body: ticketView(t, created), Headers: apigen.CreateTicket201ResponseHeaders{
+	return apigen.CreateTicket201JSONResponse{Body: ticketView(t, created, s.h.opts.Now()), Headers: apigen.CreateTicket201ResponseHeaders{
 		ETag: etag(created.Version), Location: &location}}, nil
+}
+
+// insertTicket writes a filing: the ticket, its score (docs/adr/0014 D4) and
+// the stages its parent derives from it (docs/adr/0017 D3).
+func insertTicket(ctx context.Context, w *store.Writer, t tenantScope, ins writeq.InsertTicketParams) (uuid.UUID, error) {
+	id, err := w.InsertTicket(ctx, ins)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if err := refreshScore(ctx, w, t, id); err != nil {
+		return uuid.Nil, err
+	}
+	return id, refreshProgress(ctx, w, t, ins.ParentID)
 }
 
 // filing is what a filing decides beyond the ticket's fields: the horizon
@@ -547,7 +560,7 @@ func (s *Server) UpdateTicket(ctx context.Context, req apigen.UpdateTicketReques
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.UpdateTicket200JSONResponse{Body: ticketView(t, out), Headers: apigen.UpdateTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.UpdateTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.UpdateTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // writeTicketChange writes a patch with its acts, its explaining comment and
@@ -579,6 +592,11 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 	}
 	if sm != nil || changes(changedAfter, fieldParent, "effort", fieldProgress, fieldRefinement, fieldReview) {
 		if err := refreshProgress(ctx, w, t, tc.row.ParentID, ch.params.ParentID); err != nil {
+			return store.TicketRow{}, err
+		}
+	}
+	if changes(changedAfter, "severity") {
+		if err := refreshScore(ctx, w, t, tc.row.ID); err != nil {
 			return store.TicketRow{}, err
 		}
 	}
@@ -948,7 +966,7 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.ReplaceTicketBody200JSONResponse{Body: ticketView(t, out), Headers: apigen.ReplaceTicketBody200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.ReplaceTicketBody200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.ReplaceTicketBody200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // OverrideUrgency sets an override, which holds until it is withdrawn or
@@ -961,7 +979,7 @@ func (s *Server) OverrideUrgency(ctx context.Context, req apigen.OverrideUrgency
 	if err != nil {
 		return nil, err
 	}
-	return apigen.OverrideUrgency200JSONResponse{Body: ticketView(t, out), Headers: apigen.OverrideUrgency200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.OverrideUrgency200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.OverrideUrgency200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // WithdrawUrgencyOverride drops the override; the derived urgency holds again.
@@ -971,7 +989,7 @@ func (s *Server) WithdrawUrgencyOverride(ctx context.Context, req apigen.Withdra
 	if err != nil {
 		return nil, err
 	}
-	return apigen.WithdrawUrgencyOverride200JSONResponse{Body: ticketView(t, out), Headers: apigen.WithdrawUrgencyOverride200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.WithdrawUrgencyOverride200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.WithdrawUrgencyOverride200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey string, number int, ifm *string, value *domain.Urgency, reason *string) (store.TicketRow, error) {
@@ -1005,6 +1023,9 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 			UrgencyOverride: value, Reason: reason, OverrideBy: by}); errors.Is(err, pgx.ErrNoRows) {
 			return stale(tc.row.Version, cur)
 		} else if err != nil {
+			return err
+		}
+		if err := refreshScore(ctx, w, t, tc.row.ID); err != nil {
 			return err
 		}
 		e := store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID,
@@ -1087,7 +1108,7 @@ func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidential
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.SetConfidential200JSONResponse{Body: ticketView(t, out), Headers: apigen.SetConfidential200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.SetConfidential200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetConfidential200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // weakETag is a list page's validator for its caller: a hash of what it

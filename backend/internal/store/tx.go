@@ -72,6 +72,10 @@ type Event struct {
 	// Membership announces the act on the tenant's event stream as
 	// membership.changed (docs/adr/0054 D2); nil for every other act.
 	Membership *MembershipChange
+	// Project announces an act on a project as a whole — the sort of its rank
+	// by the score (docs/adr/0014 D3) — as project.changed; nil for every
+	// other act.
+	Project *ProjectChange
 	// Notices are whom the act tells in their inbox and why
 	// (docs/adr/0020 D2); none for an act that tells nobody.
 	Notices []Notice

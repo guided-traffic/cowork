@@ -14,6 +14,11 @@ events:
       project the caller cannot see, or of a confidential ticket they may not read, never
       arrives (D3).
 
+      `project.changed` says that a project's rank was set as a whole — the sort by the score
+      (docs/adr/0014 D3) — with `data: {"key": "<tenant>/<PROJECT>", "kind": "ranked"}`; `id:` is
+      the act's id. It reaches whoever sees the project, and the client reloads the project's
+      lists.
+
       `membership.changed` says that who belongs to the tenant, or who sees a project, changed —
       by an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its
       `data` carries keys only, each where it applies: `person_id`, the person whose membership

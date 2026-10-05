@@ -59,44 +59,49 @@ func walk(t *testing.T, read func(query string) ([]string, *string)) []string {
 	return nil
 }
 
-// docs/adr/0018 D3, docs/adr/0023 D2, docs/adr/0014 D5 as it stands until the
-// score: "assigned to me" holds the person's open tickets across their tenants,
-// each beside its tenant, in the order of the tenant's slug, the project's key
-// and the project's rank; done and dropped tickets, another person's, and a
-// project restricted away from the person are absent; a tenant narrows it, and
-// a restricted token reads its tenant or its project only.
+// docs/adr/0018 D3, docs/adr/0023 D2, docs/adr/0014 D5: "assigned to me" holds
+// the person's open tickets across their tenants, each beside its tenant and
+// its place in its project's rank, in the order of the score — the rank does
+// not order it; done and dropped tickets, another person's, and a project
+// restricted away from the person are absent; a tenant narrows it, and a
+// restricted token reads its tenant or its project only.
 func TestAssignedToMeAcrossTenants(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
 	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
 	toBoth := func(b *apigen.TicketCreate) { b.Assignee = &e.Both }
+	sev := func(s apigen.Severity) func(*apigen.TicketCreate) {
+		return func(b *apigen.TicketCreate) { b.Severity = s }
+	}
 
 	gamma, err := f.Project(e.ctx, e.A, "GAMMA", "Gamma")
 	require.NoError(t, err)
 	hidden, err := f.Project(e.ctx, e.A, "HIDDEN", "Hidden")
 	require.NoError(t, err)
-	first := e.fileIn(t, admin, e.SlugA, "ALPHA", task("first", toBoth))
-	second := e.fileIn(t, admin, e.SlugA, "ALPHA", task("second", toBoth))
+	first := e.fileIn(t, admin, e.SlugA, "ALPHA", task("first", toBoth))                             // 3 + 1
+	second := e.fileIn(t, admin, e.SlugA, "ALPHA", task("second", toBoth, sev(apigen.SeverityHigh))) // 5 + 1
 	e.fileIn(t, admin, e.SlugA, "ALPHA", task("the member's", func(b *apigen.TicketCreate) { b.Assignee = &e.MemberA }))
-	done := e.fileIn(t, admin, e.SlugA, "ALPHA", task("done", toBoth))
+	done := e.fileIn(t, admin, e.SlugA, "ALPHA", task("done", toBoth, sev(apigen.SeverityCritical)))
 	e.send(t, admin, http.StatusOK, http.MethodPost, ticketPath(e.SlugA, "ALPHA", done.Number)+"/transitions",
 		map[string]any{"from": "filed", "to": "done", "note": "verified by hand"})
-	inGamma := e.fileIn(t, admin, e.SlugA, "GAMMA", task("gamma", toBoth))
-	e.fileIn(t, admin, e.SlugA, "HIDDEN", task("hidden", toBoth))
-	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", toBoth))
-	// The second before the first in the project's rank.
-	e.send(t, admin, http.StatusOK, http.MethodPut, ticketPath(e.SlugA, "ALPHA", second.Number)+"/rank", map[string]any{"before": first.Number})
+	inGamma := e.fileIn(t, admin, e.SlugA, "GAMMA", task("gamma", toBoth, sev(apigen.SeverityLow))) // 1 + 1
+	e.fileIn(t, admin, e.SlugA, "HIDDEN", task("hidden", toBoth, sev(apigen.SeverityCritical)))
+	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", toBoth, sev(apigen.SeverityCritical))) // 8 + 1
+	// The first before the second in the project's rank, against the score.
+	e.send(t, admin, http.StatusOK, http.MethodPut, ticketPath(e.SlugA, "ALPHA", first.Number)+"/rank", map[string]any{"before": second.Number})
 	// GAMMA restricted with the person on its list, HIDDEN restricted without.
 	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id IN ($1, $2)", gamma, hidden))
 	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')",
 		e.A, gamma, e.Both))
 
-	want := []string{second.Key, first.Key, inGamma.Key, inB.Key}
+	want := []string{inB.Key, second.Key, first.Key, inGamma.Key}
 	keys, list := e.assigned(t, both, "")
-	assert.Equal(t, want, keys)
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, list.Items[0].Tenant)
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugB, Name: "Tenant B"}, list.Items[3].Tenant)
-	assert.Equal(t, "second", list.Items[0].Ticket.Title, "the whole ticket")
+	assert.Equal(t, want, keys, "by score: 9, 6, 4, 2")
+	assert.Equal(t, apigen.TenantRef{Slug: e.SlugB, Name: "Tenant B"}, list.Items[0].Tenant)
+	assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, list.Items[3].Tenant)
+	assert.Equal(t, "second", list.Items[1].Ticket.Title, "the whole ticket")
+	assert.Equal(t, []int{1, 2, 1, 1}, []int{list.Items[0].Place, list.Items[1].Place, list.Items[2].Place, list.Items[3].Place},
+		"the place in the project's rank beside the score: the first stands before the second")
 
 	assert.Equal(t, want, walk(t, func(query string) ([]string, *string) {
 		keys, l := e.assigned(t, both, query)
@@ -129,8 +134,8 @@ func TestAssignedToMeAcrossTenants(t *testing.T) {
 // questions asked of the person and those open in their tenants, on tickets
 // they see, across their tenants, beside the tenant and the ticket; a question
 // asked of another person, an answered one and one on a project restricted
-// away from the person are absent; the order is the tenant's slug, the
-// project's key, the ticket's rank and the question's number.
+// away from the person are absent; the order is the score of the ticket, then
+// the ticket and the question's number (docs/adr/0014 D5).
 func TestOpenDecisionsAcrossTenants(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -140,10 +145,10 @@ func TestOpenDecisionsAcrossTenants(t *testing.T) {
 	}
 	hidden, err := f.Project(e.ctx, e.A, "HIDDEN", "Hidden")
 	require.NoError(t, err)
-	first := e.fileIn(t, admin, e.SlugA, "ALPHA", task("first"))
-	second := e.fileIn(t, admin, e.SlugA, "ALPHA", task("second"))
+	first := e.fileIn(t, admin, e.SlugA, "ALPHA", task("first")) // 3 + 1
+	second := e.fileIn(t, admin, e.SlugA, "ALPHA", task("second", func(b *apigen.TicketCreate) { b.Severity = apigen.SeverityHigh }))
 	inHidden := e.fileIn(t, admin, e.SlugA, "HIDDEN", task("hidden"))
-	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B"))
+	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", func(b *apigen.TicketCreate) { b.Severity = apigen.SeverityLow }))
 
 	ask(admin, e.SlugA, "ALPHA", first.Number, map[string]any{"question": "asked of the person", "asked_of": e.Both})
 	ask(admin, e.SlugA, "ALPHA", first.Number, map[string]any{"question": "asked of the member", "asked_of": e.MemberA})
@@ -154,12 +159,10 @@ func TestOpenDecisionsAcrossTenants(t *testing.T) {
 	ask(admin, e.SlugA, "HIDDEN", inHidden.Number, map[string]any{"question": "on a hidden project", "asked_of": e.Both})
 	ask(memberB, e.SlugB, "BETA", inB.Number, map[string]any{"question": "open in B"})
 	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", hidden))
-	// The second before the first in the project's rank.
-	e.send(t, admin, http.StatusOK, http.MethodPut, ticketPath(e.SlugA, "ALPHA", second.Number)+"/rank", map[string]any{"before": first.Number})
 
 	want := []string{second.Key + " Q2", first.Key + " Q1", first.Key + " Q3", inB.Key + " Q1"}
 	got, list := e.decisions(t, both, "")
-	assert.Equal(t, want, got)
+	assert.Equal(t, want, got, "by the score of the ticket: 6, 4, 2")
 	assert.Equal(t, e.SlugB, list.Items[3].Tenant.Slug)
 	assert.Equal(t, "open in B", list.Items[3].Question.Question)
 	assert.Equal(t, apigen.QuestionStatusOpen, list.Items[0].Question.Status)
