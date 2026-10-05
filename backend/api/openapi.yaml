@@ -50,6 +50,7 @@ tags:
   - name: attachments
   - name: events
   - name: chat
+  - name: dashboard
 paths:
   /api/v1/version:
     $ref: './meta.yaml#/version'
@@ -139,6 +140,8 @@ paths:
     $ref: './chat.yaml#/chat'
   /api/v1/tenants/{tenant}/chat/turns:
     $ref: './chat.yaml#/turns'
+  /api/v1/tenants/{tenant}/dashboard:
+    $ref: './dashboard.yaml#/dashboard'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
   /api/v1/tenants/{tenant}/search:

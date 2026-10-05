@@ -49,10 +49,12 @@ export const routes: Routes = [
         path: 't/:tenant',
         component: TenantScope,
         children: [
+          // The tenant's front page is its dashboard (docs/adr/0018 D6).
           {
             path: '',
             pathMatch: 'full',
-            loadComponent: () => import('./features/tenant/overview').then((m) => m.TenantOverview),
+            loadComponent: () =>
+              import('./features/tenant/dashboard').then((m) => m.TenantDashboard),
           },
           // The tenant's board, a swimlane per project (docs/adr/0018 D4).
           {

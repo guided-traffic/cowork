@@ -64,6 +64,7 @@ flowchart LR
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
+- 📊 **A dashboard per tenant** — its front page: nine fixed tiles — open tickets by state and by severity, open security findings, the blocked, their age, done per week, lead time, open decisions, time booked — filtered by project and period, counted only over what the reader may see, and live.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
@@ -698,8 +699,8 @@ full.
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
   lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
   the prerequisite tree —, the person's inbox, assigned tickets and decisions, the bin of deleted
-  tickets and the saved filters answer a weak `ETag`, the caller's page, and `304` without a body
-  to it in `If-None-Match`. A query
+  tickets, the saved filters and the tenant's dashboard answer a weak `ETag`, the caller's page,
+  and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
   `404`. The person-level lists under `/api/v1/me/` — the inbox, the tickets assigned to the
   person, the open decisions, the search — span every tenant of the person, name the tenant on every item, take
@@ -818,13 +819,14 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tenant and projects — 12 routes</summary>
+<summary>Tenant and projects — 13 routes</summary>
 
 | Method and path | Does |
 |---|---|
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
 | `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; numbered pages with a total; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before — a CSV page carries no cursor, so a client reads several as numbered pages with `to` held at the moment it began |
+| `GET …/dashboard` | the tenant's dashboard, its nine tiles over what the caller can see — a ticket, a question or a time entry the caller may not read counts nowhere, and neither does a deleted ticket until it is restored: the open tickets per project and state; per severity, every one with zero included; the open `live` and `boundary` findings, each with the oldest by filing; the blocked tickets and the one blocked longest — since its latest act into `blocked` — with its kind; the open tickets' age in five buckets, under 7, 30, 90 and 365 days and older; the tickets done per ISO week, eight weeks to the one of the period's last day; the median from filing to done of the tickets done in the thirty days to that day, with their count; the open questions and the one asked first; the minutes booked in the period per project. Beside them the eight open tickets updated last. `project` as the ticket lists take it (repeatable, `!` leaves one out; without a plain value every project that is not archived), `from` and `to`, days inclusive, by default the thirty days that end today, UTC; `from` after `to` is `400`. Open tiles stand as the tickets do at the request. A weak `ETag` and `304`; not for a token restricted to a project |
 | `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)); with `me=true` the person-level stream: every event of every tenant the person belongs to that the tenant's own stream would carry to them, each with its `id:` and replayed across the tenants after a reconnect, and `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes, without an `id:`; a token restricted to a tenant hears its tenant alone. `membership.changed` names its tenant: `{"tenant", "person_id", "project_id", "mapping_id"}`, each key but `tenant` where it applies |
 | `GET …/projects` | the projects the caller can see, by key; `include_archived`; numbered pages with a total |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |

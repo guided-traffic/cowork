@@ -1751,6 +1751,237 @@ type CurrentToken struct {
 	State TokenState `json:"state"`
 }
 
+// Dashboard The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
+// transaction. Every tile counts only what the caller can see: the visibility predicate holds
+// each ticket, question and time entry it reads, so a restricted project or a confidential
+// ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,
+// docs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034
+// D5). A deleted ticket counts nowhere either — nor its questions and its time — until it is
+// restored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they
+// stand at the request; throughput and lead time end with the period's last day; the time is
+// the period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them
+// (docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without
+// a plain value, every project the caller sees that is not archived; a negated value leaves its
+// project out, and a key that names no project the caller sees counts nothing.
+type Dashboard struct {
+	// Age Tile 5, the age distribution of the open tickets, the age being the time since filing
+	// (`opened_at`) at the request: five buckets in this order, every one present — under 7
+	// days, 7 to under 30, 30 to under 90, 90 to under 365, and 365 days or more, a day being
+	// 24 hours.
+	Age []DashboardAgeBucket `json:"age"`
+
+	// Blocked Tile 4, blocked tickets: the count of open tickets in the state `blocked`, and the one blocked
+	// longest with its block's kind (docs/adr/0009 D2) — blocked since its latest recorded
+	// transition into `blocked` (docs/adr/0026), or since its last update where no act records one;
+	// the earlier id on a tie. `oldest` is `null` while none is blocked.
+	Blocked DashboardBlocked `json:"blocked"`
+
+	// Decisions Tile 8, open decisions: the count of open questions (docs/adr/0011 D3) on the tickets of the
+	// counted projects, whomever they are asked of and whatever state the ticket is in, and the one
+	// asked first, the earlier id on a tie; `oldest` is `null` while none is open.
+	Decisions DashboardDecisions `json:"decisions"`
+
+	// LeadTime Tile 7, lead time: the median time from filing to done (`opened_at` to `done_at`) of the
+	// tickets done in the thirty days that end with the period's last day — done now, their
+	// `done_at` in that window, as throughput counts them; the median of an even count is the mean
+	// of the middle two. `median_seconds` is `null` while no ticket was done in the window.
+	LeadTime DashboardLeadTime `json:"lead_time"`
+
+	// OpenBySeverity Tile 2, open tickets by severity: every severity of docs/adr/0010 D1 in its order,
+	// `critical` first, with the count of open tickets that carry it, zero included.
+	OpenBySeverity []DashboardSeverityCount `json:"open_by_severity"`
+
+	// OpenByState Tile 1, open tickets by state: the open tickets of each counted project per state, by
+	// project key; a project and state without an open ticket is left out. Their sum per state
+	// is the tile, their sum per project the project's open count.
+	OpenByState []DashboardStateCount `json:"open_by_state"`
+
+	// Period The period the request named, or the default: the thirty days that end today, UTC. Both days
+	// are inclusive.
+	Period DashboardPeriod `json:"period"`
+
+	// Recent Beside the tiles, kept from the front page before the dashboard: the eight open tickets of
+	// the counted projects updated last, newest first (the later id on a tie).
+	Recent []DashboardRecent `json:"recent"`
+
+	// Security Tile 3, open security findings: `live`, then `boundary` (docs/adr/0010 D1, D2), each with
+	// the count of open tickets of that class and the oldest of them by filing (`opened_at`, the
+	// earlier id on a tie), `null` while there is none.
+	Security []DashboardSecurity `json:"security"`
+
+	// Throughput Tile 6, throughput: the tickets done per ISO week (docs/adr/0019 D2) for the eight weeks
+	// that end with the one holding the period's last day, oldest first, every week present. A
+	// ticket counts in the week of its `done_at` while it is done: one reopened since counts
+	// nowhere, one done again counts once, in the week of its last done. The last week counts
+	// up to the period's last day.
+	Throughput []DashboardWeek `json:"throughput"`
+
+	// Time Tile 9, time booked in the period by project: the minutes of the time entries whose day lies
+	// in the period, voided ones left out (docs/adr/0017 D7), per counted project that has any, by
+	// project key; only the entries the caller may see count (docs/adr/0034 D5).
+	Time DashboardTime `json:"time"`
+}
+
+// DashboardAgeBucket The open tickets whose age is at least `from_days` and under `to_days`
+type DashboardAgeBucket struct {
+	Count    int `json:"count"`
+	FromDays int `json:"from_days"`
+
+	// ToDays Null for the last bucket, which has no upper bound
+	ToDays nullable.Nullable[int] `json:"to_days"`
+}
+
+// DashboardBlock defines model for DashboardBlock.
+type DashboardBlock struct {
+	// Key The canonical key, <tenant>/<PROJECT>-<number>
+	Key string `json:"key"`
+
+	// Kind What a blocked ticket waits on (docs/adr/0009 D2)
+	Kind BlockKind `json:"kind"`
+
+	// Since When the ticket entered blocked
+	Since time.Time `json:"since"`
+	Title string    `json:"title"`
+}
+
+// DashboardBlocked Tile 4, blocked tickets: the count of open tickets in the state `blocked`, and the one blocked
+// longest with its block's kind (docs/adr/0009 D2) — blocked since its latest recorded
+// transition into `blocked` (docs/adr/0026), or since its last update where no act records one;
+// the earlier id on a tie. `oldest` is `null` while none is blocked.
+type DashboardBlocked struct {
+	Count  int                               `json:"count"`
+	Oldest nullable.Nullable[DashboardBlock] `json:"oldest"`
+}
+
+// DashboardDecisions Tile 8, open decisions: the count of open questions (docs/adr/0011 D3) on the tickets of the
+// counted projects, whomever they are asked of and whatever state the ticket is in, and the one
+// asked first, the earlier id on a tie; `oldest` is `null` while none is open.
+type DashboardDecisions struct {
+	Count  int                                  `json:"count"`
+	Oldest nullable.Nullable[DashboardQuestion] `json:"oldest"`
+}
+
+// DashboardLeadTime Tile 7, lead time: the median time from filing to done (`opened_at` to `done_at`) of the
+// tickets done in the thirty days that end with the period's last day — done now, their
+// `done_at` in that window, as throughput counts them; the median of an even count is the mean
+// of the middle two. `median_seconds` is `null` while no ticket was done in the window.
+type DashboardLeadTime struct {
+	// Done The tickets the median is taken over
+	Done int `json:"done"`
+
+	// From The window's first day
+	From openapi_types.Date `json:"from"`
+
+	// MedianSeconds Whole seconds, rounded
+	MedianSeconds nullable.Nullable[int] `json:"median_seconds"`
+
+	// To The window's last day, the period's
+	To openapi_types.Date `json:"to"`
+}
+
+// DashboardPeriod The period the request named, or the default: the thirty days that end today, UTC. Both days
+// are inclusive.
+type DashboardPeriod struct {
+	From openapi_types.Date `json:"from"`
+	To   openapi_types.Date `json:"to"`
+}
+
+// DashboardProjectTime defines model for DashboardProjectTime.
+type DashboardProjectTime struct {
+	Minutes int    `json:"minutes"`
+	Name    string `json:"name"`
+
+	// Project The project's key
+	Project string `json:"project"`
+}
+
+// DashboardQuestion defines model for DashboardQuestion.
+type DashboardQuestion struct {
+	// Key The canonical key of its ticket
+	Key string `json:"key"`
+
+	// Number The question's number on the ticket
+	Number   int    `json:"number"`
+	Question string `json:"question"`
+
+	// Since When it was asked
+	Since time.Time `json:"since"`
+
+	// Title The ticket's title
+	Title string `json:"title"`
+}
+
+// DashboardRecent defines model for DashboardRecent.
+type DashboardRecent struct {
+	// Key The canonical key, <tenant>/<PROJECT>-<number>
+	Key string `json:"key"`
+
+	// State docs/adr/0009 D1
+	State TicketState `json:"state"`
+	Title string      `json:"title"`
+
+	// Type docs/adr/0008 D1
+	Type      TicketType `json:"type"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// DashboardSecurity defines model for DashboardSecurity.
+type DashboardSecurity struct {
+	Class SecurityClass `json:"class"`
+	Count int           `json:"count"`
+
+	// Oldest The oldest open ticket of the class; `since` is its filing
+	Oldest nullable.Nullable[DashboardTicket] `json:"oldest"`
+}
+
+// DashboardSeverityCount defines model for DashboardSeverityCount.
+type DashboardSeverityCount struct {
+	Count    int      `json:"count"`
+	Severity Severity `json:"severity"`
+}
+
+// DashboardStateCount defines model for DashboardStateCount.
+type DashboardStateCount struct {
+	Count int `json:"count"`
+
+	// Project The project's key
+	Project string `json:"project"`
+
+	// State docs/adr/0009 D1
+	State TicketState `json:"state"`
+}
+
+// DashboardTicket A ticket a tile names, with the time the tile measures it from
+type DashboardTicket struct {
+	// Key The canonical key, <tenant>/<PROJECT>-<number>
+	Key   string    `json:"key"`
+	Since time.Time `json:"since"`
+	Title string    `json:"title"`
+}
+
+// DashboardTime Tile 9, time booked in the period by project: the minutes of the time entries whose day lies
+// in the period, voided ones left out (docs/adr/0017 D7), per counted project that has any, by
+// project key; only the entries the caller may see count (docs/adr/0034 D5).
+type DashboardTime struct {
+	Projects     []DashboardProjectTime `json:"projects"`
+	TotalMinutes int                    `json:"total_minutes"`
+}
+
+// DashboardWeek defines model for DashboardWeek.
+type DashboardWeek struct {
+	// Done The tickets done in it
+	Done int `json:"done"`
+
+	// From Its Monday
+	From openapi_types.Date `json:"from"`
+
+	// To Its Sunday, or the period's last day for the last week
+	To openapi_types.Date `json:"to"`
+
+	// Week The ISO week, 2026-W40
+	Week string `json:"week"`
+}
+
 // Decision defines model for Decision.
 type Decision struct {
 	Question Question  `json:"question"`
@@ -3459,6 +3690,21 @@ type ListAuditParams struct {
 // ListAuditParamsPerPage defines parameters for ListAudit.
 type ListAuditParamsPerPage int
 
+// GetDashboardParams defines parameters for GetDashboard.
+type GetDashboardParams struct {
+	// Project A project key, negatable with !
+	Project *FilterProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// From The first day of the period, inclusive
+	From *FromDay `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The last day of the period, inclusive
+	To *ToDay `form:"to,omitempty" json:"to,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
 // ListDeletedTicketsParams defines parameters for ListDeletedTickets.
 type ListDeletedTicketsParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -4787,6 +5033,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDashboard The tenant's dashboard, its nine tiles over what the caller can see
+	//
+	// `read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by
+	// severity, the open `live` and `boundary` findings, the blocked tickets, the age of the open
+	// tickets, throughput, lead time, open decisions and the time booked — and, beside them, the
+	// open tickets updated last. Each tile is defined in its field of `Dashboard`, and each counts
+	// only what the caller can see.
+	//
+	// The filters are the ticket lists' `project` (docs/adr/0049 D6), repeatable, `!` leaving a
+	// project out, and the period, `from` and `to`, both days inclusive — by default the thirty
+	// days that end today (UTC); `from` after `to` is `400 validation_failed`. The period bounds
+	// the time booked; throughput and lead time end with its last day; the open tiles stand as
+	// the tickets do at the request.
+	//
+	// One route for all nine: the page shows them together under one set of filters, one
+	// transaction gives counts that agree with each other, and a reload after an event costs one
+	// request, which `If-None-Match` answers with `304` while nothing the caller sees changed
+	// (docs/adr/0054 D7). A token restricted to a project does not reach it.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/dashboard (the `GetDashboard` operationId).
+	GetDashboard(ctx context.Context, tenant TenantSlug, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDeletedTickets The tenant's bin of deleted tickets
 	//
@@ -7048,6 +7316,38 @@ func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, req
 // Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 func (c *Client) StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStopChatTurnsRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDashboard The tenant's dashboard, its nine tiles over what the caller can see
+//
+// `read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by
+// severity, the open `live` and `boundary` findings, the blocked tickets, the age of the open
+// tickets, throughput, lead time, open decisions and the time booked — and, beside them, the
+// open tickets updated last. Each tile is defined in its field of `Dashboard`, and each counts
+// only what the caller can see.
+//
+// The filters are the ticket lists' `project` (docs/adr/0049 D6), repeatable, `!` leaving a
+// project out, and the period, `from` and `to`, both days inclusive — by default the thirty
+// days that end today (UTC); `from` after `to` is `400 validation_failed`. The period bounds
+// the time booked; throughput and lead time end with its last day; the open tiles stand as
+// the tickets do at the request.
+//
+// One route for all nine: the page shows them together under one set of filters, one
+// transaction gives counts that agree with each other, and a reload after an event costs one
+// request, which `If-None-Match` answers with `304` while nothing the caller sees changed
+// (docs/adr/0054 D7). A token restricted to a project does not reach it.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/dashboard (the `GetDashboard` operationId).
+func (c *Client) GetDashboard(ctx context.Context, tenant TenantSlug, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDashboardRequest(c.Server, tenant, params)
 	if err != nil {
 		return nil, err
 	}
@@ -11217,6 +11517,106 @@ func NewStopChatTurnsRequest(server string, tenant TenantSlug) (*http.Request, e
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDashboardRequest constructs an http.Request for the GetDashboard method
+func NewGetDashboardRequest(server string, tenant TenantSlug, params *GetDashboardParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/dashboard", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", *params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -18251,6 +18651,30 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error)
 
+	// GetDashboardWithResponse The tenant's dashboard, its nine tiles over what the caller can see
+	//
+	// `read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by
+	// severity, the open `live` and `boundary` findings, the blocked tickets, the age of the open
+	// tickets, throughput, lead time, open decisions and the time booked — and, beside them, the
+	// open tickets updated last. Each tile is defined in its field of `Dashboard`, and each counts
+	// only what the caller can see.
+	//
+	// The filters are the ticket lists' `project` (docs/adr/0049 D6), repeatable, `!` leaving a
+	// project out, and the period, `from` and `to`, both days inclusive — by default the thirty
+	// days that end today (UTC); `from` after `to` is `400 validation_failed`. The period bounds
+	// the time booked; throughput and lead time end with its last day; the open tiles stand as
+	// the tickets do at the request.
+	//
+	// One route for all nine: the page shows them together under one set of filters, one
+	// transaction gives counts that agree with each other, and a reload after an event costs one
+	// request, which `If-None-Match` answers with `304` while nothing the caller sees changed
+	// (docs/adr/0054 D7). A token restricted to a project does not reach it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/dashboard (the `GetDashboard` operationId).
+	GetDashboardWithResponse(ctx context.Context, tenant TenantSlug, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
+
 	// ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
 	//
 	// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
@@ -21393,6 +21817,75 @@ func (r StopChatTurnsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r StopChatTurnsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetDashboardResponse200Headers the declared response headers of an HTTP 200 response for GetDashboard
+type GetDashboardResponse200Headers struct {
+	ETag *string
+}
+
+// GetDashboardResponse304Headers the declared response headers of an HTTP 304 response for GetDashboard
+type GetDashboardResponse304Headers struct {
+	ETag *string
+}
+
+// GetDashboardResponseDefaultHeaders the declared response headers of an HTTP default response for GetDashboard
+type GetDashboardResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetDashboardResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Dashboard
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetDashboardResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *GetDashboardResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetDashboardResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDashboardResponse) GetJSON200() *Dashboard {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetDashboardResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDashboardResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDashboardResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDashboardResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDashboardResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -27249,6 +27742,36 @@ func (c *ClientWithResponses) StopChatTurnsWithResponse(ctx context.Context, ten
 	return ParseStopChatTurnsResponse(rsp)
 }
 
+// GetDashboardWithResponse The tenant's dashboard, its nine tiles over what the caller can see
+//
+// `read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by
+// severity, the open `live` and `boundary` findings, the blocked tickets, the age of the open
+// tickets, throughput, lead time, open decisions and the time booked — and, beside them, the
+// open tickets updated last. Each tile is defined in its field of `Dashboard`, and each counts
+// only what the caller can see.
+//
+// The filters are the ticket lists' `project` (docs/adr/0049 D6), repeatable, `!` leaving a
+// project out, and the period, `from` and `to`, both days inclusive — by default the thirty
+// days that end today (UTC); `from` after `to` is `400 validation_failed`. The period bounds
+// the time booked; throughput and lead time end with its last day; the open tiles stand as
+// the tickets do at the request.
+//
+// One route for all nine: the page shows them together under one set of filters, one
+// transaction gives counts that agree with each other, and a reload after an event costs one
+// request, which `If-None-Match` answers with `304` while nothing the caller sees changed
+// (docs/adr/0054 D7). A token restricted to a project does not reach it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/dashboard (the `GetDashboard` operationId).
+func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, tenant TenantSlug, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error) {
+	rsp, err := c.GetDashboard(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDashboardResponse(rsp)
+}
+
 // ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
 //
 // The tenant administrators' view of the deleted tickets they can see, the last deleted first,
@@ -30839,6 +31362,75 @@ func ParseStopChatTurnsResponse(rsp *http.Response) (*StopChatTurnsResponse, err
 	switch {
 	case true:
 		var headers StopChatTurnsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetDashboardResponse parses an HTTP response from a GetDashboardWithResponse call
+func ParseGetDashboardResponse(rsp *http.Response) (*GetDashboardResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDashboardResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetDashboardResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers GetDashboardResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers GetDashboardResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -35669,6 +36261,9 @@ type ServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// GetDashboard The tenant's dashboard, its nine tiles over what the caller can see
+	// (GET /api/v1/tenants/{tenant}/dashboard)
+	GetDashboard(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetDashboardParams)
 	// ListDeletedTickets The tenant's bin of deleted tickets
 	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
 	ListDeletedTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListDeletedTicketsParams)
@@ -37193,6 +37788,95 @@ func (siw *ServerInterfaceWrapper) StopChatTurns(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StopChatTurns(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDashboard operation middleware
+func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDashboardParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDashboard(w, r, tenant, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -43132,6 +43816,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/dashboard", wrapper.GetDashboard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets", wrapper.ListDeletedTickets)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}", wrapper.PurgeTicket)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore", wrapper.RestoreTicket)
@@ -44592,6 +45277,70 @@ type StopChatTurnsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response StopChatTurnsdefaultApplicationProblemPlusJSONResponse) VisitStopChatTurnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboardRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params GetDashboardParams
+}
+
+type GetDashboardResponseObject interface {
+	VisitGetDashboardResponse(w http.ResponseWriter) error
+}
+
+type GetDashboard200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetDashboard200JSONResponse struct {
+	Body    Dashboard
+	Headers GetDashboard200ResponseHeaders
+}
+
+func (response GetDashboard200JSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboard304Response = NotModifiedResponse
+
+func (response GetDashboard304Response) VisitGetDashboardResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetDashboarddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetDashboarddefaultApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -49373,6 +50122,9 @@ type StrictServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(ctx context.Context, request StopChatTurnsRequestObject) (StopChatTurnsResponseObject, error)
+	// GetDashboard The tenant's dashboard, its nine tiles over what the caller can see
+	// (GET /api/v1/tenants/{tenant}/dashboard)
+	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
 	// ListDeletedTickets The tenant's bin of deleted tickets
 	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
 	ListDeletedTickets(ctx context.Context, request ListDeletedTicketsRequestObject) (ListDeletedTicketsResponseObject, error)
@@ -50486,6 +51238,33 @@ func (sh *strictHandler) StopChatTurns(w http.ResponseWriter, r *http.Request, t
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StopChatTurnsResponseObject); ok {
 		if err := validResponse.VisitStopChatTurnsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDashboard operation middleware
+func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetDashboardParams) {
+	var request GetDashboardRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDashboard(ctx, request.(GetDashboardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDashboard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
+		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

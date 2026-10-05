@@ -31,7 +31,10 @@ more tenants than `COWORK_SSE_MAX_STREAMS_PER_PERSON` would close against themse
 reload on `inbox.changed` with a fifteen-second poll, the latency this record turned down (D1: the
 person-level stream spans the person's tenants; D3: a filter per tenant, recomputed on every act
 that changes it and at every heartbeat, which checks every membership; D5: a reconnect replays
-across the tenants; built the same day).
+across the tenants; built the same day), and made concrete on 2026-10-05 for the dashboard of
+[ADR 0018](0018-the-views-of-the-first-release.md) D6 (D4: a time booking stays unpublished, and the
+dashboard's time tile follows it at the next reload; settled on the recommendation, the owner
+reviewing the result).
 
 **Partly built** (phase 2, 2026-10-02): D1 without ~~`?me=true` (the person-level events arrive
 with the inbox)~~ — built 2026-10-04, below —, D2 without ~~`inbox.changed`~~ — built 2026-10-04,
@@ -172,6 +175,14 @@ the time entries are not; the payload is the audit row's id, the tenant, the pro
 entity, the action, the key, the version and the confidential rule's inputs, a few hundred
 bytes against PostgreSQL's limit of 8000; while the listener has lost its connection, new
 streams are refused with `503` and the open ones are told `resync` when it is back.)*
+*(Made concrete 2026-10-05, settled on the recommendation, the owner reviewing the result:)* the
+time entries stay unpublished for the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
+D6 too. Its time tile follows a booking at the next reload — another act of the tenant, a `resync`,
+the fallback's poll, the page opened again — over publishing a booking as an act of its ticket,
+which would need the stream's filter to judge the visibility of time
+([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D5) or tell a member who may not see another's time that an entry exists, and over a timer that
+asks every open dashboard once a minute for a sum that changes a few times a day.
 
 **D5 — Reconnect and replay.** Every event has an `id` (the audit row's UUIDv7); each
 replica keeps a ring buffer of the last five minutes per tenant; a reconnect with

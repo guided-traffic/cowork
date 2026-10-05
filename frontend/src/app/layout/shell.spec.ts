@@ -1060,6 +1060,13 @@ describe('Shell', () => {
       await fixture.whenStable();
       expect(active()).toEqual(['nav-overview']);
 
+      // The dashboard keeps its filters in its address (docs/adr/0018 D6).
+      await TestBed.inject(Router).navigateByUrl(
+        '/t/acme?project=COW&from=2026-09-01&to=2026-09-30',
+      );
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-overview']);
+
       await TestBed.inject(Router).navigateByUrl('/t/acme/board');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-board']);

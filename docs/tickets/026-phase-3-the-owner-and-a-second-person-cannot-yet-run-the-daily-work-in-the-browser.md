@@ -95,7 +95,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
    - T41 — done (the project board's end-to-end path); its move to the archive is left
    - T42 — the tenant board's end-to-end run (the board is built, its path written)
-   - T43 — the fixed dashboard
+   - T43 — the fixed dashboard's end-to-end path and the owner's look at it (the route and the
+     front page are built)
 2. **The phase verification**, recorded here with what was run, against what, with what result:
    the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned
    to me" and in its inbox, moves it and closes it — through the UI, without touching the API —

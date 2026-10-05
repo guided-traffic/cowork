@@ -13,7 +13,14 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  IsActiveMatchOptions,
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { Avatar } from 'primeng/avatar';
 import { ButtonDirective } from 'primeng/button';
@@ -67,6 +74,18 @@ export function searchedFor(router: Router, url: string): string | null {
   return isSearch ? String(tree.queryParams['q'] ?? '') : null;
 }
 
+/**
+ * When *Overview* is the page that is open: the tenant's front page, its dashboard
+ * (docs/adr/0018 D6), whatever filters its address holds — its path exactly, so that the tenant's
+ * board and every other page of the tenant leave it inactive.
+ */
+export const frontPageActive: IsActiveMatchOptions = {
+  paths: 'exact',
+  queryParams: 'ignored',
+  matrixParams: 'ignored',
+  fragment: 'ignored',
+};
+
 /** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
 export const overlayQuery = '(max-width: 64rem)';
 
@@ -109,6 +128,7 @@ export class Shell {
   protected readonly inbox = inject(InboxService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
+  protected readonly frontPageActive = frontPageActive;
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(

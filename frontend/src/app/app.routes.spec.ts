@@ -24,10 +24,10 @@ import { ProjectSettings } from './features/project/project-settings';
 import { SearchResults } from './features/search/search';
 import { Accounts } from './features/tenant/accounts';
 import { Audit } from './features/tenant/audit';
+import { TenantDashboard } from './features/tenant/dashboard';
 import { DeletedTickets } from './features/tenant/deleted-tickets';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
-import { TenantOverview } from './features/tenant/overview';
 import { TenantBoard } from './features/tenant/tenant-board';
 import { TenantSettings } from './features/tenant/tenant-settings';
 import { TicketDetail } from './features/ticket/ticket-detail';
@@ -58,7 +58,7 @@ const pages: [string, Type<unknown>][] = [
   ['me/assigned', Assigned],
   ['me/decisions', Decisions],
   ['me/search', SearchResults],
-  ['t/:tenant', TenantOverview],
+  ['t/:tenant', TenantDashboard],
   ['t/:tenant/board', TenantBoard],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
@@ -157,7 +157,7 @@ describe('the routes', () => {
       named('/me/tokens', Shell, Tokens),
       named('/me/search?q=gate', Shell, SearchResults),
       named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
-      named('/t/acme', Shell, TenantScope, TenantOverview),
+      named('/t/acme', Shell, TenantScope, TenantDashboard),
       named('/t/acme/board', Shell, TenantScope, TenantBoard),
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),

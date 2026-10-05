@@ -2,9 +2,9 @@
 
 How the backend reaches PostgreSQL: two roles, the transaction wrappers, the settings the
 policies read, the visibility predicates, the deletion filter and the lints that hold every query
-to them, the one place SQL is built at run time, the advisory locks, the background jobs, the
-deletion and the purge of a ticket, the notifications an act writes and the publication of acts.
-The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
+to them, the one place SQL is built at run time, the dashboard's queries, the advisory locks, the
+background jobs, the deletion and the purge of a ticket, the notifications an act writes and the
+publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
 audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0024] (deletion),
 [ADR 0031] (the sessions) and [ADR 0030] (the memberships the identity provider derives). Read
@@ -310,6 +310,36 @@ enters the SQL text; only the integer `LIMIT` and `OFFSET` are formatted in. The
 | `Query` | `search @@ plainto_tsquery('cowork_simple', …)` ([ADR 0025]) |
 | `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number —, `NewestFirst` (id descending) for the tenant's, and `ByProjectRank` for a tenant's part of a person-level list — `ORDER BY p.key, rankedKey NULLS LAST, t.number`; `Position` writes a row's cursor position, the id, or `<key>.<number>` (`RankPosition`) with an empty key for an unranked ticket, after `<PROJECT>/` for `ByProjectRank`, which the API seals ([api.md](api.md#paging)) |
 | `TicketPage` | after a cursor position with `LIMIT` one above the page, or a numbered page with `LIMIT`/`OFFSET` and a `count(*)` total |
+
+## The dashboard's queries
+
+[`queries/read/dashboard.sql`](../../backend/internal/store/queries/read/dashboard.sql) holds the
+ten reads of the tenant's dashboard ([api.md](api.md#the-dashboard)), which the handler runs in one
+`InTenant` transaction. Each reads `tickets` once and calls `app_ticket_visible` on it with the
+deletion filter `t.deleted_at IS NULL` beside it — the two lints above hold them to that like any
+query, and none is exempt — and says so in a `-- visibility:` line; the time adds
+`app_time_visible` on every entry, as the time report does. So a confidential ticket or a
+restricted project counts, is named and moves a median only for whoever sees it, and a deleted
+ticket — its questions and its time with it — for nobody until it is restored; the integration
+tier proves it tile by tile with a ticket the member cannot see, and once for a ticket deleted and
+restored ([`api_dashboard_test.go`](../../backend/test/integration/api_dashboard_test.go)).
+
+- **The counted projects** are two `text[]` arguments, `projects` and `without_projects`: a
+  project counts when its key is in the first, or the first is empty and the project is not
+  archived, and never when its key is in the second. The handler passes empty arrays, never `NULL`,
+  which would match nothing.
+- **The blocked ticket's start** is read from the audit record: the latest `transitioned` act of
+  the ticket whose `after` names the state `blocked` (`max(created_at)`, on `audit_by_ticket`), or
+  the ticket's `updated_at` where no act records one — a ticket blocked past the API. The act is
+  read only for a ticket the predicate has let through.
+- **Times come from the handler's clock**, not `now()`: the age buckets' cuts, the weeks' first
+  Monday and the windows' ends are arguments, so a test fixes the clock (`Options.Now`) and the
+  database's own time does not move a bucket. The week is `date_trunc('week', done_at AT TIME ZONE
+  'UTC')`, a Monday; the median is `percentile_cont(0.5)` over the seconds from `opened_at` to
+  `done_at`, `0` with no ticket, which the handler answers as `null` by the count beside it.
+- **No migration and no index** came with them: the indexes there are cover their filters —
+  `tickets_by_state`, `time_entries_by_day`, `audit_by_ticket` — and each tile reads the tenant's
+  visible tickets anew. Their plans and their time over a large tenant have not been measured.
 
 ## Advisory locks
 

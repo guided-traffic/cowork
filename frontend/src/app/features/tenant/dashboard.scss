@@ -1,0 +1,365 @@
+// Every colour is a token of the preset (docs/adr/0052 D5): the bars follow the scheme with it.
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 80rem;
+  padding: 2rem;
+}
+
+.head h1 {
+  font-size: 1.5rem;
+}
+
+.head p {
+  margin: 0.25rem 0 0;
+}
+
+.small {
+  font-size: 0.8125rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+
+  p-select {
+    min-width: 14rem;
+  }
+}
+
+// Three tiles span two columns, so that nine tiles fill whole rows at two, three and four
+// columns; dense placement fills what a wide tile leaves.
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-auto-flow: dense;
+  gap: 0.875rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+
+  h2 {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--p-text-muted-color);
+  }
+
+  &.wide {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 40rem) {
+  .tile.wide {
+    grid-column: auto;
+  }
+}
+
+.figure {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.stack {
+  display: flex;
+  gap: 2px;
+  height: 0.375rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--p-app-hover);
+}
+
+.segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+
+.bars {
+  // One grid for the rows of a tile, so that every track starts and ends at the same place and
+  // the bars compare, whatever the width of a label or a count.
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 7.5rem) 1fr max-content;
+  align-items: center;
+  gap: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+
+  > .muted {
+    grid-column: 1 / -1;
+  }
+}
+
+.bar-row {
+  display: contents;
+
+  .label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .count {
+    text-align: right;
+    white-space: nowrap;
+  }
+}
+
+.track {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--p-app-hover);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--p-primary-color);
+    transition: width 0.3s ease;
+  }
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .count {
+    font-size: 0.8125rem;
+  }
+
+  .small {
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+}
+
+.column {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 6rem;
+  border-radius: 0.375rem;
+  background: var(--p-app-hover);
+
+  span {
+    display: block;
+    width: 100%;
+    border-radius: 0.375rem;
+    background: var(--p-primary-color);
+    transition: height 0.3s ease;
+  }
+}
+
+.named {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--p-app-border);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+.named-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+
+  .count {
+    font-weight: 650;
+  }
+}
+
+.ticket-link,
+.question-link {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--p-text-color);
+
+  &:hover {
+    text-decoration: none;
+
+    .ticket-title,
+    .question {
+      text-decoration: underline;
+    }
+  }
+}
+
+.question-link {
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.question {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+h2 {
+  margin-top: 0.75rem;
+  font-size: 1rem;
+}
+
+.projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.875rem;
+}
+
+.project {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  color: var(--p-text-color);
+  transition: border-color 0.15s;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--p-primary-color) 60%, transparent);
+    text-decoration: none;
+  }
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.key {
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: var(--p-app-hover);
+}
+
+.name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.project .count {
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.8125rem;
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  color: var(--p-text-color);
+  border-bottom: 1px solid var(--p-app-border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: var(--p-app-hover);
+    text-decoration: none;
+  }
+}
+
+.ticket-key {
+  flex: none;
+  min-width: 4.5rem;
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+}
+
+.ticket-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.when {
+  flex: none;
+  width: 7rem;
+  text-align: right;
+  font-size: 0.75rem;
+}
+
+.empty {
+  padding: 1rem;
+  margin: 0;
+}
