@@ -81,6 +81,10 @@ type Event struct {
 	// tenant's streams admit its events before the next one is filtered, and
 	// sent to no client (docs/adr/0054 D3); uuid.Nil for every other act.
 	NewProject uuid.UUID
+	// ProjectRank announces an act on a project's rank as a whole — the sort
+	// by the score (docs/adr/0014 D3) — as project.changed; nil for every
+	// other act.
+	ProjectRank *ProjectChange
 	// Notices are whom the act tells in their inbox and why
 	// (docs/adr/0020 D2); none for an act that tells nobody.
 	Notices []Notice

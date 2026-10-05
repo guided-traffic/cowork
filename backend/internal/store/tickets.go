@@ -2,8 +2,8 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,7 +33,7 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
@@ -128,10 +128,10 @@ const (
 	ByRank TicketOrder = iota
 	// NewestFirst is the tenant-wide list.
 	NewestFirst
-	// ByProjectRank is a tenant's part of a person-level list: by the
-	// project's key, then each project as ByRank orders it — the order of
-	// docs/adr/0014 D5 until the score exists.
-	ByProjectRank
+	// ByScore is a tenant's part of a person-level list: the score's order,
+	// highest first, then the id (docs/adr/0014 D5). The ids are unique across
+	// tenants, so the parts of every tenant merge into one order.
+	ByScore
 )
 
 // rankedKey is the key a ticket is listed by in its project's rank: none
@@ -141,17 +141,39 @@ const (
 const rankedKey = "(CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END)"
 
 // Position is the cursor position after r in the order: the id (NewestFirst),
-// or the key and the number, "<key>.<number>", the key empty for an unranked
-// ticket, a done or dropped one included whatever its column holds (ByRank),
-// after the project's key and a slash (ByProjectRank).
+// the score's key and the id (ByScore), or the key and the number,
+// "<key>.<number>", the key empty for an unranked ticket, a done or dropped
+// one included whatever its column holds (ByRank).
 func (o TicketOrder) Position(r TicketRow) string {
 	switch o {
 	case NewestFirst:
 		return r.ID.String()
-	case ByProjectRank:
-		return r.ProjectKey + "/" + ByRank.Position(r)
+	case ByScore:
+		return ScorePosition(r.ScoreKey, r.ID)
 	}
 	return RankPosition(r.Rank, r.State, r.Number)
+}
+
+// ScorePosition is a place in the score's order as a cursor position:
+// "<score key>/<id>", the key written so that it reads back to the same
+// float64 — "-Inf" for a ticket without a score. A score is shown on the
+// ticket, so the position needs no sealing.
+func ScorePosition(key float64, id uuid.UUID) string {
+	return strconv.FormatFloat(key, 'g', -1, 64) + "/" + id.String()
+}
+
+// ParseScorePosition reads a ScorePosition.
+func ParseScorePosition(position string) (float64, uuid.UUID, error) {
+	key, id, _ := strings.Cut(position, "/")
+	k, err := strconv.ParseFloat(key, 64)
+	if err != nil || math.IsNaN(k) || math.IsInf(k, 1) {
+		return 0, uuid.Nil, fmt.Errorf("bad score position %q", position)
+	}
+	u, err := uuid.Parse(id)
+	if err != nil {
+		return 0, uuid.Nil, fmt.Errorf("bad score position %q: %w", position, err)
+	}
+	return k, u, nil
 }
 
 // RankPosition is a ticket's place in its project's rank as a cursor position:
@@ -242,8 +264,8 @@ func orderBy(o TicketOrder) string {
 	switch o {
 	case NewestFirst:
 		return "ORDER BY t.id DESC"
-	case ByProjectRank:
-		return "ORDER BY p.key, " + rankedKey + " NULLS LAST, t.number"
+	case ByScore:
+		return "ORDER BY t.score_key DESC, t.id"
 	}
 	return "ORDER BY " + rankedKey + " NULLS LAST, t.number"
 }
@@ -275,17 +297,13 @@ func (b *queryBuilder) after(o TicketOrder, after string) (string, error) {
 			return "", fmt.Errorf("list tickets: bad cursor position: %w", err)
 		}
 		return "t.id < " + b.arg(id), nil
-	case ByProjectRank:
-		project, rest, _ := strings.Cut(after, "/")
-		if !domain.ValidProjectKey(project) {
-			return "", errors.New("list tickets: bad cursor position: no project key")
-		}
-		k := b.arg(project)
-		cond, err := b.after(ByRank, rest)
+	case ByScore:
+		key, id, err := ParseScorePosition(after)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("list tickets: %w", err)
 		}
-		return "(p.key > " + k + " OR (p.key = " + k + " AND " + cond + "))", nil
+		k := b.arg(key)
+		return "(t.score_key < " + k + " OR (t.score_key = " + k + " AND t.id > " + b.arg(id) + "))", nil
 	}
 	key, number, _ := strings.Cut(after, ".")
 	n, err := strconv.Atoi(number)

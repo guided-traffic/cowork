@@ -196,6 +196,9 @@ func summary(a Act) string {
 		if fields := changed(a); len(fields) > 0 {
 			s += " " + strings.Join(fields, ", ")
 		}
+	case a.Action == "ranked" && a.After["by"] == "score":
+		// The sort of the project's rank by the score (docs/adr/0014 D3).
+		s += " by score"
 	}
 	if a.Reason != "" {
 		s += " — reason: " + quoted(a.Reason)

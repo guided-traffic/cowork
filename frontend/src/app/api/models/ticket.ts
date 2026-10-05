@@ -95,6 +95,20 @@ export interface Ticket {
    * The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
    */
   reporter_token: (TokenMark | null);
+
+  /**
+   * The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of
+   * the severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days
+   * since `opened_at`. It warns where the facts disagree with the project's rank and orders the
+   * person-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a
+   * release before the score filed until an input of it changes.
+   */
+  score: (number | null);
+
+  /**
+   * The version of the function that computed `score` (docs/adr/0014 D4); null with it
+   */
+  score_version: (number | null);
   security: SecurityClass;
   severity: Severity;
   state: TicketState;

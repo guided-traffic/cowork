@@ -1014,6 +1014,8 @@ type Ticket struct {
 	ReporterTokenName         *string
 	DeletedAt                 *time.Time
 	DeletedBy                 *uuid.UUID
+	ScoreKey                  float64
+	ScoreVersion              int16
 }
 
 type TicketCounter struct {

@@ -134,20 +134,20 @@ change.
 
 ## What has no page here
 
-The score beside the rank, "next for me", the deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
+The deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
 deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
 [domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
 the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog), the tenant's
 dashboard in [api.md](api.md#the-dashboard), [data-access.md](data-access.md#the-dashboards-queries)
 and [frontend.md](frontend.md#the-dashboard); the inbox
-and the person-level lists are sections of [data-access.md](data-access.md#notifications),
+and the person-level lists — "next for me" among them — are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
 [frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
 they are, and the tenant's ticket list one of [frontend.md](frontend.md#the-tenants-ticket-list),
 whose address is its filter and which applies the saved filters as the backlog does; the rank
-itself is a section of
-[domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
+itself, its rebalancing and the score are sections of
+[domain.md](domain.md#rank) and [domain.md](domain.md#the-score), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
 its own security page, [identity-provider.md](../security/identity-provider.md), and the
 end-to-end tier a section of [testing.md](testing.md#end-to-end-tests).

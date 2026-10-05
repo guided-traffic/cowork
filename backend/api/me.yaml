@@ -314,6 +314,41 @@ notificationRead:
               $ref: './components/schemas.yaml#/InboxState'
       default:
         $ref: './components/responses.yaml#/Problem'
+next:
+  get:
+    operationId: listMyNext
+    tags: [me]
+    summary: What the person could take up next, across their tenants
+    description: |
+      "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+      `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+      they belong to, each with its tenant and its place in its project's rank — one read per tenant
+      (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+      is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+      last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+      (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+      project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+      restricted to a project that project (docs/adr/0035 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/MeProject'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of what the person could take up next
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MyTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 assigned:
   get:
     operationId: listMyAssigned
@@ -321,11 +356,11 @@ assigned:
     summary: The open tickets assigned to the person, across their tenants
     description: |
       "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-      assigned to the person, in every tenant they belong to, each with its tenant — one read per
-      tenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the
-      tenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3
-      exists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed
-      (docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a
+      assigned to the person, in every tenant they belong to, each with its tenant and its place in
+      its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+      tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+      one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+      (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
       project that project (docs/adr/0035 D3).
     parameters:
       - $ref: './components/parameters.yaml#/MeTenant'
@@ -354,11 +389,10 @@ decisions:
     description: |
       "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
       their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-      tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,
-      the project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,
-      which has none, after the ranked ones — and the question's number, until the score exists
-      (docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on
-      `GET /api/v1/me/assigned`.
+      tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+      ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+      — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+      restricted token reads as on `GET /api/v1/me/assigned`.
     parameters:
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'

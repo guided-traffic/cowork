@@ -221,6 +221,7 @@ deleting to its owner (`owner_id = app_user_id()`,
 | `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
 | `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
 | `NewProject` | the project the act created, published so that the streams admit its events at once and sent to no client ([events.md](events.md#publication)); `uuid.Nil` for every other act |
+| `ProjectRank` | a `ProjectChange` — the project and its key — which publishes an act on a project's rank as a whole, the sort by the score, as `project.changed`; nil for every other act |
 | `Notices` | whom the act tells in their inbox and why ([notifications](#notifications)); none for an act that tells nobody |
 | `InboxOf` | the person whose inbox the act changed without a notice — their own notifications marked read — whose person-level streams hear `inbox.changed` |
 | `Published` | what the act's publication tells of its ticket — the project, the version, the confidential rule's inputs — where the ticket is gone when the act is written: a purge's; nil reads them at publication (`TicketFacts`) |
@@ -255,7 +256,8 @@ the one on the ticket the query reads.
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `NoticeRecipients` ([notifications](#notifications)) |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
-| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
+| `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
+| `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 
 The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
 ticket's text, a title by trigram, the key, a comment, a question, a file name, the page's hits — and
@@ -277,10 +279,11 @@ security. `TestEveryReadOfTicketsCarriesTheDeletionFilter` in
 `tickets` to the filter once per ticket it reads, unless its block names `-- deletion: exempt
 (<why>)`: the bin's two queries and the purge's, which read deleted tickets only; `GetWrittenTicket`,
 the writer's reread (its joined tickets keep the filter); `TicketFacts`, because a deletion, a
-restoration and a purge are published too; `GetTicketRank`, a ticket read through the filter in the
-same transaction; and the rank keys of `LastRank`, `ListUnrankedTickets`, `NextRankedTicket` and
-`PreviousRankedTicket`, because a deleted ticket keeps its key, which its restoration brings back,
-and no key may be handed out twice. The ticket's columns count `open_prerequisites` in a subquery with
+restoration and a purge are published too; `GetTicketRank` and `GetScoreInputs`, a ticket read
+through the filter in the same transaction; and the rank keys of `LastRank`, `ListUnrankedTickets`,
+`NextRankedTicket`, `PreviousRankedTicket` and `ListRankKeys`, because a deleted ticket keeps its
+key, which its restoration brings back — a rebalancing spreads it with the others —, and no key may
+be handed out twice. The ticket's columns count `open_prerequisites` in a subquery with
 the predicate on every prerequisite, `GetWrittenTicket` included: a hidden one is never counted.
 The prerequisite tree (`ListPrerequisites`, `ListDependents`) is the one walk that returns
 tickets: it calls the predicate on every ticket it steps to, so it never passes a hidden one, and
@@ -308,7 +311,7 @@ enters the SQL text; only the integer `LIMIT` and `OFFSET` are formatted in. The
 | progress filters | on the implementation stage the ticket shows: derived while it has children, else its own |
 | `DoneAfter` | `t.done_at > …`, the tickets done after a time; like the opened and updated bounds it excludes the bound ([ADR 0049] D1) |
 | `Query` | `search @@ plainto_tsquery('cowork_simple', …)` ([ADR 0025]) |
-| `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number —, `NewestFirst` (id descending) for the tenant's, and `ByProjectRank` for a tenant's part of a person-level list — `ORDER BY p.key, rankedKey NULLS LAST, t.number`; `Position` writes a row's cursor position, the id, or `<key>.<number>` (`RankPosition`) with an empty key for an unranked ticket, after `<PROJECT>/` for `ByProjectRank`, which the API seals ([api.md](api.md#paging)) |
+| `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number —, `NewestFirst` (id descending) for the tenant's, and `ByScore` for a tenant's part of a person-level list — `ORDER BY t.score_key DESC, t.id` ([domain.md](domain.md#the-score)); `Position` writes a row's cursor position, the id, `<key>.<number>` (`RankPosition`) with an empty key for an unranked ticket, which the API seals, or `<score key>/<id>` (`ScorePosition`), which it does not ([api.md](api.md#paging)) |
 | `TicketPage` | after a cursor position with `LIMIT` one above the page, or a numbered page with `LIMIT`/`OFFSET` and a `count(*)` total |
 
 ## The dashboard's queries
@@ -554,8 +557,9 @@ person's act `read`.
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
 written — by `Mutate`, by a job in a tenant and by the identity provider's transactions alike — that belongs to a tenant
-and carries an `Event.Membership`, carries an `Event.NewProject` or names a ticket, except the
-actions `downloaded` and `exported` and the entity `time_entry`. A ticket's act reads the ticket's
+and carries an `Event.Membership`, carries an `Event.NewProject` or an `Event.ProjectRank`, or names
+a ticket, except the actions `downloaded` and `exported` and the entity `time_entry`. The sort of a
+project's rank sends the project and its key, as `project.changed`. A ticket's act reads the ticket's
 project, version and confidential facts (`TicketFacts`, which reads a deleted ticket too), or takes
 them from `Event.Published` for a purged one; a membership act sends the keys of its
 `MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;

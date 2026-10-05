@@ -80,7 +80,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
@@ -275,3 +275,74 @@ UPDATE tickets
 SET rank = sqlc.arg(rank)::text, version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND state NOT IN ('done', 'dropped')
 RETURNING version;
+
+-- name: ListRankKeys :many
+-- Every ticket of the project that holds a key, in the key's order, whoever
+-- can see it, whatever its state and whether or not it is deleted: what a
+-- rebalancing spreads again (docs/adr/0014 Consequences).
+-- visibility: exempt (the rank keys of the project the caller writes in, never shown)
+-- deletion: exempt (a deleted ticket keeps its key, spread with the others, which its restoration brings back)
+SELECT id, state FROM tickets
+WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND rank IS NOT NULL
+ORDER BY rank;
+
+-- name: ReleaseRanks :exec
+-- Takes the keys of the tickets away before they get others in the same
+-- transaction: a key belongs to one ticket of its project, and the unique
+-- index is checked row by row, so keys that change hands are released first.
+-- No act and no version: a sort records its own act, a rebalancing none.
+UPDATE tickets
+SET rank = NULL
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = ANY (sqlc.arg(ids)::uuid[]);
+
+-- name: SetRanks :exec
+-- Gives each ticket its key, ids and keys pairwise, after ReleaseRanks. moved
+-- raises the version of each, as a move does (docs/adr/0050 D1): a sort by the
+-- score moves them; a rebalancing keeps every ticket's place and raises none.
+UPDATE tickets AS t
+SET rank = u.rank,
+    version = t.version + CASE WHEN sqlc.arg(moved)::boolean THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN sqlc.arg(moved)::boolean THEN now() ELSE t.updated_at END
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(ranks)::text[]) AS rank) AS u
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = u.id;
+
+-- name: GetScoreInputs :one
+-- What a ticket's score reads (docs/adr/0014 D4): its severity, the horizon it
+-- shows (docs/adr/0010 D3), how many people hold a need and how many an
+-- urgent stake (docs/adr/0013 D3), and when it was opened — read after the
+-- write in this transaction that changed one of them.
+-- visibility: exempt (a ticket the caller read through the predicate in this transaction)
+-- deletion: exempt (a ticket the caller read through the filter in this transaction)
+SELECT t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon, t.opened_at,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id);
+
+-- name: SetTicketScore :exec
+-- A ticket's score, stored as its key with the version of the function that
+-- computed it (docs/adr/0014 D4). It is derived from the ticket's and its
+-- stakes' writes, so neither the version nor updated_at moves
+-- (docs/adr/0050 D1).
+UPDATE tickets
+SET score_key = sqlc.arg(score_key), score_version = sqlc.arg(score_version)
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
+
+-- name: ListScoredTickets :many
+-- The open, ranked tickets of a project that the caller can see, in the order
+-- of the rank, with what their scores read: what a sort by the score reorders
+-- (docs/adr/0014 D3). A deleted ticket keeps its key and its place, as a hidden
+-- one does. The caller holds the rank lock and has ranked the unranked ones.
+SELECT t.id, t.rank::text AS rank, t.severity, coalesce(t.urgency_override, t.urgency_derived)::urgency AS horizon,
+       t.opened_at, t.score_key, t.score_version,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'need')::integer AS need,
+       (SELECT count(*) FROM ticket_interest i
+        WHERE i.tenant_id = t.tenant_id AND i.ticket_id = t.id AND i.weight = 'urgent')::integer AS urgent
+FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
+  AND t.rank IS NOT NULL AND t.state NOT IN ('done', 'dropped')
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY t.rank;

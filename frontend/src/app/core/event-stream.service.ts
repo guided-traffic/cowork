@@ -46,6 +46,20 @@ export interface MembershipEvent {
 }
 
 /**
+ * `project.changed` (docs/adr/0054 D2): a project's rank was set as a whole — sorted by the score
+ * (docs/adr/0014 D3). The payload carries the project's key, `<tenant>/<PROJECT>`, and the act's
+ * kind, and no version: the act is the project's, not a ticket's.
+ */
+export interface ProjectEvent {
+  name: 'project.changed';
+  /** The audit row's id, which is also the stream's event id (D5). */
+  id: string;
+  /** The project's key, `<tenant>/<PROJECT>`. */
+  key: string;
+  kind: string;
+}
+
+/**
  * `inbox.changed` (docs/adr/0054 D2) on the person-level stream: how many of the person's
  * notifications are unread, in every tenant they belong to — when the stream opens and whenever the
  * inbox changes. It carries no id: it says how things stand.
@@ -64,7 +78,7 @@ export interface InboxEvent {
  * (`features/me/person-list.ts`, `reloadOn`).
  */
 export type StreamEvent =
-  TicketEvent | MembershipEvent | InboxEvent | { name: 'resync' } | { name: 'poll' };
+  TicketEvent | MembershipEvent | ProjectEvent | InboxEvent | { name: 'resync' } | { name: 'poll' };
 
 /**
  * Whether an event may concern what a page of the tenant shows: a ticket event whose key is of the
@@ -155,6 +169,17 @@ function isTicketPayload(data: unknown): data is { key: string; version: number;
     payload !== null &&
     typeof payload['key'] === 'string' &&
     typeof payload['version'] === 'number' &&
+    typeof payload['kind'] === 'string'
+  );
+}
+
+/** The payload of `project.changed`: the project's key and the act's kind. */
+function isProjectPayload(data: unknown): data is { key: string; kind: string } {
+  const payload = data as Record<string, unknown> | null;
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    typeof payload['key'] === 'string' &&
     typeof payload['kind'] === 'string'
   );
 }
@@ -299,6 +324,17 @@ export class EventStreamService {
       source.addEventListener(name, (message) => this.ticketEvent(name, message));
     }
     source.addEventListener('membership.changed', (message) => this.membershipEvent(message));
+    source.addEventListener('project.changed', (message) => {
+      const data = parsed(message);
+      if (isProjectPayload(data)) {
+        this.emit({
+          name: 'project.changed',
+          id: message.lastEventId,
+          key: data.key,
+          kind: data.kind,
+        });
+      }
+    });
     source.addEventListener('inbox.changed', (message) => {
       const unread = unreadOf(parsed(message));
       if (unread !== undefined) {
@@ -355,9 +391,9 @@ export class EventStreamService {
 
   /**
    * What waited while the tab was hidden: one resync if any was due, else each ticket's latest
-   * event, then the membership events as they came — each says what it touched, and the views
-   * they reload load at most once more however many arrive (`refresh`) — and the latest unread
-   * count.
+   * event, then the membership and project events as they came — each says what it touched, and
+   * the views they reload load at most once more however many arrive (`refresh`) — and the latest
+   * unread count.
    */
   private flush(): void {
     const waiting = this.deferred;
@@ -367,10 +403,10 @@ export class EventStreamService {
       return;
     }
     const latest = new Map<string, TicketEvent>();
-    const memberships: MembershipEvent[] = [];
+    const memberships: (MembershipEvent | ProjectEvent)[] = [];
     let inbox: InboxEvent | undefined;
-    for (const event of waiting as (TicketEvent | MembershipEvent | InboxEvent)[]) {
-      if (event.name === 'membership.changed') {
+    for (const event of waiting as (TicketEvent | MembershipEvent | ProjectEvent | InboxEvent)[]) {
+      if (event.name === 'membership.changed' || event.name === 'project.changed') {
         memberships.push(event);
         continue;
       }

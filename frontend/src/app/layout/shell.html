@@ -20,6 +20,11 @@
       />
     } @else if (session.shown(); as shown) {
       <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
+    } @else if (soleTenant(); as sole) {
+      <!-- On the person-level pages the only tenant's name leads to it: no switcher offers it. -->
+      <a class="tenant-name" [routerLink]="['/t', sole.slug]" data-testid="tenant-name">{{
+        sole.name
+      }}</a>
     }
 
     <!-- The search (docs/adr/0018 D7): inside a tenant that tenant's, anywhere else every tenant's. -->
@@ -117,6 +122,9 @@
     <!-- The person-level pages, across every tenant of the person (docs/adr/0023 D4). -->
     <div class="section">
       <div class="heading">For you</div>
+      <a class="item" routerLink="/me/next" routerLinkActive="active" data-testid="nav-next"
+        ><i class="pi pi-forward"></i>Next for me</a
+      >
       <a class="item" routerLink="/me/inbox" routerLinkActive="active" data-testid="nav-inbox"
         ><i class="pi pi-inbox"></i>Inbox
         @if (inbox.count() > 0) {

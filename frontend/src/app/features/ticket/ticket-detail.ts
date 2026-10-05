@@ -44,9 +44,16 @@ import { TicketMoves } from './ticket-moves';
 import { address, TicketRelations } from './ticket-relations';
 import { TicketTitle } from './ticket-title';
 
-/** `transitioned` by Ada, with the agent that acted for her when there was one. */
+/**
+ * `transitioned` by Ada, with the agent that acted for her when there was one. The sort of the
+ * project's rank by the score is the project's act, which the activity of every ticket it moved
+ * shows (docs/adr/0014 D3, docs/adr/0015 D1).
+ */
 export function describe(activity: Activity): string {
   const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
+  if (activity.entity_type === 'project' && activity.action === 'ranked') {
+    return `${who} sorted the backlog by score`;
+  }
   return `${who} ${activity.action.replace(/_/g, ' ')}`;
 }
 

@@ -1,6 +1,6 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { computed, Signal, signal, WritableSignal } from '@angular/core';
+import { Component, computed, input, Signal, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
@@ -9,7 +9,21 @@ import { provideApiConfiguration } from '../../api/api-configuration';
 import { Me, Membership, Problem, Tenant } from '../../api/models';
 import { OpenableTenant, SessionService } from '../../core/session.service';
 import { TenantsService } from '../../core/tenants.service';
+import { MyTickets } from '../me/my-tickets';
 import { Home } from './home';
+
+/** "Next for me" stands in as itself, without the API it reads: its own spec is lists.spec.ts. */
+@Component({ selector: 'app-my-tickets', template: '', host: { '[attr.data-list]': 'list()' } })
+class MyTicketsStub {
+  readonly list = input<string>();
+}
+
+function stubMyTickets(): void {
+  TestBed.overrideComponent(Home, {
+    remove: { imports: [MyTickets] },
+    add: { imports: [MyTicketsStub] },
+  });
+}
 
 const acme: Membership = {
   role: 'admin',
@@ -78,6 +92,7 @@ describe('Home', () => {
           { provide: TenantsService, useValue: { create: vi.fn() } },
         ],
       });
+      stubMyTickets();
       navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     });
 
@@ -96,41 +111,26 @@ describe('Home', () => {
       expect(page.querySelector('h1')).toBeNull();
     });
 
-    it('goes straight to the only tenant and replaces the start page in the history', async () => {
+    // docs/adr/0018 D3, docs/adr/0023 D4 as amended 2026-10-05: the start page is "next for me".
+    it('shows "next for me" to a person with one tenant, and goes nowhere', async () => {
       session.memberships.set([acme]);
       session.soleTenant.set('acme');
 
-      await render();
+      const page = await render();
 
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme'], { replaceUrl: true });
-    });
-
-    it('goes to the tenant when it turns out to be the only one after the page opened', async () => {
-      const fixture = TestBed.createComponent(Home);
-      await fixture.whenStable();
+      expect(page.querySelector('app-my-tickets')?.getAttribute('data-list')).toBe('next');
+      expect(page.querySelector('.tenants')).toBeNull();
       expect(navigate).not.toHaveBeenCalled();
-
-      session.memberships.set([globex]);
-      session.soleTenant.set('globex');
-      await fixture.whenStable();
-
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'globex'], { replaceUrl: true });
     });
 
-    it('lists the tenants to choose from when there are several and stays on the page', async () => {
+    it('shows "next for me" to a person with several tenants, across all of them', async () => {
       session.memberships.set([acme, globex]);
 
       const page = await render();
 
+      expect(page.querySelector('app-my-tickets')).not.toBeNull();
+      expect(page.querySelector('[data-testid="tenant-acme"]')).toBeNull();
       expect(navigate).not.toHaveBeenCalled();
-      expect(page.querySelector('h1')?.textContent).toBe('Your tenants');
-      const first = page.querySelector('[data-testid="tenant-acme"]');
-      expect(first?.getAttribute('href')).toBe('/t/acme');
-      expect(first?.querySelector('.name')?.textContent).toBe('Acme Corp');
-      expect(first?.querySelector('.muted')?.textContent).toBe('acme · admin');
-      const second = page.querySelector('[data-testid="tenant-globex"]');
-      expect(second?.getAttribute('href')).toBe('/t/globex');
-      expect(second?.querySelector('.muted')?.textContent).toBe('globex · member');
     });
 
     it('says so when the person is a member of no tenant', async () => {
@@ -180,29 +180,31 @@ describe('Home', () => {
         expect(page.querySelector('[data-testid="signed-out"]')).not.toBeNull();
       });
 
-      it('chooses between the tenants of the person when there are some, as anybody does', async () => {
+      it('sees "next for me" when they hold a role somewhere, as anybody does', async () => {
         session.person.set(person(true, [acme, globex]));
         session.memberships.set([acme, globex]);
 
         const page = await render();
 
         expect(page.querySelector('app-first-tenant')).toBeNull();
-        expect(page.querySelector('h1')?.textContent).toBe('Your tenants');
-        expect(page.querySelector('[data-testid="tenant-acme"]')).not.toBeNull();
+        expect(page.querySelector('app-my-tickets')).not.toBeNull();
       });
 
       // docs/adr/0034 D2: a global administrator finds the tenants they hold no role in.
-      it('lists every tenant of the installation, the ones without a role marked so', async () => {
-        session.person.set(person(true, [acme]));
-        session.memberships.set([acme]);
-        roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
+      it('lists every tenant of the installation, without a role marked so, while they hold none', async () => {
+        session.person.set(person(true));
+        roleless.set([
+          { slug: 'acme', name: 'Acme Corp', role: null },
+          { slug: 'initech', name: 'Initech', role: null },
+        ]);
 
         const page = await render();
 
         expect(page.querySelector('app-first-tenant')).toBeNull();
-        expect(page.querySelector('[data-testid="tenant-acme"] .muted')?.textContent).toBe(
-          'acme · admin',
-        );
+        expect(page.querySelector('app-my-tickets')).toBeNull();
+        expect(page.querySelector('h1')?.textContent).toBe('Your tenants');
+        const first = page.querySelector('[data-testid="tenant-acme"]');
+        expect(first?.querySelector('.name')?.textContent).toBe('Acme Corp');
         const other = page.querySelector('[data-testid="tenant-initech"]');
         expect(other?.getAttribute('href')).toBe('/t/initech');
         expect(other?.querySelector('.muted')?.textContent).toBe('initech · no role');
@@ -218,7 +220,7 @@ describe('Home', () => {
         expect(page.querySelector('[data-testid="tenant-initech"]')).not.toBeNull();
       });
 
-      it('waits for the installation\'s tenants before it offers or lists anything', async () => {
+      it("waits for the installation's tenants before it offers or lists anything", async () => {
         session.person.set(person(true));
         session.installation.isLoading.set(true);
         session.installation.hasValue.set(false);
@@ -228,16 +230,6 @@ describe('Home', () => {
         expect(page.querySelector('app-first-tenant')).toBeNull();
         expect(page.querySelector('p-skeleton')).not.toBeNull();
         expect(page.textContent).not.toContain('You are not a member of any tenant yet.');
-      });
-
-      it('goes straight to the only tenant, as anybody does', async () => {
-        session.person.set(person(true, [acme]));
-        session.memberships.set([acme]);
-        session.soleTenant.set('acme');
-
-        await render();
-
-        expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme'], { replaceUrl: true });
       });
     });
 
@@ -302,6 +294,7 @@ describe('Home', () => {
           MessageService,
         ],
       });
+      stubMyTickets();
       const http = TestBed.inject(HttpTestingController);
       const fixture = TestBed.createComponent(Home);
       fixture.detectChanges();
@@ -333,6 +326,7 @@ describe('Home', () => {
           MessageService,
         ],
       });
+      stubMyTickets();
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
       const http = TestBed.inject(HttpTestingController);
       const fixture = TestBed.createComponent(Home);

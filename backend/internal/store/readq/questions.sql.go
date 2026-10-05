@@ -130,7 +130,9 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.rank AS ticket_rank, q.ticket_id
+       q.ticket_id,
+       (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)::double precision
+           AS ticket_score_key
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -141,27 +143,22 @@ WHERE q.tenant_id = $1 AND q.status = 'open'
   AND (q.asked_of = $2::uuid OR q.asked_of IS NULL)
   AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT $3::boolean
-       OR p.key > $4::text
-       OR (p.key = $4::text
-           AND CASE WHEN $5::text IS NULL
-                    THEN (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
-                         AND (t.number, q.number) > ($6::integer, $7::integer)
-                    ELSE (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) IS NULL
-                         OR (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) > $5::text
-                         OR ((CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) = $5::text
-                             AND (t.number, q.number) > ($6::integer, $7::integer))
-               END))
-ORDER BY p.key, (CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END) NULLS LAST, t.number, q.number
-LIMIT $8
+       OR (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)
+          < $4::double precision
+       OR ((CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)
+           = $4::double precision
+           AND (t.id, q.number) > ($5::uuid, $6::integer)))
+ORDER BY (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END) DESC,
+         t.id, q.number
+LIMIT $7
 `
 
 type ListOpenDecisionsParams struct {
 	TenantID      uuid.UUID
 	UserID        uuid.UUID
 	HasAfter      bool
-	AfterProject  string
-	AfterRank     *string
-	AfterNumber   int32
+	AfterKey      float64
+	AfterTicket   uuid.UUID
 	AfterQuestion int32
 	PageSize      int32
 }
@@ -198,24 +195,25 @@ type ListOpenDecisionsRow struct {
 	TicketNumber        int32
 	TicketTitle         string
 	TicketState         domain.TicketState
-	TicketRank          *string
 	TicketID            uuid.UUID
+	TicketScoreKey      float64
 }
 
 // The open decisions of a person in the tenant (docs/adr/0018 D3): the open
 // questions asked of them and those open in the tenant, on tickets they see.
-// Ordered as the person-level lists are until the score exists
-// (docs/adr/0014 D5): the project's key, the ticket's rank — a done or
-// dropped ticket, which has none, after the ranked ones —, its number, the
-// question's. The cursor resumes after a position of that order.
+// Ordered by the score of the ticket (docs/adr/0014 D5) — its stored key,
+// whose order is the score's at every moment; a done or dropped ticket, which
+// has no score, after the scored ones (D3) — then the ticket's id and the
+// question's number. The cursor resumes after a position of that order: the
+// ids are unique across tenants, so the order of every tenant's part is one
+// order across them.
 func (q *Queries) ListOpenDecisions(ctx context.Context, arg ListOpenDecisionsParams) ([]ListOpenDecisionsRow, error) {
 	rows, err := q.db.Query(ctx, listOpenDecisions,
 		arg.TenantID,
 		arg.UserID,
 		arg.HasAfter,
-		arg.AfterProject,
-		arg.AfterRank,
-		arg.AfterNumber,
+		arg.AfterKey,
+		arg.AfterTicket,
 		arg.AfterQuestion,
 		arg.PageSize,
 	)
@@ -258,8 +256,8 @@ func (q *Queries) ListOpenDecisions(ctx context.Context, arg ListOpenDecisionsPa
 			&i.TicketNumber,
 			&i.TicketTitle,
 			&i.TicketState,
-			&i.TicketRank,
 			&i.TicketID,
+			&i.TicketScoreKey,
 		); err != nil {
 			return nil, err
 		}

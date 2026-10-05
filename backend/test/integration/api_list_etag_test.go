@@ -41,6 +41,7 @@ func TestThePolledListsAnswerNotModified(t *testing.T) {
 		"listTicketTime":     ticket + "/time-entries",
 		"listPrerequisites":  ticket + "/prerequisites",
 		"listMyInbox":        "/api/v1/me/inbox",
+		"listMyNext":         "/api/v1/me/next",
 		"listMyAssigned":     "/api/v1/me/assigned",
 		"listMyDecisions":    "/api/v1/me/decisions",
 		"listDeletedTickets": tenant + "/deleted-tickets",

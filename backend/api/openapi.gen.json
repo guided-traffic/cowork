@@ -331,6 +331,15 @@
           "type": "integer"
         }
       },
+      "MeProject": {
+        "description": "Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it\nneeds `tenant` (`400 validation_failed` without). A key that names no project the person sees\nthere lists nothing\n",
+        "in": "query",
+        "name": "project",
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "type": "string"
+        }
+      },
       "MeTenant": {
         "description": "Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names\nnone of them is `404 not_found`, whether or not the tenant exists\n",
         "in": "query",
@@ -3122,6 +3131,11 @@
       },
       "MyTicket": {
         "properties": {
+          "place": {
+            "description": "The ticket's place in its project's rank among the open tickets of its horizon the caller can\nsee, 1 for the first — where the backlog's group shows it: the secondary indicator beside the\nscore's order (docs/adr/0014 D5)\n",
+            "minimum": 1,
+            "type": "integer"
+          },
           "tenant": {
             "$ref": "#/components/schemas/TenantRef"
           },
@@ -3131,7 +3145,8 @@
         },
         "required": [
           "tenant",
-          "ticket"
+          "ticket",
+          "place"
         ],
         "type": "object"
       },
@@ -3605,6 +3620,41 @@
             "$ref": "#/components/schemas/WipLimits"
           }
         },
+        "type": "object"
+      },
+      "ProjectRankSort": {
+        "additionalProperties": false,
+        "description": "What the project's rank is set to (docs/adr/0014 D3)",
+        "properties": {
+          "by": {
+            "description": "The order the open tickets take — the score's, the one order there is to adopt",
+            "enum": [
+              "score"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "by"
+        ],
+        "type": "object"
+      },
+      "ProjectRankSorted": {
+        "properties": {
+          "moved": {
+            "description": "How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score_version": {
+            "description": "The version of the score function the rank was sorted by (docs/adr/0014 D4)",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moved",
+          "score_version"
+        ],
         "type": "object"
       },
       "ProjectRef": {
@@ -4836,6 +4886,21 @@
               }
             ]
           },
+          "score": {
+            "description": "The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of\nthe severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days\nsince `opened_at`. It warns where the facts disagree with the project's rank and orders the\nperson-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a\nrelease before the score filed until an input of it changes.\n",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "score_version": {
+            "description": "The version of the function that computed `score` (docs/adr/0014 D4); null with it",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "security": {
             "$ref": "#/components/schemas/SecurityClass"
           },
@@ -4919,6 +4984,8 @@
           "done_from",
           "done_by_hand",
           "open_prerequisites",
+          "score",
+          "score_version",
           "version",
           "created_at",
           "updated_at"
@@ -5911,7 +5978,7 @@
     },
     "/api/v1/me/assigned": {
       "get": {
-        "description": "\"Assigned to me\" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is\nassigned to the person, in every tenant they belong to, each with its tenant — one read per\ntenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the\ntenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3\nexists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed\n(docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a\nproject that project (docs/adr/0035 D3).\n",
+        "description": "\"Assigned to me\" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is\nassigned to the person, in every tenant they belong to, each with its tenant and its place in\nits project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the\ntenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without\none last — then by the ticket's id; the place is the secondary indicator. Cursor paging only\n(docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a\nproject that project (docs/adr/0035 D3).\n",
         "operationId": "listMyAssigned",
         "parameters": [
           {
@@ -6037,7 +6104,7 @@
     },
     "/api/v1/me/decisions": {
       "get": {
-        "description": "\"Open decisions\" (docs/adr/0018 D3): the open questions asked of the person and those open in\ntheir tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its\ntenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,\nthe project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,\nwhich has none, after the ranked ones — and the question's number, until the score exists\n(docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on\n`GET /api/v1/me/assigned`.\n",
+        "description": "\"Open decisions\" (docs/adr/0018 D3): the open questions asked of the person and those open in\ntheir tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its\ntenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the\nticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones\n— then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A\nrestricted token reads as on `GET /api/v1/me/assigned`.\n",
         "operationId": "listMyDecisions",
         "parameters": [
           {
@@ -6201,6 +6268,56 @@
           }
         },
         "summary": "Mark one of the person's notifications read",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/next": {
+      "get": {
+        "description": "\"Next for me\" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor\n`dropped` and is assigned to the person or to nobody, in the projects they see of every tenant\nthey belong to, each with its tenant and its place in its project's rank — one read per tenant\n(docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket\nis not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one\nlast — then by the ticket's id; the place is the secondary indicator. Cursor paging only\n(docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one\nproject of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one\nrestricted to a project that project (docs/adr/0035 D3).\n",
+        "operationId": "listMyNext",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/MeProject"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTicketList"
+                }
+              }
+            },
+            "description": "A page of what the person could take up next",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "What the person could take up next, across their tenants",
         "tags": [
           "me"
         ]
@@ -7341,7 +7458,7 @@
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's rank was set as a whole — the sort by the score\n(docs/adr/0014 D3) — with `data: {\"key\": \"\u003ctenant\u003e/\u003cPROJECT\u003e\", \"kind\": \"ranked\"}`; `id:` is\nthe act's id. It reaches whoever sees the project, and the client reloads the lists it\nshows.\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -8319,6 +8436,52 @@
         "summary": "Archive a project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/rank": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        }
+      ],
+      "put": {
+        "description": "\"Sort by score\" (docs/adr/0014 D3): the open tickets of the project the caller can see take\nthe places they hold among themselves in the score's order — highest first, each scored anew\nwith the function as it stands — so every horizon's group and every parent's children read in\nthe score's order; a ticket the caller cannot see keeps its key and its place. One act,\n`ranked` on the project with `{\"by\": \"score\", \"score_version\", \"moved\"}`, naming the tickets\nit moved, whose activity shows it, published as `project.changed`; each ticket it moved gets\na new version, as a move gives one. A rank that follows the score already answers `moved: 0`\nand records nothing. Never automatic. A member's act with `write` scope; an agent\nneeds `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites\n(docs/adr/0050 D4).\n",
+        "operationId": "sortProjectRank",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "by": "score"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRankSort"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRankSorted"
+                }
+              }
+            },
+            "description": "How many tickets changed their place"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Reorder the project's open tickets by their score",
+        "tags": [
+          "tickets"
         ]
       }
     },

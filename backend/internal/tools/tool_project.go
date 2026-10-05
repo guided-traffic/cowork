@@ -19,8 +19,8 @@ func sessionStartTool() Tool {
 			".cowork.yaml — or the proposal to create one; the person's active ticket with its context, or the top of the " +
 			"backlog; and what happened since the last session. The SessionStart hook shows the same at the start; call it " +
 			"again to refresh.",
-		Operations: []string{"lookupRepository", "getProject", "listProjectTickets", "exportTicketContext", "listActivity",
-			"listTenantTickets", opGetTicket},
+		Operations: []string{"lookupRepository", "getProject", "listProjectTickets", "listMyNext", "exportTicketContext",
+			"listActivity", "listTenantTickets", opGetTicket},
 	}, nil, func(ctx context.Context, s *Session, _ struct{}) (string, error) {
 		text, silent, err := Start(ctx, s, StartOptions{Record: true})
 		if silent {

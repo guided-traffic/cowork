@@ -15,7 +15,7 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
-       t.confidential, t.rank, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
+       t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
        (SELECT count(*) FROM ticket_links pl
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
@@ -55,3 +55,25 @@ SELECT EXISTS (
            OR EXISTS (SELECT 1 FROM project_access a
                       WHERE a.tenant_id = m.tenant_id AND a.project_id = p.id AND a.user_id = m.user_id))
 ) AS visible;
+
+-- name: ListRankPlaces :many
+-- Each ticket's place in its project's rank among the open tickets of its
+-- horizon that the caller can see, 1 for the first: the place the backlog's
+-- group shows it at, and the secondary indicator of the person-level lists
+-- (docs/adr/0014 D5, docs/adr/0018 D1). A ticket the caller cannot see, or a
+-- deleted one, is never counted, so the place tells nothing of one; the
+-- unranked open tickets of a release before the rank follow the ranked by
+-- number, as the list shows them.
+SELECT t.id,
+       ((SELECT count(*) FROM tickets o
+         WHERE o.tenant_id = t.tenant_id AND o.project_id = t.project_id
+           AND o.state NOT IN ('done', 'dropped')
+           AND coalesce(o.urgency_override, o.urgency_derived) = coalesce(t.urgency_override, t.urgency_derived)
+           AND (o.rank < t.rank OR (o.rank IS NOT NULL AND t.rank IS NULL)
+                OR (o.rank IS NULL AND t.rank IS NULL AND o.number < t.number))
+           AND o.deleted_at IS NULL
+           AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)) + 1)::integer AS place
+FROM tickets t
+WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = ANY (sqlc.arg(ids)::uuid[])
+  AND t.state NOT IN ('done', 'dropped')
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);

@@ -14,9 +14,9 @@ import { ChangePassword } from './features/auth/change-password';
 import { Login } from './features/auth/login';
 import { Home } from './features/home/home';
 import { NotFound } from './features/home/not-found';
-import { Assigned } from './features/me/assigned';
 import { Decisions } from './features/me/decisions';
 import { Inbox } from './features/me/inbox';
+import { MyTickets } from './features/me/my-tickets';
 import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
@@ -55,8 +55,9 @@ const pages: [string, Type<unknown>][] = [
   ['password', ChangePassword],
   ['', Home],
   ['me/tokens', Tokens],
+  ['me/next', MyTickets],
   ['me/inbox', Inbox],
-  ['me/assigned', Assigned],
+  ['me/assigned', MyTickets],
   ['me/decisions', Decisions],
   ['me/search', SearchResults],
   ['t/:tenant', TenantDashboard],
@@ -157,6 +158,8 @@ describe('the routes', () => {
       named('/login', Login),
       named('/', Shell, Home),
       named('/me/tokens', Shell, Tokens),
+      named('/me/next', Shell, MyTickets),
+      named('/me/assigned', Shell, MyTickets),
       named('/me/search?q=gate', Shell, SearchResults),
       named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
       named('/t/acme', Shell, TenantScope, TenantDashboard),
@@ -257,6 +260,17 @@ describe('the routes', () => {
       expect(login.queryParams['error']).toBe('not_allowed');
       const inputs = reflectComponentType(Login)?.inputs.map((input) => input.templateName);
       expect(inputs).toContain('error');
+    });
+
+    it.each([
+      ['/me/next', 'next'],
+      ['/me/assigned', 'assigned'],
+    ])('names the list of %s in the data the page takes as an input', async (url, list) => {
+      const [, page] = await navigate(url);
+
+      expect(page.data['list']).toBe(list);
+      const inputs = reflectComponentType(MyTickets)?.inputs.map((input) => input.templateName);
+      expect(inputs).toContain('list');
     });
 
     it.each([

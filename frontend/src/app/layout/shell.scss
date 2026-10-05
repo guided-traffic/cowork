@@ -36,6 +36,15 @@
   font-weight: 600;
 }
 
+a.tenant-name {
+  color: var(--p-text-color);
+
+  &:hover {
+    color: var(--p-primary-color);
+    text-decoration: none;
+  }
+}
+
 .spacer {
   flex: 1;
 }

@@ -12,20 +12,26 @@ whole path segment, so `{KEY}-{number}` cannot be two parameters; the first impl
 reads the segment as one key and splits it at its last hyphen, which a project key never
 contains ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D1).
 
+Amended 2026-10-05 (D4: the start page `/` is "next for me" for every person with a membership,
+as the work list of the person-level lists named it once "next for me" had its members
+([ADR 0018](0018-the-views-of-the-first-release.md) D3 as amended the same day); this replaces the
+redirect of a person with one membership to their tenant, and that tenant's name in the top bar
+leads there instead).
+
 **Partly built** (phase 2, 2026-10-02): D1–D3 and D5 — every tenant-bound route is under
 `/api/v1/tenants/{tenant}/`, `/api/v1/me` and `/api/v1/me/tokens` serve the person, the
 resolver answers with the canonical route's body and `ETag`, and an unknown tenant answers
 like a missing membership. D2's person-level lists arrive with their phase. *(Phase 3,
 2026-10-03:)* D4's routes `/t/{slug}`, `/t/{slug}/p/{KEY}/backlog`,
-`/t/{slug}/tickets/{KEY}-{number}` and `/t/{slug}/members`, and the single membership's
-redirect to `/t/{slug}` without a tenant switcher —
+`/t/{slug}/tickets/{KEY}-{number}` and `/t/{slug}/members`, and ~~the single membership's
+redirect to `/t/{slug}`~~ *(gone 2026-10-05 with D4's amendment)* without a tenant switcher —
 [`app.routes.ts`](../../frontend/src/app/app.routes.ts). *(2026-10-04:)* D2's `inbox` — with
 `/me/inbox/read` and `/me/inbox/{notification}/read` to mark it read —, `assigned` and `decisions`,
 each one read per tenant of the person, every item naming its tenant, `?tenant=<slug>` narrowing to
 one and answering a slug that names none of the person's tenants like D5's unknown slug
 ([`api/inbox.go`](../../backend/internal/api/inbox.go), [`api/mylists.go`](../../backend/internal/api/mylists.go));
-D4's `/me/inbox`, `/me/assigned` and `/me/decisions`. Not built: D2's `next` ~~and `search`~~, D4's
-`/me/next`. *(2026-10-05:)* D2's `search`, `GET /api/v1/me/search`, read per tenant of the person,
+D4's `/me/inbox`, `/me/assigned` and `/me/decisions`. ~~Not built: D2's `next` and `search`, D4's
+`/me/next`.~~ *(2026-10-05:)* D2's `search`, `GET /api/v1/me/search`, read per tenant of the person,
 each hit naming its tenant, `?tenant=<slug>` narrowing to one as on the other lists
 ([`api/search.go`](../../backend/internal/api/search.go)); the UI mirrors it and the tenant's own
 `GET /api/v1/tenants/{slug}/search` with `/me/search` and `/t/{slug}/search`, two routes D4 did not
@@ -34,7 +40,9 @@ list. *(2026-10-05:)* D1's tenant-bound resources gain the bin, `…/deleted-tic
 and the saved filters, `…/filters` and `…/filters/{filter}`; D4's UI mirrors the bin as
 `/t/{slug}/deleted-tickets`. *(2026-10-05:)* D4's UI mirrors the tenant's tickets, `GET …/tickets`,
 as `/t/{slug}/tickets`, a route D4 did not list, its filters the page's query parameters; a ticket's
-own page stays `/t/{slug}/tickets/{KEY}-{number}`.
+own page stays `/t/{slug}/tickets/{KEY}-{number}`. *(2026-10-05:)* D2's `next`, which also takes `?project=<KEY>` with
+`?tenant=`, and D4's `/me/next` and the start page as amended
+([`features/home/home.ts`](../../frontend/src/app/features/home/home.ts)).
 
 ## Context
 
@@ -70,9 +78,13 @@ can see is the same 404.)*
 
 **D4 — The UI mirrors the API:** `/t/{slug}` (the tenant: board, dashboard, members, filters),
 `/t/{slug}/p/{KEY}/backlog`, `/t/{slug}/p/{KEY}/board`, `/t/{slug}/tickets/{KEY}-{number}`,
-`/me/next`, `/me/assigned`, `/me/decisions`, `/me/inbox`. A person with one membership is
-sent to `/t/{slug}` on login and sees no tenant switcher (ADR 0005 D6); the URL still carries
-the slug.
+`/me/next`, `/me/assigned`, `/me/decisions`, `/me/inbox`. A person with one membership ~~is
+sent to `/t/{slug}` on login and~~ sees no tenant switcher (ADR 0005 D6); the URL still carries
+the slug. *(Amended 2026-10-05:)* **The start page `/` is "next for me"** for every person with a
+membership, whether they belong to one tenant or to many: what they could take up next across
+their tenants ([ADR 0018](0018-the-views-of-the-first-release.md) D3). For a person with one
+membership the top bar names the tenant and leads to `/t/{slug}`; a person with none chooses among
+the tenants they may open, as before.
 
 **D5 — The membership check runs before any handler under `/tenants/{slug}/`, and an unknown
 slug and a missing membership answer identically with `404`.** A tenant's existence is not

@@ -16,12 +16,15 @@ import (
 // keeps the block below the ten thousand characters a hook may hand Claude
 // Code in one piece.
 const (
-	MaxBlock         = 9000
-	startComments    = 5
-	startActivity    = 10
-	startCandidates  = 5
-	startSinceLines  = 10
-	startOtherActive = 5
+	MaxBlock        = 9000
+	startComments   = 5
+	startActivity   = 10
+	startCandidates = 5
+	// startCandidateScan is how much of "next for me" the candidates are
+	// picked from: in progress, blocked and waiting tickets are passed over.
+	startCandidateScan = 25
+	startSinceLines    = 10
+	startOtherActive   = 5
 )
 
 // StartOptions shape a start.
@@ -232,16 +235,26 @@ func fit(doc string, n int) string {
 	return doc[:cut] + "\n\n… (cut to fit the session start; get_ticket shows the whole ticket)\n"
 }
 
-// candidatesSection is the top of the project's backlog for the person —
-// assigned to them or to nobody, open and not waiting on a prerequisite — in
-// the order of the rank, the decision of the backlog (docs/adr/0014 D1).
+// candidatesSection is the top of "next for me" in the bound project — the
+// open tickets assigned to the person or to nobody, by score
+// (docs/adr/0042 D1, docs/adr/0014 D5) — that can be taken up: neither in
+// progress nor blocked, and waiting on no open prerequisite. Each names its
+// place in the project's rank, the decision of the backlog beside the score.
 func candidatesSection(ctx context.Context, s *Session, b Binding) (string, error) {
-	blocked := false
-	list, err := listTickets(ctx, s, b.Tenant, b.Project, ticketQuery{
-		states: []string{stateReview, "decided", "analysed", "filed"}, assignees: []string{"me", "none"},
-		blocked: &blocked, limit: startCandidates})
-	if err != nil {
+	limit := startCandidateScan
+	res, err := s.API.ListMyNextWithResponse(ctx, &apigen.ListMyNextParams{Tenant: &b.Tenant, Project: &b.Project, Limit: &limit})
+	if err := check(res, err, http.StatusOK); err != nil {
 		return "", err
+	}
+	var list []apigen.MyTicket
+	for _, it := range res.JSON200.Items {
+		t := it.Ticket
+		if t.State == apigen.TicketStateInProgress || t.State == apigen.TicketStateBlocked || t.OpenPrerequisites > 0 {
+			continue
+		}
+		if list = append(list, it); len(list) == startCandidates {
+			break
+		}
 	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "## No ticket of yours is in progress in %s\n\n", b.Key())
@@ -249,12 +262,22 @@ func candidatesSection(ctx context.Context, s *Session, b Binding) (string, erro
 		out.WriteString("Nothing is open for you or unassigned. Ask the person what to work on, or file_ticket.\n")
 		return out.String(), nil
 	}
-	out.WriteString("The top of the backlog, by rank:\n\n")
-	for i, t := range list {
-		fmt.Fprintf(&out, "%d. %s — %s (%s, %s, %s)\n", i+1, t.Key, t.Title, t.State, t.Effort, assigneeName(t))
+	out.WriteString("Next for you, by score — the place in the backlog's horizon beside it:\n\n")
+	for i, it := range list {
+		t := it.Ticket
+		fmt.Fprintf(&out, "%d. %s — %s (%s, %s, %s; %s, #%d of %s in the backlog)\n", i+1, t.Key, t.Title, t.State, t.Effort,
+			assigneeName(t), scoreText(t), it.Place, t.Urgency)
 	}
 	out.WriteString("\nPick one with the person: the active ticket is the one in progress and assigned to them.\n")
 	return out.String(), nil
+}
+
+// scoreText names a ticket's score (docs/adr/0014 D3).
+func scoreText(t apigen.Ticket) string {
+	if score, err := t.Score.Get(); err == nil {
+		return fmt.Sprintf("score %.1f", score)
+	}
+	return "no score yet"
 }
 
 // sinceSection is what happened since the last session: the acts on the

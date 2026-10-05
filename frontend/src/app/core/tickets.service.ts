@@ -276,15 +276,22 @@ export class TicketsService {
     if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
       return;
     }
+    // A project's rank set as a whole — the sort by the score — is the project's act, with no
+    // event of the tickets it moved: the lists, which hold the order and bring their new versions,
+    // load again (docs/adr/0014 D3).
+    if (event.name === 'project.changed') {
+      this.reloadLists();
+      return;
+    }
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
-    // a link changes its open prerequisites without one; a question, a comment or a stake
-    // changes nothing the ticket itself shows.
+    // a link changes its open prerequisites without one, and a stake its score (docs/adr/0013
+    // D3); a question or a comment changes nothing the ticket itself shows.
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
         ? held.version < event.version
-        : event.name === 'link.changed');
+        : event.name === 'link.changed' || event.name === 'interest.changed');
     if (stale) {
       this.refetch(event.key);
     }
@@ -306,7 +313,8 @@ export class TicketsService {
     });
   }
 
-  private reloadLists(): void {
+  /** Loads every open list again, once per burst ({@link listReloadDelay}). */
+  reloadLists(): void {
     if (this.reloadTimer) {
       return;
     }

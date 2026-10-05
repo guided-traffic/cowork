@@ -653,6 +653,21 @@ func (e ProjectAccessRole) Valid() bool {
 	}
 }
 
+// Defines values for ProjectRankSortBy.
+const (
+	ProjectRankSortByScore ProjectRankSortBy = "score"
+)
+
+// Valid indicates whether the value is a known member of the ProjectRankSortBy enum.
+func (e ProjectRankSortBy) Valid() bool {
+	switch e {
+	case ProjectRankSortByScore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QuestionStatus.
 const (
 	QuestionStatusAnswered  QuestionStatus = "answered"
@@ -2316,6 +2331,10 @@ type MembershipSource string
 
 // MyTicket defines model for MyTicket.
 type MyTicket struct {
+	// Place The ticket's place in its project's rank among the open tickets of its horizon the caller can
+	// see, 1 for the first — where the backlog's group shows it: the secondary indicator beside the
+	// score's order (docs/adr/0014 D5)
+	Place  int       `json:"place"`
 	Tenant TenantRef `json:"tenant"`
 	Ticket Ticket    `json:"ticket"`
 }
@@ -2484,6 +2503,24 @@ type ProjectPatch struct {
 	// WipLimits Advisory work-in-progress limits per state; information, never a gate (docs/adr/0019 D3). The
 	// board's Refinement column, which holds filed and analysed, counts against the analysed limit.
 	WipLimits *WipLimits `json:"wip_limits,omitempty"`
+}
+
+// ProjectRankSort What the project's rank is set to (docs/adr/0014 D3)
+type ProjectRankSort struct {
+	// By The order the open tickets take — the score's, the one order there is to adopt
+	By ProjectRankSortBy `json:"by"`
+}
+
+// ProjectRankSortBy The order the open tickets take — the score's, the one order there is to adopt
+type ProjectRankSortBy string
+
+// ProjectRankSorted defines model for ProjectRankSorted.
+type ProjectRankSorted struct {
+	// Moved How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already
+	Moved int `json:"moved"`
+
+	// ScoreVersion The version of the score function the rank was sorted by (docs/adr/0014 D4)
+	ScoreVersion int `json:"score_version"`
 }
 
 // ProjectRef defines model for ProjectRef.
@@ -2937,8 +2974,18 @@ type Ticket struct {
 
 	// ReporterToken The token the ticket was filed through; null for a browser session (docs/adr/0036 D6)
 	ReporterToken nullable.Nullable[TokenMark] `json:"reporter_token"`
-	Security      SecurityClass                `json:"security"`
-	Severity      Severity                     `json:"severity"`
+
+	// Score The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of
+	// the severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days
+	// since `opened_at`. It warns where the facts disagree with the project's rank and orders the
+	// person-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a
+	// release before the score filed until an input of it changes.
+	Score nullable.Nullable[float64] `json:"score"`
+
+	// ScoreVersion The version of the function that computed `score` (docs/adr/0014 D4); null with it
+	ScoreVersion nullable.Nullable[int] `json:"score_version"`
+	Security     SecurityClass          `json:"security"`
+	Severity     Severity               `json:"severity"`
 
 	// State docs/adr/0009 D1
 	State  TicketState               `json:"state"`
@@ -3433,6 +3480,9 @@ type IncludeVoided = bool
 // Limit defines model for Limit.
 type Limit = int
 
+// MeProject defines model for MeProject.
+type MeProject = string
+
 // MeTenant defines model for MeTenant.
 type MeTenant = string
 
@@ -3570,6 +3620,27 @@ type MarkMyInboxReadParams struct {
 	// Tenant Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
 	// none of them is `404 not_found`, whether or not the tenant exists
 	Tenant *MeTenant `form:"tenant,omitempty" json:"tenant,omitempty"`
+}
+
+// ListMyNextParams defines parameters for ListMyNext.
+type ListMyNextParams struct {
+	// Tenant Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
+	// none of them is `404 not_found`, whether or not the tenant exists
+	Tenant *MeTenant `form:"tenant,omitempty" json:"tenant,omitempty"`
+
+	// Project Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it
+	// needs `tenant` (`400 validation_failed` without). A key that names no project the person sees
+	// there lists nothing
+	Project *MeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // LookupRepositoryParams defines parameters for LookupRepository.
@@ -4386,6 +4457,9 @@ type UpdateProjectJSONRequestBody = ProjectPatch
 // SetProjectAccessJSONRequestBody defines body for SetProjectAccess for application/json ContentType.
 type SetProjectAccessJSONRequestBody = ProjectAccessSet
 
+// SortProjectRankJSONRequestBody defines body for SortProjectRank for application/json ContentType.
+type SortProjectRankJSONRequestBody = ProjectRankSort
+
 // BindRepositoryJSONRequestBody defines body for BindRepository for application/json ContentType.
 type BindRepositoryJSONRequestBody = RepositoryBind
 
@@ -4525,11 +4599,11 @@ type ClientInterface interface {
 	// ListMyAssigned The open tickets assigned to the person, across their tenants
 	//
 	// "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-	// assigned to the person, in every tenant they belong to, each with its tenant — one read per
-	// tenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the
-	// tenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3
-	// exists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed
-	// (docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a
+	// assigned to the person, in every tenant they belong to, each with its tenant and its place in
+	// its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+	// tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+	// one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+	// (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
 	// project that project (docs/adr/0035 D3).
 	//
 	// Corresponds with GET /api/v1/me/assigned (the `ListMyAssigned` operationId).
@@ -4580,11 +4654,10 @@ type ClientInterface interface {
 	//
 	// "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
 	// their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-	// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,
-	// the project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,
-	// which has none, after the ranked ones — and the question's number, until the score exists
-	// (docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on
-	// `GET /api/v1/me/assigned`.
+	// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+	// ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+	// — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+	// restricted token reads as on `GET /api/v1/me/assigned`.
 	//
 	// Corresponds with GET /api/v1/me/decisions (the `ListMyDecisions` operationId).
 	ListMyDecisions(ctx context.Context, params *ListMyDecisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4644,6 +4717,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/me/inbox/{notification}/read (the `MarkNotificationRead` operationId).
 	MarkNotificationRead(ctx context.Context, notification openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyNext What the person could take up next, across their tenants
+	//
+	// "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+	// `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+	// they belong to, each with its tenant and its place in its project's rank — one read per tenant
+	// (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+	// is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+	// last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+	// (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+	// project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+	// restricted to a project that project (docs/adr/0035 D3).
+	//
+	// Corresponds with GET /api/v1/me/next (the `ListMyNext` operationId).
+	ListMyNext(ctx context.Context, params *ListMyNextParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ChangeMyPasswordWithBody Change the password of the person's local account
 	//
@@ -5478,6 +5566,42 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SortProjectRankWithBody Reorder the project's open tickets by their score
+	//
+	// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+	// the places they hold among themselves in the score's order — highest first, each scored anew
+	// with the function as it stands — so every horizon's group and every parent's children read in
+	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+	// (docs/adr/0050 D4).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+	SortProjectRankWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SortProjectRank Reorder the project's open tickets by their score
+	//
+	// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+	// the places they hold among themselves in the score's order — highest first, each scored anew
+	// with the function as it stands — so every horizon's group and every parent's children read in
+	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+	// (docs/adr/0050 D4).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+	SortProjectRank(ctx context.Context, tenant TenantSlug, project ProjectKey, body SortProjectRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRepositories The repositories a project owns
 	//
@@ -6447,11 +6571,11 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 // ListMyAssigned The open tickets assigned to the person, across their tenants
 //
 // "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-// assigned to the person, in every tenant they belong to, each with its tenant — one read per
-// tenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the
-// tenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3
-// exists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed
-// (docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a
+// assigned to the person, in every tenant they belong to, each with its tenant and its place in
+// its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+// tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+// one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+// (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
 // project that project (docs/adr/0035 D3).
 //
 // Corresponds with GET /api/v1/me/assigned (the `ListMyAssigned` operationId).
@@ -6542,11 +6666,10 @@ func (c *Client) SetMyChat(ctx context.Context, body SetMyChatJSONRequestBody, r
 //
 // "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
 // their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,
-// the project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,
-// which has none, after the ranked ones — and the question's number, until the score exists
-// (docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on
-// `GET /api/v1/me/assigned`.
+// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+// ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+// — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+// restricted token reads as on `GET /api/v1/me/assigned`.
 //
 // Corresponds with GET /api/v1/me/decisions (the `ListMyDecisions` operationId).
 func (c *Client) ListMyDecisions(ctx context.Context, params *ListMyDecisionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6647,6 +6770,31 @@ func (c *Client) MarkMyInboxRead(ctx context.Context, params *MarkMyInboxReadPar
 // Corresponds with PUT /api/v1/me/inbox/{notification}/read (the `MarkNotificationRead` operationId).
 func (c *Client) MarkNotificationRead(ctx context.Context, notification openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMarkNotificationReadRequest(c.Server, notification)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListMyNext What the person could take up next, across their tenants
+//
+// "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+// `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+// they belong to, each with its tenant and its place in its project's rank — one read per tenant
+// (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+// is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+// last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+// (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+// project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+// restricted to a project that project (docs/adr/0035 D3).
+//
+// Corresponds with GET /api/v1/me/next (the `ListMyNext` operationId).
+func (c *Client) ListMyNext(ctx context.Context, params *ListMyNextParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyNextRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8101,6 +8249,62 @@ func (c *Client) SetProjectAccess(ctx context.Context, tenant TenantSlug, projec
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveProjectRequest(c.Server, tenant, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SortProjectRankWithBody Reorder the project's open tickets by their score
+//
+// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+// the places they hold among themselves in the score's order — highest first, each scored anew
+// with the function as it stands — so every horizon's group and every parent's children read in
+// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
+// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+// (docs/adr/0050 D4).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+func (c *Client) SortProjectRankWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSortProjectRankRequestWithBody(c.Server, tenant, project, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SortProjectRank Reorder the project's open tickets by their score
+//
+// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+// the places they hold among themselves in the score's order — highest first, each scored anew
+// with the function as it stands — so every horizon's group and every parent's children read in
+// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
+// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+// (docs/adr/0050 D4).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+func (c *Client) SortProjectRank(ctx context.Context, tenant TenantSlug, project ProjectKey, body SortProjectRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSortProjectRankRequest(c.Server, tenant, project, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10299,6 +10503,111 @@ func NewMarkNotificationReadRequest(server string, notification openapi_types.UU
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMyNextRequest constructs an http.Request for the ListMyNext method
+func NewListMyNextRequest(server string, params *ListMyNextParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/next")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Tenant != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tenant", *params.Tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Project != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project", *params.Project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -13159,6 +13468,60 @@ func NewArchiveProjectRequest(server string, tenant TenantSlug, project ProjectK
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSortProjectRankRequest calls the generic SortProjectRank builder with application/json body
+func NewSortProjectRankRequest(server string, tenant TenantSlug, project ProjectKey, body SortProjectRankJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSortProjectRankRequestWithBody(server, tenant, project, "application/json", bodyReader)
+}
+
+// NewSortProjectRankRequestWithBody constructs an http.Request for the SortProjectRank method, with any body, and a specified content type
+func NewSortProjectRankRequestWithBody(server string, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/rank", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -18100,11 +18463,11 @@ type ClientWithResponsesInterface interface {
 	// ListMyAssignedWithResponse The open tickets assigned to the person, across their tenants
 	//
 	// "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-	// assigned to the person, in every tenant they belong to, each with its tenant — one read per
-	// tenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the
-	// tenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3
-	// exists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed
-	// (docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a
+	// assigned to the person, in every tenant they belong to, each with its tenant and its place in
+	// its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+	// tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+	// one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+	// (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
 	// project that project (docs/adr/0035 D3).
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -18159,11 +18522,10 @@ type ClientWithResponsesInterface interface {
 	//
 	// "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
 	// their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-	// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,
-	// the project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,
-	// which has none, after the ranked ones — and the question's number, until the score exists
-	// (docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on
-	// `GET /api/v1/me/assigned`.
+	// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+	// ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+	// — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+	// restricted token reads as on `GET /api/v1/me/assigned`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -18229,6 +18591,23 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/me/inbox/{notification}/read (the `MarkNotificationRead` operationId).
 	MarkNotificationReadWithResponse(ctx context.Context, notification openapi_types.UUID, reqEditors ...RequestEditorFn) (*MarkNotificationReadResponse, error)
+
+	// ListMyNextWithResponse What the person could take up next, across their tenants
+	//
+	// "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+	// `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+	// they belong to, each with its tenant and its place in its project's rank — one read per tenant
+	// (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+	// is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+	// last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+	// (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+	// project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+	// restricted to a project that project (docs/adr/0035 D3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/next (the `ListMyNext` operationId).
+	ListMyNextWithResponse(ctx context.Context, params *ListMyNextParams, reqEditors ...RequestEditorFn) (*ListMyNextResponse, error)
 
 	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 	//
@@ -19127,6 +19506,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ArchiveProjectResponse, error)
+
+	// SortProjectRankWithBodyWithResponse Reorder the project's open tickets by their score
+	//
+	// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+	// the places they hold among themselves in the score's order — highest first, each scored anew
+	// with the function as it stands — so every horizon's group and every parent's children read in
+	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+	// (docs/adr/0050 D4).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+	SortProjectRankWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SortProjectRankResponse, error)
+
+	// SortProjectRankWithResponse Reorder the project's open tickets by their score
+	//
+	// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+	// the places they hold among themselves in the score's order — highest first, each scored anew
+	// with the function as it stands — so every horizon's group and every parent's children read in
+	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+	// (docs/adr/0050 D4).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+	SortProjectRankWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, body SortProjectRankJSONRequestBody, reqEditors ...RequestEditorFn) (*SortProjectRankResponse, error)
 
 	// ListRepositoriesWithResponse The repositories a project owns
 	//
@@ -20634,6 +21049,75 @@ func (r MarkNotificationReadResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r MarkNotificationReadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListMyNextResponse200Headers the declared response headers of an HTTP 200 response for ListMyNext
+type ListMyNextResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyNextResponse304Headers the declared response headers of an HTTP 304 response for ListMyNext
+type ListMyNextResponse304Headers struct {
+	ETag *string
+}
+
+// ListMyNextResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyNext
+type ListMyNextResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListMyNextResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MyTicketList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyNextResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyNextResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListMyNextResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListMyNextResponse) GetJSON200() *MyTicketList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListMyNextResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListMyNextResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyNextResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyNextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListMyNextResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -23343,6 +23827,61 @@ func (r ArchiveProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SortProjectRankResponseDefaultHeaders the declared response headers of an HTTP default response for SortProjectRank
+type SortProjectRankResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SortProjectRankResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectRankSorted
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SortProjectRankResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SortProjectRankResponse) GetJSON200() *ProjectRankSorted {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SortProjectRankResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SortProjectRankResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SortProjectRankResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SortProjectRankResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SortProjectRankResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -26969,11 +27508,11 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 // ListMyAssignedWithResponse The open tickets assigned to the person, across their tenants
 //
 // "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-// assigned to the person, in every tenant they belong to, each with its tenant — one read per
-// tenant (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Ordered by the
-// tenant's slug, the project's key and the project's rank until the score of docs/adr/0014 D3
-// exists (D5). Cursor paging only (docs/adr/0048 D3); the cursor carries the rank sealed
-// (docs/adr/0014 D2). A token restricted to a tenant reads that tenant, one restricted to a
+// assigned to the person, in every tenant they belong to, each with its tenant and its place in
+// its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
+// tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+// one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+// (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
 // project that project (docs/adr/0035 D3).
 //
 // Returns a wrapper object for the known response body format(s).
@@ -27052,11 +27591,10 @@ func (c *ClientWithResponses) SetMyChatWithResponse(ctx context.Context, body Se
 //
 // "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
 // their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the tenant's slug,
-// the project's key, the ticket's place in the project's rank — a `done` or `dropped` ticket,
-// which has none, after the ranked ones — and the question's number, until the score exists
-// (docs/adr/0014 D5). Cursor paging only (docs/adr/0048 D3). A restricted token reads as on
-// `GET /api/v1/me/assigned`.
+// tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+// ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
+// — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
+// restricted token reads as on `GET /api/v1/me/assigned`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -27151,6 +27689,29 @@ func (c *ClientWithResponses) MarkNotificationReadWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseMarkNotificationReadResponse(rsp)
+}
+
+// ListMyNextWithResponse What the person could take up next, across their tenants
+//
+// "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
+// `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
+// they belong to, each with its tenant and its place in its project's rank — one read per tenant
+// (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+// is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
+// last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
+// (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
+// project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+// restricted to a project that project (docs/adr/0035 D3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/next (the `ListMyNext` operationId).
+func (c *ClientWithResponses) ListMyNextWithResponse(ctx context.Context, params *ListMyNextParams, reqEditors ...RequestEditorFn) (*ListMyNextResponse, error) {
+	rsp, err := c.ListMyNext(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyNextResponse(rsp)
 }
 
 // ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
@@ -28421,6 +28982,54 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseArchiveProjectResponse(rsp)
+}
+
+// SortProjectRankWithBodyWithResponse Reorder the project's open tickets by their score
+//
+// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+// the places they hold among themselves in the score's order — highest first, each scored anew
+// with the function as it stands — so every horizon's group and every parent's children read in
+// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
+// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+// (docs/adr/0050 D4).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+func (c *ClientWithResponses) SortProjectRankWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SortProjectRankResponse, error) {
+	rsp, err := c.SortProjectRankWithBody(ctx, tenant, project, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSortProjectRankResponse(rsp)
+}
+
+// SortProjectRankWithResponse Reorder the project's open tickets by their score
+//
+// "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+// the places they hold among themselves in the score's order — highest first, each scored anew
+// with the function as it stands — so every horizon's group and every parent's children read in
+// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
+// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+// (docs/adr/0050 D4).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/rank (the `SortProjectRank` operationId).
+func (c *ClientWithResponses) SortProjectRankWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, body SortProjectRankJSONRequestBody, reqEditors ...RequestEditorFn) (*SortProjectRankResponse, error) {
+	rsp, err := c.SortProjectRank(ctx, tenant, project, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSortProjectRankResponse(rsp)
 }
 
 // ListRepositoriesWithResponse The repositories a project owns
@@ -30338,6 +30947,75 @@ func ParseMarkNotificationReadResponse(rsp *http.Response) (*MarkNotificationRea
 	switch {
 	case true:
 		var headers MarkNotificationReadResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListMyNextResponse parses an HTTP response from a ListMyNextWithResponse call
+func ParseListMyNextResponse(rsp *http.Response) (*ListMyNextResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyNextResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MyTicketList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyNextResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyNextResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListMyNextResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -32798,6 +33476,52 @@ func ParseArchiveProjectResponse(rsp *http.Response) (*ArchiveProjectResponse, e
 		response.Headers200 = &headers
 	case true:
 		var headers ArchiveProjectResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSortProjectRankResponse parses an HTTP response from a SortProjectRankWithResponse call
+func ParseSortProjectRankResponse(rsp *http.Response) (*SortProjectRankResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SortProjectRankResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectRankSorted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SortProjectRankResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -36195,6 +36919,9 @@ type ServerInterface interface {
 	// MarkNotificationRead Mark one of the person's notifications read
 	// (PUT /api/v1/me/inbox/{notification}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notification openapi_types.UUID)
+	// ListMyNext What the person could take up next, across their tenants
+	// (GET /api/v1/me/next)
+	ListMyNext(w http.ResponseWriter, r *http.Request, params ListMyNextParams)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
@@ -36336,6 +37063,9 @@ type ServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// SortProjectRank Reorder the project's open tickets by their score
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/rank)
+	SortProjectRank(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
 	// ListRepositories The repositories a project owns
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
 	ListRepositories(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params ListRepositoriesParams)
@@ -36856,6 +37586,99 @@ func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MarkNotificationRead(w, r, notification)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyNext operation middleware
+func (siw *ServerInterfaceWrapper) ListMyNext(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMyNextParams
+
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyNext(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -39187,6 +40010,41 @@ func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SortProjectRank operation middleware
+func (siw *ServerInterfaceWrapper) SortProjectRank(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SortProjectRank(w, r, tenant, project)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -43794,6 +44652,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/inbox", wrapper.ListMyInbox)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/inbox/read", wrapper.MarkMyInboxRead)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/inbox/{notification}/read", wrapper.MarkNotificationRead)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/next", wrapper.ListMyNext)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/search", wrapper.SearchMyTenants)
@@ -43841,6 +44700,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.RemoveProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.SetProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/archive", wrapper.ArchiveProject)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/rank", wrapper.SortProjectRank)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.ListRepositories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.BindRepository)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}", wrapper.UnbindRepository)
@@ -44309,6 +45169,69 @@ type MarkNotificationReaddefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response MarkNotificationReaddefaultApplicationProblemPlusJSONResponse) VisitMarkNotificationReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyNextRequestObject struct {
+	Params ListMyNextParams
+}
+
+type ListMyNextResponseObject interface {
+	VisitListMyNextResponse(w http.ResponseWriter) error
+}
+
+type ListMyNext200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyNext200JSONResponse struct {
+	Body    MyTicketList
+	Headers ListMyNext200ResponseHeaders
+}
+
+func (response ListMyNext200JSONResponse) VisitListMyNextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyNext304Response = NotModifiedResponse
+
+func (response ListMyNext304Response) VisitListMyNextResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListMyNextdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListMyNextdefaultApplicationProblemPlusJSONResponse) VisitListMyNextResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -46642,6 +47565,51 @@ type ArchiveProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ArchiveProjectdefaultApplicationProblemPlusJSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SortProjectRankRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Body    *SortProjectRankJSONRequestBody
+}
+
+type SortProjectRankResponseObject interface {
+	VisitSortProjectRankResponse(w http.ResponseWriter) error
+}
+
+type SortProjectRank200JSONResponse ProjectRankSorted
+
+func (response SortProjectRank200JSONResponse) VisitSortProjectRankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SortProjectRankdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SortProjectRankdefaultApplicationProblemPlusJSONResponse) VisitSortProjectRankResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -50056,6 +51024,9 @@ type StrictServerInterface interface {
 	// MarkNotificationRead Mark one of the person's notifications read
 	// (PUT /api/v1/me/inbox/{notification}/read)
 	MarkNotificationRead(ctx context.Context, request MarkNotificationReadRequestObject) (MarkNotificationReadResponseObject, error)
+	// ListMyNext What the person could take up next, across their tenants
+	// (GET /api/v1/me/next)
+	ListMyNext(ctx context.Context, request ListMyNextRequestObject) (ListMyNextResponseObject, error)
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
@@ -50197,6 +51168,9 @@ type StrictServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
+	// SortProjectRank Reorder the project's open tickets by their score
+	// (PUT /api/v1/tenants/{tenant}/projects/{project}/rank)
+	SortProjectRank(ctx context.Context, request SortProjectRankRequestObject) (SortProjectRankResponseObject, error)
 	// ListRepositories The repositories a project owns
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/repositories)
 	ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error)
@@ -50624,6 +51598,32 @@ func (sh *strictHandler) MarkNotificationRead(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MarkNotificationReadResponseObject); ok {
 		if err := validResponse.VisitMarkNotificationReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyNext operation middleware
+func (sh *strictHandler) ListMyNext(w http.ResponseWriter, r *http.Request, params ListMyNextParams) {
+	var request ListMyNextRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyNext(ctx, request.(ListMyNextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyNext")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyNextResponseObject); ok {
+		if err := validResponse.VisitListMyNextResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -51982,6 +52982,40 @@ func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ArchiveProjectResponseObject); ok {
 		if err := validResponse.VisitArchiveProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SortProjectRank operation middleware
+func (sh *strictHandler) SortProjectRank(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey) {
+	var request SortProjectRankRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body SortProjectRankJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SortProjectRank(ctx, request.(SortProjectRankRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SortProjectRank")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SortProjectRankResponseObject); ok {
+		if err := validResponse.VisitSortProjectRankResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

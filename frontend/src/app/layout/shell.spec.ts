@@ -166,6 +166,7 @@ describe('Shell', () => {
               tenant,
               membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
               shown: computed(() => tenants().find((t) => t.slug === tenant())),
+              soleTenant: computed(() => (tenants().length === 1 ? tenants()[0].slug : null)),
               oversight,
               signedOut,
             };
@@ -196,11 +197,15 @@ describe('Shell', () => {
     page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
 
   describe('the person-level pages (docs/adr/0018 D3, docs/adr/0020 D1)', () => {
-    it('offers the inbox, the tickets assigned to the person and the open decisions to every person', async () => {
+    it('offers "next for me", the inbox, the tickets assigned to the person and the open decisions to every person', async () => {
       tenant.set(null);
 
       const { page } = await render();
 
+      expect(page.querySelector('[data-testid="nav-next"]')?.getAttribute('href')).toBe('/me/next');
+      expect(page.querySelector('[data-testid="nav-next"]')?.textContent?.trim()).toBe(
+        'Next for me',
+      );
       expect(page.querySelector('[data-testid="nav-inbox"]')?.getAttribute('href')).toBe(
         '/me/inbox',
       );
@@ -422,8 +427,22 @@ describe('Shell', () => {
       expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
     });
 
-    it('shows neither the name nor a switch on a page that belongs to no tenant', async () => {
+    // docs/adr/0023 D4 as amended 2026-10-05: the start page is "next for me", for one tenant too.
+    it('leads to the only tenant by its name on a page that belongs to no tenant, and offers no switch', async () => {
       tenant.set(null);
+
+      const { page } = await render();
+
+      const name = page.querySelector('[data-testid="tenant-name"]');
+      expect(name?.tagName).toBe('A');
+      expect(name?.getAttribute('href')).toBe('/t/acme');
+      expect(name?.textContent?.trim()).toBe('Acme Corp');
+      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
+    });
+
+    it('shows no name on a page that belongs to no tenant for a person without one', async () => {
+      tenant.set(null);
+      memberships.set([]);
 
       const { page } = await render();
 
@@ -1027,6 +1046,7 @@ describe('Shell', () => {
         link.getAttribute('data-testid'),
       );
       expect(shown).toEqual([
+        'nav-next',
         'nav-inbox',
         'nav-assigned',
         'nav-decisions',
@@ -1144,6 +1164,7 @@ describe('Shell, creating a project', () => {
             tenant: signal<string | null>('acme'),
             membership: signal<Membership | undefined>(acme),
             shown: signal<OpenableTenant | undefined>({ ...acme.tenant, role: acme.role }),
+            soleTenant: signal<string | null>('acme'),
             oversight: signal(false),
           },
         },

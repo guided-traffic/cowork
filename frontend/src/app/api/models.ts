@@ -110,6 +110,8 @@ export type { ProjectAccessSet } from './models/project-access-set';
 export type { ProjectCreate } from './models/project-create';
 export type { ProjectList } from './models/project-list';
 export type { ProjectPatch } from './models/project-patch';
+export type { ProjectRankSort } from './models/project-rank-sort';
+export type { ProjectRankSorted } from './models/project-rank-sorted';
 export type { ProjectRef } from './models/project-ref';
 export type { ProjectRestrictionSet } from './models/project-restriction-set';
 export type { ProposalTenant } from './models/proposal-tenant';

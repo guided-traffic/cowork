@@ -72,6 +72,8 @@ func (e Event) Name() string {
 		return "membership.changed"
 	case store.EntityInbox:
 		return "inbox.changed"
+	case store.EntityProjectRank:
+		return "project.changed"
 	}
 	return "ticket.changed"
 }

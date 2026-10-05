@@ -43,6 +43,12 @@ tenant and the project and nothing else (`Event.NewProject`, set by `insertProje
 [`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
 client is told of it — `Filter.Admits` refuses it, so it is neither sent nor replayed.
 
+**The sort of a project's rank by the score** is published as a notification of the entity
+`project-rank` (`store.EntityProjectRank`), with the tenant, the project and the project's key,
+`<tenant>/<PROJECT>` (`Event.ProjectRank`, set by `SortProjectRank` in
+[`score.go`](../../backend/internal/api/score.go)): the filter admits it as it admits the project's
+tickets, and the stream sends it as `project.changed` ([the handler](#the-handler)).
+
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
 a grant made, changed or removed, a membership the identity provider derived, a group mapping, a
@@ -187,7 +193,7 @@ data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 
 with the audit row's id as `id`, `kind` the act's action, and the name by entity:
 `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
-everything else `ticket.changed` — an upload included (`# example` values above). A membership
+`project.changed`, everything else `ticket.changed` — an upload included (`# example` values above). A membership
 event's `data` is its tenant's slug and the keys of what changed instead, each key only where it
 applies, and no `kind`:
 
@@ -200,7 +206,19 @@ data: {"tenant":"acme","person_id":"0199a3c2-1d2e-7f00-8000-000000000002","proje
 (`# example`, an access entry). The client reloads what it shows of members, mappings and access
 lists of the tenant it shows, its projects when `project_id` is there, and `GET /api/v1/me` for
 that tenant's acts and for any act that names the person
-([frontend.md](frontend.md#how-a-change-reaches-the-screen)). A control message is
+([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project's rank as a whole
+— the sort by the score ([domain.md](domain.md#rank)) — is `project.changed` with the project's key
+and the kind and no version, since it is no ticket's; the filter admits it as it admits the
+project's tickets, and the client loads the project's open lists and the person's lists of tickets
+again:
+
+```
+id: 0199a3c2-1d2e-7f00-8000-0000000000ac
+event: project.changed
+data: {"key":"acme/VKO","kind":"ranked"}
+```
+
+(`# example`). A control message is
 `event: resync` or `event: unavailable` with `data: {}`. At connect, `resync` only says that the
 gap cannot be replayed, and the stream goes on; any later control message ends the stream.
 

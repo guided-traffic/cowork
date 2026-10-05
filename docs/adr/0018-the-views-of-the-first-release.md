@@ -8,7 +8,12 @@ and 2026-10-03 (D1: the backlog grouped by urgency; the board's columns as a vie
 states, its `next` column and the urgencies its other columns hold; D2: the three progress
 stages and done by hand) and 2026-10-04 (D1: a project opens on its board, the Board tab left of
 the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day)
-and 2026-10-05 (D4: the tenant board's columns are the project board's of D1), and made concrete
+and 2026-10-05 (D3: which tickets "next for me" lists — the owner's answer to the question that
+the records gave the list its scope and its order but not its members, whether it holds the
+person's own open tickets only, which would repeat "assigned to me", their own and the unassigned
+open tickets of the projects they see, or every open ticket they can see, colleagues' assigned work
+included; the owner chose the second, as recommended: it is the set a person picks from, and the
+one `session_start` offers an agent; D4: the tenant board's columns are the project board's of D1), and made concrete
 2026-10-05 (D6: one route, the definition of each tile, what the period bounds, the front page
 beside the tiles; a time booking reaches the dashboard at its next reload, settled on the
 recommendation, the owner reviewing the result).
@@ -71,9 +76,9 @@ front page, until D6's dashboard, each project's open tickets by state with the 
 last~~ *(replaced 2026-10-05 by D6's dashboard, below, which carries both)*. *(2026-10-04:)* D3's "assigned to me", "open decisions" and the inbox, each across every tenant
 of the person as a union of per-tenant reads with the tenant beside each key, in the navigation for
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
-"assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
+~~"assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status. *(2026-10-05:)* D4 as amended the same day — the tenant board at `/t/{slug}/board`, in
+Status.~~ *(2026-10-05:)* D4 as amended the same day — the tenant board at `/t/{slug}/board`, in
 the navigation beside the tenant's front page: a swimlane per non-archived project the person sees,
 each with the project board's columns, cards, counts against its own project's WIP limits, card
 menu and dialogs, made from the same parts as the project board
@@ -96,6 +101,14 @@ body, comments, options and answers shown as the server rendered them
 person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
 from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
 [`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
+*(2026-10-05:)* D1's score marker — among the siblings of each horizon's group, "score says higher"
+or "lower" — and the sort by the score, which the page asks before it sends
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3); D3's "next for me" as amended,
+`/me/next`, first in the navigation and the start page `/`
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D4 as amended 2026-10-05), each ticket beside its
+tenant and its place in its project's backlog; "next for me", "assigned to me" and "open decisions"
+in the score's order ([`my-tickets.ts`](../../frontend/src/app/features/me/my-tickets.ts),
+[`backlog.ts`](../../frontend/src/app/features/project/backlog.ts)).
 *(2026-10-05:)* D5 on the tenant list view, built on the recommendation, the owner reviewing the
 result: the tenant's tickets across its projects at `/t/{slug}/tickets`, in the navigation beside
 the tenant board — a table over `GET …/tickets`, newest first, the project beside each key, in
@@ -103,7 +116,7 @@ numbered pages ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-o
 whose address carries every filter of ADR 0049 D1, the backlog's filters and the project as the
 selects of its bar, and to which saved filters apply as to the backlog, `project` included, through
 the same filter bar ([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
-Not built: the score's marker in the backlog, D3's "next for me", and D5 on the tenant board.
+Not built: D5 on the tenant board.
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),
@@ -185,7 +198,10 @@ interest, attachments, the comment thread and the collapsible activity list, tim
 
 **D3 — Per person, across every tenant they belong to:** "next for me" and "assigned to me"
 ordered by score with the tenant shown beside the key, "open decisions" (asked of me, and open
-in my tenants), and the inbox. Each is a union of per-tenant queries (ADR 0005 D3).
+in my tenants), and the inbox. Each is a union of per-tenant queries (ADR 0005 D3). *(Amended
+2026-10-05:)* **"Next for me" lists the person's open tickets and the unassigned open tickets of
+the projects they see** — what the person, or their agent, could take up next; another person's
+ticket is not "for me". The owner's words, 2026-10-05.
 
 **D4 — Per tenant: a board with one swimlane per project.** ~~Columns are the states~~
 *(amended 2026-10-05: the columns are the project board's of D1 — `next`, Refinement, Ready, In

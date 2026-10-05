@@ -25,7 +25,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MenuItem, MessageService } from 'primeng/api';
+import { ConfirmationService, MenuItem, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { IconField } from 'primeng/iconfield';
 import { InputIcon } from 'primeng/inputicon';
@@ -41,6 +41,7 @@ import { SessionService } from '../../core/session.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { TicketPage, TicketsService } from '../../core/tickets.service';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { SizeIcon } from '../../shared/size';
 import { StageBar } from '../../shared/stage-bar';
 import { currentStage, Stage, stagesOf } from '../../shared/stages';
@@ -58,6 +59,8 @@ import {
   position,
   rankBody,
   Row,
+  ScoreMark,
+  scoreMarks,
   unanswered,
   urgencies,
   withMoves,
@@ -97,6 +100,7 @@ function timeOf(value: string | undefined): string | undefined {
     CdkDragPreview,
     CdkDropList,
     CdkDropListGroup,
+    ConfirmDialog,
     FormsModule,
     IconField,
     InputIcon,
@@ -118,6 +122,7 @@ function timeOf(value: string | undefined): string | undefined {
   ],
   templateUrl: './backlog.html',
   styleUrl: './backlog.scss',
+  providers: [ConfirmationService],
 })
 export class Backlog {
   readonly project = input.required<string>();
@@ -137,6 +142,7 @@ export class Backlog {
   private readonly clock = inject(Clock);
   private readonly problems = inject(ProblemService);
   private readonly messages = inject(MessageService);
+  private readonly confirm = inject(ConfirmationService);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly view = inject(ChangeDetectorRef);
@@ -312,6 +318,14 @@ export class Backlog {
   protected readonly summary = computed(
     () => `${count(this.openTickets().length, 'open ticket')}${this.more() ? ' loaded' : ''}`,
   );
+  /**
+   * Where the score disagrees with the rank (docs/adr/0014 D3), a marker, not a figure: among the
+   * siblings of each group the page shows, over the rows it has loaded.
+   */
+  protected readonly marks = computed(() => scoreMarks(this.held() ?? this.groups()));
+  /** A viewer does not rank; whoever may is offered the sort by the score. */
+  protected readonly mayRank = computed(() => this.session.membership()?.role !== 'viewer');
+  protected readonly sorting = signal(false);
 
   /** What a row's menu offers, for the row that opened it. */
   protected readonly menuItems = signal<MenuItem[]>([]);
@@ -386,6 +400,52 @@ export class Backlog {
   /** A ticket filed here shows at once; the event that follows changes nothing more. */
   protected filed(): void {
     refresh(this.openList, this.injector);
+  }
+
+  /** What the marker of a row says, for its tooltip and for a screen reader. */
+  protected markText(mark: ScoreMark, ticket: Ticket): string {
+    return `The score, ${ticket.score?.toFixed(1)}, says ${mark} than the rank puts it`;
+  }
+
+  /**
+   * "Sort by score" (docs/adr/0014 D3): never automatic, and it replaces the order set by hand, so
+   * the page asks first. The open tickets the person sees take their places in the score's order —
+   * within each horizon and among each parent's children, as the marks read them.
+   */
+  protected askSort(): void {
+    const project = this.project();
+    this.confirm.confirm({
+      header: `Sort ${project} by score?`,
+      message:
+        `Every open ticket of ${project} you can see takes its place by its score, highest first, ` +
+        'within its horizon and among its siblings. The order set by hand is replaced, and the sort ' +
+        'is recorded as one act of the project.',
+      acceptLabel: 'Sort by score',
+      rejectLabel: 'Keep the order',
+      defaultFocus: 'reject',
+      accept: () => void this.sortByScore(project),
+    });
+  }
+
+  private async sortByScore(project: string): Promise<void> {
+    const tenant = this.session.tenant();
+    if (!tenant || this.sorting()) {
+      return;
+    }
+    this.sorting.set(true);
+    try {
+      const moved = await this.actions.sortByScore(tenant, project);
+      const said =
+        moved > 0
+          ? `Sorted by score: ${count(moved, 'ticket')} moved`
+          : 'The backlog follows the score already';
+      this.messages.add({ severity: moved > 0 ? 'success' : 'info', summary: said });
+      this.status.set(said);
+    } catch (error) {
+      this.problems.report(error);
+    } finally {
+      this.sorting.set(false);
+    }
   }
 
   protected open(ticket: Ticket): void {

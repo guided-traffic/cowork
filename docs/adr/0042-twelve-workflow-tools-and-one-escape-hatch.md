@@ -82,8 +82,11 @@ the project's tickets in rank order, and asks for words outside one *(amended 20
 live run of the chat a model asked "which tickets are in WEB?" sent an empty query, which the
 required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; `transition`
 `block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
-candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
-is not built, and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
+~~candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
+is not built~~ *(2026-10-05:)* candidates by score — the top of `GET /api/v1/me/next` narrowed to
+the bound project with `?tenant=` and `?project=`, passing over the tickets in progress, blocked or
+waiting on an open prerequisite, each with its score and its place in its horizon of the backlog
+([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D5) — and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
 is not.)* *(Amended 2026-10-04: ~~`comment(key, text, explains_act?)`~~ `comment(key, text)` —
 the explanation of an own act is the `comment` argument of `record_state`, `transition` and
 `set_progress`, written in the act's own request as

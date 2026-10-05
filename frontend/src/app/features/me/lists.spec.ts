@@ -5,12 +5,12 @@ import { provideRouter } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { Subject } from 'rxjs';
 import { Api } from '../../api/api';
-import { listMyAssigned, listMyDecisions } from '../../api/functions';
+import { listMyAssigned, listMyDecisions, listMyNext } from '../../api/functions';
 import { Decision, DecisionList, Me, MyTicketList, Ticket } from '../../api/models';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { SessionService } from '../../core/session.service';
-import { Assigned } from './assigned';
 import { askedOf, Decisions } from './decisions';
+import { MyList, MyTickets } from './my-tickets';
 import { shortKey, ticketRoute } from './person-list';
 
 /**
@@ -79,6 +79,8 @@ function ticket(key: string, overrides: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 1,
     ...overrides,
   };
@@ -153,64 +155,119 @@ describe('the person-level lists', () => {
 
   const byTestId = (page: HTMLElement, id: string) => page.querySelector(`[data-testid="${id}"]`);
 
-  describe('Assigned', () => {
+  describe('MyTickets', () => {
+    async function renderList(list: MyList) {
+      const fixture: ComponentFixture<MyTickets> = TestBed.createComponent(MyTickets);
+      fixture.componentRef.setInput('list', list);
+      await fixture.whenStable();
+      return { fixture, page: fixture.nativeElement as HTMLElement };
+    }
+
     const first: MyTicketList = {
       items: [
-        { tenant: { slug: 'acme', name: 'Acme Corp' }, ticket: ticket('acme/COW-2') },
-        { tenant: { slug: 'globex', name: 'Globex' }, ticket: ticket('globex/OPS-1') },
+        {
+          tenant: { slug: 'acme', name: 'Acme Corp' },
+          ticket: ticket('acme/COW-2', { score: 9.4, score_version: 1, urgency: 'now' }),
+          place: 2,
+        },
+        {
+          tenant: { slug: 'globex', name: 'Globex' },
+          ticket: ticket('globex/OPS-1', { assignee: null, score: 4, score_version: 1 }),
+          place: 1,
+        },
       ],
       next_cursor: null,
     };
 
-    it('lists the tickets assigned to the person in the order given, each beside its tenant (docs/adr/0018 D3)', async () => {
+    // docs/adr/0018 D3 as amended 2026-10-05, docs/adr/0014 D5.
+    it('lists "next for me" in the order given, each beside its tenant and its place in the backlog', async () => {
       configure(() => first);
 
-      const { page } = await render(Assigned);
+      const { page } = await renderList('next');
 
+      expect(byTestId(page, 'my-title')?.textContent?.trim()).toBe('Next for me');
       const rows = [...page.querySelectorAll('.row')];
       expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual([
-        'assigned-acme/COW-2',
-        'assigned-globex/OPS-1',
+        'next-acme/COW-2',
+        'next-globex/OPS-1',
       ]);
       expect(
         rows.map((row) => row.querySelector('[data-testid="tenant"]')?.textContent?.trim()),
       ).toEqual(['Acme Corp', 'Globex']);
+      const place = rows[0].querySelector('[data-testid="place"]');
+      expect(place?.firstChild?.textContent?.trim()).toBe('now #2');
+      expect(place?.querySelector('.sr-only')?.textContent).toContain(
+        '#2 of now in the backlog of COW; score 9.4',
+      );
+      expect(
+        rows.map((row) => row.querySelector('[data-testid="whose"]')?.textContent?.trim()),
+      ).toEqual(['yours', 'unassigned']);
       expect(rows[1].querySelector('a')?.getAttribute('href')).toBe('/t/globex/tickets/OPS-1');
+      expect(byTestId(page, 'next-count')?.textContent?.trim()).toBe('2 open tickets');
+      expect(invoke).toHaveBeenCalledWith(listMyNext, { cursor: undefined, limit: 50 });
+    });
+
+    it('lists the tickets assigned to the person, without whose they are', async () => {
+      configure(() => first);
+
+      const { page } = await renderList('assigned');
+
+      expect(byTestId(page, 'my-title')?.textContent?.trim()).toBe('Assigned to me');
+      expect(byTestId(page, 'assigned-acme/COW-2')).not.toBeNull();
+      expect(byTestId(page, 'whose')).toBeNull();
       expect(byTestId(page, 'assigned-count')?.textContent?.trim()).toBe('2 open tickets');
       expect(invoke).toHaveBeenCalledWith(listMyAssigned, { cursor: undefined, limit: 50 });
     });
 
-    it("sends the list's weak ETag on a poll and keeps the tickets on a 304 (docs/adr/0054 D7)", async () => {
-      configure(() => first);
-      const asked: unknown[] = [];
-      TestBed.overrideProvider(Api, {
-        useValue: {
-          invoke,
-          invoke$Response: async (_fn: unknown, params: Record<string, unknown>) => {
-            asked.push(params);
-            if (params['If-None-Match'] === 'W/"one"') {
-              throw new HttpErrorResponse({ status: 304, statusText: 'Not Modified' });
-            }
-            return { body: first, headers: new HttpHeaders({ ETag: 'W/"one"' }) };
-          },
-        },
-      });
-      const { fixture, page } = await render(Assigned);
+    it('says a ticket without a score has none yet', async () => {
+      configure(() => ({
+        items: [
+          { tenant: { slug: 'acme', name: 'Acme Corp' }, ticket: ticket('acme/COW-9'), place: 1 },
+        ],
+        next_cursor: null,
+      }));
 
-      stream.next({ name: 'poll' });
-      await fixture.whenStable();
+      const { page } = await renderList('next');
 
-      expect(asked).toEqual([
-        { cursor: undefined, limit: 50 },
-        { cursor: undefined, limit: 50, 'If-None-Match': 'W/"one"' },
-      ]);
-      expect(page.querySelectorAll('.row')).toHaveLength(2);
-      expect(byTestId(page, 'assigned-count')?.textContent?.trim()).toBe('2 open tickets');
+      expect(byTestId(page, 'place')?.querySelector('.sr-only')?.textContent).toContain(
+        'no score yet',
+      );
     });
 
-    it("loads again on a ticket change of any of the person's tenants, not on a comment or the count (docs/adr/0054 D1)", async () => {
+    it.each<MyList>(['next', 'assigned'])(
+      'sends the weak ETag of %s on a poll and keeps the tickets on a 304 (docs/adr/0054 D7)',
+      async (list) => {
+        configure(() => first);
+        const asked: unknown[] = [];
+        TestBed.overrideProvider(Api, {
+          useValue: {
+            invoke,
+            invoke$Response: async (_fn: unknown, params: Record<string, unknown>) => {
+              asked.push(params);
+              if (params['If-None-Match'] === 'W/"one"') {
+                throw new HttpErrorResponse({ status: 304, statusText: 'Not Modified' });
+              }
+              return { body: first, headers: new HttpHeaders({ ETag: 'W/"one"' }) };
+            },
+          },
+        });
+        const { fixture, page } = await renderList(list);
+
+        stream.next({ name: 'poll' });
+        await fixture.whenStable();
+
+        expect(asked).toEqual([
+          { cursor: undefined, limit: 50 },
+          { cursor: undefined, limit: 50, 'If-None-Match': 'W/"one"' },
+        ]);
+        expect(page.querySelectorAll('.row')).toHaveLength(2);
+        expect(byTestId(page, `${list}-count`)?.textContent?.trim()).toBe('2 open tickets');
+      },
+    );
+
+    it("loads again on a ticket change of any of the person's tenants, a stake and a project sorted, not on a comment or the count (docs/adr/0054 D1)", async () => {
       configure(() => first);
-      const { fixture } = await render(Assigned);
+      const { fixture } = await renderList('next');
       invoke.mockClear();
 
       stream.next({
@@ -230,6 +287,16 @@ describe('the person-level lists', () => {
       });
       await fixture.whenStable();
       stream.next({
+        name: 'interest.changed',
+        id: 'e4',
+        key: 'acme/COW-2',
+        version: 2,
+        kind: 'interest',
+      });
+      await fixture.whenStable();
+      stream.next({ name: 'project.changed', id: 'e5', key: 'globex/OPS', kind: 'ranked' });
+      await fixture.whenStable();
+      stream.next({
         name: 'comment.changed',
         id: 'e3',
         key: 'acme/COW-2',
@@ -240,7 +307,7 @@ describe('the person-level lists', () => {
       stream.next({ name: 'inbox.changed', unread: 1 });
       await fixture.whenStable();
 
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke).toHaveBeenCalledTimes(4);
     });
 
     it.each<[string, StreamEvent, number]>([
@@ -268,7 +335,7 @@ describe('the person-level lists', () => {
       ["the fallback's poll", { name: 'poll' }, 1],
     ])('follows what every person-level page follows: %s', async (_what, event, loads) => {
       configure(() => first);
-      const { fixture } = await render(Assigned);
+      const { fixture } = await renderList('next');
       invoke.mockClear();
 
       stream.next(event);
@@ -280,7 +347,7 @@ describe('the person-level lists', () => {
     it('loads once more after a burst of events of several tenants, not once for each', async () => {
       let release: () => void = () => undefined;
       configure(() => first);
-      const { fixture } = await render(Assigned);
+      const { fixture } = await renderList('next');
       invoke.mockClear();
       invoke.mockImplementationOnce(
         () => new Promise((resolve) => (release = () => resolve(first))),
@@ -301,13 +368,17 @@ describe('the person-level lists', () => {
         cursor === 'c1'
           ? {
               items: [
-                { tenant: { slug: 'globex', name: 'Globex' }, ticket: ticket('globex/OPS-7') },
+                {
+                  tenant: { slug: 'globex', name: 'Globex' },
+                  ticket: ticket('globex/OPS-7'),
+                  place: 3,
+                },
               ],
               next_cursor: null,
             }
           : { ...first, next_cursor: 'c1' },
       );
-      const { fixture, page } = await render(Assigned);
+      const { fixture, page } = await renderList('assigned');
       expect(byTestId(page, 'assigned-count')?.textContent?.trim()).toBe(
         '2 open tickets shown, more to load',
       );
@@ -319,12 +390,14 @@ describe('the person-level lists', () => {
       expect(byTestId(page, 'load-more')).toBeNull();
     });
 
-    it('says when nothing is assigned', async () => {
+    it('says when nothing is there', async () => {
       configure(() => ({ items: [], next_cursor: null }));
 
-      const { page } = await render(Assigned);
+      const { page } = await renderList('next');
 
-      expect(byTestId(page, 'assigned-empty')).not.toBeNull();
+      expect(byTestId(page, 'next-empty')?.textContent).toContain(
+        'Nothing is open for you, and nothing is unassigned.',
+      );
     });
   });
 

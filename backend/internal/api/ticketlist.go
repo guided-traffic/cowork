@@ -143,8 +143,9 @@ func (s *Server) listTickets(ctx context.Context, op, projectKey string, q ticke
 		rows, next = page(s.h, rows, l.size, op, scope, s.position(order))
 		out.NextCursor = nullableString(next)
 	}
+	now := s.h.opts.Now()
 	for _, r := range rows {
-		out.Items = append(out.Items, ticketView(t, r))
+		out.Items = append(out.Items, ticketView(t, r, now))
 	}
 	return out, weakETag(out), nil
 }

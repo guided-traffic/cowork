@@ -176,13 +176,14 @@ describe('EventStreamService', () => {
       expect(events).toEqual([]);
     });
 
-    it('listens to the events that name a ticket, to membership.changed, to inbox.changed, to resync and to unavailable (docs/adr/0054 D2)', () => {
+    it('listens to the events that name a ticket, to membership.changed, to project.changed, to inbox.changed, to resync and to unavailable (docs/adr/0054 D2)', () => {
       service.connect('acme');
 
       expect([...sources[0].eventNames].sort()).toEqual(
         [
           ...ticketEventNames,
           'membership.changed',
+          'project.changed',
           'inbox.changed',
           'resync',
           'unavailable',
@@ -505,6 +506,17 @@ describe('EventStreamService', () => {
       sources[0].sendTicket('ticket.changed', 'acme/VKO-2', 3, 'edited', 'e3');
 
       expect(names()).toEqual(['ticket.changed', 'membership.changed', 'ticket.changed']);
+    });
+
+    // docs/adr/0014 D3: the sort by the score is the project's act, with its key and no version.
+    it('passes project.changed on with the project and the kind, and drops a payload that is not one', () => {
+      sources[0].send('project.changed', '{"key":"acme/VKO","kind":"ranked"}', 'e4');
+      sources[0].send('project.changed', '{"key":3}', 'e5');
+      sources[0].send('project.changed', 'not json', 'e6');
+
+      expect(events).toEqual([
+        { name: 'project.changed', id: 'e4', key: 'acme/VKO', kind: 'ranked' },
+      ]);
     });
   });
 

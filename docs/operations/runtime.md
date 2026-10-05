@@ -379,6 +379,8 @@ tenant's slug and the ids of what changed — `tenant`, `person_id`, `project_id
 reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
+A project's rank sorted by the score is `project.changed`, with the project's key and the kind and
+no version, and reaches whoever sees the project.
 
 Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it carries
 the events of every tenant the person belongs to, each as that tenant's own stream would judge it,

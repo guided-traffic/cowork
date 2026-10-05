@@ -40,6 +40,14 @@ MeTenant:
     Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
     none of them is `404 not_found`, whether or not the tenant exists
   schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+MeProject:
+  name: project
+  in: query
+  description: |
+    Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it
+    needs `tenant` (`400 validation_failed` without). A key that names no project the person sees
+    there lists nothing
+  schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
 Limit:
   name: limit
   in: query

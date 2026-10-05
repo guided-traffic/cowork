@@ -808,7 +808,7 @@ Ticket:
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
     urgency, urgency_derived, urgency_rule, urgency_override, effort, progress, progress_refinement, progress_review,
     progress_derived, parent, reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at,
-    done_at, done_from, done_by_hand, open_prerequisites, version, created_at, updated_at]
+    done_at, done_from, done_by_hand, open_prerequisites, score, score_version, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -899,6 +899,18 @@ Ticket:
       description: |
         The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
         docs/adr/0018 D1); a ticket the caller cannot see is never counted
+    score:
+      type: [number, 'null']
+      format: double
+      description: |
+        The score at the moment of the read, to one decimal (docs/adr/0014 D3, D4): the weights of
+        the severity, the horizon and the `need` and `urgent` stakes, plus one for every thirty days
+        since `opened_at`. It warns where the facts disagree with the project's rank and orders the
+        person-level lists; it never moves the rank. Null for a done or dropped ticket, and for one a
+        release before the score filed until an input of it changes.
+    score_version:
+      type: [integer, 'null']
+      description: The version of the function that computed `score` (docs/adr/0014 D4); null with it
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
@@ -1055,6 +1067,27 @@ TicketRankSet:
   properties:
     after: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly after}
     before: {type: integer, minimum: 1, maximum: 2147483647, description: The ticket this one is placed directly before}
+ProjectRankSort:
+  type: object
+  additionalProperties: false
+  required: [by]
+  description: What the project's rank is set to (docs/adr/0014 D3)
+  properties:
+    by:
+      type: string
+      enum: [score]
+      description: The order the open tickets take — the score's, the one order there is to adopt
+ProjectRankSorted:
+  type: object
+  required: [moved, score_version]
+  properties:
+    moved:
+      type: integer
+      minimum: 0
+      description: How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already
+    score_version:
+      type: integer
+      description: The version of the score function the rank was sorted by (docs/adr/0014 D4)
 BlockSet:
   type: object
   additionalProperties: false
@@ -2089,12 +2122,19 @@ InboxReadThrough:
       description: The newest notification the person saw; it and every older one are marked read
 MyTicket:
   type: object
-  required: [tenant, ticket]
+  required: [tenant, ticket, place]
   properties:
     tenant:
       $ref: '#/TenantRef'
     ticket:
       $ref: '#/Ticket'
+    place:
+      type: integer
+      minimum: 1
+      description: |
+        The ticket's place in its project's rank among the open tickets of its horizon the caller can
+        see, 1 for the first — where the backlog's group shows it: the secondary indicator beside the
+        score's order (docs/adr/0014 D5)
 MyTicketList:
   type: object
   required: [items, next_cursor]

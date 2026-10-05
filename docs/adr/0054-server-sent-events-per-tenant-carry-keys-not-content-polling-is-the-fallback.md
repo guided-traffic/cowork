@@ -31,7 +31,12 @@ more tenants than `COWORK_SSE_MAX_STREAMS_PER_PERSON` would close against themse
 reload on `inbox.changed` with a fifteen-second poll, the latency this record turned down (D1: the
 person-level stream spans the person's tenants; D3: a filter per tenant, recomputed on every act
 that changes it and at every heartbeat, which checks every membership; D5: a reconnect replays
-across the tenants; built the same day), and made concrete on 2026-10-05 for the dashboard of
+across the tenants; built the same day), and on 2026-10-05 (D2: `project.changed`, for the sort of
+a project's rank by the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3,
+which is one act of the project, with no event of the tickets it moved; built the same day —
+`ProjectChange` in [`store/notify.go`](../../backend/internal/store/notify.go), the client's reload
+of the open lists in [`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts)), and
+made concrete on 2026-10-05 for the dashboard of
 [ADR 0018](0018-the-views-of-the-first-release.md) D6 (D4: a time booking stays unpublished, and the
 dashboard's time tile follows it at the next reload; settled on the recommendation, the owner
 reviewing the result).
@@ -131,6 +136,9 @@ two moments; a group mapping reaches the tenant's administrators, who alone read
 entry of a restricted project's access list reaches the administrators and the person it names, so
 no member who does not see the project hears of it. The client reloads its members, mappings and
 access lists, its projects when a `project_id` is there, and the person's own `GET /api/v1/me`.)*
+*(Added 2026-10-05:)* `project.changed`, `{"key": "<tenant>/<PROJECT>", "kind": "ranked"}` without a
+version, says that a project's rank was set as a whole — the sort by the score — and reaches whoever
+sees the project, as its tickets' events do (D3); the client loads its open lists again.
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on

@@ -48,6 +48,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version,
     ...overrides,
   };
@@ -467,6 +469,37 @@ describe('TicketActions', () => {
       none(readUrl);
     });
   });
+  // docs/adr/0014 D3: the project's act; the lists bring the versions of the tickets it moved.
+  describe('sortByScore', () => {
+    it("sorts the project's rank by the score and loads the open lists again", async () => {
+      const reload = vi.spyOn(tickets, 'reloadLists');
+
+      const done = actions.sortByScore('acme', 'VKO');
+
+      const sent = request('/api/v1/tenants/acme/projects/VKO/rank');
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.body).toEqual({ by: 'score' });
+      expect(sent.request.headers.has('If-Match')).toBe(false);
+      sent.flush({ moved: 3, score_version: 1 });
+
+      expect(await done).toBe(3);
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it('rejects with the HTTP error of a refusal and loads nothing again', async () => {
+      const reload = vi.spyOn(tickets, 'reloadLists');
+      const outcome = rejection(actions.sortByScore('acme', 'VKO'));
+
+      request('/api/v1/tenants/acme/projects/VKO/rank').flush(
+        problem(403, { code: 'agent_forbidden' }),
+        failed(403, 'Forbidden'),
+      );
+
+      expect(((await outcome) as HttpErrorResponse).status).toBe(403);
+      expect(reload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('rank', () => {
     it('places the ticket directly after another, with no If-Match and no Idempotency-Key (docs/adr/0050 D4)', async () => {
       tickets.cache.put(key, ticket(key, 5));

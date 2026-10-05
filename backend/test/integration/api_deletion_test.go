@@ -271,10 +271,11 @@ func TestADeletedTicketAnswersLikeAMissingOne(t *testing.T) {
 
 // docs/adr/0024 D1, docs/adr/0025, docs/adr/0021 D5, docs/adr/0054 D1: a
 // deleted ticket leaves the tenant's search and the person's across their
-// tenants, the person-level lists and the inbox with its unread count, while
-// the person's other tenant keeps its own; the person-level stream opened in
-// that other tenant carries the deletion, which is what makes a page that
-// follows every tenant read its list again; a restoration brings it back.
+// tenants, the person-level lists — "next for me" among them — and the inbox
+// with its unread count, while the person's other tenant keeps its own; the
+// person-level stream opened in that other tenant carries the deletion, which
+// is what makes a page that follows every tenant read its list again; a
+// restoration brings it back.
 func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
 	e := newTicketEnv(t)
 	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
@@ -287,18 +288,20 @@ func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
 
 	me := e.openMeStream(t, both, e.SlugB)
 	_, _ = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
-	look := func() (tenant, across, comment, assigned, decided []string, inbox apigen.InboxList) {
+	look := func() (tenant, across, comment, assigned, next, decided []string, inbox apigen.InboxList) {
 		t.Helper()
 		assigned, _ = e.assigned(t, both, "")
+		next, _ = e.next(t, both, "")
 		decided, _ = e.decisions(t, both, "")
 		return hitKeys(e.search(t, both, e.SlugA, "quasarflux", "")), hitKeys(e.search(t, both, "", "quasarflux", "")),
-			hitKeys(e.search(t, both, "", "nebulameter", "")), assigned, decided, e.inbox(t, both, "")
+			hitKeys(e.search(t, both, "", "nebulameter", "")), assigned, next, decided, e.inbox(t, both, "")
 	}
-	tenant, across, comment, assigned, decided, before := look()
+	tenant, across, comment, assigned, next, decided, before := look()
 	require.Equal(t, []string{inA.Key}, tenant)
 	require.ElementsMatch(t, []string{inA.Key, inB.Key}, across)
 	require.Equal(t, []string{inA.Key}, comment)
 	require.Subset(t, assigned, []string{inA.Key, inB.Key})
+	require.Subset(t, next, []string{inA.Key, inB.Key})
 	require.Contains(t, decided, inA.Key+" Q1")
 	aboutA := len(reasonsAbout(before, inA.Key))
 	require.Positive(t, aboutA)
@@ -307,12 +310,14 @@ func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
 	_, m := me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && strings.Contains(m.Data, `"kind":"deleted"`) })
 	assert.Equal(t, inA.Key, eventKey(t, m), "the stream opened in B carries the deletion in A")
 
-	tenant, across, comment, assigned, decided, after := look()
+	tenant, across, comment, assigned, next, decided, after := look()
 	assert.Empty(t, tenant, "the tenant's search")
 	assert.Equal(t, []string{inB.Key}, across, "the person's search keeps the other tenant's")
 	assert.Empty(t, comment, "a comment of the deleted ticket is found no more")
 	assert.NotContains(t, assigned, inA.Key)
 	assert.Contains(t, assigned, inB.Key)
+	assert.NotContains(t, next, inA.Key, "next for me")
+	assert.Contains(t, next, inB.Key, "next for me")
 	assert.NotContains(t, decided, inA.Key+" Q1")
 	assert.Empty(t, reasonsAbout(after, inA.Key))
 	assert.NotEmpty(t, reasonsAbout(after, inB.Key))
@@ -321,11 +326,12 @@ func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
 	e.send(t, admin, http.StatusOK, http.MethodPut, binPath(e.SlugA, short(inA))+"/restore", nil)
 	_, m = me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && strings.Contains(m.Data, `"kind":"restored"`) })
 	assert.Equal(t, inA.Key, eventKey(t, m))
-	tenant, across, comment, assigned, decided, restored := look()
+	tenant, across, comment, assigned, next, decided, restored := look()
 	assert.Equal(t, []string{inA.Key}, tenant)
 	assert.ElementsMatch(t, []string{inA.Key, inB.Key}, across)
 	assert.Equal(t, []string{inA.Key}, comment)
 	assert.Contains(t, assigned, inA.Key)
+	assert.Contains(t, next, inA.Key, "next for me")
 	assert.Contains(t, decided, inA.Key+" Q1")
 	assert.Equal(t, before.Unread, restored.Unread)
 }

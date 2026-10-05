@@ -69,20 +69,38 @@ type MembershipChange struct {
 	Audience                 string
 }
 
+// EntityProjectRank is the entity of the notification of a project's rank set
+// as a whole — the sort by the score (docs/adr/0014 D3) —, whose stream event
+// is project.changed (docs/adr/0054 D2).
+const EntityProjectRank = "project-rank"
+
+// ProjectChange is what an act on a project's rank as a whole announces: the
+// project, which the streams filter by as they filter its tickets' acts, and
+// its key, <tenant>/<PROJECT>.
+type ProjectChange struct {
+	ID  uuid.UUID
+	Key string
+}
+
 // silent are the acts a stream does not carry: data leaving the system
 // changes nothing a client shows, and time follows its own visibility
 // (docs/adr/0026 D5, docs/adr/0034 D5).
 var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
 
-// publish notifies the listeners of a ticket's act, a membership act or a
-// project's creation in a tenant. NOTIFY inside the transaction is delivered when it commits and
-// never when it rolls back (docs/adr/0054 D4).
+// publish notifies the listeners of a ticket's act, a membership act, a
+// project's creation or its rank sorted by the score in a tenant. NOTIFY
+// inside the transaction is delivered when it commits and never when it rolls
+// back (docs/adr/0054 D4).
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
 	if tenantID != uuid.Nil && e.Membership != nil {
 		return w.notify(ctx, membershipNotification(tenantID, id, e))
 	}
 	if tenantID != uuid.Nil && e.NewProject != uuid.Nil {
 		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.NewProject, Entity: EntityProject, Action: e.Action})
+	}
+	if tenantID != uuid.Nil && e.ProjectRank != nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.ProjectRank.ID, Entity: EntityProjectRank,
+			Action: e.Action, Key: e.ProjectRank.Key})
 	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil

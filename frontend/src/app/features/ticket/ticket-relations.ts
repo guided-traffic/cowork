@@ -126,7 +126,11 @@ export class TicketRelations {
       }
       return;
     }
-    if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
+    if (
+      event.name === 'membership.changed' ||
+      event.name === 'inbox.changed' ||
+      event.name === 'project.changed'
+    ) {
       return;
     }
     if (event.key !== `${at.tenant}/${at.project}-${at.number}`) {

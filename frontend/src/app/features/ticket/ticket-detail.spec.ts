@@ -95,6 +95,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 3,
     ...overrides,
   };
@@ -245,6 +247,18 @@ describe('describe', () => {
     const action = 'confidential_set_again' as AuditAction;
 
     expect(describeActivity(activity({ action }))).toBe('Ada Lovelace confidential set again');
+  });
+
+  // docs/adr/0014 D3, docs/adr/0015 D1: the project's act shows on every ticket it moved.
+  it('says that the backlog was sorted by the score, where the act is the project', () => {
+    expect(
+      describeActivity(
+        activity({ action: 'ranked', entity_type: 'project', after: { by: 'score' } }),
+      ),
+    ).toBe('Ada Lovelace sorted the backlog by score');
+    expect(describeActivity(activity({ action: 'ranked', entity_type: 'ticket' }))).toBe(
+      'Ada Lovelace ranked',
+    );
   });
 });
 

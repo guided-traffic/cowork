@@ -261,3 +261,56 @@ export function rankBody(placement: Placement): { after: number } | { before: nu
     ? { after: placement.neighbour.number }
     : { before: placement.neighbour.number };
 }
+
+/** What the score says of a ticket's place in the rank (docs/adr/0014 D3). */
+export type ScoreMark = 'higher' | 'lower';
+
+/**
+ * Where the score's order and the rank's disagree (docs/adr/0014 D3), among each set of siblings of
+ * a group — the places a drag chooses between: the longest run of siblings whose scores do not rise
+ * from the top down agrees with the score, and every other sibling is out of its place; the score
+ * says higher where a sibling of that run above it scores less, lower otherwise. So one ticket out
+ * of place marks one ticket, not every one it pushed down, and a backlog sorted by the score marks
+ * none. Equal scores agree; a ticket without a score is neither marked nor counted.
+ */
+export function scoreMarks(groups: readonly Group[]): Map<string, ScoreMark> {
+  const marks = new Map<string, ScoreMark>();
+  for (const group of groups) {
+    const sets = new Map<string | null, Ticket[]>();
+    for (const row of group.rows) {
+      if (row.ticket.score !== null) {
+        sets.set(row.under, [...(sets.get(row.under) ?? []), row.ticket]);
+      }
+    }
+    for (const siblings of sets.values()) {
+      markSiblings(siblings, marks);
+    }
+  }
+  return marks;
+}
+
+/** Marks the siblings, in the rank's order, that the longest agreeing run leaves out. */
+function markSiblings(siblings: readonly Ticket[], marks: Map<string, ScoreMark>): void {
+  const scores = siblings.map((ticket) => ticket.score ?? 0);
+  // The longest run whose scores do not rise, ending at each sibling, and its sibling before.
+  const length = scores.map(() => 1);
+  const before = scores.map(() => -1);
+  for (let i = 0; i < scores.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (scores[j] >= scores[i] && length[j] + 1 > length[i]) {
+        length[i] = length[j] + 1;
+        before[i] = j;
+      }
+    }
+  }
+  const kept = new Set<number>();
+  for (let i = length.indexOf(Math.max(...length)); i >= 0; i = before[i]) {
+    kept.add(i);
+  }
+  scores.forEach((score, i) => {
+    if (!kept.has(i)) {
+      const higher = [...kept].some((k) => k < i && scores[k] < score);
+      marks.set(siblings[i].key, higher ? 'higher' : 'lower');
+    }
+  });
+}

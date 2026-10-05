@@ -160,7 +160,7 @@ func (s *Server) RestoreTicket(ctx context.Context, req apigen.RestoreTicketRequ
 	if err != nil {
 		return nil, err
 	}
-	return apigen.RestoreTicket200JSONResponse{Body: ticketView(t, out), Headers: apigen.RestoreTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.RestoreTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.RestoreTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // PurgeTicket removes a deleted ticket for good before its thirty days have
