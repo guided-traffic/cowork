@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
 import { listAudit, listAudit$Csv } from '../api/functions';
 import { AuditAction, AuditList } from '../api/models';
+import { PerPage } from './table-pages';
 
 /** The filters of the tenant's audit record (docs/adr/0026 D6): actor, token, action, entity, period. */
 export interface AuditQuery {
@@ -18,8 +19,7 @@ export interface AuditQuery {
   to?: string;
 }
 
-/** The sizes of a numbered page (docs/adr/0048 D2). */
-export type PerPage = 25 | 50 | 100;
+export type { PerPage } from './table-pages';
 
 /** The rows a CSV holds at most: numbered pages end at row 10 000 (docs/adr/0048 D2). */
 export const csvRowLimit = 10_000;

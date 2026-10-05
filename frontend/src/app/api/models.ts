@@ -76,6 +76,8 @@ export type { MemberList } from './models/member-list';
 export type { Membership } from './models/membership';
 export type { MembershipOrigin } from './models/membership-origin';
 export type { MembershipSource } from './models/membership-source';
+export type { MemberToken } from './models/member-token';
+export type { MemberTokenList } from './models/member-token-list';
 export type { MyTicket } from './models/my-ticket';
 export type { MyTicketList } from './models/my-ticket-list';
 export type { PasswordChange } from './models/password-change';

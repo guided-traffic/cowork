@@ -28,6 +28,7 @@ import { Members } from './features/tenant/members';
 import { TenantOverview } from './features/tenant/overview';
 import { TenantBoard } from './features/tenant/tenant-board';
 import { TenantSettings } from './features/tenant/tenant-settings';
+import { TenantTokens } from './features/tenant/tenant-tokens';
 import { TicketDetail } from './features/ticket/ticket-detail';
 import { TimeReport } from './features/time/time-report';
 import { Shell } from './layout/shell';
@@ -65,6 +66,7 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/members', Members],
   ['t/:tenant/accounts', Accounts],
   ['t/:tenant/audit', Audit],
+  ['t/:tenant/tokens', TenantTokens],
   ['t/:tenant/group-mappings', GroupMappings],
   ['t/:tenant/time', TimeReport],
   ['dev/design', DesignPreview],
@@ -155,6 +157,7 @@ describe('the routes', () => {
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),
       named('/t/acme/group-mappings', Shell, TenantScope, GroupMappings),
+      named('/t/acme/tokens', Shell, TenantScope, TenantTokens),
       named('/t/acme/time', Shell, TenantScope, TimeReport),
       named('/t/acme/settings', Shell, TenantScope, TenantSettings),
       named('/t/acme/p/COW/backlog', Shell, TenantScope, Backlog),

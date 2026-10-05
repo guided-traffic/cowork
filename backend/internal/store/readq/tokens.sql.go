@@ -37,6 +37,21 @@ func (q *Queries) CountRecentRefusals(ctx context.Context, arg CountRecentRefusa
 	return count, err
 }
 
+const countTenantTokens = `-- name: CountTenantTokens :one
+SELECT count(*)::bigint AS tokens
+FROM tokens t
+WHERE (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = $1::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = $1::uuid AND m.user_id = t.user_id)
+`
+
+// The tokens of ListTenantTokens, for a numbered page's total.
+func (q *Queries) CountTenantTokens(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countTenantTokens, tenantID)
+	var tokens int64
+	err := row.Scan(&tokens)
+	return tokens, err
+}
+
 const countTokensOfUser = `-- name: CountTokensOfUser :one
 SELECT count(*)::bigint AS tokens
 FROM tokens t
@@ -56,6 +71,41 @@ func (q *Queries) CountTokensOfUser(ctx context.Context, arg CountTokensOfUserPa
 	var tokens int64
 	err := row.Scan(&tokens)
 	return tokens, err
+}
+
+const getTenantToken = `-- name: GetTenantToken :one
+SELECT t.id, t.user_id, t.name, t.restricted_tenant_id, t.revoked_at
+FROM tokens t
+WHERE t.id = $1
+  AND (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = $2::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = $2::uuid AND m.user_id = t.user_id)
+`
+
+type GetTenantTokenParams struct {
+	TokenID  uuid.UUID
+	TenantID uuid.UUID
+}
+
+type GetTenantTokenRow struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Name               string
+	RestrictedTenantID *uuid.UUID
+	RevokedAt          *time.Time
+}
+
+// One token of ListTenantTokens, for its revocation.
+func (q *Queries) GetTenantToken(ctx context.Context, arg GetTenantTokenParams) (GetTenantTokenRow, error) {
+	row := q.db.QueryRow(ctx, getTenantToken, arg.TokenID, arg.TenantID)
+	var i GetTenantTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.RestrictedTenantID,
+		&i.RevokedAt,
+	)
+	return i, err
 }
 
 const getTokenByHash = `-- name: GetTokenByHash :one
@@ -123,6 +173,94 @@ func (q *Queries) GetTokenOfUser(ctx context.Context, arg GetTokenOfUserParams) 
 	var i GetTokenOfUserRow
 	err := row.Scan(&i.ID, &i.RevokedAt)
 	return i, err
+}
+
+const listTenantTokens = `-- name: ListTenantTokens :many
+SELECT t.id, t.user_id, u.username, u.display_name, t.name, t.scope, t.agent, t.capabilities,
+       t.restricted_tenant_id, t.restricted_project_id, p.key AS restricted_project_key,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at
+FROM tokens t
+JOIN users u ON u.id = t.user_id
+LEFT JOIN projects p ON p.tenant_id = t.restricted_tenant_id AND p.id = t.restricted_project_id
+     AND app_project_visible(p.id)
+WHERE (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = $1::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = $1::uuid AND m.user_id = t.user_id)
+  AND ($2::uuid IS NULL OR t.id < $2::uuid)
+ORDER BY t.id DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListTenantTokensParams struct {
+	TenantID   uuid.UUID
+	Before     *uuid.UUID
+	PageOffset int32
+	PageSize   int32
+}
+
+type ListTenantTokensRow struct {
+	ID                   uuid.UUID
+	UserID               uuid.UUID
+	Username             *string
+	DisplayName          string
+	Name                 string
+	Scope                domain.Scope
+	Agent                bool
+	Capabilities         []string
+	RestrictedTenantID   *uuid.UUID
+	RestrictedProjectID  *uuid.UUID
+	RestrictedProjectKey *string
+	CreatedAt            time.Time
+	ExpiresAt            time.Time
+	LastUsedOn           *time.Time
+	RevokedAt            *time.Time
+}
+
+// The tokens that can act in the tenant, for its administrators
+// (docs/adr/0035 D5 as amended 2026-10-05): every token of a member of the
+// tenant that is unrestricted or restricted to it, newest first, revoked and
+// expired ones included. The tokens policy of migration 39 admits exactly
+// these rows to an administrator of the current tenant; the query names them
+// as well (docs/adr/0021 D4). By id after a cursor, or a numbered page by
+// offset (docs/adr/0048 D1, D2).
+func (q *Queries) ListTenantTokens(ctx context.Context, arg ListTenantTokensParams) ([]ListTenantTokensRow, error) {
+	rows, err := q.db.Query(ctx, listTenantTokens,
+		arg.TenantID,
+		arg.Before,
+		arg.PageOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantTokensRow{}
+	for rows.Next() {
+		var i ListTenantTokensRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Username,
+			&i.DisplayName,
+			&i.Name,
+			&i.Scope,
+			&i.Agent,
+			&i.Capabilities,
+			&i.RestrictedTenantID,
+			&i.RestrictedProjectID,
+			&i.RestrictedProjectKey,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.LastUsedOn,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTokensOfUser = `-- name: ListTokensOfUser :many

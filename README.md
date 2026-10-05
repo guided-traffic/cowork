@@ -687,7 +687,7 @@ full.
   is `422`; an agent's creating `POST` must carry one.
 - **Lists.** `limit` (default 50, clamped to `COWORK_MAX_PAGE_SIZE`) and `cursor`, from the
   previous page's `next_cursor`. The ticket lists, the tenant's time entries, the audit record,
-  the members, the person's tokens and the projects also take numbered pages, `page` and
+  the members, the person's tokens, the tenant's tokens and the projects also take numbered pages, `page` and
   `per_page` (`25`, `50`, `100`; `50` without it, clamped like `limit`), answered with `total`,
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
@@ -766,7 +766,7 @@ An administrator's own account is off limits for a password reset, an unlock and
 </details>
 
 <details>
-<summary>Members, group mappings and project access — 12 routes</summary>
+<summary>Members, their tokens, group mappings and project access — 14 routes</summary>
 
 For the tenant's administrators, never an agent, unless a row says otherwise — a global
 administrator who holds no role in the tenant reads the members and the mappings and grants a role
@@ -789,6 +789,8 @@ announced on the event stream as `membership.changed`.
 | `POST …/group-mappings` | a session only, of a global administrator who administers the tenant — any other administrator is `403 forbidden`, and nothing is written, because every tenant shares the provider's groups: `{"group","role"}`, the group as the provider's claim carries it, case and all; the memberships of every active person of the configured issuer behind the gate whose groups hold it are derived at once — whoever holds the group joins the tenant; `201` with `ETag` and `Location`; `409 mapping_exists`; takes an `Idempotency-Key` |
 | `PATCH …/group-mappings/{mapping_id}` | a session only, of a global administrator who administers the tenant (`403 forbidden` otherwise): `{"role"}` with `If-Match`; the memberships follow at once |
 | `DELETE …/group-mappings/{mapping_id}` | any administrator of the tenant: removes it; the memberships it derived go, or fall to the person's other mapped groups; grants stay; `204`, also when there was none |
+| `GET …/tokens` | `read` scope: the tokens that can act in the tenant — every token of a member that is unrestricted or restricted to this tenant, revoked and expired ones included — newest first, each with its `person`, `name`, `scope`, `agent`, `capabilities`, `restricted_tenant` (this tenant's slug, `null` for an unrestricted token), `restricted_project`, dates, `last_used_on` (for an unrestricted token wherever it was used) and `state`; metadata only, never a secret; numbered pages with a total. A token restricted to another tenant, and a token of a person who is no member, are not there — not even by name |
+| `DELETE …/tokens/{token_id}` | revoke one of that list: immediate and final, recorded in the tenant's audit as `revoked` with the person, the name and whether it was unrestricted — **an unrestricted token ends in every tenant of its person**; an `admin`-scope token may; `404 not_found` for a token the list does not show; `204`, also when it was revoked already |
 | `PUT …/projects/{project}/restriction` | a session only: `{"restricted": bool}` with the project's `If-Match`; a restricted project is visible to the tenant's administrators and the people on its access list, and to nobody else |
 | `GET …/projects/{project}/access` | `read` scope: the project's access list by person id, each entry `member` or `viewer`, with the person's `email` |
 | `PUT …/projects/{project}/access/{person_id}` | a session only: `{"role"}`, `member` or `viewer`, puts a member of the tenant on the list or changes their entry — their role in the project is the lower of their tenant role and the entry; `404 person_not_found` for a person who is no member. The list may be written before the project is restricted |

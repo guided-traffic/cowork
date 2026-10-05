@@ -2,11 +2,12 @@ import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { addMember, listMembers, removeMemberGrant, setMemberGrant } from '../api/functions';
-import { Member, Role } from '../api/models';
+import { Member, MemberList, Role } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
+import { PerPage } from './table-pages';
 
 /**
  * The members of the tenant the pages show, every page of them: for pickers and the member list
@@ -21,6 +22,8 @@ export class MembersService {
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
   private readonly pages = new ConditionalPages(this.api);
+  /** The weak `ETag`s of the numbered pages the member list shows, apart from the pickers'. */
+  private readonly numbered = new ConditionalPages(this.api);
 
   readonly members: ResourceRef<Member[] | undefined> = resource({
     params: () => this.session.tenant() ?? undefined,
@@ -49,6 +52,15 @@ export class MembersService {
           refresh(this.members, this.injector);
         }
       });
+  }
+
+  /**
+   * One numbered page of the tenant's members with the total (docs/adr/0048 D2, D4), for the member
+   * list; the pickers keep reading every member. A load again that finds the page unchanged is a
+   * `304` (docs/adr/0054 D7).
+   */
+  page(tenant: string, page: number, perPage: PerPage): Promise<MemberList> {
+    return this.numbered.load((fetch) => fetch(listMembers, { tenant, page, per_page: perPage }));
   }
 
   /**

@@ -207,6 +207,34 @@ describe('MembersService', () => {
 
       expect(names()).toEqual(['Gus']);
     });
+
+    // docs/adr/0048 D2, D4: the member list reads numbered pages; the pickers every member.
+    it('reads one numbered page for the member list, and a page unchanged since is a 304', async () => {
+      page('acme').flush(pageOf(['Ada'], null));
+      await settle();
+      const numbered = (number: string) =>
+        http.expectOne(
+          (request) =>
+            request.url === '/api/v1/tenants/acme/members' &&
+            request.params.get('page') === number,
+        );
+
+      const first = service.page('acme', 1, 25);
+      const sent = numbered('1');
+      expect(sent.request.params.get('per_page')).toBe('25');
+      expect(sent.request.params.has('cursor')).toBe(false);
+      sent.flush(
+        { ...pageOf(['Ada'], null), total: 1, page: 1, per_page: 25 },
+        { headers: { ETag: 'W/"one"' } },
+      );
+      expect((await first).total).toBe(1);
+
+      const again = service.page('acme', 1, 25);
+      const conditional = numbered('1');
+      expect(conditional.request.headers.get('If-None-Match')).toBe('W/"one"');
+      conditional.flush(null, { status: 304, statusText: 'Not Modified' });
+      expect((await again).items.map((each) => each.person.display_name)).toEqual(['Ada']);
+    });
   });
 
   describe('when the tenant changes', () => {

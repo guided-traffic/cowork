@@ -68,11 +68,6 @@ describe('TokensService', () => {
         request.url === listUrl &&
         request.params.get('cursor') === cursor,
     );
-  /** The page that the loader asks for once the previous one was taken, which is a promise away. */
-  const nextPage = async (cursor: string) => {
-    await settle();
-    return page(cursor);
-  };
   const pageOf = (names: string[], next: string | null) => ({
     items: names.map((name) => token(name)),
     next_cursor: next,
@@ -107,11 +102,13 @@ describe('TokensService', () => {
   });
 
   describe('the list', () => {
-    it('asks for the first page, 200 at a time, at /api/v1 without a doubled slash', async () => {
+    it('asks for the first numbered page, 25 a page, at /api/v1 without a doubled slash', async () => {
       const first = page();
 
       expect(first.request.url).toBe('/api/v1/me/tokens');
-      expect(first.request.params.get('limit')).toBe('200');
+      expect(first.request.params.get('page')).toBe('1');
+      expect(first.request.params.get('per_page')).toBe('25');
+      expect(first.request.params.has('limit')).toBe(false);
       first.flush(pageOf([], null));
       await settle();
     });
@@ -128,27 +125,27 @@ describe('TokensService', () => {
       expect(ids()).toEqual(['a', 'b']);
     });
 
-    it('follows the cursor to every page and lists the tokens in the order of the pages', async () => {
-      page().flush(pageOf(['a', 'b'], 'c1'));
-      (await nextPage('c1')).flush(pageOf(['c'], 'c2'));
-      const last = await nextPage('c2');
-      expect(last.request.params.get('limit')).toBe('200');
-      last.flush(pageOf(['d'], null));
+    it('asks for the page and the size the table turns to, and keeps the total (docs/adr/0048 D4)', async () => {
+      page().flush({ ...pageOf(['a', 'b'], null), total: 30, page: 1, per_page: 25 });
       await settle();
+      expect(service.table.total()).toBe(30);
 
-      expect(ids()).toEqual(['a', 'b', 'c', 'd']);
-    });
-
-    it('lists nothing until the last page has arrived', async () => {
-      page().flush(pageOf(['a'], 'c1'));
-      const second = await nextPage('c1');
-
-      expect(service.tokens.status()).toBe('loading');
-      expect(service.list()).toEqual([]);
-
-      second.flush(pageOf(['b'], null));
+      service.table.turn({ page: 1, rows: 25, first: 25 });
       await settle();
-      expect(ids()).toEqual(['a', 'b']);
+      const second = page();
+      expect(second.request.params.get('page')).toBe('2');
+      expect(service.table.total()).toBe(30);
+      second.flush({ ...pageOf(['c'], null), total: 30, page: 2, per_page: 25 });
+      await settle();
+      expect(ids()).toEqual(['c']);
+
+      service.table.turn({ page: 1, rows: 50, first: 50 });
+      await settle();
+      const bigger = page();
+      expect(bigger.request.params.get('page')).toBe('1');
+      expect(bigger.request.params.get('per_page')).toBe('50');
+      bigger.flush({ ...pageOf(['a', 'b', 'c'], null), total: 30, page: 1, per_page: 50 });
+      await settle();
     });
 
     it('keeps each token as the API lists it, with its state', async () => {

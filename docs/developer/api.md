@@ -7,7 +7,7 @@ filters, and the media types beside JSON. The decisions are [ADR 0046] (spec fir
 (errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
 (versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ## The document
 
@@ -23,7 +23,7 @@ into the file of its path family.
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
 | [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
+| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
@@ -296,7 +296,7 @@ another token and marking notifications read (`write` scope,
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)) |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
@@ -311,9 +311,9 @@ a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
-(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
-and the writes of [`members.go`](../../backend/internal/api/members.go) use `administer`, the
-member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
+the writes of [`members.go`](../../backend/internal/api/members.go) and the revocation of a member's
+token (`RevokeTenantToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
 (`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
 `409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
 tenant's lock first);
@@ -423,7 +423,7 @@ list answers that `invalid_cursor`.
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
 - The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
-  `listMembers`, `listMyTokens` and `listProjects` — also take numbered pages: `page` with
+  `listMembers`, `listMyTokens`, `listTenantTokens` and `listProjects` — also take numbered pages: `page` with
   `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
   and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
   beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
@@ -437,7 +437,7 @@ list answers that `invalid_cursor`.
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's tenants by slug; the person's inbox newest first, merged
+  mappings by group; the installation's tenants by slug; the tenant's tokens newest first; the person's inbox newest first, merged
   across the tenants by the notifications' ids, which order by time; the tickets assigned to the
   person and the open decisions by the tenant's slug, the project's key and the project's rank — the
   decisions by the ticket's place, `done` and `dropped` after the ranked ones, then the question's

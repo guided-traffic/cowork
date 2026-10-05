@@ -1,8 +1,9 @@
-import { computed, inject, Injectable, Injector, resource } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
 import { Api } from '../api/api';
 import { createMyToken, listMyTokens, listProjects, revokeMyToken } from '../api/functions';
 import { Project, Token, TokenCreate, TokenCreated } from '../api/models';
 import { refresh } from './refresh';
+import { tablePages } from './table-pages';
 
 /** Every page of a list, 200 at a time, in the order of the pages. */
 async function everyPage<T>(
@@ -19,7 +20,8 @@ async function everyPage<T>(
 }
 
 /**
- * The person's own personal access tokens (docs/adr/0035): every page of the list, the creation
+ * The person's own personal access tokens (docs/adr/0035): the list in numbered pages of 25, 50 or
+ * 100 with a total (docs/adr/0048 D2, D4), the creation
  * that hands the plaintext to its caller once, and the revocation. The routes name no tenant, so
  * unlike the tenant-scoped services this one does not follow the session. A token names the
  * project it is restricted to by its key (`restricted_project`), so nothing here looks projects up
@@ -31,11 +33,13 @@ export class TokensService {
   private readonly api = inject(Api);
   private readonly injector = inject(Injector);
 
-  readonly tokens = resource({
-    loader: () => everyPage((cursor) => this.api.invoke(listMyTokens, { cursor, limit: 200 })),
-  });
-
-  readonly list = computed<Token[]>(() => (this.tokens.hasValue() ? this.tokens.value() : []));
+  /** The page of the list shown, its size and the total; another size starts at the first page. */
+  readonly table = tablePages(
+    () => 'mine',
+    (_mine, page, perPage) => this.api.invoke(listMyTokens, { page, per_page: perPage }),
+  );
+  readonly tokens = this.table.rows;
+  readonly list = this.table.items;
 
   /**
    * Creates a token (docs/adr/0035 D5). The answer carries the plaintext once; the caller shows it

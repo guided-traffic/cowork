@@ -69,6 +69,10 @@ export type { SetMemberGrant$Params as SetMemberGrant$Params } from './fn/tenant
 export { setMemberGrant as setMemberGrant } from './fn/tenants/set-member-grant';
 export type { RemoveMemberGrant$Params as RemoveMemberGrant$Params } from './fn/tenants/remove-member-grant';
 export { removeMemberGrant as removeMemberGrant } from './fn/tenants/remove-member-grant';
+export type { ListTenantTokens$Params as ListTenantTokens$Params } from './fn/tenants/list-tenant-tokens';
+export { listTenantTokens as listTenantTokens } from './fn/tenants/list-tenant-tokens';
+export type { RevokeTenantToken$Params as RevokeTenantToken$Params } from './fn/tenants/revoke-tenant-token';
+export { revokeTenantToken as revokeTenantToken } from './fn/tenants/revoke-tenant-token';
 export type { ListAccounts$Params as ListAccounts$Params } from './fn/accounts/list-accounts';
 export { listAccounts as listAccounts } from './fn/accounts/list-accounts';
 export type { CreateAccount$Params as CreateAccount$Params } from './fn/accounts/create-account';

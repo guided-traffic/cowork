@@ -110,6 +110,10 @@ paths:
     $ref: './members.yaml#/groupMappings'
   /api/v1/tenants/{tenant}/group-mappings/{mapping_id}:
     $ref: './members.yaml#/groupMapping'
+  /api/v1/tenants/{tenant}/tokens:
+    $ref: './members.yaml#/tenantTokens'
+  /api/v1/tenants/{tenant}/tokens/{token_id}:
+    $ref: './members.yaml#/tenantToken'
   /api/v1/tenants/{tenant}/audit:
     $ref: './tenants.yaml#/audit'
   /api/v1/tenants/{tenant}/projects:

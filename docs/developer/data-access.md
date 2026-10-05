@@ -7,7 +7,7 @@ writes and the publication of acts. The package is [`backend/internal/store/`](.
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
 audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0031] (the
 sessions) and [ADR 0030] (the memberships the identity provider derives). Read against the tree on
-2026-10-04.
+2026-10-05.
 
 ## Two database roles
 
@@ -160,7 +160,12 @@ policy, and restrictive ones that hold reading and marking to the notification's
 (`user_id = app_user_id()`) — the writer of an act inserts notifications for others, and a forgotten
 `user_id` filter must not show one person another's inbox (`TestTheInboxPolicyHoldsAPersonToTheirOwn`)
 — and deleting to the job `notification-expiry`, which a permissive policy admits past the tenant
-([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)). On
+([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)). `tokens`
+admits an administrator of the current tenant, since
+[migration 39](../../backend/internal/store/migrations/000039_tenant_tokens.up.sql), every token of
+a member of the tenant that is unrestricted or restricted to it — to read and to revoke, the rows of
+the tenant's token list (`app_tenant_reaches_token`, `ListTenantTokens`) — and no token restricted
+to another tenant; the queries name the same rows. On
 `memberships` the writes are split by source instead: a grant is inserted, changed and removed by
 an administrator of its tenant, a mapped membership only in a transaction named
 `identity-provider`.

@@ -2526,6 +2526,123 @@
         ],
         "type": "object"
       },
+      "MemberToken": {
+        "description": "A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):\nits person and its metadata, never its secret, hash or prefix\n",
+        "properties": {
+          "agent": {
+            "description": "The agent flag; every request of the token is an agent's (docs/adr/0036 D2)",
+            "type": "boolean"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_used_on": {
+            "description": "The last day it was used, wherever; for an unrestricted token possibly in another tenant",
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The name its person gave it, free text that may say more than what it is for",
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "restricted_project": {
+            "description": "The key of the project of this tenant the token is restricted to; null for none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restricted_tenant": {
+            "description": "This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches\nevery tenant its person belongs to, so revoking it ends it in all of them\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "person",
+          "scope",
+          "agent",
+          "capabilities",
+          "restricted_tenant",
+          "restricted_project",
+          "created_at",
+          "expires_at",
+          "last_used_on",
+          "revoked_at",
+          "state"
+        ],
+        "type": "object"
+      },
+      "MemberTokenList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberToken"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "Membership": {
         "properties": {
           "origins": {
@@ -9537,6 +9654,82 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens": {
+      "get": {
+        "description": "Every token of a member of the tenant that is unrestricted or restricted\nto this tenant, revoked and expired ones included, with its person:\nmetadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`\nnull marks an unrestricted token, which reaches every tenant its person\nbelongs to — revoking it ends it there too. An unrestricted token's name\nand last-used day are its person's across their tenants, and so may say\nsomething of their work elsewhere. The tenant's administrators, a token's\n`read` scope; anybody else is `403 forbidden`. Newest first, paged by\ncursor, or by number with a total (docs/adr/0048 D2).\n",
+        "operationId": "listTenantTokens",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTokenList"
+                }
+              }
+            },
+            "description": "A page of tokens, newest first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The members' tokens that can act in the tenant, for its administrators",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens/{token_id}": {
+      "delete": {
+        "description": "Immediate and final, the row kept (docs/adr/0035 D6), and recorded in\nthe tenant's audit as the administrator's act `revoked` (D9). Revoking an\nunrestricted token ends it in every tenant of its person, not only in\nthis one; the person makes a new one in a session. A token this tenant's\nlist does not show — restricted to another tenant, or of a person who is\nno member here — is `404 not_found`, as one that does not exist.\nRevoking a revoked token changes nothing. It only takes access away, so\nan administrator's `admin`-scope token may; an agent may not\n(docs/adr/0043 D3).\n",
+        "operationId": "revokeTenantToken",
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Revoke a member's token that can act in the tenant",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "in": "path",
+          "name": "token_id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
         }
       ]
     },

@@ -16,6 +16,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/store"
+	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
 // The policies of migrations 15 and 16, asked directly: a statement as the
@@ -295,6 +296,43 @@ func TestPoliciesOfThePersonsAndTheirAccounts(t *testing.T) {
 		affects(t, 0, memberA.merge(settings{"app.user_id": w.ViewerA.String()}), revoke, tokenID)
 		affects(t, 1, bootstrapJob, revoke, tokenID)
 		denied(t, adminA, `UPDATE tokens SET scope = 'admin' WHERE id = $1`, tokenID)
+	})
+
+	// docs/adr/0035 D5 as amended 2026-10-05, migration 39: a tenant's
+	// administrators read and revoke the tokens that can act in their tenant —
+	// a member's unrestricted ones and those restricted to it — and no token
+	// restricted to another tenant, nor one of a person who is no member.
+	t.Run("tokens: a tenant's administrators read and revoke the tokens that can act in their tenant", func(t *testing.T) {
+		// A person of both tenants whose account no tenant manages: the
+		// administrators of a managing tenant read every token of its accounts
+		// already (migration 15), for the deactivation that revokes them all.
+		shared, err := f.Person(ctx, uniqueSlug("shared"), "Shared")
+		require.NoError(t, err)
+		require.NoError(t, f.Member(ctx, w.A, shared, "member"))
+		require.NoError(t, f.Member(ctx, w.B, shared, "member"))
+		_, everywhere, err := f.Token(ctx, fixture.TokenSpec{UserID: shared})
+		require.NoError(t, err)
+		_, inA, err := f.Token(ctx, fixture.TokenSpec{UserID: shared, TenantID: w.A})
+		require.NoError(t, err)
+		_, inB, err := f.Token(ctx, fixture.TokenSpec{UserID: shared, TenantID: w.B})
+		require.NoError(t, err)
+		_, outsider, err := f.Token(ctx, fixture.TokenSpec{UserID: w.MemberB})
+		require.NoError(t, err)
+		read := `SELECT count(*) FROM tokens WHERE id = $1`
+		for _, c := range []struct {
+			who  settings
+			id   uuid.UUID
+			want int64
+		}{
+			{adminA, everywhere, 1}, {adminA, inA, 1}, {adminA, inB, 0}, {adminA, outsider, 0},
+			{asAdminB, everywhere, 1}, {asAdminB, inB, 1}, {asAdminB, inA, 0}, {asAdminB, outsider, 1},
+			{memberA, everywhere, 0}, {memberA, inA, 0}, {ctxOf(w.AdminA, uuid.Nil), everywhere, 0},
+		} {
+			assert.Equal(t, c.want, count(t, c.who, read, c.id))
+			affects(t, c.want, c.who, `UPDATE tokens SET revoked_at = now(), revoked_by = $2 WHERE id = $1`, c.id, w.AdminA)
+		}
+		assert.EqualValues(t, 0, count(t, adminA, `SELECT count(*) FROM tokens WHERE user_id = $1 AND restricted_tenant_id = $2`, shared, w.B),
+			"an unfiltered read shows nothing restricted to another tenant")
 	})
 
 	t.Run("login attempts and locks: the login's, cleared by the administrators of the account", func(t *testing.T) {

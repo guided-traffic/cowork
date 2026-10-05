@@ -46,9 +46,9 @@
 
   <div class="panel">
     <p-table
-      [value]="members.list()"
+      [value]="table.items()"
       [rowTrackBy]="byPerson"
-      [loading]="members.members.isLoading()"
+      [loading]="table.rows.isLoading()"
       [showLoader]="false"
       size="small"
       data-testid="members"
@@ -170,6 +170,18 @@
         </tr>
       </ng-template>
     </p-table>
+    @if (table.total() > 0) {
+      <p-paginator
+        [first]="(table.page() - 1) * table.perPage()"
+        [rows]="table.perPage()"
+        [totalRecords]="table.total()"
+        [rowsPerPageOptions]="perPageOptions"
+        [showCurrentPageReport]="true"
+        currentPageReportTemplate="{first}–{last} of {totalRecords}"
+        (onPageChange)="table.turn($event)"
+        data-testid="members-pages"
+      />
+    }
   </div>
 
   <!-- What a role and each badge mean, the description a screen reader reads out with them. -->

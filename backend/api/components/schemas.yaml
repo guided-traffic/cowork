@@ -264,6 +264,62 @@ TokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+MemberToken:
+  type: object
+  description: |
+    A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):
+    its person and its metadata, never its secret, hash or prefix
+  required: [id, name, person, scope, agent, capabilities, restricted_tenant, restricted_project, created_at,
+    expires_at, last_used_on, revoked_at, state]
+  properties:
+    id: {type: string, format: uuid}
+    name:
+      type: string
+      description: The name its person gave it, free text that may say more than what it is for
+    person:
+      $ref: '#/Person'
+    scope:
+      $ref: '#/Scope'
+    agent:
+      type: boolean
+      description: The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+    capabilities:
+      type: array
+      items:
+        $ref: '#/Capability'
+    restricted_tenant:
+      type: [string, 'null']
+      description: |
+        This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches
+        every tenant its person belongs to, so revoking it ends it in all of them
+    restricted_project:
+      type: [string, 'null']
+      description: The key of the project of this tenant the token is restricted to; null for none
+    created_at: {type: string, format: date-time}
+    expires_at: {type: string, format: date-time}
+    last_used_on:
+      type: [string, 'null']
+      format: date
+      description: The last day it was used, wherever; for an unrestricted token possibly in another tenant
+    revoked_at:
+      type: [string, 'null']
+      format: date-time
+    state:
+      $ref: '#/TokenState'
+MemberTokenList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MemberToken'
+    next_cursor:
+      type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:

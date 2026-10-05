@@ -914,6 +914,20 @@ describe('Shell', () => {
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-group-mappings');
     });
 
+    // docs/adr/0035 D5: the tokens that can act in the tenant are its administrators'.
+    it('offers the tokens of the tenant to an administrator of the tenant only, after the audit record', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-tenant-tokens"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-tenant-tokens"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/tokens');
+      expect(link?.textContent).toBe('Tokens');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-audit');
+    });
+
     // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
     // administration — the members, the group mappings, the settings — and none of its work.
     it('offers a global administrator without a role the administration only', async () => {
