@@ -64,19 +64,34 @@ export function describe(parameters: SavedFilterParameters): string {
   return parts.length > 0 ? parts.join(' · ') : 'no condition';
 }
 
-/** What the backlog says of a filter it applies: its warnings, and a project it leaves out. */
-export function notesOf(filter: SavedFilter): string[] {
+/**
+ * The conditions of a saved filter a list does not apply, each with why it does not: a backlog is
+ * one project, so it leaves `project` out; the tenant's ticket list applies every one.
+ */
+export type LeftOut = Partial<Record<keyof SavedFilterParameters, string>>;
+
+/** What a backlog leaves out of a filter. */
+export const backlogLeftOut: LeftOut = {
+  project: 'a backlog is one project; the tenant’s ticket list applies this condition',
+};
+
+/** What a list says of a filter it applies: its warnings, and each condition it leaves out. */
+export function notesOf(filter: SavedFilter, leftOut: LeftOut = {}): string[] {
   const notes = filter.warnings.map((w) => `${w.parameter}: ${w.message}`);
-  if ((filter.parameters.project ?? []).length > 0) {
-    notes.push('project: a backlog is one project; this condition applies to the tenant’s lists');
+  for (const [name, why] of Object.entries(leftOut)) {
+    if (held(filter.parameters[name as keyof SavedFilterParameters])) {
+      notes.push(`${name}: ${why}`);
+    }
   }
   return notes;
 }
 
-function withoutEmpty<T extends object>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([, v]) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0),
-    ),
-  ) as T;
+/** Whether a parameter holds a condition: a value, or a list that is not empty. */
+function held(value: unknown): boolean {
+  return value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0);
+}
+
+/** The parameters that hold a condition, the empty ones left out. */
+export function withoutEmpty<T extends object>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => held(v))) as T;
 }

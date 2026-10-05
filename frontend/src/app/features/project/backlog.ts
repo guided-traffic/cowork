@@ -63,7 +63,7 @@ import {
   withMoves,
 } from './backlog-model';
 import { ProjectHeader } from './project-header';
-import { fromBacklog, listParameters, toBacklog } from './saved-filter-model';
+import { backlogLeftOut, fromBacklog, listParameters, toBacklog } from './saved-filter-model';
 import { SavedFilters } from './saved-filters';
 
 /** The states of the open tickets, in the order of the vocabulary: the filter is for the groups. */
@@ -166,6 +166,8 @@ export class Backlog {
   protected readonly currentFilter = computed(() =>
     fromBacklog(this.query(), this.selectedStates(), this.extra()),
   );
+  /** A saved filter's `project` is the tenant's ticket list's: the bar says so under it. */
+  protected readonly leftOut = backlogLeftOut;
   protected readonly showClosed = linkedSignal(() => this.closed() === 'true');
   /** The time the closed tickets are narrowed to, from the address, until the person drops it. */
   protected readonly doneAfter = linkedSignal(() => timeOf(this.done_after()));

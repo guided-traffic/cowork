@@ -21,7 +21,7 @@ import { ProblemService } from '../../core/problem.service';
 import { SavedFiltersService } from '../../core/saved-filters.service';
 import { SessionService } from '../../core/session.service';
 import { keepOpenWhile } from '../../shared/keep-open';
-import { describe, notesOf } from './saved-filter-model';
+import { describe, LeftOut, notesOf } from './saved-filter-model';
 
 /** An entry of the select: a filter by its name, another member's with its owner. */
 interface Choice {
@@ -31,12 +31,14 @@ interface Choice {
 }
 
 /**
- * The saved filters in a list's filter bar (docs/adr/0018 D5): the person's own and those shared
- * with the tenant to apply, the one applied with its owner — or, the person's own, to share,
- * unshare and delete —, and saving the conditions the list applies now under a name, shared or
- * not. Another member's filter that names something the person cannot see is listed and cannot be
- * applied: the server withholds its conditions (docs/adr/0065 D5). The list's own controls stay
- * the list's: applying a filter hands its conditions to the list, which may change them further.
+ * The saved filters in a list's filter bar (docs/adr/0018 D5) — the backlog's and the tenant's
+ * ticket list's: the person's own and those shared with the tenant to apply, the one applied with
+ * its owner — or, the person's own, to share, unshare and delete —, and saving the conditions the
+ * list applies now under a name, shared or not. Another member's filter that names something the
+ * person cannot see is listed and cannot be applied: the server withholds its conditions
+ * (docs/adr/0065 D5). The list's own controls stay the list's: applying a filter hands its
+ * conditions to the list, which may change them further; a condition the list does not apply is
+ * named under the bar with why (`leftOut`).
  */
 @Component({
   selector: 'app-saved-filters',
@@ -222,6 +224,8 @@ export class SavedFilters {
   readonly current = input.required<SavedFilterParameters>();
   /** The filter the list applies, or none. */
   readonly applied = input<SavedFilter | null>(null);
+  /** The conditions of a filter the list does not apply, each with why; none, it applies every one. */
+  readonly leftOut = input<LeftOut>({});
   /** The person picked a filter — or none — to apply. */
   readonly chosen = output<SavedFilter | null>();
 
@@ -262,7 +266,7 @@ export class SavedFilters {
   protected readonly conditions = computed(() => describe(this.current()));
   protected readonly notes = computed(() => {
     const f = this.applied();
-    return f ? notesOf(f) : [];
+    return f ? notesOf(f, this.leftOut()) : [];
   });
 
   constructor() {

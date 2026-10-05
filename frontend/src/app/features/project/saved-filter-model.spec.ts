@@ -1,10 +1,12 @@
 import { SavedFilter, TicketState } from '../../api/models';
 import {
+  backlogLeftOut,
   describe as describeFilter,
   fromBacklog,
   listParameters,
   notesOf,
   toBacklog,
+  withoutEmpty,
 } from './saved-filter-model';
 
 const open: TicketState[] = ['filed', 'analysed', 'decided', 'in-progress', 'review', 'blocked'];
@@ -54,9 +56,25 @@ describe('the saved filter in a backlog', () => {
       parameters: { project: ['OPS'] },
     } as SavedFilter;
 
-    expect(notesOf(filter)).toEqual([
+    expect(notesOf(filter, backlogLeftOut)).toEqual([
       'state: not a value of state: triaged',
-      'project: a backlog is one project; this condition applies to the tenant’s lists',
+      'project: a backlog is one project; the tenant’s ticket list applies this condition',
     ]);
+  });
+
+  it('notes a condition left out only where the filter holds it, and none for a list that applies every one', () => {
+    const filter = (parameters: SavedFilter['parameters']) =>
+      ({ warnings: [], parameters }) as unknown as SavedFilter;
+
+    expect(notesOf(filter({ severity: ['high'] }), backlogLeftOut)).toEqual([]);
+    expect(notesOf(filter({ project: [] }), backlogLeftOut)).toEqual([]);
+    // The tenant's ticket list applies `project`: it hands the bar nothing to leave out.
+    expect(notesOf(filter({ project: ['OPS'] }))).toEqual([]);
+  });
+
+  it('leaves out what holds no condition', () => {
+    expect(
+      withoutEmpty({ state: [], q: 'crash', blocked: false, parent: undefined, project: ['COW'] }),
+    ).toEqual({ q: 'crash', blocked: false, project: ['COW'] });
   });
 });
