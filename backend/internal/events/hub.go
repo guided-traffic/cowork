@@ -1,10 +1,13 @@
 // Package events fans the published acts out to the event streams of one
 // replica (docs/adr/0054): a ring buffer per tenant for the replay, a filter
-// per stream for what its person may see, bounded buffers so no stream holds
-// up the others.
+// per stream and tenant for what its person may see — a person-level stream
+// follows every tenant of its person —, bounded buffers so no stream holds up
+// the others.
 package events
 
 import (
+	"cmp"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -31,6 +34,9 @@ const streamBuffer = 256
 type Event struct {
 	store.Notification
 	At time.Time
+	// Seq is the order the hub received the event in, across its tenants: a
+	// stream that follows several merges their rings by it for a replay (D5).
+	Seq uint64
 
 	// What the hub tells the stream it hands the event to, never sent on.
 	// Refilter is set on an act that changes what a stream may admit
@@ -70,11 +76,11 @@ func (e Event) Name() string {
 	return "ticket.changed"
 }
 
-// Filter is what one stream may see: the projects visible to its person,
-// computed at connect, again on every act that changes what the stream may
-// admit (Event.Refilter) and at every heartbeat, already narrowed by a
-// project-restricted token, and the confidential rule (docs/adr/0054 D3,
-// docs/adr/0065 D5).
+// Filter is what one stream may see of one tenant: the projects visible to
+// its person there, computed at connect, again on every act that changes what
+// the stream may admit of the tenant (Event.Refilter) and at every heartbeat,
+// already narrowed by a project-restricted token, and the confidential rule
+// (docs/adr/0054 D3, docs/adr/0065 D5).
 type Filter struct {
 	Person   uuid.UUID
 	Admin    bool
@@ -82,12 +88,6 @@ type Filter struct {
 	// RestrictedProject is the project a project-restricted token's stream is
 	// bound to (docs/adr/0035 D3); uuid.Nil for every other stream.
 	RestrictedProject uuid.UUID
-	// Me marks a person-level stream (?me=true): it hears, besides its
-	// tenant's events, the person's own across their tenants — their inbox
-	// changing, and the acts of questions asked of them (docs/adr/0054 D1).
-	// The hub hands those of another tenant over unfiltered; the stream judges
-	// each against that tenant before it writes it.
-	Me bool
 }
 
 // Admits reports whether the stream's person may see the event. A
@@ -128,6 +128,20 @@ func (f Filter) admitsMembership(e Event) bool {
 	return true
 }
 
+// Subscription is what a stream follows: the tenant it is opened on, its
+// person, and the filter of every tenant whose events it hears — the tenant it
+// is opened on alone, or for a person-level stream that spans its person's
+// tenants every one of them (docs/adr/0054 D1). Me marks a person-level
+// stream, which hears its person's inbox changing; Span one that follows its
+// person into a tenant they join, which a token restricted to a tenant never
+// does (docs/adr/0035 D3).
+type Subscription struct {
+	Tenant   uuid.UUID
+	Person   uuid.UUID
+	Me, Span bool
+	Filters  map[uuid.UUID]Filter
+}
+
 // Stream is one subscriber. Its events arrive on C; Done closes when the hub
 // ends the stream, and Reason says why: Resync for a stream that fell behind
 // or must refetch, Unavailable for one closed by the limit or the shutdown.
@@ -136,12 +150,17 @@ type Stream struct {
 	Done   chan struct{}
 	Reason string
 
-	tenant uuid.UUID
-	filter Filter
-	// changes counts the acts that changed what the stream may admit since it
-	// opened, refiltered the ones its filter was computed after; while the
-	// filter is behind, the hub hands every event on unjudged.
-	changes, refiltered uint64
+	tenant   uuid.UUID
+	person   uuid.UUID
+	me, span bool
+	// filters holds what the stream admits of each tenant it follows. changes
+	// counts, per tenant, the acts that changed what the stream may admit of
+	// it since the stream opened — kept when the stream stops following the
+	// tenant, so that a later act counts on — and refiltered the ones the
+	// tenant's filter was computed after; while a tenant's filter is behind,
+	// the hub hands its events on unjudged.
+	filters             map[uuid.UUID]Filter
+	changes, refiltered map[uuid.UUID]uint64
 	opened              time.Time
 	once                sync.Once
 }
@@ -160,9 +179,13 @@ type Hub struct {
 	maxPerPerson int
 	now          func() time.Time
 
-	mu      sync.Mutex
-	rings   map[uuid.UUID][]Event
+	mu    sync.Mutex
+	seq   uint64
+	rings map[uuid.UUID][]Event
+	// streams holds the streams that follow a tenant, persons every stream
+	// of a person.
 	streams map[uuid.UUID][]*Stream
+	persons map[uuid.UUID][]*Stream
 	down    bool
 	closed  bool
 }
@@ -172,28 +195,34 @@ type Hub struct {
 // (docs/adr/0054 D5, D8).
 func New(window time.Duration, maxPerPerson int) *Hub {
 	return &Hub{window: window, maxPerPerson: maxPerPerson, now: time.Now,
-		rings: map[uuid.UUID][]Event{}, streams: map[uuid.UUID][]*Stream{}}
+		rings: map[uuid.UUID][]Event{}, streams: map[uuid.UUID][]*Stream{}, persons: map[uuid.UUID][]*Stream{}}
 }
 
 // Publish keeps a notification for the replay and hands it to every stream
-// of its tenant that admits it; a stream whose buffer is full is told to
-// resync and dropped, never waited for (docs/adr/0054 D4). An act that changes
-// what a stream may admit reaches every stream of the tenant, marked to
-// refilter, and until the stream has computed its filter after it the hub
-// hands on every later event of the tenant unjudged, so that none is dropped
-// by a filter that does not know the act yet (D3). A change of a person's
-// inbox goes to that person's person-level streams alone and is kept for no
-// replay — it says how things stand, and a stream that opens says it anew; a
-// question's act also goes to the person-level streams of the person asked in
-// their other tenants (Filter.Me), which judge it against that tenant
-// themselves.
+// that follows its tenant and admits it; a stream whose buffer is full is told
+// to resync and dropped, never waited for (docs/adr/0054 D4). An act that
+// changes what a stream may admit reaches every stream that follows its
+// tenant, marked to refilter, and until the stream has computed the tenant's
+// filter after it the hub hands on every later event of that tenant unjudged,
+// so that none is dropped — or let through — by a filter that does not know
+// the act yet (D3). Such an act that names a person also reaches that
+// person's spanning streams that do not follow its tenant yet — a grant into a
+// tenant they had none in —, which then follow it pending their filter. A
+// change of a person's inbox goes to that person's person-level streams alone
+// and is kept for no replay: it says how things stand, and a stream that opens
+// says it anew.
 func (h *Hub) Publish(n store.Notification) {
-	e := Event{Notification: n, At: h.now()}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.seq++
+	e := Event{Notification: n, At: h.now(), Seq: h.seq}
 	if n.Entity == store.EntityInbox {
 		if n.Person != nil {
-			h.toPerson(*n.Person, uuid.Nil, e)
+			for _, s := range h.persons[*n.Person] {
+				if s.me {
+					send(s, e)
+				}
+			}
 		}
 		return
 	}
@@ -204,39 +233,42 @@ func (h *Hub) Publish(n store.Notification) {
 	}
 	h.rings[n.Tenant] = ring[cut:]
 	for _, s := range h.streams[n.Tenant] {
-		out := e
-		switch {
-		case s.refiltered < s.changes:
-			out.Unjudged = true
-		case !s.filter.Admits(e):
-			out.Withheld = true
-		}
-		if e.ChangesAdmission() {
-			s.changes++
-			out.Refilter = s.changes
-		}
-		if !out.Withheld || out.Refilter > 0 {
-			send(s, out)
-		}
+		deliver(s, e)
 	}
-	if n.AskedOf != nil {
-		h.toPerson(*n.AskedOf, n.Tenant, e)
-	}
-}
-
-// toPerson hands an event to the person's person-level streams on every
-// tenant but except; the hub's lock is held.
-func (h *Hub) toPerson(person, except uuid.UUID, e Event) {
-	for tenant, list := range h.streams {
-		if tenant == except {
-			continue
-		}
-		for _, s := range list {
-			if s.filter.Me && s.filter.Person == person {
-				send(s, e)
+	if e.ChangesAdmission() && n.Person != nil {
+		for _, s := range h.persons[*n.Person] {
+			if s.span && !s.follows(n.Tenant) {
+				s.filters[n.Tenant] = Filter{Person: s.person, Projects: map[uuid.UUID]bool{}}
+				h.streams[n.Tenant] = append(h.streams[n.Tenant], s)
+				deliver(s, e)
 			}
 		}
 	}
+}
+
+// deliver hands an event of a tenant the stream follows to it: judged by the
+// tenant's filter, or unjudged while that filter is behind, and marked when it
+// changes what the stream may admit.
+func deliver(s *Stream, e Event) {
+	out := e
+	switch {
+	case s.refiltered[e.Tenant] < s.changes[e.Tenant]:
+		out.Unjudged = true
+	case !s.filters[e.Tenant].Admits(e):
+		out.Withheld = true
+	}
+	if e.ChangesAdmission() {
+		s.changes[e.Tenant]++
+		out.Refilter = s.changes[e.Tenant]
+	}
+	if !out.Withheld || out.Refilter > 0 {
+		send(s, out)
+	}
+}
+
+func (s *Stream) follows(tenant uuid.UUID) bool {
+	_, ok := s.filters[tenant]
+	return ok
 }
 
 // send hands an event to a stream, or ends one whose buffer is full.
@@ -248,33 +280,58 @@ func send(s *Stream, e Event) {
 	}
 }
 
-// Subscribe opens a stream on a tenant. With lastEventID it returns the
-// events after it that the filter admits, or resync when the id is no
-// longer in the window (docs/adr/0054 D5). It returns nil while the hub
-// cannot hear the database or has closed: the client polls.
-func (h *Hub) Subscribe(tenant uuid.UUID, f Filter, lastEventID *uuid.UUID) (s *Stream, replay []Event, resync bool) {
+// Subscribe opens a stream. With lastEventID it returns the events after it
+// that the filters admit, merged across the tenants the stream follows in the
+// order the hub received them, or resync when the id is in none of their
+// rings — an id of another replica, or one older than the window
+// (docs/adr/0054 D5). It returns nil while the hub cannot hear the database or
+// has closed: the client polls.
+func (h *Hub) Subscribe(sub Subscription, lastEventID *uuid.UUID) (s *Stream, replay []Event, resync bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.down || h.closed {
 		return nil, nil, false
 	}
 	if lastEventID != nil {
-		ring := h.rings[tenant]
-		i := slices.IndexFunc(ring, func(e Event) bool { return e.ID == *lastEventID })
-		if i < 0 {
-			resync = true
-		} else {
-			for _, e := range ring[i+1:] {
-				if f.Admits(e) {
-					replay = append(replay, e)
-				}
+		replay, resync = h.replay(sub, *lastEventID)
+	}
+	h.limit(sub.Person)
+	s = &Stream{C: make(chan Event, streamBuffer), Done: make(chan struct{}), tenant: sub.Tenant, person: sub.Person,
+		me: sub.Me, span: sub.Span, filters: map[uuid.UUID]Filter{}, changes: map[uuid.UUID]uint64{},
+		refiltered: map[uuid.UUID]uint64{}, opened: h.now()}
+	for tenant, f := range sub.Filters {
+		s.filters[tenant] = f
+		h.streams[tenant] = append(h.streams[tenant], s)
+	}
+	h.persons[sub.Person] = append(h.persons[sub.Person], s)
+	return s, replay, resync
+}
+
+// replay finds the id in the rings of the subscription's tenants and returns
+// the events every ring received after it, by the hub's order; the hub's lock
+// is held.
+func (h *Hub) replay(sub Subscription, last uuid.UUID) ([]Event, bool) {
+	var after uint64
+	found := false
+	for tenant := range sub.Filters {
+		if i := slices.IndexFunc(h.rings[tenant], func(e Event) bool { return e.ID == last }); i >= 0 {
+			after, found = h.rings[tenant][i].Seq, true
+			break
+		}
+	}
+	if !found {
+		return nil, true
+	}
+	var replay []Event
+	for tenant, f := range sub.Filters {
+		for _, e := range h.rings[tenant] {
+			if e.Seq > after && f.Admits(e) {
+				replay = append(replay, e)
 			}
 		}
 	}
-	h.limit(f.Person)
-	s = &Stream{C: make(chan Event, streamBuffer), Done: make(chan struct{}), tenant: tenant, filter: f, opened: h.now()}
-	h.streams[tenant] = append(h.streams[tenant], s)
-	return s, replay, resync
+	slices.SortFunc(replay, func(a, b Event) int { return cmp.Compare(a.Seq, b.Seq) })
+	return replay, false
 }
 
 // limit closes the person's oldest stream when a new one would exceed the
@@ -283,14 +340,7 @@ func (h *Hub) limit(person uuid.UUID) {
 	if h.maxPerPerson <= 0 {
 		return
 	}
-	var own []*Stream
-	for _, list := range h.streams {
-		for _, s := range list {
-			if s.filter.Person == person {
-				own = append(own, s)
-			}
-		}
-	}
+	own := slices.Clone(h.persons[person])
 	slices.SortFunc(own, func(a, b *Stream) int { return a.opened.Compare(b.opened) })
 	for len(own) >= h.maxPerPerson {
 		h.remove(own[0])
@@ -299,23 +349,40 @@ func (h *Hub) limit(person uuid.UUID) {
 	}
 }
 
-// Changes is how many acts have changed what the stream may admit so far: a
-// filter computed after this call knows all of them.
-func (h *Hub) Changes(s *Stream) uint64 {
+// Changes is, per tenant, how many acts have changed what the stream may
+// admit of it so far: a filter of the tenant computed after this call knows
+// all of them.
+func (h *Hub) Changes(s *Stream) map[uuid.UUID]uint64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return s.changes
+	return maps.Clone(s.changes)
 }
 
-// Refilter replaces what a stream admits with a filter computed after
-// Changes answered seen. The stream recomputes it on every act that changes
-// it and at every heartbeat (docs/adr/0054 D3, docs/adr/0035 D6); once the
-// filter knows every such act, the hub judges the stream's events again.
-func (h *Hub) Refilter(s *Stream, f Filter, seen uint64) {
+// Refilter replaces what the stream admits of the tenants in filters with
+// filters computed after Changes answered seen, and follows a tenant it did
+// not; a tenant in seen and not in filters — its person left it — it no longer
+// follows, unless an act changed what it may admit of that tenant since: then
+// the tenant's events stay unjudged until the stream refilters again. The
+// stream recomputes on every act that changes what it may admit and at every
+// heartbeat (docs/adr/0054 D3, docs/adr/0035 D6).
+func (h *Hub) Refilter(s *Stream, filters map[uuid.UUID]Filter, seen map[uuid.UUID]uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	s.filter = f
-	s.refiltered = max(s.refiltered, seen)
+	for tenant, f := range filters {
+		if !s.follows(tenant) {
+			h.streams[tenant] = append(h.streams[tenant], s)
+		}
+		s.filters[tenant] = f
+		s.refiltered[tenant] = max(s.refiltered[tenant], seen[tenant])
+	}
+	for tenant, n := range seen {
+		if _, kept := filters[tenant]; kept || !s.follows(tenant) || s.changes[tenant] != n {
+			continue
+		}
+		delete(s.filters, tenant)
+		s.refiltered[tenant] = n
+		h.streams[tenant] = slices.DeleteFunc(h.streams[tenant], func(o *Stream) bool { return o == s })
+	}
 }
 
 // Unsubscribe removes a stream that ended.
@@ -327,7 +394,10 @@ func (h *Hub) Unsubscribe(s *Stream) {
 }
 
 func (h *Hub) remove(s *Stream) {
-	h.streams[s.tenant] = slices.DeleteFunc(h.streams[s.tenant], func(o *Stream) bool { return o == s })
+	for tenant := range s.filters {
+		h.streams[tenant] = slices.DeleteFunc(h.streams[tenant], func(o *Stream) bool { return o == s })
+	}
+	h.persons[s.person] = slices.DeleteFunc(h.persons[s.person], func(o *Stream) bool { return o == s })
 }
 
 // SetUp tells the hub whether the database can be heard. Every open stream
@@ -338,12 +408,7 @@ func (h *Hub) SetUp(up bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if up && h.down {
-		for _, list := range h.streams {
-			for _, s := range list {
-				s.end(Resync)
-			}
-		}
-		h.streams = map[uuid.UUID][]*Stream{}
+		h.endAll(Resync)
 		h.rings = map[uuid.UUID][]Event{}
 	}
 	h.down = !up
@@ -355,10 +420,16 @@ func (h *Hub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.closed = true
-	for _, list := range h.streams {
+	h.endAll(Unavailable)
+}
+
+// endAll ends every stream with the reason; the hub's lock is held.
+func (h *Hub) endAll(reason string) {
+	for _, list := range h.persons {
 		for _, s := range list {
-			s.end(Unavailable)
+			s.end(reason)
 		}
 	}
 	h.streams = map[uuid.UUID][]*Stream{}
+	h.persons = map[uuid.UUID][]*Stream{}
 }

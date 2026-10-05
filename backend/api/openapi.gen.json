@@ -447,7 +447,7 @@
         }
       },
       "Query": {
-        "description": "Full text over title and body (docs/adr/0025); its length is capped by the server",
+        "description": "A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold\nevery word, in the list's own order, without a rank or a snippet — the ranked search over\ncomments, questions, file names and keys as well is `GET …/search`. Its length is capped by\nthe server\n",
         "in": "query",
         "name": "q",
         "schema": {
@@ -477,6 +477,27 @@
           "type": "string"
         }
       },
+      "SavedFilterID": {
+        "description": "The saved filter's id",
+        "in": "path",
+        "name": "filter",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "SearchQuery": {
+        "description": "The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length\nis capped by the server, and a query of white space alone is `validation_failed`\n",
+        "in": "query",
+        "name": "q",
+        "required": true,
+        "schema": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
       "TenantSlug": {
         "description": "The tenant's slug (docs/adr/0005 D4)",
         "in": "path",
@@ -484,6 +505,16 @@
         "required": true,
         "schema": {
           "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
+        }
+      },
+      "TicketKeyPath": {
+        "description": "The ticket's short key, \u003cPROJECT\u003e-\u003cnumber\u003e, in one path segment (docs/adr/0007 D3)",
+        "in": "path",
+        "name": "key",
+        "required": true,
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
           "type": "string"
         }
       },
@@ -1684,6 +1715,13 @@
               "null"
             ]
           },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside\nthe Markdown; null once withdrawn\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -1746,6 +1784,7 @@
           "agent",
           "token",
           "body",
+          "body_html",
           "withdrawn",
           "withdrawn_at",
           "edited",
@@ -1925,6 +1964,79 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/Decision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "DeletedTicket": {
+        "description": "A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or\npurge it.\n",
+        "properties": {
+          "confidential": {
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deleted_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "key": {
+            "description": "\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "purge_at": {
+            "description": "When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "key",
+          "project",
+          "number",
+          "type",
+          "title",
+          "state",
+          "confidential",
+          "deleted_at",
+          "deleted_by",
+          "purge_at"
+        ],
+        "type": "object"
+      },
+      "DeletedTicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedTicket"
             },
             "type": "array"
           },
@@ -3283,6 +3395,13 @@
               "null"
             ]
           },
+          "answer_html": {
+            "description": "The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "answered_at": {
             "format": "date-time",
             "type": [
@@ -3360,6 +3479,10 @@
             "description": "Markdown: the context and the options",
             "type": "string"
           },
+          "options_html": {
+            "description": "The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options",
+            "type": "string"
+          },
           "question": {
             "type": "string"
           },
@@ -3393,8 +3516,10 @@
           "number",
           "question",
           "options",
+          "options_html",
           "recommendation",
           "answer",
+          "answer_html",
           "status",
           "asked_by",
           "asked_by_agent",
@@ -3742,6 +3867,277 @@
         ],
         "type": "string"
       },
+      "SavedFilter": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "redacted": {
+            "description": "Another person's filter names a project or a ticket the caller cannot see, or one that no\nlonger exists; its parameters and warnings are withheld (docs/adr/0065 D5)\n",
+            "type": "boolean"
+          },
+          "shared": {
+            "description": "Shown to every member of the tenant, with its owner",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner",
+          "shared",
+          "parameters",
+          "redacted",
+          "warnings",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SavedFilterCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "parameters"
+        ],
+        "type": "object"
+      },
+      "SavedFilterList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilter"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "SavedFilterParameters": {
+        "additionalProperties": false,
+        "description": "The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each\nrepeatable parameter an array of its values — `!` negates one —, the bounds and the booleans\nsingle values. What a list's query string would carry, without the paging.\n",
+        "properties": {
+          "assignee": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "done_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effort": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "has_open_questions": {
+            "type": "boolean"
+          },
+          "include_terminal": {
+            "type": "boolean"
+          },
+          "interest": {
+            "items": {
+              "maxLength": 8,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "opened_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "opened_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "parent": {
+            "items": {
+              "maxLength": 80,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "progress_max": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_min": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "project": {
+            "items": {
+              "maxLength": 16,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "q": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reporter": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "security": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "severity": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "state": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "type": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "updated_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "urgency": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterWarning": {
+        "description": "A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "message"
+        ],
+        "type": "object"
+      },
       "Scope": {
         "description": "A token's scope (docs/adr/0035 D3)",
         "enum": [
@@ -3750,6 +4146,95 @@
           "admin"
         ],
         "type": "string"
+      },
+      "SearchFoundIn": {
+        "description": "Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and\nthe body; one of its comments; one of its questions; an attachment's file name\n",
+        "enum": [
+          "key",
+          "ticket",
+          "comment",
+          "question",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "SearchHit": {
+        "properties": {
+          "comment": {
+            "description": "The comment the hit is in",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found_in": {
+            "$ref": "#/components/schemas/SearchFoundIn"
+          },
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e (docs/adr/0007 D2)",
+            "type": "string"
+          },
+          "question": {
+            "description": "The number of the question the hit is in",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snippet": {
+            "description": "The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):\nthe body for a hit in the ticket's own text or its key, the comment, the question with its\noptions, recommendation and answer, the file name. Text, never HTML; empty where that text is\n",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "tenant",
+          "key",
+          "title",
+          "type",
+          "state",
+          "found_in",
+          "comment",
+          "question",
+          "snippet"
+        ],
+        "type": "object"
+      },
+      "SearchHitList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "SecurityClass": {
         "enum": [
@@ -3769,6 +4254,23 @@
           "cosmetic"
         ],
         "type": "string"
+      },
+      "SnippetPart": {
+        "properties": {
+          "match": {
+            "description": "The piece is a word the query found",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "A piece of the matched text, as text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "type": "object"
       },
       "Tenant": {
         "properties": {
@@ -4151,6 +4653,28 @@
           "version",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketBody": {
+        "properties": {
+          "body": {
+            "description": "Markdown, as written (docs/adr/0011 D1)",
+            "type": "string"
+          },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body\n",
+            "type": "string"
+          },
+          "version": {
+            "description": "The ticket's version the body belongs to",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body",
+          "body_html",
+          "version"
         ],
         "type": "object"
       },
@@ -5063,7 +5587,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -5522,6 +6046,45 @@
         "summary": "The project a repository is bound to, across the person's tenants",
         "tags": [
           "repositories"
+        ]
+      }
+    },
+    "/api/v1/me/search": {
+      "get": {
+        "description": "The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —\none read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit\nnames its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that\ntenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator\nwithout a role in a tenant searches nothing of it (docs/adr/0034 D2).\n",
+        "operationId": "searchMyTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tickets of every tenant of the person",
+        "tags": [
+          "search"
         ]
       }
     },
@@ -6105,8 +6668,13 @@
     },
     "/api/v1/tenants/{tenant}/attachment-usage": {
       "get": {
-        "description": "Every attachment of the tenant counts, on every ticket, confidential ones and those of\nrestricted projects included — the sum the quota is checked against. The tenant's\nadministrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum\ncounts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,\nnull where the installation sets none.\n",
+        "description": "Every attachment of the tenant counts, on every ticket, confidential ones and those of\nrestricted projects included, and a deleted ticket's until the purge removes them — they\noccupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The\ntenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the\nsum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,\nnull where the installation sets none. An answer the client holds unchanged is `304` to its\nweak `ETag` (docs/adr/0054 D7).\n",
         "operationId": "getAttachmentUsage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6121,7 +6689,15 @@
                 }
               }
             },
-            "description": "The usage"
+            "description": "The usage",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6372,9 +6948,127 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/deleted-tickets": {
+      "get": {
+        "description": "The tenant administrators' view of the deleted tickets they can see, the last deleted first,\neach with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one\nlist in which a deleted ticket exists. An administrator's, with `read` scope; a token\nrestricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listDeletedTickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedTicketList"
+                }
+              }
+            },
+            "description": "A page of the bin",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's bin of deleted tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}": {
+      "delete": {
+        "description": "A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),\n**in a browser session only**: the one irreversible act on a ticket, so a token — an\nadministrator's `admin` token included — answers `403 session_required`, and the purge job\ndoes the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a\nticket of the bin only — any other key is 404. The ticket, its\ncomments, questions, links, stakes, time entries, notifications and attachments are removed,\nand the attachments' objects after them; its children become roots, and a block that waited\non it waits on its key as an external reference. Its audit rows stay with their content\nemptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.\nIrreversible: the browser asks a second time. Recorded as `purged` and published.\n",
+        "operationId": "purgeTicket",
+        "responses": {
+          "204": {
+            "description": "Purged"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Purge a deleted ticket for good",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ],
+      "put": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,\ndocs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back\nas it was, its links, comments and place in the rank with it; the version rises. Recorded as\n`restored` and published.\n",
+        "operationId": "restoreTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The restored ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Restore a deleted ticket from the bin",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream also carries\nthe person's own events across every tenant they belong to (docs/adr/0054 D1):\n`inbox.changed` with `data: {\"unread\": n}`, the person's unread notifications in every tenant\nthe request reaches (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and\nwhenever the inbox changes — a notification for them, or theirs marked read —; and\n`question.changed` of a question asked of them in another tenant, which arrives only while\nthey are a member of that tenant and see its ticket, as the tenant's own stream would judge\nit. Neither carries an `id:` or is replayed: the count says how things stand, and the client\nreloads its person-level lists when the stream opens. A token restricted to a tenant hears\nnothing of another (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -6387,7 +7081,7 @@
             }
           },
           {
-            "description": "Adds the person's own events across their tenants (docs/adr/0054 D1)",
+            "description": "Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)",
             "in": "query",
             "name": "me",
             "schema": {
@@ -6421,6 +7115,198 @@
           "$ref": "#/components/parameters/TenantSlug"
         }
       ]
+    },
+    "/api/v1/tenants/{tenant}/filters": {
+      "get": {
+        "description": "The caller's own filters and every filter a member shared with the tenant, oldest first, each\nwith its owner. Every filter is checked against the vocabularies as it is read\n(docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody\nelse that names a project or a ticket the caller cannot see — or one that no longer exists —\nis answered `redacted`, without its parameters, as an act that names a hidden ticket is\n(docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listSavedFilters",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterList"
+                }
+              }
+            },
+            "description": "A page of saved filters",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The caller's saved filters and those shared with the tenant",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'\n(docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value\noutside its vocabulary is 400 at `/parameters/\u003cname\u003e` (D4). `me` stays `me`: whoever applies\nthe filter is meant. `shared` shows it to every member of the tenant with the owner beside\nit. Recorded as `created`.\n",
+        "operationId": "createSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Save a filter",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/filters/{filter}": {
+      "delete": {
+        "description": "Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a\nfilter the caller cannot see — or one already gone — 404. Recorded as `deleted`.\n",
+        "operationId": "deleteSavedFilter",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "get": {
+        "description": "The caller's own, or a shared one; any other is 404.",
+        "operationId": "getSavedFilter",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/SavedFilterID"
+        }
+      ],
+      "patch": {
+        "description": "Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's\nshared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces\nthe whole set, checked as on creation. Recorded as `updated` with the fields that changed.\n",
+        "operationId": "updateSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The changed filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Rename, change, share or unshare a saved filter",
+        "tags": [
+          "filters"
+        ]
+      }
     },
     "/api/v1/tenants/{tenant}/group-mappings": {
       "get": {
@@ -7535,6 +8421,22 @@
       }
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}": {
+      "delete": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,\ndocs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers\nlike a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of\nit and under it is 404, and it leaves every list, the prerequisite trees, the person-level\nlists, the inbox and the context; links to it are hidden, not removed, and its key stays taken\n(docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and\npublished. A restoration brings everything back; thirty days after the deletion the purge job\nremoves it for good (D2). Deleting a ticket that others depend on is not refused — the browser\nshows the dependents and asks first (D7).\n",
+        "operationId": "deleteTicket",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a ticket into the tenant's bin",
+        "tags": [
+          "tickets"
+        ]
+      },
       "get": {
         "operationId": "getTicket",
         "responses": {
@@ -7903,6 +8805,39 @@
       ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body": {
+      "get": {
+        "description": "The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its\nown: the ticket lists carry the Markdown of every row, and rendering every body of a page\nis work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown\nas text; a link keeps only an `http`, `https` or `mailto` address or one relative to the\ninstallation, opens in a new tab and carries `rel=\"noopener noreferrer nofollow\"`; an\nimage shows only when it names a raster attachment of this ticket, from that attachment's\nown path (docs/adr/0016 D7), and any other image is a link to its address. Shown through\nAngular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a\nreplacement of the body names in `If-Match`; the HTML changes with the ticket's\nattachments as well, which raise no version.\n",
+        "operationId": "getTicketBody",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "body": "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7).",
+                  "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eThe gate fails on \u003ccode\u003ereadyReplicas\u003c/code\u003e — see \u003ca href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\"\u003ethe run\u003c/a\u003e.\u003c/p\u003e",
+                  "version": 4
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/TicketBody"
+                }
+              }
+            },
+            "description": "The body",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's body, as Markdown and rendered",
+        "tags": [
+          "tickets"
+        ]
+      },
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
@@ -9491,6 +10426,79 @@
         ]
       }
     },
+    "/api/v1/tenants/{tenant}/search": {
+      "get": {
+        "description": "Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —\nover a ticket's title and body, its comments but a withdrawn one, its questions (the question,\nthe options, the recommendation and the answer) and its attachments' file names; a text\nmatches when it holds every word of `q`. A ticket's key matches by its beginning as well —\n`COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram\nsimilarity, so a word half typed or misspelt still finds it (D3).\n\nOne hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the\ntitle above the body above comments, questions and file names, a title found by trigram\nbelow them (D4). A hit names the ticket — its key, title, type and state —, where it matched\n(`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an\nattachment's name) and a snippet of that text with the matched words marked (`ts_headline`,\nD5). The snippet is text in parts, never HTML: a client shows every part as text.\n\nOnly what the caller can see is searched, snippets included: a restricted project they are\nnot on, a confidential ticket of which they are neither a tenant administrator, the assignee\nnor the reporter, and a project-restricted token's other projects find nothing\n(docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a\ncursor belongs to its query.\n\nThe `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose\ntitle and body hold every word, in the list's own order, with no rank and no snippet.\n",
+        "operationId": "searchTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "comment": "0199a3c2-1d2e-7f00-8000-0000000000c1",
+                      "found_in": "comment",
+                      "key": "acme/COW-12",
+                      "question": null,
+                      "snippet": [
+                        {
+                          "match": false,
+                          "text": "the "
+                        },
+                        {
+                          "match": true,
+                          "text": "readyReplicas"
+                        },
+                        {
+                          "match": false,
+                          "text": " count is 0 after the rollout"
+                        }
+                      ],
+                      "state": "in-progress",
+                      "tenant": {
+                        "name": "Acme",
+                        "slug": "acme"
+                      },
+                      "title": "The gate fails on a fresh cluster",
+                      "type": "bug"
+                    }
+                  ],
+                  "next_cursor": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tenant's tickets",
+        "tags": [
+          "search"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
         "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time.\n",
@@ -9744,7 +10752,7 @@
     },
     "/api/v1/tenants/{tenant}/tokens": {
       "get": {
-        "description": "Every token of a member of the tenant that is unrestricted or restricted\nto this tenant, revoked and expired ones included, with its person:\nmetadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`\nnull marks an unrestricted token, which reaches every tenant its person\nbelongs to — revoking it ends it there too. An unrestricted token's name\nand last-used day are its person's across their tenants, and so may say\nsomething of their work elsewhere. The tenant's administrators, a token's\n`read` scope; anybody else is `403 forbidden`. Newest first, paged by\ncursor, or by number with a total (docs/adr/0048 D2).\n",
+        "description": "Every token of a member of the tenant that is unrestricted or restricted\nto this tenant, revoked and expired ones included, with its person:\nmetadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`\nnull marks an unrestricted token, which reaches every tenant its person\nbelongs to — revoking it ends it there too. An unrestricted token's name\nand last-used day are its person's across their tenants, and so may say\nsomething of their work elsewhere. The tenant's administrators, a token's\n`read` scope; anybody else is `403 forbidden`. Newest first, paged by\ncursor, or by number with a total (docs/adr/0048 D2); a page the client\nholds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).\n",
         "operationId": "listTenantTokens",
         "parameters": [
           {
@@ -9758,6 +10766,9 @@
           },
           {
             "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -9769,7 +10780,15 @@
                 }
               }
             },
-            "description": "A page of tokens, newest first"
+            "description": "A page of tokens, newest first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -10169,6 +11188,12 @@
     },
     {
       "name": "tickets"
+    },
+    {
+      "name": "filters"
+    },
+    {
+      "name": "search"
     },
     {
       "name": "questions"

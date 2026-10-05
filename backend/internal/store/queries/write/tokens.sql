@@ -14,7 +14,7 @@ RETURNING id;
 
 -- name: RevokeTenantToken :one
 -- An administrator's revocation of a token that can act in the tenant
--- (docs/adr/0035 D5, D6): immediate, the row kept; the policy of migration 39
+-- (docs/adr/0035 D5, D6): immediate, the row kept; the policy of migration 35
 -- admits it.
 UPDATE tokens
 SET revoked_at = now(), revoked_by = sqlc.arg(revoked_by)

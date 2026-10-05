@@ -35,14 +35,17 @@ D2, amended 2026-10-05):
 - Where it is set, an upload takes the tenant's quota lock (`cowu`, before the ticket's), sums every
   attachment of the tenant and refuses a file that does not fit with `409 attachment_quota` before a
   row or an object exists ([`attachments.go`](../../backend/internal/api/attachments.go)
-  `lockQuota`, `withinQuota`).
-- The usage for the tenant's administrators: `GET /api/v1/tenants/{tenant}/attachment-usage`, shown
-  on the tenant's settings page with a meter
+  `lockQuota`, `withinQuota`). A deleted ticket's files count until the purge removes them: they
+  occupy the bucket until then, so a deletion frees no quota and a purge does.
+- The usage for the tenant's administrators: `GET /api/v1/tenants/{tenant}/attachment-usage`, with a
+  weak `ETag` and `304`, shown on the tenant's settings page with a meter and read again on an upload
+  or a purge in the tenant
   ([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts)).
 - Tests: `TestTheTenantAttachmentQuota` (a confidential ticket's file counts; the refusal names no
   sum; tenant B's uploads ignore tenant A's usage and B's usage shows B's alone; the usage is the
   administrators'; another tenant's administrator gets `404`) and
-  `TestSimultaneousUploadsKeepTheTenantQuota` (eight uploads to eight tickets at once, three fit);
+  `TestSimultaneousUploadsKeepTheTenantQuota` (eight uploads to eight tickets at once, three fit),
+  `TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge`, `TestTheAttachmentUsageAnswersAWeakETag`;
   `config_test.go`; `tenant-settings.spec.ts`.
 
 The README reference (variable, chart value, route, code), [storage.md](../developer/storage.md),

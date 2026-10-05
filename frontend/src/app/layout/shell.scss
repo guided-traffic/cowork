@@ -40,6 +40,27 @@
   flex: 1;
 }
 
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 20rem;
+  min-width: 10rem;
+
+  .pi-search {
+    position: absolute;
+    left: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--p-text-muted-color);
+    pointer-events: none;
+  }
+
+  input {
+    width: 100%;
+    padding-left: 2.125rem;
+  }
+}
+
 .me {
   padding: 0;
   border: 0;

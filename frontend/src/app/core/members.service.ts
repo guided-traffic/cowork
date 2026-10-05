@@ -48,7 +48,7 @@ export class MembersService {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed())
       .subscribe((event) => {
-        if (changesMemberships(event)) {
+        if (changesMemberships(event, this.session.tenant())) {
           refresh(this.members, this.injector);
         }
       });

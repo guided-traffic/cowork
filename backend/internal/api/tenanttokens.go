@@ -59,13 +59,19 @@ func (s *Server) ListTenantTokens(ctx context.Context, req apigen.ListTenantToke
 	if !lp.numbered {
 		rows, next = page(s.h, rows, lp.size, op, scope, func(row readq.ListTenantTokensRow) string { return row.ID.String() })
 	}
-	out := apigen.ListTenantTokens200JSONResponse{Items: make([]apigen.MemberToken, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.MemberTokenList{Items: make([]apigen.MemberToken, 0, len(rows)), NextCursor: nullableString(next)}
 	out.Total, out.Page, out.PerPage = lp.numbers(total)
 	now := s.h.opts.Now()
 	for _, row := range rows {
 		out.Items = append(out.Items, memberTokenView(t, row, now))
 	}
-	return out, nil
+	// A page the client holds unchanged is a 304 (docs/adr/0054 D7); the tag
+	// is the caller's page, so the state of a token that expired since moves it.
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListTenantTokens304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListTenantTokens200JSONResponse{Body: out, Headers: apigen.ListTenantTokens200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // memberTokenView is a token as the tenant's administrators see it: its

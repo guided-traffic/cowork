@@ -107,6 +107,23 @@ func TestNothingCascadesIntoTheAuditRecord(t *testing.T) {
 	assert.Contains(t, all, "GRANT SELECT, INSERT ON audit_events TO %I")
 }
 
+// A function that runs with its owner's rights is the one privileged code path
+// of the schema (docs/adr/0026 D3): it resolves names on a path it fixes, so no
+// object a caller creates stands in for one it names, and nobody but the
+// runtime role may call it.
+func TestEverySecurityDefinerFunctionIsFencedIn(t *testing.T) {
+	definer := regexp.MustCompile(`(?s)CREATE (?:OR REPLACE )?FUNCTION (\w+)\(([^)]*)\)[^$]*?SECURITY DEFINER`)
+	all := allMigrations(t)
+	found := definer.FindAllStringSubmatch(all, -1)
+	require.NotEmpty(t, found, "the purge's function is expected")
+	for _, m := range found {
+		name := m[1]
+		assert.Contains(t, all, "ALTER FUNCTION "+name+"(", "%s fixes no search_path", name)
+		assert.Regexp(t, `ALTER FUNCTION `+name+`\([^)]*\) SET search_path = %I, pg_temp`, all, "%s: pg_temp must come last", name)
+		assert.Contains(t, all, "REVOKE ALL ON FUNCTION "+name+"(", "%s is not revoked from PUBLIC", name)
+	}
+}
+
 func migrationBodies(t *testing.T) map[string]string {
 	t.Helper()
 	entries, err := fs.ReadDir(MigrationsFS(), ".")

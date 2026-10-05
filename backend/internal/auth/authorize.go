@@ -15,6 +15,7 @@ const (
 	HardOffPrereqOverride = "overriding the prerequisite refusal"
 	HardOffConfidential   = "setting or lifting the confidential flag"
 	HardOffTokens         = "token administration"
+	HardOffDeletion       = "deleting, restoring or purging"
 )
 
 // Need is what an act requires: a tenant role, a token scope, and for an

@@ -28,10 +28,10 @@ Built on this branch:
   `members.service.spec.ts`, `tokens.spec.ts`, `tokens.service.spec.ts`.
 - **The tokens that can act in the tenant**, Q1 answered (b) on the recommendation, the owner
   reviewing the result ([ADR 0035](../adr/0035-personal-access-tokens.md) D5 as amended
-  2026-10-05): `GET` and `DELETE /api/v1/tenants/{tenant}/tokens` in
+  2026-10-05): `GET` (numbered pages, a weak `ETag` and `304`) and `DELETE /api/v1/tenants/{tenant}/tokens` in
   [`members.yaml`](../../backend/api/members.yaml) and
   [`tenanttokens.go`](../../backend/internal/api/tenanttokens.go), numbered pages, the tokens policy
-  of [migration 39](../../backend/internal/store/migrations/000039_tenant_tokens.up.sql), and the
+  of [migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql), and the
   tenant's page *Tokens* ([`tenant-tokens.ts`](../../frontend/src/app/features/tenant/tenant-tokens.ts)),
   whose revocation of an unrestricted token asks first and says that it ends the token in every
   tenant of its person. Integration tests across two tenants:
@@ -44,7 +44,7 @@ Built on this branch:
 
 The README reference, [api.md](../developer/api.md), [data-access.md](../developer/data-access.md),
 [frontend.md](../developer/frontend.md), [package-map.md](../developer/package-map.md),
-[tokens.md](../security/tokens.md) (H-51) and [tenancy.md](../security/tenancy.md) carry it.
+[tokens.md](../security/tokens.md) (H-57) and [tenancy.md](../security/tenancy.md) carry it.
 
 ## Required changes
 

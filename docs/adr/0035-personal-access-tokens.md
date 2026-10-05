@@ -24,12 +24,15 @@ among them —, and the tenant's consent field gone with the consent; built the 
 2026-10-04 by the owner's decision on the routing recorded in
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
 (D2: the hop in front of the backend is the Ingress controller, and the chart ships no
-NetworkPolicy; built the same day), and on 2026-10-05 by the answer to "which of a member's tokens
-does a tenant's administrator see and revoke?" (D5). The options were (a) every token of every
-member, also those restricted to the member's other tenants; (b) the tokens that can act in the
-tenant — the members' unrestricted tokens and those restricted to it; (c) only the tokens
-restricted to the tenant. (b) was the recommendation, and it was built on the owner's instruction
-of 2026-10-05 to build the recommended option, the owner reviewing the result. Date: 2026-10-01. Decided by the owner as the answer to the
+NetworkPolicy; built the same day), and on 2026-10-05 by the decision on the purge recorded in
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7, built on the recommendation (D5: seventeen operations, purging a deleted ticket among them), and
+on 2026-10-05 by the answer to "which of a member's tokens does a tenant's administrator see and
+revoke?" (D5). The options were (a) every token of every member, also those restricted to the
+member's other tenants; (b) the tokens that can act in the tenant — the members' unrestricted tokens
+and those restricted to it; (c) only the tokens restricted to the tenant. (b) was the
+recommendation, and it was built on the owner's instruction of 2026-10-05 to build the recommended
+option, the owner reviewing the result. Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -88,7 +91,7 @@ token form before it asks: `GET /auth/options` names it in whole days, `token_ma
 **Built** (phase 3, 2026-10-05): D5's administrator view and revocation as amended that day —
 `GET` and `DELETE /api/v1/tenants/{tenant}/tokens`
 ([`api/tenanttokens.go`](../../backend/internal/api/tenanttokens.go)), the tokens policy of
-[migration 39](../../backend/internal/store/migrations/000039_tenant_tokens.up.sql), and the
+[migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql), and the
 tenant's page *Tokens* ([`features/tenant/tenant-tokens.ts`](../../frontend/src/app/features/tenant/tenant-tokens.ts));
 the person's token list in the browser reads numbered pages
 ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D4).
@@ -212,12 +215,18 @@ same day: ~~fourteen~~ sixteen operations. Stopping the person's running turns o
 starts none. Choosing the chat's capabilities, `setMyChat` (`PUT /api/v1/me/chat`), takes a session
 by the rule itself: the set is what the person's agent in the browser may do in every tenant of the
 person, access that would outlive a leaked token's revocation; reading it, `getMyChat`, takes either
-credential. A session the agent header marks is refused all sixteen — the chat cannot stop turns or
-widen its own capabilities.)* *(Amended 2026-10-05, the owner's answer to "which of a member's
-tokens does a tenant's administrator see and revoke?": the tokens of their tenant's members are
-**the tokens that can act in the tenant** — every token of a member that is unrestricted or
-restricted to this tenant. A token restricted to another tenant is not shown, not even by its name
-or by the fact that it exists, and neither is a token of a person who is no member here
+credential. A session the agent header marks is refused all ~~sixteen~~ — the chat cannot stop turns or
+widen its own capabilities.)* *(Amended 2026-10-05 by the decision recorded in
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7, built on the recommendation: ~~sixteen~~ seventeen operations. Purging a deleted ticket,
+`purgeTicket`, takes a session by the rule itself: nothing undoes a purge, so what a leaked token did
+there would outlive its revocation. Deleting a ticket and restoring it, which the bin undoes, stay
+open to an administrator's `admin`-scope token. A session the agent header marks is refused all
+seventeen.)* *(Amended 2026-10-05, the owner's answer to "which of a member's tokens does a tenant's
+administrator see and revoke?": the tokens of their tenant's members are **the tokens that can act in
+the tenant** — every token of a member that is unrestricted or restricted to this tenant. A token
+restricted to another tenant is not shown, not even by its name or by the fact that it exists, and
+neither is a token of a person who is no member here
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). The
 administrator reads the token's person and metadata — name, scope, agent flag, capabilities,
 restriction, created, expires, last-used day, state — never its secret, and revokes it, immediately
@@ -225,9 +234,9 @@ and finally (D6), as an act of the tenant recorded in its audit (D9). Revoking a
 ends it in every tenant of its person: that is what an unrestricted token is, the person makes a new
 one in a session, and the page says so before it acts. Listing takes the administrator role and
 `read` scope; revoking takes `admin` scope and no agent, and a token may, because it only takes
-access away (the rule above). An unrestricted token's name and last-used day are its person's across
-their tenants, so they can say something of the person's work elsewhere
-([docs/security/tokens.md](../security/tokens.md#h-51) H-51). Built the same day.)*
+access away (the rule above) — neither is among the seventeen. An unrestricted token's name and
+last-used day are its person's across their tenants, so they can say something of the person's work
+elsewhere ([docs/security/tokens.md](../security/tokens.md#h-57) H-57). Built the same day.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

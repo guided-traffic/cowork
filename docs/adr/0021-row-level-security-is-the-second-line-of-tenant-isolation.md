@@ -46,7 +46,8 @@ forced with a `tenant_isolation` policy, a unit test holds the migration set to 
 (`backend/internal/store/policy_test.go`), and the integration tier proves for every such
 table that an unfiltered query under one tenant sees nothing of another. ~~D5's unions arrive
 with the person-level lists~~ *(built 2026-10-04: the inbox, "assigned to me" and "open decisions"
-read each tenant of the person in a transaction of its own and merge the parts in Go)*; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
+read each tenant of the person in a transaction of its own and merge the parts in Go; the cross-tenant
+search the same way on 2026-10-05)*; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
 add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_locks`, widen those
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
 them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force
@@ -63,6 +64,14 @@ restrictive ones that hold reading and marking to the notification's own person 
 job `notification-expiry`, which a permissive policy admits past the tenant: the writer of an act
 inserts notifications for others, so the canonical policy alone would show one person another's
 inbox to a query that forgot its person.
+Migration 32 (2026-10-05) holds every delete of a ticket and of what belongs only to it to the purge
+of a deleted ticket with restrictive policies, admits the purge job — named in `app.job`, with no
+tenant set — to read the deleted tickets of every tenant, the one cross-tenant read it needs
+(D7's reason: the purge of
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2, ids only), and adds `audit_purge`, the owner role's update of a purged ticket's audit rows.
+Migration 33 (2026-10-05) adds `saved_filters` with the canonical policy and restrictive ones that
+hold a person to their own filters and the shared ones.
 
 ## Context
 

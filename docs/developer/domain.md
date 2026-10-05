@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-04.
+tree on 2026-10-05.
 
 ## Projects, keys and the counter
 
@@ -102,7 +102,9 @@ stream applies the confidential rule once more in Go, to each event it holds
 
 What a reader may not see does not exist for them: its routes answer `404`, lists, links and
 the event stream leave it out, and an act that names it is shown without its payload
-([ADR 0065] D5). The SQL is [data-access.md](data-access.md#visibility-in-sql).
+([ADR 0065] D5). A deleted ticket is the same for everybody, its tenant's administrators included,
+everywhere but the bin ([deletion](#deletion-the-bin-and-the-purge)). The SQL is
+[data-access.md](data-access.md#visibility-in-sql).
 
 ## Parent
 
@@ -359,7 +361,7 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
   (D3, D4).
 - **Comment texts never enter the audit record**, which cannot forget: `commented`, `edited`
   and `withdrawn` carry no text.
-- **Mentions** are a list of person ids beside the text, `comments.mentions` (migration 40,
+- **Mentions** are a list of person ids beside the text, `comments.mentions` (migration 36,
   [ADR 0015] D5): `checkMentions` admits each like a question's `asked_of` — a member of the tenant
   who sees the ticket (`CanSeeTicket`) — and refuses the first that is not at `/mentions/<i>`; the
   API reads no text, so a name typed without the list mentions nobody. A new comment's act tells the
@@ -368,7 +370,10 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
   list; with one it replaces it, checks and tells only the persons it adds — those it keeps were
   checked when they came — and a person it drops watches by it no more. A withdrawn comment answers
   `mentions: []`, and its mentions watch by it no more either. An explaining comment mentions
-  nobody.
+  nobody. The rendered `body_html` shows `@Name` as the text it is: the rendering reads no mention.
+  A deleted ticket tells nobody, its mentions included: a comment on it is `404`, and every
+  recipient is held to their sight of the ticket, which a deletion ends
+  (`TestAMentionOnADeletedTicketTellsNobody`).
 - **An explaining comment** — the `comment` field of `PATCH` on a ticket, `PUT …/body` and
   `POST …/transitions` — is written in the same transaction as the act; the act's
   `explained_by_comment_id` names it, and the comment's `explains` lists the actions it explains
@@ -498,12 +503,43 @@ person who cannot see the ticket is told nothing of it ([ADR 0065] D5); an act t
 for two reasons — a watcher the comment mentions — tells them once, by the first. The table and the
 store's side are [data-access.md](data-access.md#notifications).
 
+## Deletion, the bin and the purge
+
+[ADR 0024] D1–D3, D7; [`api/deletion.go`](../../backend/internal/api/deletion.go), the store's side
+[data-access.md](data-access.md#deletion-and-the-purge):
+
+- **Who.** Deleting, restoring and purging are a tenant administrator's acts with `admin` scope —
+  the tenant role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
+  or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The purge
+  takes a browser session besides: the document declares `purgeTicket` with the session cookie
+  alone, so a token — an administrator's `admin` token included — is `403 session_required`
+  (D7 as amended 2026-10-05). The bin is read with `read` scope.
+- **Deleting** (`DELETE …/{number}`, `deleted`) puts the ticket into the bin. From then on it
+  answers like a missing ticket everywhere but the bin: its routes are `404` — a second deletion
+  too, its rendered body among them —, it leaves every list, the boards, the search, the
+  prerequisite trees, the person-level lists, the inbox and its count, the context and the Markdown
+  export, a link to it is hidden from the other end and an act that
+  names it is redacted, a block that names it names no ticket, a child shows its parent as hidden,
+  its parent's derived stages leave it out, and a ticket it blocks no longer counts it as an open
+  prerequisite. Nothing is removed. Its number stays taken. It is not refused when open tickets
+  depend on it; the browser names them and asks.
+- **Restoring** (`PUT …/deleted-tickets/{key}/restore`, `restored`) brings it back as it was — its
+  links, comments, stakes, its key in the rank — and raises its version.
+- **Purging** (`DELETE …/deleted-tickets/{key}`, `purged`; or the job, thirty days after the
+  deletion, as `system:ticket-purge`) removes it and everything that belongs only to it, its
+  attachments' objects last; its children become roots, a block that waited on it waits on its key
+  as an external reference — an `updated` act on that ticket, its version raised —, and its audit
+  rows keep its key, the actor and the act, their content emptied. Its number is never handed out
+  again: the project's counter only grows.
+- **Concurrent acts** answer as a later request would: a deletion that lost the race is `404`; of a
+  purge and a restoration at once, one wins and the other is `404`.
+
 ## Not built
 
 The score of [ADR 0014] D3–D5 is not built — no score beside the rank; the person-level lists,
 which it would order, are ordered by the tenant, the project and the project's rank meanwhile — nor
-is the rebalancing of the rank's keys. There is no `deleted_at` and
-no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
+is the rebalancing of the rank's keys. The deletion of a project and of a tenant ([ADR 0024] D4, D6)
+is not built. No route creates memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 

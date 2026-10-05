@@ -298,7 +298,7 @@ func TestPoliciesOfThePersonsAndTheirAccounts(t *testing.T) {
 		denied(t, adminA, `UPDATE tokens SET scope = 'admin' WHERE id = $1`, tokenID)
 	})
 
-	// docs/adr/0035 D5 as amended 2026-10-05, migration 39: a tenant's
+	// docs/adr/0035 D5 as amended 2026-10-05, migration 35: a tenant's
 	// administrators read and revoke the tokens that can act in their tenant —
 	// a member's unrestricted ones and those restricted to it — and no token
 	// restricted to another tenant, nor one of a person who is no member.

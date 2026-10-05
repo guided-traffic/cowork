@@ -47,7 +47,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2 AND q.number = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetQuestionParams struct {
@@ -130,7 +130,7 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.rank AS ticket_rank
+       t.rank AS ticket_rank, q.ticket_id
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -139,7 +139,7 @@ LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.status = 'open'
   AND (q.asked_of = $2::uuid OR q.asked_of IS NULL)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT $3::boolean
        OR p.key > $4::text
        OR (p.key = $4::text
@@ -199,6 +199,7 @@ type ListOpenDecisionsRow struct {
 	TicketTitle         string
 	TicketState         domain.TicketState
 	TicketRank          *string
+	TicketID            uuid.UUID
 }
 
 // The open decisions of a person in the tenant (docs/adr/0018 D3): the open
@@ -258,6 +259,7 @@ func (q *Queries) ListOpenDecisions(ctx context.Context, arg ListOpenDecisionsPa
 			&i.TicketTitle,
 			&i.TicketState,
 			&i.TicketRank,
+			&i.TicketID,
 		); err != nil {
 			return nil, err
 		}
@@ -284,7 +286,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::integer IS NULL OR q.number > $3::integer)
 ORDER BY q.number
 LIMIT $4

@@ -33,7 +33,7 @@ fallback's poll; D6 — marking one read and every one up to the newest seen
 kept as long as one read at once)*. ~~**Not built:** D2's mention — D5 of
 [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) names `@person` without
 saying how a comment's text names a person, and that is open.~~ **Built** (2026-10-05): D2's mention,
-the reason `mentioned` ([migration 40](../../backend/internal/store/migrations/000040_comment_mentions.up.sql)),
+the reason `mentioned` ([migration 36](../../backend/internal/store/migrations/000036_comment_mentions.up.sql)),
 for each person a new comment's `mentions` names and each person an edit adds, and the inbox's
 "mentioned you in a comment".
 

@@ -430,19 +430,26 @@ tenantTokens:
       and last-used day are its person's across their tenants, and so may say
       something of their work elsewhere. The tenant's administrators, a token's
       `read` scope; anybody else is `403 forbidden`. Newest first, paged by
-      cursor, or by number with a total (docs/adr/0048 D2).
+      cursor, or by number with a total (docs/adr/0048 D2); a page the client
+      holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
       - $ref: './components/parameters.yaml#/Page'
       - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of tokens, newest first
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/MemberTokenList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 tenantToken:

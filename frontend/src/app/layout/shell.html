@@ -22,6 +22,23 @@
       <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
     }
 
+    <!-- The search (docs/adr/0018 D7): inside a tenant that tenant's, anywhere else every tenant's. -->
+    <form class="search" role="search" ngNoForm (submit)="$event.preventDefault(); search()">
+      <i class="pi pi-search" aria-hidden="true"></i>
+      <input
+        pInputText
+        type="search"
+        name="q"
+        pSize="small"
+        maxlength="256"
+        placeholder="Search"
+        [attr.aria-label]="searchLabel()"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        data-testid="search-input"
+      />
+    </form>
+
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
@@ -186,6 +203,15 @@
             routerLinkActive="active"
             data-testid="nav-time"
             ><i class="pi pi-clock"></i>Time</a
+          >
+        }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'deleted-tickets']"
+            routerLinkActive="active"
+            data-testid="nav-deleted-tickets"
+            ><i class="pi pi-trash"></i>Deleted tickets</a
           >
         }
         <a

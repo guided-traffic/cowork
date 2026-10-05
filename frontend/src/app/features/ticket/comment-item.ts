@@ -14,6 +14,7 @@ import { AgentMark } from '../../shared/agent-mark';
 import { ConflictNote } from '../../shared/conflict-note';
 import { MentionList } from '../../shared/mention-list';
 import { Mentionable, mentionCandidates, mentionsIn } from '../../shared/mentions';
+import { RenderedText } from '../../shared/rendered-text';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { FilePreview } from './file-preview';
 import { fileIcon } from './records-cards';
@@ -21,7 +22,8 @@ import { UploadKey } from '../../shared/upload-key';
 
 /**
  * One comment of the thread (docs/adr/0015): its author, the agent or the token it came through,
- * its text — or that it was withdrawn — and its files (docs/adr/0016 D1), a raster image with its
+ * its text as the server rendered it (docs/adr/0011 D6), as text where the answer has no rendering —
+ * or that it was withdrawn — and its files (docs/adr/0016 D1), a raster image with its
  * preview. Its author edits it, over the version the editing began with (docs/adr/0050 D3), and
  * attaches files to it; its author or a tenant administrator withdraws it, which hides the text
  * from everybody and keeps the entry (D3); an edited comment shows its earlier texts on request.
@@ -38,6 +40,7 @@ import { UploadKey } from '../../shared/upload-key';
     FilePreview,
     FormsModule,
     MentionList,
+    RenderedText,
     Textarea,
     Tooltip,
   ],
@@ -111,8 +114,14 @@ import { UploadKey } from '../../shared/upload-key';
           </button>
         </div>
       </form>
+    } @else if (comment().body_html; as html) {
+      <app-rendered-text
+        class="text"
+        [attr.data-testid]="'comment-text-' + comment().id"
+        [html]="html"
+      />
     } @else {
-      <p class="text">{{ comment().body }}</p>
+      <p class="text plain">{{ comment().body }}</p>
     }
     @if (files().length > 0) {
       <ul class="files">
@@ -199,7 +208,7 @@ import { UploadKey } from '../../shared/upload-key';
     .meta {
       font-size: 0.75rem;
     }
-    .text {
+    p.text {
       white-space: pre-wrap;
     }
     .link {

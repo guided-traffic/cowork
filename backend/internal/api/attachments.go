@@ -51,7 +51,7 @@ func attachmentView(t tenantScope, tc ticketCtx, a attachment) apigen.Attachment
 		ContentType: apigen.AttachmentContentType(a.ContentType), Comment: nullableOf(a.CommentID),
 		UploadedBy: personView(a.UploadedBy, a.UploadedByUsername, a.UploadedByName), Agent: nullableOf(a.Agent),
 		Token: tokenMarkView(a.TokenID, a.TokenName), CreatedAt: a.CreatedAt,
-		ContentUrl: ticketURL(t, tc.project.Key, tc.row.Number) + "/attachments/" + a.ID.String() + "/content",
+		ContentUrl: attachmentContentURL(t, ticketAt{project: tc.project.Key, number: tc.row.Number}, a.ID),
 	}
 }
 
@@ -284,8 +284,10 @@ func (s *Server) withinQuota(ctx context.Context, r *store.Reader, t tenantScope
 
 // GetAttachmentUsage answers the bytes and the count of the tenant's
 // attachments against its quota, for its administrators (docs/adr/0016 D6):
-// the sum counts files of tickets a member may not see.
-func (s *Server) GetAttachmentUsage(ctx context.Context, _ apigen.GetAttachmentUsageRequestObject) (apigen.GetAttachmentUsageResponseObject, error) {
+// the sum counts files of tickets a member may not see, and a deleted
+// ticket's until the purge. An answer the client holds unchanged is a 304
+// (docs/adr/0054 D7).
+func (s *Server) GetAttachmentUsage(ctx context.Context, req apigen.GetAttachmentUsageRequestObject) (apigen.GetAttachmentUsageResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
 		return nil, perr
@@ -303,7 +305,11 @@ func (s *Server) GetAttachmentUsage(ctx context.Context, _ apigen.GetAttachmentU
 	if quota := s.h.opts.AttachmentTenantQuota; quota > 0 {
 		out.QuotaBytes = nullableOf(&quota)
 	}
-	return apigen.GetAttachmentUsage200JSONResponse(out), nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.GetAttachmentUsage304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.GetAttachmentUsage200JSONResponse{Body: out, Headers: apigen.GetAttachmentUsage200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // mayAttach holds an upload to the ticket's role, the comment it names —

@@ -18,7 +18,8 @@ info:
     operation says which it takes: most take either, a few a session only —
     creating a token, a tenant or a local account, resetting or changing a
     password, logging out, a turn of the chat and stopping one, choosing the
-    chat's capabilities, a global administrator's list of every tenant, and the
+    chat's capabilities, a global administrator's list of every tenant, purging a
+    deleted ticket — the one irreversible act on a ticket —, and the
     administration acts that give access: adding a member, setting a grant,
     making or changing a group mapping, restricting or opening a project,
     putting a person on its access list. A request of a session that writes must come from the installation's
@@ -41,6 +42,8 @@ tags:
   - name: projects
   - name: repositories
   - name: tickets
+  - name: filters
+  - name: search
   - name: questions
   - name: comments
   - name: time
@@ -88,6 +91,8 @@ paths:
     $ref: './me.yaml#/assigned'
   /api/v1/me/decisions:
     $ref: './me.yaml#/decisions'
+  /api/v1/me/search:
+    $ref: './search.yaml#/me'
   /api/v1/tenants:
     $ref: './tenants.yaml#/tenants'
   /api/v1/tenants/{tenant}:
@@ -140,10 +145,22 @@ paths:
     $ref: './chat.yaml#/turns'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
+  /api/v1/tenants/{tenant}/search:
+    $ref: './search.yaml#/tenant'
   /api/v1/tenants/{tenant}/projects/{project}/tickets:
     $ref: './tenants.yaml#/projectTickets'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}:
     $ref: './tenants.yaml#/ticket'
+  /api/v1/tenants/{tenant}/filters:
+    $ref: './filters.yaml#/savedFilters'
+  /api/v1/tenants/{tenant}/filters/{filter}:
+    $ref: './filters.yaml#/savedFilter'
+  /api/v1/tenants/{tenant}/deleted-tickets:
+    $ref: './tenants.yaml#/deletedTickets'
+  /api/v1/tenants/{tenant}/deleted-tickets/{key}:
+    $ref: './tenants.yaml#/deletedTicket'
+  /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore:
+    $ref: './tenants.yaml#/deletedTicketRestore'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body:
     $ref: './tenants.yaml#/ticketBody'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override:

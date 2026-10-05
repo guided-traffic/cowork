@@ -15,6 +15,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
@@ -29,14 +30,15 @@ const (
 // comment is the columns every comment query returns.
 type comment = readq.GetCommentRow
 
-// commentView renders a comment; a withdrawn comment's text and mentions
-// never leave (docs/adr/0015 D3, D5).
+// commentView renders a comment without its HTML, which renderedComment adds;
+// a withdrawn comment's text and mentions never leave (docs/adr/0015 D3, D5).
 func commentView(c comment) apigen.Comment {
 	v := apigen.Comment{
 		Id: c.ID, Author: personView(c.AuthorID, c.AuthorUsername, c.AuthorName), Agent: nullableOf(c.Agent),
-		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), Withdrawn: c.WithdrawnAt != nil,
-		WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited, Explains: make([]apigen.AuditAction, 0, len(c.Explains)),
-		Mentions: append([]uuid.UUID{}, c.Mentions...), Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), BodyHtml: nullableString(nil),
+		Withdrawn: c.WithdrawnAt != nil, WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited,
+		Explains: make([]apigen.AuditAction, 0, len(c.Explains)), Mentions: append([]uuid.UUID{}, c.Mentions...),
+		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if v.Withdrawn {
 		v.Body = nullableString(nil)
@@ -61,7 +63,10 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 	const op = "listComments"
 	scope := fmt.Sprintf("%s/%s/%d/%t", t.ID, req.Project, req.Number, desc)
 	size := s.h.pageSize(req.Params.Limit)
-	var rows []readq.ListCommentsRow
+	var (
+		rows   []readq.ListCommentsRow
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		tc, err := visibleTicket(ctx, r, t, req.Project, req.Number)
 		if err != nil {
@@ -73,6 +78,10 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 		}
 		rows, err = r.ListComments(ctx, readq.ListCommentsParams{TenantID: t.ID, TicketID: tc.row.ID, After: after,
 			Descending: desc, PageSize: limitArg(size)})
+		if err != nil {
+			return err
+		}
+		images, err = ticketImages(ctx, r, t, tc)
 		return err
 	})
 	if err != nil {
@@ -81,7 +90,7 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 	rows, next := page(s.h, rows, size, op, scope, func(c readq.ListCommentsRow) string { return c.ID.String() })
 	out := apigen.CommentList{Items: make([]apigen.Comment, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, c := range rows {
-		out.Items = append(out.Items, commentView(comment(c)))
+		out.Items = append(out.Items, renderedComment(comment(c), images))
 	}
 	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
 	if unchanged {
@@ -107,16 +116,16 @@ func (s *Server) uuidAfter(op, scope string, cursor *string) (*uuid.UUID, error)
 }
 
 // visibleComment reads a comment through its ticket's predicate.
-func visibleComment(ctx context.Context, r *store.Reader, t tenantScope, project string, number int, id uuid.UUID) (comment, error) {
+func visibleComment(ctx context.Context, r *store.Reader, t tenantScope, project string, number int, id uuid.UUID) (ticketCtx, comment, error) {
 	tc, err := visibleTicket(ctx, r, t, project, number)
 	if err != nil {
-		return comment{}, err
+		return tc, comment{}, err
 	}
 	c, err := r.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return c, problem.New(problem.NotFound, "no such comment")
+		return tc, c, problem.New(problem.NotFound, "no such comment")
 	}
-	return c, err
+	return tc, c, err
 }
 
 // GetComment answers one comment.
@@ -125,16 +134,23 @@ func (s *Server) GetComment(ctx context.Context, req apigen.GetCommentRequestObj
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
 	}
-	var c comment
+	var (
+		c      comment
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		var err error
-		c, err = visibleComment(ctx, r, t, req.Project, req.Number, req.Comment)
+		tc, found, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment)
+		if err != nil {
+			return err
+		}
+		c = found
+		images, err = ticketImages(ctx, r, t, tc)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetComment200JSONResponse{Body: commentView(c), Headers: apigen.GetComment200ResponseHeaders{ETag: etag(c.Version)}}, nil
+	return apigen.GetComment200JSONResponse{Body: renderedComment(c, images), Headers: apigen.GetComment200ResponseHeaders{ETag: etag(c.Version)}}, nil
 }
 
 // writeComment adds a comment as the caller, with its act; an agent writes
@@ -194,8 +210,9 @@ func placeIn(list []uuid.UUID) func(uuid.UUID) int {
 	return func(person uuid.UUID) int { return slices.Index(list, person) }
 }
 
-// added are the persons of next that previous does not hold, in next's order.
-func added(previous, next []uuid.UUID) []uuid.UUID {
+// mentionsAdded are the persons of next that previous does not hold, in next's
+// order.
+func mentionsAdded(previous, next []uuid.UUID) []uuid.UUID {
 	var out []uuid.UUID
 	for _, person := range next {
 		if !slices.Contains(previous, person) {
@@ -214,8 +231,11 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 	if perr != nil {
 		return nil, perr
 	}
-	var added comment
-	var location string
+	var (
+		added    comment
+		images   richtext.Images
+		location string
+	)
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -232,11 +252,11 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		if err != nil {
 			return err
 		}
-		if added, err = w.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id}); err != nil {
+		if added, images, err = writtenComment(ctx, w.Reader, t, tc, id); err != nil {
 			return err
 		}
 		location = ticketURL(t, tc.project.Key, tc.row.Number) + "/comments/" + id.String()
-		res, err := stored(commentView(added), map[string]string{headerETag: *etag(added.Version), headerLocation: location})
+		res, err := stored(renderedComment(added, images), map[string]string{headerETag: *etag(added.Version), headerLocation: location})
 		if err != nil {
 			return err
 		}
@@ -254,7 +274,7 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		return apigen.AddComment201JSONResponse{Body: body, Headers: apigen.AddComment201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
-	return apigen.AddComment201JSONResponse{Body: commentView(added), Headers: apigen.AddComment201ResponseHeaders{
+	return apigen.AddComment201JSONResponse{Body: renderedComment(added, images), Headers: apigen.AddComment201ResponseHeaders{
 		ETag: etag(added.Version), Location: &location}}, nil
 }
 
@@ -299,69 +319,72 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 	if perr != nil {
 		return nil, perr
 	}
-	var out comment
+	var (
+		out    comment
+		images richtext.Images
+	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		var err error
-		out, err = s.editComment(ctx, w, t, req, version)
+		out, images, err = s.editComment(ctx, w, t, req, version)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.EditComment200JSONResponse{Body: commentView(out), Headers: apigen.EditComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.EditComment200JSONResponse{Body: renderedComment(out, images), Headers: apigen.EditComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // editComment is the edit's transaction: the comment through its ticket's
 // predicate, the author's rule, the version the edit read, and the text and
 // mentions written with the act, which tells the persons the edit adds
-// (docs/adr/0015 D3–D5). A write that changes nothing answers the comment as
-// it is with store.ErrNoChange.
+// (docs/adr/0015 D3–D5). It answers the comment as the write left it, with the
+// images its text may show; a write that changes nothing answers it as it is
+// with store.ErrNoChange.
 func (s *Server) editComment(ctx context.Context, w *store.Writer, t tenantScope, req apigen.EditCommentRequestObject,
-	version int32) (comment, error) {
+	version int32) (comment, richtext.Images, error) {
 	tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 	if err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	c, err := commentForWrite(ctx, w.Reader, t, tc, req.Comment)
 	if err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	if perr := mayChangeComment(principal(ctx), tc, c, false); perr != nil {
-		return comment{}, perr
+		return comment{}, nil, perr
 	}
 	if c.WithdrawnAt != nil {
-		return comment{}, problem.New(problem.StateConflict, "the comment is withdrawn")
+		return comment{}, nil, problem.New(problem.StateConflict, "the comment is withdrawn")
 	}
 	if c.Version != version {
-		return comment{}, stale(c.Version, map[string]any{fieldBody: c.Body})
+		return comment{}, nil, stale(c.Version, map[string]any{fieldBody: c.Body})
 	}
 	mentions := c.Mentions
 	if req.Body.Mentions != nil {
 		mentions = *req.Body.Mentions
 	}
-	current := readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: c.ID}
 	if c.Body == req.Body.Body && sameMentions(c.Mentions, mentions) {
-		out, err := w.GetComment(ctx, current)
+		out, images, err := writtenComment(ctx, w.Reader, t, tc, c.ID)
 		if err == nil {
 			err = store.ErrNoChange
 		}
-		return out, err
+		return out, images, err
 	}
 	// Only a person the edit adds is checked and told: those it keeps were
 	// checked when they were added (docs/adr/0015 D5).
-	anew := added(c.Mentions, mentions)
+	anew := mentionsAdded(c.Mentions, mentions)
 	if err := checkMentions(ctx, w.Reader, t, tc, anew, placeIn(mentions)); err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	if err := s.reviseComment(ctx, w, t, c, version, req.Body.Body, mentions); err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	ev := store.Event{EntityType: entityComment, EntityID: c.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row), Action: actionEdited}
 	if len(anew) > 0 {
 		ev.Notices = []store.Notice{{Reason: store.NoticeMentioned, People: anew}}
 	}
 	w.Record(ev)
-	return w.GetComment(ctx, current)
+	return writtenComment(ctx, w.Reader, t, tc, c.ID)
 }
 
 // reviseComment keeps the comment's previous text in its history and writes
@@ -388,7 +411,7 @@ func (s *Server) reviseComment(ctx context.Context, w *store.Writer, t tenantSco
 
 // sameMentions reports whether two lists name the same persons, in any order.
 func sameMentions(a, b []uuid.UUID) bool {
-	return len(added(a, b)) == 0 && len(added(b, a)) == 0
+	return len(mentionsAdded(a, b)) == 0 && len(mentionsAdded(b, a)) == 0
 }
 
 // WithdrawComment hides a comment's text and keeps the entry
@@ -424,7 +447,8 @@ func (s *Server) WithdrawComment(ctx context.Context, req apigen.WithdrawComment
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.WithdrawComment200JSONResponse{Body: commentView(out), Headers: apigen.WithdrawComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	// A withdrawn comment has no text to render.
+	return apigen.WithdrawComment200JSONResponse{Body: renderedComment(out, nil), Headers: apigen.WithdrawComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // ListCommentRevisions lists a comment's previous texts; none once it is
@@ -439,7 +463,7 @@ func (s *Server) ListCommentRevisions(ctx context.Context, req apigen.ListCommen
 	size := s.h.pageSize(req.Params.Limit)
 	var rows []readq.ListCommentRevisionsRow
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		if _, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment); err != nil {
+		if _, _, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment); err != nil {
 			return err
 		}
 		after, err := s.uuidAfter(op, scope, req.Params.Cursor)

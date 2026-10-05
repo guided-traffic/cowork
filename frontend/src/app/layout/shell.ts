@@ -8,19 +8,21 @@ import {
   ElementRef,
   inject,
   Injector,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { Avatar } from 'primeng/avatar';
 import { ButtonDirective } from 'primeng/button';
+import { InputText } from 'primeng/inputtext';
 import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { Toast } from 'primeng/toast';
 import { Tooltip } from 'primeng/tooltip';
-import { catchError, of } from 'rxjs';
+import { catchError, filter, map, of } from 'rxjs';
 import { Wordmark } from '../brand/logo';
 import { AuthService } from '../core/auth.service';
 import { ChatService } from '../core/chat.service';
@@ -52,6 +54,19 @@ export function initials(name: string): string {
   return letters.toUpperCase();
 }
 
+/**
+ * The words of the search a URL shows, `/me/search?q=…` or `/t/<tenant>/search?q=…`; null for any
+ * other page.
+ */
+export function searchedFor(router: Router, url: string): string | null {
+  const tree = router.parseUrl(url);
+  const path = tree.root.children['primary']?.segments.map((segment) => segment.path) ?? [];
+  const isSearch =
+    (path.length === 2 && path[0] === 'me' && path[1] === 'search') ||
+    (path.length === 3 && path[0] === 't' && path[2] === 'search');
+  return isSearch ? String(tree.queryParams['q'] ?? '') : null;
+}
+
 /** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
 export const overlayQuery = '(max-width: 64rem)';
 
@@ -68,6 +83,7 @@ export const overlayQuery = '(max-width: 64rem)';
     CdkScrollable,
     ChatPanel,
     FormsModule,
+    InputText,
     LiveIndicator,
     Menu,
     NewProjectDialog,
@@ -124,6 +140,25 @@ export class Shell {
   });
   protected readonly initials = computed(() => initials(this.session.person()?.display_name ?? ''));
 
+  /** The words of the search the page shows; null on any other page. */
+  private readonly searched = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => searchedFor(this.router, event.urlAfterRedirects)),
+    ),
+    { initialValue: searchedFor(this.router, this.router.url) },
+  );
+  /** What the search box holds: what the person types, the search shown, empty elsewhere. */
+  protected readonly query = linkedSignal(() => this.searched() ?? '');
+  /** Where the search box looks: inside a tenant the person works in, that tenant first. */
+  private readonly searchTenant = computed(() =>
+    this.session.oversight() ? null : this.session.tenant(),
+  );
+  protected readonly searchLabel = computed(() => {
+    const tenant = this.searchTenant();
+    return tenant ? `Search ${this.session.shown()?.name ?? tenant}` : 'Search all your tenants';
+  });
+
   private readonly auth = inject(AuthService);
   private readonly problems = inject(ProblemService);
   private readonly navigate = inject(HARD_NAVIGATION);
@@ -173,6 +208,22 @@ export class Shell {
     } catch (error) {
       this.problems.report(error);
     }
+  }
+
+  /**
+   * Opens the results of what the box holds: inside a tenant the person works in, that tenant's
+   * search, which offers every tenant's next; anywhere else — and in a tenant a global
+   * administrator only oversees, whose work they do not see — every tenant's (docs/adr/0023 D4).
+   */
+  protected search(): void {
+    const q = this.query().trim();
+    if (!q) {
+      return;
+    }
+    const tenant = this.searchTenant();
+    void this.router.navigate(tenant ? ['/t', tenant, 'search'] : ['/me', 'search'], {
+      queryParams: { q },
+    });
   }
 
   protected switchTenant(slug: string): void {

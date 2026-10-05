@@ -31,6 +31,24 @@ describe('TenantTokensService', () => {
     expect((await done).total).toBe(0);
   });
 
+  it('asks for the same page again with the weak ETag it holds, and keeps the page on a 304 (docs/adr/0054 D7)', async () => {
+    const first = service.page('acme', 1, 25);
+    http
+      .expectOne((request) => request.url === '/api/v1/tenants/acme/tokens')
+      .flush(
+        { items: [], next_cursor: null, total: 3, page: 1, per_page: 25 },
+        { headers: { ETag: 'W/"tokens"' } },
+      );
+    expect((await first).total).toBe(3);
+
+    const again = service.page('acme', 1, 25);
+    const sent = http.expectOne((request) => request.url === '/api/v1/tenants/acme/tokens');
+    expect(sent.request.headers.get('If-None-Match')).toBe('W/"tokens"');
+    sent.flush(null, { status: 304, statusText: 'Not Modified' });
+
+    expect((await again).total).toBe(3);
+  });
+
   it('revokes a token by its id in the tenant, with no body and no key', async () => {
     const done = service.revoke('acme', 't1');
 

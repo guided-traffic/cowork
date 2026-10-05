@@ -57,9 +57,9 @@ parameter set T38's filter bar applies to it.
 
 ## Required changes
 
-1. Run the end-to-end tier with `tenant-board.spec.ts` in it (`make e2e`), in Chromium and WebKit
-   and both schemes, and fix what it finds; then look at the board in both schemes under
-   `make dev`.
+1. The owner looks at the board in both schemes under `make dev`. The end-to-end tier ran
+   `tenant-board.spec.ts` in Chromium and WebKit and both schemes on a runner on 2026-10-05 (run
+   37269590545) and passed.
 
 ## Open questions
 

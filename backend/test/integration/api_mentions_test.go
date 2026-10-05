@@ -31,6 +31,11 @@ func TestAMentionTellsThePersonAndMakesThemAWatcher(t *testing.T) {
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	c := decode[apigen.Comment](t, res)
 	assert.ElementsMatch(t, []uuid.UUID{e.ViewerA, e.Both}, c.Mentions)
+	// A mention is plain @Name text beside the list of ids: the rendered body
+	// shows the text as written, and links nobody (docs/adr/0011 D6).
+	html, err := c.BodyHtml.Get()
+	require.NoError(t, err)
+	assert.Equal(t, "<p>@Viewer and @Both, please look</p>", html)
 	assert.Equal(t, []string{"mentioned"}, reasonsAbout(e.inbox(t, viewer, ""), tk.Key), "told once, that they are mentioned")
 	assert.Equal(t, []string{"mentioned"}, reasonsAbout(e.inbox(t, both, ""), tk.Key))
 	assert.Equal(t, []string{"commented"}, reasonsAbout(e.inbox(t, admin, ""), tk.Key), "the reporter watches and hears the comment")
@@ -55,6 +60,7 @@ func TestAMentionTellsThePersonAndMakesThemAWatcher(t *testing.T) {
 	assert.Equal(t, []string{"state_changed", "mentioned"}, reasonsAbout(e.inbox(t, viewer, ""), tk.Key), "nothing again")
 	c = edit(member, c.Version, map[string]any{"body": "@Viewer, @Both and @Admin, please look again"})
 	assert.ElementsMatch(t, []uuid.UUID{e.ViewerA, e.Both, e.AdminA}, c.Mentions, "an edit without the list keeps it")
+	assert.Equal(t, "<p>@Viewer, @Both and @Admin, please look again</p>", c.BodyHtml.MustGet(), "the edit's text is rendered")
 
 	// A person the list drops, and every person once the comment is withdrawn,
 	// watches by it no more.
@@ -65,6 +71,7 @@ func TestAMentionTellsThePersonAndMakesThemAWatcher(t *testing.T) {
 	e.send(t, member, http.StatusOK, http.MethodPut, commentPath+"/withdrawal", nil)
 	withdrawn := decode[apigen.Comment](t, e.s.do(t, member, http.MethodGet, commentPath, nil))
 	assert.Empty(t, withdrawn.Mentions, "a withdrawn comment shows no mentions")
+	assert.True(t, withdrawn.BodyHtml.IsNull(), "nor any text")
 	e.send(t, admin, http.StatusOK, http.MethodPost, path+"/transitions", map[string]any{"from": "decided", "to": "in-progress"})
 	assert.Len(t, reasonsAbout(e.inbox(t, both, ""), tk.Key), 3, "withdrawn: no longer told")
 }
@@ -123,4 +130,35 @@ func TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused(t *testing.T) {
 		map[string]any{"body": "found it", "mentions": []uuid.UUID{e.AdminA}}, "Idempotency-Key", uuid.NewString())
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	assert.Equal(t, "mentioned", reasonsAbout(e.inbox(t, admin, ""), tk.Key)[0])
+}
+
+// docs/adr/0024 D1, D3: a deleted ticket tells nobody of anything, its
+// mentions included. A comment on it is a 404 and mentions nobody, and the act
+// of a ticket that blocks it tells none of its watchers by mention — each
+// recipient is held to their sight of the ticket, which a deletion ends for
+// everybody (person_sees_ticket).
+func TestAMentionOnADeletedTicketTellsNobody(t *testing.T) {
+	e := newTicketEnv(t)
+	admin, member, viewer := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberA}, caller{Token: e.tk.ViewerA}
+	gone := e.fileIn(t, admin, e.SlugA, "ALPHA", task("deleted later"))
+	blocker := e.fileIn(t, member, e.SlugA, "ALPHA", task("blocks it"))
+	require.Equal(t, http.StatusCreated, e.link(t, member, blocker, apigen.LinkTypeBlocks, gone).StatusCode)
+	path := ticketPath(e.SlugA, "ALPHA", gone.Number)
+	e.send(t, member, http.StatusCreated, http.MethodPost, path+"/comments",
+		map[string]any{"body": "@Viewer, look", "mentions": []uuid.UUID{e.ViewerA}})
+	require.Equal(t, []string{"mentioned"}, reasonsAbout(e.inbox(t, viewer, ""), gone.Key))
+	told := func() int {
+		return scalar[int](t, `SELECT count(*) FROM notifications WHERE user_id = $1`, e.ViewerA)
+	}
+	before := told()
+
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, path, nil)
+	assertProblem(t, e.s.do(t, member, http.MethodPost, path+"/comments",
+		map[string]any{"body": "@Viewer, still?", "mentions": []uuid.UUID{e.ViewerA}}), http.StatusNotFound, "not_found")
+	moved := e.move(t, member, blocker, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDropped,
+		Reason: ptr("not needed")})
+	require.Equal(t, http.StatusOK, moved.StatusCode(), string(moved.Body))
+
+	assert.Equal(t, before, told(), "neither the comment nor the blocker's close tells the mentioned watcher")
+	assert.Empty(t, reasonsAbout(e.inbox(t, viewer, ""), gone.Key), "and the inbox leaves the deleted ticket out")
 }

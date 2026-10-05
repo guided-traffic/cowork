@@ -7,6 +7,7 @@ import {
   Injector,
   untracked,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Paginator } from 'primeng/paginator';
@@ -15,6 +16,7 @@ import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { MemberToken, Scope, TokenState } from '../../api/models';
 import { CAPABILITY } from '../../api/models/capability-array';
+import { changesMemberships, EventStreamService } from '../../core/event-stream.service';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -74,8 +76,8 @@ export function revocationMessage(token: MemberToken): string {
  * of 25, 50 or 100 (docs/adr/0048 D4). A token restricted to another tenant is not shown. Revoking
  * one asks first, and for an unrestricted token the question says that it ends in the person's
  * other tenants too. A member who is no administrator reads that the list is the administrators'
- * and asks nothing. Tokens are not on the event stream: the list is read when the page opens and
- * after a revocation.
+ * and asks nothing. Tokens are not on the event stream: the list is read when the page opens, after
+ * a revocation, and again on a membership change of the tenant, a `resync` and a `poll`.
  */
 @Component({
   selector: 'app-tenant-tokens',
@@ -118,6 +120,16 @@ export class TenantTokens {
   });
 
   constructor() {
+    // Tokens are not on the event stream; who belongs to the tenant is, and a token of a person who
+    // left is no longer in the list. A gap in the stream and the fallback's poll load it again, as
+    // they do every list, at the cost of a 304 when nothing changed (docs/adr/0054 D7).
+    inject(EventStreamService)
+      .events.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (changesMemberships(event, this.session.tenant())) {
+          refresh(this.table.rows, this.injector);
+        }
+      });
     // A question belongs to the tenant it was asked in: another tenant's page closes it.
     effect(() => {
       this.session.tenant();

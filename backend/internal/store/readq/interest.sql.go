@@ -65,7 +65,7 @@ FROM ticket_interest i
 JOIN tickets t ON t.tenant_id = i.tenant_id AND t.id = i.ticket_id
 LEFT JOIN users u ON u.id = i.user_id
 WHERE i.tenant_id = $1 AND i.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR i.user_id > $3::uuid)
 ORDER BY i.user_id
 LIMIT $4

@@ -6,11 +6,39 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 "deleting?": the full matrix — soft delete with purge for tickets, archive for projects,
 deactivation for people, explicit deletion for tenants — over "dropped is the delete", over
 soft delete for tickets alone, and over hard delete. The additional rules of D7 were put to
-the owner with the question and confirmed.
+the owner with the question and confirmed. Amended 2026-10-05, built on the recommendation, the
+owner reviewing the result (D7: the purge takes a browser session; a token, an administrator's
+`admin` token included, cannot make it).
 
 **Partly built** (phase 2, 2026-10-02): D4 for projects (archived, never deleted) and people
-(a `deactivated_at` column a token's person is refused by). Ticket deletion, the purge, its
-filter on every list and the tenant deletion are not built; no route deletes anything.
+(a `deactivated_at` column a token's person is refused by). ~~Ticket deletion, the purge, its
+filter on every list and the tenant deletion are not built; no route deletes anything.~~ *(Ticket
+deletion and the purge built 2026-10-05, below; the tenant deletion is not.)*
+
+**Built** (phase 3, 2026-10-05): D1–D3 and D7 for tickets.
+[Migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql) adds
+`deleted_at` and `deleted_by`; `DELETE …/projects/{project}/tickets/{number}` deletes,
+`GET …/deleted-tickets` is the bin, `PUT …/deleted-tickets/{key}/restore` restores and
+`DELETE …/deleted-tickets/{key}` purges — a tenant administrator's acts with `admin` scope, never an
+agent's, the purge in a browser session only (D7 as amended 2026-10-05)
+([`api/deletion.go`](../../backend/internal/api/deletion.go)), each recorded and published.
+D3 as built: every query of the data layer that reads a ticket carries `deleted_at IS NULL` beside
+the visibility predicate, held to it by a unit test over the query files; the bin's two queries and
+the purge's invert it, and the rank keys, a writer's reread, the publication of an act and the
+integrity walks name their exemptions. D2 as built: the job `ticket-purge` runs every hour on every
+replica under its advisory lock ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
+D5), up to 200 tickets a run, and the explicit purge asks twice in the browser and takes a browser
+session in the API; deleting what belongs to the ticket is held to the purge of a deleted ticket by restrictive
+policies, the audit rows' content is emptied by an owner's function
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D3 as amended
+2026-10-05), and the attachment objects go after the commit. Two consequences the record did not
+name were decided in building: a purged ticket's children become roots, and a block that waited on
+it waits on its key as an external reference, an act on that ticket. D1's "search" is covered by
+the same filter — the `q` filter of the lists and the search of
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md) D5, every ticket
+it reads —, and the person-level stream carries the deletion and the restoration across the
+person's tenants, on which the person-level pages and the inbox's count read their lists again; the
+dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built.
 
 **Partly built** (phase 3, 2026-10-03): D5 for local accounts — a tenant's administrator
 deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the
@@ -76,7 +104,19 @@ administrator and the time. The slug is not reused.
 tenant deletion is a global administrator's. An agent never deletes anything. Deleting a
 ticket that other open tickets depend on ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
 D6) shows the dependents and asks for confirmation; it does not refuse. Restoring is a
-recorded act.
+recorded act. *(Amended 2026-10-05, built on the recommendation, the owner reviewing the result:
+the purge takes a person in a browser session. A token — an administrator's `admin`-scope token
+included — answers `403 session_required` on `DELETE …/deleted-tickets/{key}` before anything is
+looked up, and a session the agent header marks is refused with `403 agent_forbidden`, as on every
+operation that takes a session only. Deleting and restoring stay open to a tenant administrator's
+`admin`-scope token: the bin undoes a deletion for thirty days, and a restoration brings back only
+what was there. The purge is the one act on a ticket nothing undoes — the ticket, its texts and its
+files gone, its audit rows emptied —, so what a leaked token did there would outlive the token's
+revocation, which is the rule by which [ADR 0035](0035-personal-access-tokens.md) D5 keeps an act
+to a session. The options weighed: (a) the purge in a session only — chosen; (b) all three acts
+open to an `admin`-scope token, as first built, which leaves a leaked administrator's token able to
+destroy a ticket for good; (c) deleting and purging both in a session only, which takes from an
+administrator's script a deletion the bin can undo and closes nothing (a) leaves open.)*
 
 ## Consequences
 

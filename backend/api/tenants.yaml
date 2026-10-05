@@ -570,11 +570,142 @@ ticket:
               $ref: './components/schemas.yaml#/Ticket'
       default:
         $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: deleteTicket
+    tags: [tickets]
+    summary: Delete a ticket into the tenant's bin
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+      docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+      like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+      it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+      lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+      (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+      published. A restoration brings everything back; thirty days after the deletion the purge job
+      removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+      shows the dependents and asks first (D7).
+    responses:
+      '204':
+        description: Deleted
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listDeletedTickets
+    tags: [tickets]
+    summary: The tenant's bin of deleted tickets
+    description: |
+      The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+      each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+      list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+      restricted to a project is refused like an unknown tenant.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the bin
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/DeletedTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicket:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  delete:
+    operationId: purgeTicket
+    tags: [tickets]
+    summary: Purge a deleted ticket for good
+    description: |
+      A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+      **in a browser session only**: the one irreversible act on a ticket, so a token — an
+      administrator's `admin` token included — answers `403 session_required`, and the purge job
+      does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+      ticket of the bin only — any other key is 404. The ticket, its
+      comments, questions, links, stakes, time entries, notifications and attachments are removed,
+      and the attachments' objects after them; its children become roots, and a block that waited
+      on it waits on its key as an external reference. Its audit rows stay with their content
+      emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+      Irreversible: the browser asks a second time. Recorded as `purged` and published.
+    security:
+      - sessionCookie: []
+    responses:
+      '204':
+        description: Purged
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicketRestore:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  put:
+    operationId: restoreTicket
+    tags: [tickets]
+    summary: Restore a deleted ticket from the bin
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+      docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+      as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+      `restored` and published.
+    responses:
+      '200':
+        description: The restored ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 ticketBody:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicketBody
+    tags: [tickets]
+    summary: The ticket's body, as Markdown and rendered
+    description: |
+      The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+      own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+      is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+      as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+      installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+      image shows only when it names a raster attachment of this ticket, from that attachment's
+      own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+      Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+      replacement of the body names in `If-Match`; the HTML changes with the ticket's
+      attachments as well, which raise no version.
+    responses:
+      '200':
+        description: The body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketBody'
+            example:
+              body: "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7)."
+              body_html: "<h2>Current state</h2>\n<p>The gate fails on <code>readyReplicas</code> — see <a href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\">the run</a>.</p>"
+              version: 4
+      default:
+        $ref: './components/responses.yaml#/Problem'
   put:
     operationId: replaceTicketBody
     tags: [tickets]

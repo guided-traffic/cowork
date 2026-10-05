@@ -16,6 +16,12 @@ export interface Comment {
    * Markdown; null once withdrawn (docs/adr/0015 D3)
    */
   body: (string | null);
+
+  /**
+   * The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+   * the Markdown; null once withdrawn
+   */
+  body_html: (string | null);
   created_at: string;
 
   /**

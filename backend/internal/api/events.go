@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,9 +33,20 @@ const defaultHeartbeat = 20 * time.Second
 // count.
 const inboxDebounce = 100 * time.Millisecond
 
-// serveEvents streams the tenant's events the caller may see
-// (docs/adr/0054). The pipeline has authenticated the caller and admitted
-// them to the tenant before the first byte.
+// streamReq is what a stream holds of its request: the tenant it is opened on
+// and the caller, whether it is the person-level stream (?me=true), and
+// whether that spans every tenant of the person — not for a token restricted
+// to a tenant, which reaches no other (docs/adr/0054 D1, docs/adr/0035 D3).
+type streamReq struct {
+	t        tenantScope
+	p        auth.Principal
+	me, span bool
+}
+
+// serveEvents streams the events the caller may see of the tenant, and for a
+// person-level stream of every tenant of the person (docs/adr/0054). The
+// pipeline has authenticated the caller and admitted them to the tenant
+// before the first byte.
 func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	t := tenantFrom(ctx)
@@ -48,8 +61,10 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := r.URL.Query().Get("me") == "true"
-	filter, err := h.streamFilter(ctx, t, p, me)
-	if err != nil {
+	sr := streamReq{t: t, p: p, me: me, span: me && !restricted(p)}
+	st := pumpState{refiltered: map[uuid.UUID]uint64{}}
+	var err error
+	if st.filters, st.slugs, err = h.streamFilters(ctx, sr); err != nil {
 		h.writeError(w, r, err)
 		return
 	}
@@ -66,7 +81,8 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 			last = &id
 		}
 	}
-	stream, replay, resync := h.opts.Events.Subscribe(t.ID, filter, last)
+	stream, replay, resync := h.opts.Events.Subscribe(events.Subscription{Tenant: t.ID, Person: p.PersonID,
+		Me: me, Span: sr.span, Filters: maps.Clone(st.filters)}, last)
 	if stream == nil {
 		problem.Write(w, r, problem.New(problem.NotReady, "the event stream is unavailable; poll the lists"))
 		return
@@ -81,13 +97,13 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 		writeControl(w, events.Resync)
 	}
 	for _, e := range replay {
-		writeEvent(w, e)
+		writeEvent(w, e, st.slugs[e.Tenant])
 	}
 	if me {
 		writeInbox(w, unread)
 	}
 	flusher.Flush()
-	h.pump(ctx, w, flusher, stream, t, p, me, filter)
+	h.pump(ctx, w, flusher, stream, sr, &st)
 }
 
 // personUnread is the unread count a person-level stream tells: the person's
@@ -100,35 +116,36 @@ func (h *handler) personUnread(ctx context.Context) (int, error) {
 	return h.unread(ctx, tenants)
 }
 
-// pumpState is what a stream's pump holds between two events: the filter it
-// computed last, how many of the stream's admission changes that filter
-// knows, and the wait of a burst of inbox changes.
+// pumpState is what a stream's pump holds between two events: the filter of
+// every tenant it follows as it computed it last, the slugs it writes, how
+// many of the stream's admission changes each tenant's filter knows, and the
+// wait of a burst of inbox changes.
 type pumpState struct {
-	filter     events.Filter
-	refiltered uint64
+	filters    map[uuid.UUID]events.Filter
+	slugs      map[uuid.UUID]string
+	refiltered map[uuid.UUID]uint64
 	inbox      debounce
 }
 
 // pump writes the stream's events until it ends: the client leaves, the hub
 // ends it, or the heartbeat finds the token or the membership gone. An act
-// that changes what the stream may admit makes it compute its filter again
-// before the next event, and so does every heartbeat (docs/adr/0054 D3). A
-// person-level stream tells the unread count once a burst of inbox changes is
-// over.
-func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, t tenantScope, p auth.Principal, me bool, filter events.Filter) {
+// that changes what the stream may admit of a tenant makes it compute that
+// tenant's filter again before the tenant's next event, and every heartbeat
+// computes every tenant's (docs/adr/0054 D3). A person-level stream tells the
+// unread count once a burst of inbox changes is over.
+func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, sr streamReq, st *pumpState) {
 	beat := h.opts.Heartbeat
 	if beat <= 0 {
 		beat = defaultHeartbeat
 	}
 	ticker := time.NewTicker(beat)
 	defer ticker.Stop()
-	st := pumpState{filter: filter}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case e := <-stream.C:
-			if !h.handOn(ctx, w, stream, &st, e, t, p, me) {
+			if !h.handOn(ctx, w, stream, st, e, sr) {
 				return
 			}
 		case <-st.inbox.due:
@@ -146,64 +163,122 @@ func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.
 			}
 			return
 		case <-ticker.C:
-			now, ok := h.stillAdmitted(ctx, t, p)
-			if !ok {
+			if !h.heartbeat(ctx, w, stream, st, sr) {
 				return
 			}
-			seen := h.opts.Events.Changes(stream)
-			f, err := h.streamFilter(ctx, now, p, me)
-			if err != nil {
-				return
-			}
-			h.opts.Events.Refilter(stream, f, seen)
-			st.filter, st.refiltered = f, max(st.refiltered, seen)
-			_, _ = fmt.Fprint(w, ": heartbeat\n\n")
 		}
 		flusher.Flush()
 	}
 }
 
-// handOn handles one event the hub handed over: it computes the stream's
-// filter again first when the event changed what the stream may admit, starts
-// the wait of an inbox burst, drops what the hub withheld or what the filter
-// refuses of an event the hub could not judge, and writes the rest
-// (writeStreamed). It is false when the stream must end.
-func (h *handler) handOn(ctx context.Context, w http.ResponseWriter, stream *events.Stream, st *pumpState, e events.Event, t tenantScope, p auth.Principal, me bool) bool {
-	if e.Refilter > st.refiltered {
-		f, seen, ok := h.refilter(ctx, stream, t, p, me)
-		if !ok {
-			return false
-		}
-		st.filter, st.refiltered = f, seen
+// heartbeat checks what a new request would (stillAdmitted), computes the
+// filter of every tenant the stream follows again — for a spanning stream the
+// person's tenants as their memberships stand now: one they left it no longer
+// follows, one they joined it does — and writes the comment. It is false when
+// the stream must end.
+func (h *handler) heartbeat(ctx context.Context, w http.ResponseWriter, stream *events.Stream, st *pumpState, sr streamReq) bool {
+	now, ok := h.stillAdmitted(ctx, sr.t, sr.p)
+	if !ok {
+		return false
 	}
-	switch {
-	case e.Entity == store.EntityInbox:
-		st.inbox.start()
-		return true
-	case e.Withheld || (e.Unjudged && !st.filter.Admits(e)):
-		return true
-	}
-	return h.writeStreamed(ctx, w, e, t, p)
-}
-
-// refilter computes what the stream admits again after an act that changes
-// it: the person's role in the tenant as the boundary reads it now, and the
-// projects they see. A person the boundary no longer admits ends the stream,
-// as the heartbeat would. It answers the filter and how many admission
-// changes it knows.
-func (h *handler) refilter(ctx context.Context, stream *events.Stream, t tenantScope, p auth.Principal, me bool) (events.Filter, uint64, bool) {
 	seen := h.opts.Events.Changes(stream)
-	now, perr := h.boundary(ctx, t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
-	if perr != nil {
-		return events.Filter{}, 0, false
-	}
-	f, err := h.streamFilter(ctx, now, p, me)
+	sr.t = now
+	filters, slugs, err := h.streamFilters(ctx, sr)
 	if err != nil {
 		h.streamFailed(ctx, err)
-		return events.Filter{}, 0, false
+		return false
 	}
-	h.opts.Events.Refilter(stream, f, seen)
-	return f, seen, true
+	h.opts.Events.Refilter(stream, filters, seen)
+	st.filters = filters
+	maps.Copy(st.slugs, slugs)
+	for tenant, n := range seen {
+		st.refiltered[tenant] = max(st.refiltered[tenant], n)
+	}
+	_, _ = fmt.Fprint(w, ": heartbeat\n\n")
+	return true
+}
+
+// handOn handles one event the hub handed over: it computes the filter of the
+// event's tenant again first when the event changed what the stream may admit
+// of it, starts the wait of an inbox burst, drops what the hub withheld, what
+// the filter refuses of an event the hub could not judge and what belongs to a
+// tenant the stream no longer follows, and writes the rest. The one act of a
+// tenant left that is written is the membership act that names the person and
+// that the stream followed the tenant until — the act that took the tenant
+// away, which is theirs; a later act that names them there, the removal of an
+// access entry they left behind, is not. It is false when the stream must end.
+func (h *handler) handOn(ctx context.Context, w http.ResponseWriter, stream *events.Stream, st *pumpState, e events.Event, sr streamReq) bool {
+	_, was := st.filters[e.Tenant]
+	if e.Refilter > st.refiltered[e.Tenant] && !h.refilter(ctx, stream, st, sr, e.Tenant) {
+		return false
+	}
+	if e.Entity == store.EntityInbox {
+		st.inbox.start()
+		return true
+	}
+	f, followed := st.filters[e.Tenant]
+	takenAway := was && e.Entity == store.EntityMembership && e.Person != nil && *e.Person == sr.p.PersonID
+	switch {
+	case e.Withheld:
+	case e.Unjudged && (!followed || !f.Admits(e)):
+	case !followed && !takenAway:
+	default:
+		writeEvent(w, e, st.slugs[e.Tenant])
+	}
+	return true
+}
+
+// refilter computes what the stream admits of one tenant again after an act
+// that changes it: for the tenant the stream is opened on, the person's role
+// as the boundary reads it now and the projects they see — a person the
+// boundary no longer admits ends the stream, as the heartbeat would; for
+// another tenant of a spanning stream, the person's membership there and the
+// projects they see, the stream no longer following a tenant the person left.
+// It is false when the stream must end.
+func (h *handler) refilter(ctx context.Context, stream *events.Stream, st *pumpState, sr streamReq, tenant uuid.UUID) bool {
+	seen := h.opts.Events.Changes(stream)
+	n := map[uuid.UUID]uint64{tenant: seen[tenant]}
+	var f events.Filter
+	var err error
+	if tenant == sr.t.ID {
+		now, perr := h.boundary(ctx, sr.t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
+		if perr != nil {
+			return false
+		}
+		f, err = h.streamFilter(ctx, now, sr.p)
+	} else {
+		var pt *personTenant
+		if pt, err = h.personTenant(ctx, tenant); err == nil && (pt == nil || !sr.span) {
+			h.opts.Events.Refilter(stream, nil, n)
+			delete(st.filters, tenant)
+			st.refiltered[tenant] = seen[tenant]
+			return true
+		}
+		if err == nil {
+			st.slugs[tenant] = pt.slug
+			f, err = h.tenantFilter(ctx, *pt, sr.p)
+		}
+	}
+	if err != nil {
+		h.streamFailed(ctx, err)
+		return false
+	}
+	h.opts.Events.Refilter(stream, map[uuid.UUID]events.Filter{tenant: f}, n)
+	st.filters[tenant], st.refiltered[tenant] = f, seen[tenant]
+	return true
+}
+
+// personTenant is the person's membership in the tenant, nil where they hold
+// none — or the request reaches it not (personTenants).
+func (h *handler) personTenant(ctx context.Context, tenant uuid.UUID) (*personTenant, error) {
+	tenants, err := h.personTenants(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	if i := slices.IndexFunc(tenants, func(t personTenant) bool { return t.id == tenant }); i >= 0 {
+		return &tenants[i], nil
+	}
+	return nil, nil
 }
 
 // debounce is the wait after the first inbox change of a burst
@@ -216,37 +291,6 @@ func (d *debounce) start() {
 	}
 }
 
-// writeStreamed writes an event the hub handed over: one of the stream's
-// tenant as it is, and a person-level one of another tenant — a question asked
-// of the person — only while the person belongs to that tenant and sees the
-// ticket, and a token restricted to a tenant never (docs/adr/0054 D1, D3,
-// docs/adr/0035 D3). That one carries no id: the stream's replay point stays
-// its tenant's (D5). It is false when the judgement failed.
-func (h *handler) writeStreamed(ctx context.Context, w http.ResponseWriter, e events.Event, t tenantScope, p auth.Principal) bool {
-	if e.Tenant == t.ID {
-		writeEvent(w, e)
-		return true
-	}
-	if restricted(p) && e.Tenant != p.RestrictedTenantID {
-		return true
-	}
-	var visible bool
-	err := h.opts.DB.InTenant(ctx, e.Tenant, func(r *store.Reader) error {
-		var err error
-		visible, err = r.SeesPublishedTicket(ctx, readq.SeesPublishedTicketParams{TenantID: e.Tenant, ProjectID: e.Project,
-			Confidential: e.Confidential, AssigneeID: e.Assignee, ReporterID: e.Reporter})
-		return err
-	})
-	if err != nil {
-		h.streamFailed(ctx, err)
-		return false
-	}
-	if visible {
-		writeAddressed(w, e)
-	}
-	return true
-}
-
 // streamFailed logs why a stream ended on a failure of its own; the client
 // reconnects.
 func (h *handler) streamFailed(ctx context.Context, err error) {
@@ -255,21 +299,62 @@ func (h *handler) streamFailed(ctx context.Context, err error) {
 	}
 }
 
-// streamFilter computes what the stream admits: the projects visible to the
-// caller now, which a project-restricted token narrows to its own, and the
-// confidential rule (docs/adr/0054 D3, docs/adr/0065 D5); me marks a
-// person-level stream.
-func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Principal, me bool) (events.Filter, error) {
+// streamFilters computes what the stream admits of every tenant it follows,
+// and their slugs: the tenant it is opened on (streamFilter), and for a
+// spanning stream every other tenant of the person (tenantFilter).
+func (h *handler) streamFilters(ctx context.Context, sr streamReq) (map[uuid.UUID]events.Filter, map[uuid.UUID]string, error) {
+	own, err := h.streamFilter(ctx, sr.t, sr.p)
+	if err != nil {
+		return nil, nil, err
+	}
+	filters := map[uuid.UUID]events.Filter{sr.t.ID: own}
+	slugs := map[uuid.UUID]string{sr.t.ID: sr.t.Slug}
+	if !sr.span {
+		return filters, slugs, nil
+	}
+	tenants, err := h.personTenants(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, pt := range tenants {
+		if pt.id == sr.t.ID {
+			continue
+		}
+		if filters[pt.id], err = h.tenantFilter(ctx, pt, sr.p); err != nil {
+			return nil, nil, err
+		}
+		slugs[pt.id] = pt.slug
+	}
+	return filters, slugs, nil
+}
+
+// streamFilter computes what the stream admits of the tenant it is opened on:
+// the projects visible to the caller now, which a project-restricted token
+// narrows to its own, and the confidential rule (docs/adr/0054 D3,
+// docs/adr/0065 D5).
+func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Principal) (events.Filter, error) {
 	f := events.Filter{Person: p.PersonID, Admin: t.Role == domain.RoleAdmin, Projects: map[uuid.UUID]bool{},
-		RestrictedProject: p.RestrictedProjectID, Me: me}
-	err := h.opts.DB.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		ids, err := r.ListVisibleProjectIDs(ctx, t.ID)
+		RestrictedProject: p.RestrictedProjectID}
+	return f, h.visibleProjects(ctx, t.ID, f.Projects)
+}
+
+// tenantFilter computes what a spanning stream admits of another tenant of
+// its person: their role there by their membership, and the projects they see
+// in it, read in that tenant's transaction as a request of theirs would.
+func (h *handler) tenantFilter(ctx context.Context, pt personTenant, p auth.Principal) (events.Filter, error) {
+	f := events.Filter{Person: p.PersonID, Admin: pt.role == domain.RoleAdmin, Projects: map[uuid.UUID]bool{}}
+	return f, h.visibleProjects(ctx, pt.id, f.Projects)
+}
+
+// visibleProjects marks the projects of the tenant the caller sees.
+func (h *handler) visibleProjects(ctx context.Context, tenant uuid.UUID, into map[uuid.UUID]bool) error {
+	return h.opts.DB.InTenant(ctx, tenant, func(r *store.Reader) error {
+		ids, err := r.ListVisibleProjectIDs(ctx, tenant)
 		for _, id := range ids {
-			f.Projects[id] = true
+			into[id] = true
 		}
 		return err
 	})
-	return f, err
 }
 
 // stillAdmitted checks at every heartbeat what a new request would: the
@@ -306,29 +391,25 @@ type eventData struct {
 	Kind    string `json:"kind"`
 }
 
-// membershipData is what membership.changed tells: the keys of what changed,
-// each where it applies (the API document, the event stream).
+// membershipData is what membership.changed tells: the tenant it happened in
+// — a person-level stream carries every tenant of its person — and the keys of
+// what changed, each where it applies (the API document, the event stream).
 type membershipData struct {
+	Tenant    string     `json:"tenant"`
 	PersonID  *uuid.UUID `json:"person_id,omitempty"`
 	ProjectID *uuid.UUID `json:"project_id,omitempty"`
 	MappingID *uuid.UUID `json:"mapping_id,omitempty"`
 }
 
-func writeEvent(w http.ResponseWriter, e events.Event) {
+// writeEvent writes an event with its id; slug is its tenant's.
+func writeEvent(w http.ResponseWriter, e events.Event, slug string) {
 	// #nosec G705 -- text/event-stream of a uuid, a fixed event name and JSON the server encodes; no HTML
-	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Name(), dataOf(e))
+	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Name(), dataOf(e, slug))
 }
 
-// writeAddressed writes a person-level event of another tenant than the
-// stream's, without an id (writeStreamed).
-func writeAddressed(w http.ResponseWriter, e events.Event) {
-	// #nosec G705 -- text/event-stream of a fixed event name and JSON the server encodes; no HTML
-	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Name(), dataOf(e))
-}
-
-func dataOf(e events.Event) []byte {
+func dataOf(e events.Event, slug string) []byte {
 	if e.Entity == store.EntityMembership {
-		m := membershipData{PersonID: e.Person, MappingID: e.Mapping}
+		m := membershipData{Tenant: slug, PersonID: e.Person, MappingID: e.Mapping}
 		if e.Project != uuid.Nil {
 			m.ProjectID = &e.Project
 		}

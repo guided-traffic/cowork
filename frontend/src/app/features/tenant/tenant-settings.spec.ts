@@ -1,14 +1,16 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
+import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { AttachmentUsage, Problem, Tenant } from '../../api/models';
 import { Api } from '../../api/api';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
-import { byteSize, quotaShare, TenantSettings } from './tenant-settings';
+import { byteSize, changesUsage, quotaShare, TenantSettings } from './tenant-settings';
 
 function tenant(overrides: Partial<Tenant> = {}): Tenant {
   return {
@@ -45,6 +47,24 @@ describe('the attachment usage helpers', () => {
     expect(quotaShare({ used_bytes: 150, attachments: 3, quota_bytes: 100 })).toBe(100);
     expect(quotaShare({ used_bytes: 150, attachments: 3, quota_bytes: null })).toBeNull();
   });
+
+  it('reads an upload or a purge in the tenant, a gap and a poll as moving the usage', () => {
+    const ticket = (key: string, kind: string): StreamEvent => ({
+      name: 'ticket.changed',
+      id: 'e1',
+      key,
+      version: 2,
+      kind,
+    });
+    expect(changesUsage(ticket('acme/COW-1', 'uploaded'), 'acme')).toBe(true);
+    expect(changesUsage(ticket('acme/COW-1', 'purged'), 'acme')).toBe(true);
+    expect(changesUsage(ticket('acme/COW-1', 'deleted'), 'acme')).toBe(false);
+    expect(changesUsage(ticket('acme/COW-1', 'commented'), 'acme')).toBe(false);
+    expect(changesUsage(ticket('globex/COW-1', 'uploaded'), 'acme')).toBe(false);
+    expect(changesUsage({ name: 'resync' }, 'acme')).toBe(true);
+    expect(changesUsage({ name: 'poll' }, 'acme')).toBe(true);
+    expect(changesUsage({ name: 'inbox.changed', unread: 1 }, 'acme')).toBe(false);
+  });
 });
 
 describe('TenantSettings', () => {
@@ -53,7 +73,10 @@ describe('TenantSettings', () => {
   let update: MockInstance<TenantService['update']>;
   let usage: WritableSignal<AttachmentUsage | undefined>;
   let usageError: WritableSignal<unknown>;
-  let getUsage: MockInstance<(fn: unknown, params: { tenant: string }) => Promise<unknown>>;
+  let getUsage: MockInstance<
+    (fn: unknown, params: { tenant: string; 'If-None-Match'?: string }) => Promise<unknown>
+  >;
+  let events: Subject<StreamEvent>;
 
   beforeEach(() => {
     value = signal<Tenant | undefined>(tenant());
@@ -65,19 +88,23 @@ describe('TenantSettings', () => {
       quota_bytes: 100 * 1024 * 1024,
     });
     usageError = signal<unknown>(undefined);
+    // The usage is read through ConditionalPages, which asks for the whole answer to keep its
+    // weak ETag, and sends that tag back the next time.
     getUsage = vi.fn().mockImplementation(async () => {
       const error = usageError();
       if (error) {
         throw error;
       }
-      return usage();
+      return { body: usage(), headers: new HttpHeaders({ ETag: 'W/"usage"' }) };
     });
+    events = new Subject<StreamEvent>();
     TestBed.configureTestingModule({
       providers: [
         MessageService,
         { provide: TenantService, useValue: { value, isAdmin, update } },
         { provide: SessionService, useValue: { tenant: signal('acme') } },
-        { provide: Api, useValue: { invoke: getUsage } },
+        { provide: Api, useValue: { invoke$Response: getUsage } },
+        { provide: EventStreamService, useValue: { events } },
       ],
     });
   });
@@ -122,6 +149,43 @@ describe('TenantSettings', () => {
 
       expect(el(fixture, 'attachment-usage')).toBeNull();
       expect(getUsage).not.toHaveBeenCalled();
+    });
+
+    it('asks again on an upload in the tenant with the tag it holds, and keeps the usage on a 304', async () => {
+      const fixture = await render();
+      getUsage.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 304, statusText: 'Not Modified' }),
+      );
+
+      events.next({
+        name: 'ticket.changed',
+        id: 'e1',
+        key: 'acme/COW-1',
+        version: 2,
+        kind: 'uploaded',
+      });
+      await settle(fixture);
+
+      expect(getUsage).toHaveBeenCalledTimes(2);
+      expect(getUsage.mock.lastCall?.[1]).toEqual({ tenant: 'acme', 'If-None-Match': 'W/"usage"' });
+      expect(el(fixture, 'attachment-usage-text')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        '75 MiB in 41 files of a quota of 100 MiB',
+      );
+    });
+
+    it('asks nothing again on an act that moves no file', async () => {
+      const fixture = await render();
+
+      events.next({
+        name: 'ticket.changed',
+        id: 'e1',
+        key: 'acme/COW-1',
+        version: 2,
+        kind: 'deleted',
+      });
+      await settle(fixture);
+
+      expect(getUsage).toHaveBeenCalledTimes(1);
     });
   });
 

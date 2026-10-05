@@ -26,6 +26,12 @@
   gap: 0.75rem;
 }
 
+.head-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .badges {
   display: flex;
   flex-wrap: wrap;
@@ -106,6 +112,15 @@
 
   &.settled {
     opacity: 0.8;
+  }
+
+  // The options and the answer as the server rendered them, under their label.
+  .options,
+  .answer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    margin: 0.25rem 0;
   }
 }
 

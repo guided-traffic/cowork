@@ -136,13 +136,20 @@ attachmentUsage:
     summary: The bytes the tenant's attachments hold, and the quota
     description: |
       Every attachment of the tenant counts, on every ticket, confidential ones and those of
-      restricted projects included — the sum the quota is checked against. The tenant's
-      administrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum
-      counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
-      null where the installation sets none.
+      restricted projects included, and a deleted ticket's until the purge removes them — they
+      occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
+      tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+      sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+      null where the installation sets none. An answer the client holds unchanged is `304` to its
+      weak `ETag` (docs/adr/0054 D7).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: The usage
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
@@ -151,5 +158,7 @@ attachmentUsage:
               used_bytes: 73400320
               attachments: 41
               quota_bytes: 10737418240
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'

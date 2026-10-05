@@ -59,7 +59,7 @@ SELECT EXISTS (
 -- The tokens that can act in the tenant, for its administrators
 -- (docs/adr/0035 D5 as amended 2026-10-05): every token of a member of the
 -- tenant that is unrestricted or restricted to it, newest first, revoked and
--- expired ones included. The tokens policy of migration 39 admits exactly
+-- expired ones included. The tokens policy of migration 35 admits exactly
 -- these rows to an administrator of the current tenant; the query names them
 -- as well (docs/adr/0021 D4). By id after a cursor, or a numbered page by
 -- offset (docs/adr/0048 D1, D2).

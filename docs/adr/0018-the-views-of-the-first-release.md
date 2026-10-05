@@ -81,8 +81,20 @@ menu and dialogs, made from the same parts as the project board
 list only while it is in view or a screen's height from it; the project filter is the address's
 repeated `project`; a drag between swimlanes is refused visibly — the swimlane under the card says
 no, and a toast says that a ticket never changes project on a board — and holds every swimlane
-still while a card is dragged. Not built: the score's marker in the backlog, D3's "next for me",
-D5–D7.
+still while a card is dragged. *(2026-10-05:)* D7's search — a search box in the top bar that
+searches, inside a tenant, that tenant first and offers every tenant of the person, anywhere else
+every tenant, and a page of results with where each hit was found and its snippet, linked to the
+comment or question it is in ([`features/search/`](../../frontend/src/app/features/search/),
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)); and D2's
+body, comments, options and answers shown as the server rendered them
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6).
+*(2026-10-05:)* D5 on the backlog: saved filters as named parameter sets of the lists
+([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D6, D7), a
+person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
+from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
+[`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
+Not built: the score's marker in the backlog, D3's "next for me", D5 on the tenant list view — no
+page lists a tenant's tickets — and on the tenant board, and D6.
 
 ## Context
 
@@ -177,7 +189,11 @@ dashboard exists; a new tile is an amendment of this record.
 
 **D7 — Search.** Full-text over title, body, comments and question texts within a tenant,
 from the tenant's pages; the person-level pages search across the person's tenants as a
-union.
+union. *(Made concrete 2026-10-05, built on the recommendation, the owner reviewing the result:)*
+inside a tenant the search box opens that tenant's results, one list in one order with one cursor,
+and every tenant of the person is one link away; the alternative — one page with the tenant's hits
+on top and the other tenants' under them — was not built, since it shows another client's tenant
+before the person asks for it.
 
 **D8 — Not in the first release, by this record:** custom dashboards, a portfolio view across
 tenants beyond D3, Gantt or timeline views, a calendar.

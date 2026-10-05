@@ -91,9 +91,10 @@ WHERE i.tenant_id = $1 AND i.ticket_id = $2
 UNION
 SELECT t.assignee_id FROM tickets t
 WHERE t.tenant_id = $1 AND t.id = $2 AND t.assignee_id IS NOT NULL
+  AND t.deleted_at IS NULL
 UNION
 SELECT t.reporter_id FROM tickets t
-WHERE t.tenant_id = $1 AND t.id = $2
+WHERE t.tenant_id = $1 AND t.id = $2 AND t.deleted_at IS NULL
 UNION
 SELECT q.asked_by FROM questions q
 WHERE q.tenant_id = $1 AND q.ticket_id = $2 AND q.status = 'open'
@@ -149,8 +150,8 @@ WHERE n.tenant_id = $2 AND n.user_id = $3 AND n.id <= $4
               JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
               JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
               WHERE t.tenant_id = n.tenant_id AND t.id = n.ticket_id
-                AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-                AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id))
+                AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+                AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id))
 `
 
 type MarkInboxReadParams struct {
@@ -185,8 +186,8 @@ WHERE n.tenant_id = $2 AND n.user_id = $3 AND n.id = $4
               JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
               JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
               WHERE t.tenant_id = n.tenant_id AND t.id = n.ticket_id
-                AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-                AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id))
+                AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+                AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id))
 `
 
 type MarkNotificationReadParams struct {
@@ -256,23 +257,4 @@ func (q *Queries) NoticeRecipients(ctx context.Context, arg NoticeRecipientsPara
 		return nil, err
 	}
 	return items, nil
-}
-
-const questionAskedOf = `-- name: QuestionAskedOf :one
-SELECT asked_of FROM questions
-WHERE tenant_id = $1 AND id = $2
-`
-
-type QuestionAskedOfParams struct {
-	TenantID uuid.UUID
-	ID       uuid.UUID
-}
-
-// The person a question is asked of, whom its events reach across their
-// tenants (docs/adr/0054 D1); null for a question open in the tenant.
-func (q *Queries) QuestionAskedOf(ctx context.Context, arg QuestionAskedOfParams) (*uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, questionAskedOf, arg.TenantID, arg.ID)
-	var asked_of *uuid.UUID
-	err := row.Scan(&asked_of)
-	return asked_of, err
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -138,6 +139,18 @@ func TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant(t *testi
 
 	_, seen = tenantTokens(t, a.admin.get(a.path("/tokens?limit=200")))
 	assert.Equal(t, apigen.TokenStateRevoked, seen["both-everywhere"].State, "a revoked token stays listed")
+
+	// docs/adr/0054 D7: a page the client holds unchanged is a 304 to its weak
+	// ETag; a revocation moves it.
+	listed := a.s.do(t, adminToken, http.MethodGet, a.path("/tokens?page=1&per_page=25"), nil)
+	require.Equal(t, http.StatusOK, listed.StatusCode)
+	tag := listed.Header.Get("ETag")
+	require.True(t, strings.HasPrefix(tag, `W/"`), tag)
+	same := a.s.do(t, adminToken, http.MethodGet, a.path("/tokens?page=1&per_page=25"), nil, "If-None-Match", tag)
+	assert.Equal(t, http.StatusNotModified, same.StatusCode)
+	require.Equal(t, http.StatusNoContent, revoke(adminToken, alphaID).StatusCode)
+	changed := a.s.do(t, adminToken, http.MethodGet, a.path("/tokens?page=1&per_page=25"), nil, "If-None-Match", tag)
+	assert.Equal(t, http.StatusOK, changed.StatusCode, "the revocation moved the page")
 }
 
 // tokenOf mints a plain write token of a person of the world.

@@ -18,7 +18,7 @@ FROM time_entries e
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE e.tenant_id = $1
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND ($2::date IS NULL OR e.day >= $2::date)
   AND ($3::date IS NULL OR e.day <= $3::date)
@@ -64,7 +64,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = $1 AND e.ticket_id = $2 AND e.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
 `
 
@@ -131,7 +131,7 @@ JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = $1
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND ($2::date IS NULL OR e.day >= $2::date)
   AND ($3::date IS NULL OR e.day <= $3::date)
@@ -246,7 +246,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = $1 AND e.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND ($3::uuid IS NULL OR e.id > $3::uuid)
 ORDER BY e.id
@@ -333,7 +333,7 @@ JOIN time_entries e ON e.tenant_id = r.tenant_id AND e.id = r.entry_id
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users u ON u.id = r.edited_by
 WHERE r.tenant_id = $1 AND r.entry_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND ($3::uuid IS NULL OR r.id > $3::uuid)
 ORDER BY r.id
@@ -401,7 +401,7 @@ SELECT coalesce(sum(e.minutes), 0)::bigint AS minutes
 FROM time_entries e
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 WHERE e.tenant_id = $1 AND e.ticket_id = $2 AND e.voided_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
 `
 
@@ -436,7 +436,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users u ON u.id = e.person_id
 WHERE e.tenant_id = $2 AND e.voided_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND ($3::date IS NULL OR e.day >= $3::date)
   AND ($4::date IS NULL OR e.day <= $4::date)

@@ -21,8 +21,10 @@ import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
+import { SearchResults } from './features/search/search';
 import { Accounts } from './features/tenant/accounts';
 import { Audit } from './features/tenant/audit';
+import { DeletedTickets } from './features/tenant/deleted-tickets';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
 import { TenantOverview } from './features/tenant/overview';
@@ -56,6 +58,7 @@ const pages: [string, Type<unknown>][] = [
   ['me/inbox', Inbox],
   ['me/assigned', Assigned],
   ['me/decisions', Decisions],
+  ['me/search', SearchResults],
   ['t/:tenant', TenantOverview],
   ['t/:tenant/board', TenantBoard],
   ['t/:tenant/p/:project/backlog', Backlog],
@@ -63,12 +66,14 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/p/:project/settings', ProjectSettings],
   ['t/:tenant/settings', TenantSettings],
   ['t/:tenant/tickets/:key', TicketDetail],
+  ['t/:tenant/search', SearchResults],
   ['t/:tenant/members', Members],
   ['t/:tenant/accounts', Accounts],
   ['t/:tenant/audit', Audit],
   ['t/:tenant/tokens', TenantTokens],
   ['t/:tenant/group-mappings', GroupMappings],
   ['t/:tenant/time', TimeReport],
+  ['t/:tenant/deleted-tickets', DeletedTickets],
   ['dev/design', DesignPreview],
   ['**', NotFound],
 ];
@@ -152,6 +157,8 @@ describe('the routes', () => {
       named('/login', Login),
       named('/', Shell, Home),
       named('/me/tokens', Shell, Tokens),
+      named('/me/search?q=gate', Shell, SearchResults),
+      named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
       named('/t/acme', Shell, TenantScope, TenantOverview),
       named('/t/acme/board', Shell, TenantScope, TenantBoard),
       named('/t/acme/members', Shell, TenantScope, Members),

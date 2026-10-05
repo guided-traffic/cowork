@@ -15,12 +15,18 @@ export interface GetAttachmentUsage$Params {
  * The tenant's slug (docs/adr/0005 D4)
  */
   tenant: string;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function getAttachmentUsage(http: HttpClient, rootUrl: string, params: GetAttachmentUsage$Params, context?: HttpContext): Observable<StrictHttpResponse<AttachmentUsage>> {
   const rb = new RequestBuilder(rootUrl, getAttachmentUsage.PATH, 'get');
   if (params) {
     rb.path('tenant', params.tenant, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

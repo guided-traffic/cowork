@@ -99,7 +99,7 @@ list keeps the comment's mentions; with one it replaces them, checks and tells o
 adds, and a person it drops watches by it no more; a withdrawal ends every mention's watch and hides
 the list with the text. The UI writes the list with a picker that `@` opens over the members who see
 the ticket; the MCP tool `comment` takes the persons by id, username or display name, resolved
-through the member list. Built in [migration 40](../../backend/internal/store/migrations/000040_comment_mentions.up.sql)
+through the member list. Built in [migration 36](../../backend/internal/store/migrations/000036_comment_mentions.up.sql)
 (`comments.mentions`), [`api/comments.go`](../../backend/internal/api/comments.go) `checkMentions`,
 `ListWatchers`, and `store.NoticeMentioned`.)*
 

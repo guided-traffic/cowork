@@ -25,9 +25,8 @@ import { reloadOn, shortKey, ticketRoute } from './person-list';
 /**
  * "Assigned to me" (docs/adr/0018 D3): the person's open tickets across every tenant they belong
  * to, the tenant beside each key, in the order of the tenant, the project and the project's rank
- * until the score exists (docs/adr/0014 D5). It loads again when the person-level stream says the
- * person's inbox changed — an assignment tells the assignee — or a ticket of the stream's tenant
- * changed, and on `resync` and `poll`.
+ * until the score exists (docs/adr/0014 D5). It loads again when a ticket of any of the person's
+ * tenants changes, and on what {@link reloadOn} follows for every person-level page.
  */
 @Component({
   selector: 'app-assigned',
@@ -132,10 +131,7 @@ export class Assigned {
   });
 
   constructor() {
-    reloadOn(
-      this.list,
-      (event) => event.name === 'inbox.changed' || event.name === 'ticket.changed',
-    );
+    reloadOn(this.list, (event) => event.name === 'ticket.changed');
   }
 
   protected ago(iso: string): string {

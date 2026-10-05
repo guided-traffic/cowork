@@ -20,7 +20,10 @@ sixteen routes, no consent field; a session's request the agent header marks hol
 chat capabilities; built the same day), and on 2026-10-04 by the owner's decision on the routing
 (Context: the one origin is the Ingress's,
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D3; nothing of the decision changes). Date: 2026-10-01. Decided by the owner as the answer to the
+D3; nothing of the decision changes), and on 2026-10-05 by the decision on the purge, built on the
+recommendation
+([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7; D6: seventeen routes). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -213,7 +216,11 @@ the fourteenth ([ADR 0034](0034-three-tenant-roles-an-optional-project-restricti
 D2, ADR 0035 D5); an agent-marked request is refused all ~~fourteen~~.)* *(Amended 2026-10-04 by the
 owner's answers on the chat, ADR 0076: ~~fourteen~~ sixteen routes — stopping the person's running
 turns of the chat and choosing the chat's capabilities the fifteenth and sixteenth (ADR 0035 D5);
-the consent field is gone with the consent; an agent-marked request is refused all sixteen.)*
+the consent field is gone with the consent; an agent-marked request is refused all ~~sixteen~~.)*
+*(Amended 2026-10-05 by the decision recorded in
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7: ~~sixteen~~ seventeen routes, purging a deleted ticket the seventeenth (ADR 0035 D5); an
+agent-marked request is refused all seventeen.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))

@@ -27,7 +27,7 @@ type RevokeTenantTokenParams struct {
 }
 
 // An administrator's revocation of a token that can act in the tenant
-// (docs/adr/0035 D5, D6): immediate, the row kept; the policy of migration 39
+// (docs/adr/0035 D5, D6): immediate, the row kept; the policy of migration 35
 // admits it.
 func (q *Queries) RevokeTenantToken(ctx context.Context, arg RevokeTenantTokenParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, revokeTenantToken, arg.RevokedBy, arg.TokenID, arg.TenantID)

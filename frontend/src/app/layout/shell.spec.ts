@@ -502,6 +502,75 @@ describe('Shell', () => {
     });
   });
 
+  describe('the search box (docs/adr/0018 D7)', () => {
+    async function submit(fixture: ComponentFixture<Shell>, page: HTMLElement, words: string) {
+      const box = page.querySelector('[data-testid="search-input"]') as HTMLInputElement;
+      box.value = words;
+      box.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      box.form?.dispatchEvent(new Event('submit', { cancelable: true }));
+      await fixture.whenStable();
+    }
+
+    it('searches the tenant the pages show, that tenant first', async () => {
+      const { fixture, page } = await render();
+
+      await submit(fixture, page, '  readyReplicas gate ');
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'search'], {
+        queryParams: { q: 'readyReplicas gate' },
+      });
+      const box = page.querySelector('[data-testid="search-input"]');
+      expect(box?.getAttribute('aria-label')).toBe('Search Acme Corp');
+    });
+
+    it('searches every tenant of the person outside a tenant, and in one a global administrator only oversees', async () => {
+      tenant.set(null);
+      const { fixture, page } = await render();
+      expect(page.querySelector('[data-testid="search-input"]')?.getAttribute('aria-label')).toBe(
+        'Search all your tenants',
+      );
+
+      await submit(fixture, page, 'gate');
+      expect(navigate).toHaveBeenLastCalledWith(['/me', 'search'], { queryParams: { q: 'gate' } });
+
+      tenant.set('acme');
+      oversight.set(true);
+      fixture.detectChanges();
+      await submit(fixture, page, 'gate');
+      expect(navigate).toHaveBeenLastCalledWith(['/me', 'search'], { queryParams: { q: 'gate' } });
+    });
+
+    it('searches nothing for a box of white space', async () => {
+      const { fixture, page } = await render();
+
+      await submit(fixture, page, '   ');
+
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('holds the words of the search the page shows', async () => {
+      const { fixture, page } = await render();
+      navigate.mockRestore();
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/search?q=flicker%20board');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect((page.querySelector('[data-testid="search-input"]') as HTMLInputElement).value).toBe(
+        'flicker board',
+      );
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/members');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect((page.querySelector('[data-testid="search-input"]') as HTMLInputElement).value).toBe(
+        '',
+      );
+    });
+  });
+
   describe('the live indicator', () => {
     it('shows nothing outside a tenant', async () => {
       const { page } = await render();
@@ -926,6 +995,19 @@ describe('Shell', () => {
       expect(link?.getAttribute('href')).toBe('/t/acme/tokens');
       expect(link?.textContent).toBe('Tokens');
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-audit');
+    });
+
+    it('offers the deleted tickets to an administrator of the tenant only (docs/adr/0024 D1)', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-deleted-tickets"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-deleted-tickets"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/deleted-tickets');
+      expect(link?.textContent).toBe('Deleted tickets');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-time');
     });
 
     // docs/adr/0034 D2: a global administrator without a role in the tenant sees its

@@ -39,7 +39,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2 AND a.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetAttachmentParams struct {
@@ -94,7 +94,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR a.id > $3::uuid)
 ORDER BY a.id
 LIMIT $4
@@ -163,6 +163,48 @@ func (q *Queries) ListAttachments(ctx context.Context, arg ListAttachmentsParams
 	return items, nil
 }
 
+const listTicketImages = `-- name: ListTicketImages :many
+SELECT a.ticket_id, a.id, a.content_type
+FROM attachments a
+JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
+WHERE a.tenant_id = $1 AND a.ticket_id = ANY($2::uuid[])
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY a.ticket_id, a.id
+`
+
+type ListTicketImagesParams struct {
+	TenantID  uuid.UUID
+	TicketIds []uuid.UUID
+}
+
+type ListTicketImagesRow struct {
+	TicketID    uuid.UUID
+	ID          uuid.UUID
+	ContentType string
+}
+
+// The attachments of the tickets a rendered text may show as images, with
+// their type; the caller keeps the raster ones (docs/adr/0016 D7).
+func (q *Queries) ListTicketImages(ctx context.Context, arg ListTicketImagesParams) ([]ListTicketImagesRow, error) {
+	rows, err := q.db.Query(ctx, listTicketImages, arg.TenantID, arg.TicketIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTicketImagesRow{}
+	for rows.Next() {
+		var i ListTicketImagesRow
+		if err := rows.Scan(&i.TicketID, &i.ID, &i.ContentType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const tenantAttachmentUsage = `-- name: TenantAttachmentUsage :one
 SELECT coalesce(sum(size), 0)::bigint AS used_bytes, count(*)::bigint AS attachments
 FROM attachments
@@ -176,9 +218,11 @@ type TenantAttachmentUsageRow struct {
 
 // The bytes and the count of every attachment of the tenant, against its quota
 // (docs/adr/0016 D6): every ticket's, a confidential ticket's and a restricted
-// project's included. Row-level security holds it to the tenant; the handlers
-// answer it to the tenant's administrators only, who see every ticket.
+// project's included, and a deleted ticket's until the purge removes its rows.
+// Row-level security holds it to the tenant; the handlers answer it to the
+// tenant's administrators only, who see every ticket.
 // visibility: exempt (the tenant's stored bytes count whether or not the caller sees the ticket that holds them)
+// deletion: exempt (a deleted ticket's files occupy the bucket until the purge removes them, docs/adr/0024 D2)
 func (q *Queries) TenantAttachmentUsage(ctx context.Context, tenantID uuid.UUID) (TenantAttachmentUsageRow, error) {
 	row := q.db.QueryRow(ctx, tenantAttachmentUsage, tenantID)
 	var i TenantAttachmentUsageRow

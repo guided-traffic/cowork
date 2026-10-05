@@ -3,8 +3,10 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
+import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { MemberToken, MemberTokenList, Problem } from '../../api/models';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { SessionService } from '../../core/session.service';
 import { TenantTokensService } from '../../core/tenant-tokens.service';
 import { TenantService } from '../../core/tenant.service';
@@ -66,18 +68,21 @@ describe('TenantTokens', () => {
   let revoke: MockInstance<TenantTokensService['revoke']>;
   let isAdmin: WritableSignal<boolean>;
   let tenant: WritableSignal<string | null>;
+  let events: Subject<StreamEvent>;
 
   beforeEach(() => {
     page = vi.fn<TenantTokensService['page']>().mockResolvedValue(pageOf([everywhere, here], 40));
     revoke = vi.fn<TenantTokensService['revoke']>().mockResolvedValue(undefined);
     isAdmin = signal(true);
     tenant = signal<string | null>('acme');
+    events = new Subject<StreamEvent>();
     TestBed.configureTestingModule({
       providers: [
         MessageService,
         { provide: TenantTokensService, useValue: { page, revoke } },
         { provide: SessionService, useValue: { tenant, me: { isLoading: signal(false) } } },
         { provide: TenantService, useValue: { isAdmin } },
+        { provide: EventStreamService, useValue: { events } },
       ],
     });
   });
@@ -210,6 +215,23 @@ describe('TenantTokens', () => {
       expect.objectContaining({ detail: 'no such token' }),
     );
     expect(page.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('loads the page again on a membership change of the tenant, a gap and a poll, and on nothing else', async () => {
+    const fixture = await render();
+    const before = page.mock.calls.length;
+
+    events.next({ name: 'membership.changed', id: 'e1', personId: 'p2', tenant: 'globex' });
+    await settle(fixture);
+    expect(page.mock.calls.length).toBe(before);
+
+    events.next({ name: 'membership.changed', id: 'e2', personId: 'p2', tenant: 'acme' });
+    await settle(fixture);
+    expect(page.mock.calls.length).toBe(before + 1);
+
+    events.next({ name: 'poll' });
+    await settle(fixture);
+    expect(page.mock.calls.length).toBe(before + 2);
   });
 
   it('asks nothing and says whose the list is for anybody but an administrator', async () => {

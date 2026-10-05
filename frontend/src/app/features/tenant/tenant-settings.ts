@@ -4,9 +4,12 @@ import {
   computed,
   effect,
   inject,
+  Injector,
   resource,
+  ResourceRef,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
@@ -14,7 +17,10 @@ import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Api } from '../../api/api';
 import { getAttachmentUsage } from '../../api/functions';
 import { AttachmentUsage } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
+import { EventStreamService, ofTenant, StreamEvent } from '../../core/event-stream.service';
 import { ProblemService } from '../../core/problem.service';
+import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 
@@ -33,6 +39,22 @@ export function byteSize(bytes: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
+/**
+ * Whether an event may have moved what the tenant's attachments hold: an upload or a purge in the
+ * tenant — a deletion leaves the files in the bucket, and their bytes counted, until the purge —, a
+ * gap in the stream or the fallback's poll.
+ */
+export function changesUsage(event: StreamEvent, tenant: string | null): boolean {
+  if (event.name === 'resync' || event.name === 'poll') {
+    return true;
+  }
+  return (
+    event.name === 'ticket.changed' &&
+    ofTenant(event, tenant) &&
+    (event.kind === 'uploaded' || event.kind === 'purged')
+  );
+}
+
 /** The share of the quota the attachments hold, whole percent, at most 100; null without a quota. */
 export function quotaShare(usage: AttachmentUsage): number | null {
   if (usage.quota_bytes === null || usage.quota_bytes <= 0) {
@@ -45,7 +67,8 @@ export function quotaShare(usage: AttachmentUsage): number | null {
  * The tenant's settings, for its administrators: the name, whether members create projects
  * (docs/adr/0034 D9) and whether members see each other's time (docs/adr/0017), written with
  * the version read (docs/adr/0050 D3); and what the tenant's attachments hold against the quota
- * of the installation (docs/adr/0016 D6), read again each time the page opens.
+ * of the installation (docs/adr/0016 D6), read when the page opens and again on an upload or a
+ * purge in the tenant.
  */
 @Component({
   selector: 'app-tenant-settings',
@@ -139,8 +162,9 @@ export function quotaShare(usage: AttachmentUsage): number | null {
               </p>
             }
             <p class="muted small">
-              Every file of the tenant counts, on tickets you see and on those you do not. An upload
-              that would go above the quota is refused before it is stored.
+              Every file of the tenant counts, on tickets you see and on those you do not, and on a
+              deleted ticket until the purge removes it. An upload that would go above the quota is
+              refused before it is stored.
             </p>
           } @else if (usageFailure(); as failure) {
             <p class="muted" data-testid="attachment-usage-failure">{{ failure }}</p>
@@ -230,6 +254,9 @@ export class TenantSettings {
   protected readonly byteSize = byteSize;
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
+  private readonly injector = inject(Injector);
+  /** The weak `ETag` of the usage held: a load again that finds it unchanged is a `304`. */
+  private readonly conditional = new ConditionalPages(this.api);
   /** The tenant while the person is its administrator: the usage is theirs to read. */
   private readonly administered = computed(() =>
     this.tenant.isAdmin() ? (this.session.tenant() ?? undefined) : undefined,
@@ -237,11 +264,15 @@ export class TenantSettings {
   /**
    * What the tenant's attachments hold against the quota (docs/adr/0016 D6), for its
    * administrators only — the sum counts files of tickets a member may not see. Read when the page
-   * opens, for the tenant it shows.
+   * opens, for the tenant it shows, and again on what may move it ({@link changesUsage}); a load
+   * again that fails keeps the usage shown.
    */
-  protected readonly attachmentUsage = resource({
+  protected readonly attachmentUsage: ResourceRef<AttachmentUsage | undefined> = resource({
     params: () => this.administered(),
-    loader: ({ params: tenant }) => this.api.invoke(getAttachmentUsage, { tenant }),
+    loader: ({ params: tenant }): Promise<AttachmentUsage> =>
+      keepShown(this.attachmentUsage, () =>
+        this.conditional.load((fetch) => fetch(getAttachmentUsage, { tenant })),
+      ),
   });
   protected readonly usage = computed(() =>
     this.attachmentUsage.hasValue() ? this.attachmentUsage.value() : undefined,
@@ -260,6 +291,13 @@ export class TenantSettings {
   });
 
   constructor() {
+    inject(EventStreamService)
+      .events.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (changesUsage(event, this.session.tenant())) {
+          refresh(this.attachmentUsage, this.injector);
+        }
+      });
     effect(() => {
       const tenant = this.tenant.value();
       if (tenant) {

@@ -433,6 +433,28 @@ describe('SessionService', () => {
 
       http.expectNone('/api/v1/me');
     });
+
+    it('asks who is working again on an act that names the person in another of their tenants, one they join or leave among them (docs/adr/0054 D1)', async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', tenant: 'gamma', personId: hansId });
+      await settle();
+
+      http.expectOne('/api/v1/me').flush(person([asAdmin, asMember]));
+      await settle();
+    });
+
+    it.each<StreamEvent>([
+      { name: 'membership.changed', id: 'e1', tenant: 'gamma', personId: 'p2' },
+      { name: 'membership.changed', id: 'e1', tenant: 'gamma', mappingId: 'm1' },
+      { name: 'membership.changed', id: 'e1', tenant: 'gamma', projectId: 'j1' },
+    ])(
+      'leaves the person alone on %j, an act of another tenant that names somebody else',
+      async (event) => {
+        stream.next(event);
+        await settle();
+
+        http.expectNone('/api/v1/me');
+      },
+    );
   });
 
   describe('when asking again fails', () => {

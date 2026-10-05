@@ -17,7 +17,13 @@ event publication belong.
 **Built** (phase 2, 2026-10-02): D1–D8. [`backend/sqlc.yaml`](../../backend/sqlc.yaml)
 generates `readq` and `writeq`; [`tx.go`](../../backend/internal/store/tx.go) holds the two
 wrappers; [`tickets.go`](../../backend/internal/store/tickets.go) is D4's builder;
-[`jobs.go`](../../backend/internal/store/jobs.go) D5; `make generate-check` fails CI on drift.
+[`jobs.go`](../../backend/internal/store/jobs.go) D5; `make generate-check` fails CI on drift. *(2026-10-05:)* D5's first named job, the purge of
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2 (`PurgeDeletedTickets`, [`store/deletion.go`](../../backend/internal/store/deletion.go)), runs
+under `pg_try_advisory_xact_lock` with the key 6 as `system:ticket-purge`, and is the first job that
+works in the tenants: it reads the due tickets with no tenant set and writes each tenant's acts in
+that tenant (`Writer.inTenant`). D7's lint has a second half: every query that reads a ticket leaves
+the deleted ones out, or names its exemption.
 
 ## Context
 

@@ -31,7 +31,7 @@ amended 2026-10-05):
   edit (without the list an edit keeps it); each id is checked like `asked_of` — a member who sees
   the ticket — else `400` at `/mentions/<i>`, and nothing is told
   ([`comments.go`](../../backend/internal/api/comments.go) `checkMentions`;
-  [migration 40](../../backend/internal/store/migrations/000040_comment_mentions.up.sql): the column
+  [migration 36](../../backend/internal/store/migrations/000036_comment_mentions.up.sql): the column
   and the reason `mentioned`).
 - A mentioned person is told `mentioned`, and one act tells a person once (`deliver`), so a watcher
   the comment mentions is told that, not also `commented`; an edit tells only the persons it adds.
@@ -47,8 +47,11 @@ amended 2026-10-05):
   The inbox says "mentioned you in a comment".
 - The MCP tool `comment` (and with it the chat) takes `mentions` as `me`, usernames, display names
   or ids, resolved through the member list as `open_question`'s `asked_of`.
+- A mention is plain `@Name` text, so the rendered `body_html` shows it as written and links nobody
+  (`TestMarkdownRenders`); a deleted ticket tells nobody, its mentions included.
 - Tests: `TestAMentionTellsThePersonAndMakesThemAWatcher`,
-  `TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`, the MCP step of
+  `TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`, `TestAMentionOnADeletedTicketTellsNobody`,
+  the MCP step of
   `TestTheMCPServerRunsTheWorkingDay`, `TestCommentMentions`, the replay of a stored comment without
   `mentions` (`server_test.go`), and the frontend's `mentions.spec.ts`, `mention-list.spec.ts`,
   `conversation-forms.spec.ts`, `comment-item.spec.ts`, `conversation.service.spec.ts`,
@@ -57,7 +60,7 @@ amended 2026-10-05):
 The README reference, [domain.md](../developer/domain.md#comments-and-the-activity-list),
 [data-access.md](../developer/data-access.md#notifications),
 [frontend.md](../developer/frontend.md#the-detail-page), [mcp.md](../developer/mcp.md) and
-[tenancy.md](../security/tenancy.md) (H-52: the refusal tells the writer whether a member sees the
+[tenancy.md](../security/tenancy.md) (H-58: the refusal tells the writer whether a member sees the
 ticket, as `asked_of` does) carry it.
 
 The e2e path of the inbox — the second identity's bell counting the assignment and its `/me/inbox`
