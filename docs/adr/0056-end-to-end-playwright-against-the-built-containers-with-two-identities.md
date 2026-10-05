@@ -30,11 +30,14 @@ fails and text turned dark on dark passes, measured; `data-testid` and data seed
 second identity's "assigned to me" and inbox within the stream's latency, its move and close with a
 verification note — which waits for those pages and stands as a pending test; the init state and
 the first tenant, the tenant board, a restricted project's third identity, the import and the MCP
-server's `session_start` of D3. **Not
-verified:** the `e2e` job on a runner, and its duration; the `main` ruleset does not require it yet
+server's `session_start` of D3. The `e2e` job ran on a runner first on 2026-10-05 (run 37267795406
+of commit `dbe64f0`): passed in 3 min 9 s against its ten minutes, the stack's ports on `127.0.0.1`
+reachable, the browsers installed with `--with-deps`, the Linux pictures holding on amd64. **Not
+verified:** the `main` ruleset does not require the job yet
 — the owner adds it ([ADR 0073](0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
-D6). D1 amended the same day with the build, for the reasons written there and not yet put to the
-owner: `make e2e` runs a stack of its own instead of `make dev-up`'s containers.)*
+D6). D1 amended the same day with the build, for the reasons written there: `make e2e` runs a
+stack of its own instead of `make dev-up`'s containers — settled 2026-10-05 on the recommendation,
+the owner reviewing the result.)*
 
 ## Context
 
