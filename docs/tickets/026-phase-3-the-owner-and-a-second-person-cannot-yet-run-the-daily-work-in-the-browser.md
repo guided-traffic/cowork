@@ -92,7 +92,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T39 — ticket deletion and the purge
    - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
    - T41 — done (the project board's end-to-end path); its move to the archive is left
-   - T42 — the tenant board with swimlanes
+   - T42 — the tenant board's end-to-end run (the board is built, its path written)
    - T43 — the fixed dashboard
 2. **The phase verification**, recorded here with what was run, against what, with what result:
    the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned

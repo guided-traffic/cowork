@@ -7,7 +7,8 @@ tree on the detail page, [ADR 0012](0012-four-typed-directed-links-within-a-tena
 and 2026-10-03 (D1: the backlog grouped by urgency; the board's columns as a view over the
 states, its `next` column and the urgencies its other columns hold; D2: the three progress
 stages and done by hand) and 2026-10-04 (D1: a project opens on its board, the Board tab left of
-the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day).
+the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day)
+and 2026-10-05 (D4: the tenant board's columns are the project board's of D1).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -31,6 +32,15 @@ progress stages of [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-perc
 D2. The rest of the amended D1 — the drags between the columns, a child's place outside its
 parent's group, the count that stands in for `done` — is this record's proposal and stays
 open to objection until the board is built.
+
+The amendment of 2026-10-05 is the owner's answer to which columns the tenant board has, put
+when it was built, since D4 still read "columns are the states" after D1's amendment of
+2026-10-03 had given the project board its columns. The owner chose **the project board's
+columns in every swimlane** — `next`, Refinement, Ready, In Progress, Blocked and Review, over the
+same tickets, one model for both boards, so that a card stands in the same column on both — over
+one column per state as D4 read, which would have been a second model with the `done` column the
+owner turned down on the project board, and over the project board's five columns without
+`next`, which would have left `next` to each project's board.
 
 **Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-04 — the project opening on its
 board, whose tab stands left of the backlog's, and the backlog's groups named as horizons
@@ -60,7 +70,19 @@ of the person as a union of per-tenant reads with the tenant beside each key, in
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
 "assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
+Status. *(2026-10-05:)* D4 as amended the same day — the tenant board at `/t/{slug}/board`, in
+the navigation beside the tenant's front page: a swimlane per non-archived project the person sees,
+each with the project board's columns, cards, counts against its own project's WIP limits, card
+menu and dialogs, made from the same parts as the project board
+([`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts),
+[`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts),
+[`board-list.ts`](../../frontend/src/app/features/project/board-list.ts),
+[`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)); a swimlane loads its
+list only while it is in view or a screen's height from it; the project filter is the address's
+repeated `project`; a drag between swimlanes is refused visibly — the swimlane under the card says
+no, and a toast says that a ticket never changes project on a board — and holds every swimlane
+still while a card is dragged. Not built: the score's marker in the backlog, D3's "next for me",
+D5–D7.
 
 ## Context
 
@@ -130,7 +152,11 @@ interest, attachments, the comment thread and the collapsible activity list, tim
 ordered by score with the tenant shown beside the key, "open decisions" (asked of me, and open
 in my tenants), and the inbox. Each is a union of per-tenant queries (ADR 0005 D3).
 
-**D4 — Per tenant: a board with one swimlane per project.** Columns are the states, rows the
+**D4 — Per tenant: a board with one swimlane per project.** ~~Columns are the states~~
+*(amended 2026-10-05: the columns are the project board's of D1 — `next`, Refinement, Ready, In
+Progress, Blocked and Review —, in every swimlane, over the same tickets: the open leaves of the
+horizons `now` and `release` in the columns of their states, those of `next` in `next`; one model
+for both boards, so a card stands in the same column on both)*, rows the
 non-archived projects, cards as in D1. A drag between columns is a transition; **a drag
 between rows is refused** — a ticket never changes project on a board. Rank is not edited on
 this board; the backlog owns rank. The board loads lazily per swimlane and offers a project

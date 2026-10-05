@@ -48,6 +48,12 @@ export const routes: Routes = [
             pathMatch: 'full',
             loadComponent: () => import('./features/tenant/overview').then((m) => m.TenantOverview),
           },
+          // The tenant's board, a swimlane per project (docs/adr/0018 D4).
+          {
+            path: 'board',
+            loadComponent: () =>
+              import('./features/tenant/tenant-board').then((m) => m.TenantBoard),
+          },
           // A project's address without a view opens its board (docs/adr/0018 D1).
           { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/board' },
           {

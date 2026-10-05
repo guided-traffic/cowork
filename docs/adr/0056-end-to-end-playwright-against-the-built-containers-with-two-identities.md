@@ -29,7 +29,9 @@ fails and text turned dark on dark passes, measured; `data-testid` and data seed
 2026-10-04. **Not built:** the path with two identities in one test (D2) — filing, assigning, the
 second identity's "assigned to me" and inbox within the stream's latency, its move and close with a
 verification note — which waits for those pages and stands as a pending test; the init state and
-the first tenant, the tenant board, a restricted project's third identity, the import and the MCP
+the first tenant, the tenant board — whose path, a transition by drag and the refusal across
+swimlanes, is written ([`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts),
+2026-10-05) and has not run yet —, a restricted project's third identity, the import and the MCP
 server's `session_start` of D3. **Not
 verified:** the `e2e` job on a runner, and its duration; the `main` ruleset does not require it yet
 — the owner adds it ([ADR 0073](0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)

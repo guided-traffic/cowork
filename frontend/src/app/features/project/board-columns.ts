@@ -76,6 +76,8 @@ export class BoardColumns {
   readonly hold = input(false);
   /** Makes the ids of the columns' headings unique on a page that shows more than one board. */
   readonly idPrefix = input('');
+  /** The level of the columns' headings: 3 under a swimlane's heading. */
+  readonly headingLevel = input(2);
   /** Loads the board's list again, after a write that failed. */
   readonly reload = input<() => void>(() => undefined);
 

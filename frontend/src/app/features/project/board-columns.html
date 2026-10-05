@@ -17,6 +17,7 @@
     <header class="head">
       <h2
         [id]="idPrefix() + 'column-next'"
+        [attr.aria-level]="headingLevel() === 2 ? null : headingLevel()"
         pTooltip="Tickets in the horizon next, in whatever state; Now moves one to now, and it shows in the column of its state"
         [showDelay]="400"
       >
@@ -52,7 +53,12 @@
       [attr.data-testid]="'column-' + column.id"
     >
       <header class="head">
-        <h2 [id]="idPrefix() + 'column-' + column.id">{{ column.title }}</h2>
+        <h2
+          [id]="idPrefix() + 'column-' + column.id"
+          [attr.aria-level]="headingLevel() === 2 ? null : headingLevel()"
+        >
+          {{ column.title }}
+        </h2>
         <span
           class="count tabular"
           [class.over]="column.over"
