@@ -169,6 +169,10 @@ the mechanics are [api.md](api.md)).
    services, `await fixture.whenStable()` before reading the DOM, `data-testid` for assertions.
 5. `make frontend-lint frontend-test`; `make frontend-build` if the bundle budget in
    `angular.json` might move.
+6. A page a person works in is a path of the end-to-end suite in `frontend/e2e/`: a spec that
+   seeds through the API (`seed`, a `project` of its own), acts through `data-testid`, and is
+   tagged `@smoke` where it is one, so that WebKit walks it too; then `make docker-build e2e`
+   ([testing.md](testing.md#end-to-end-tests)).
 
 ## A path nginx must treat differently
 

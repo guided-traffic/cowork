@@ -311,8 +311,7 @@ lists "assigned to me" and "open decisions" and the inbox exist ([api.md](api.md
 [frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries the person's
 own events across their tenants but not the rest of their tenants' changes —; a mention in a
 comment; search, saved filters, the tenant board and the dashboard; the score beside the rank and the
-rebalancing of the rank's keys; deletion and purge; import; metrics; the end-to-end tier, with its
-login through Dex. The order in which they come is
+rebalancing of the rank's keys; deletion and purge; import; metrics. The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
 page of its own, when it exists.
 

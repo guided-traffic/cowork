@@ -81,7 +81,8 @@ turn streamed through nginx and stopped. **Not verified:** the build of the owne
 LM Studio and in a browser — the provider's choice, the capabilities' switches, the stop route —,
 which only the stub and the unit and component tests have run; a provider other than LM Studio and
 the stub — no call reached OpenAI's or Anthropic's API, Ollama or vLLM; a conversation in the
-end-to-end tier, which does not exist
+end-to-end tier, which ~~does not exist~~ *(amended 2026-10-04: exists since that day and
+configures no provider of the chat, so it holds none)*
 ([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)).
 
 ## Context

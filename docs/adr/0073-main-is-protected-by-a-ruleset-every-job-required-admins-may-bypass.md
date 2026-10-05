@@ -16,6 +16,10 @@ semantic-release runs as is on the bypass list of `main` as well — the owner's
 the first release showed that semantic-release pushes its release commit to `main`; and
 documentation-only changes are pushed directly by an administrator.
 
+**Not built** (2026-10-04): the end-to-end job of D1 exists — `End-to-End Tests`, the job `e2e`
+([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)) —
+and is not yet a required check of `main`; adding it is the owner's change to the ruleset (D6).
+
 ## Context
 
 [ADR 0003](0003-test-and-ci-policy.md) D4 says a gate that is not required is not a gate;

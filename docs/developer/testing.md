@@ -16,9 +16,10 @@ Read against the tree on 2026-10-04.
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
-| End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | **Not built.** Decided in [ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright in `frontend/e2e/`, two identities, both colour schemes |
+| End-to-end | `make e2e`, after `make docker-build` | — | Docker, the two images of one commit, Chromium and WebKit (`make e2e-browsers`), `curl`, `openssl` | The images together, read-only, behind the Ingress stand-in with TLS, against a PostgreSQL, a MinIO and a Dex of its own: the login in a browser — the local form, a temporary password, Dex —, the session cookie and the CSRF check, filing and moving a ticket, the board and its drag, the backlog's drag, in Chromium and WebKit and both colour schemes, and a coarse dark-mode screenshot ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md), [below](#end-to-end-tests)) |
 
-Per-tier timeouts: the integration target passes `-timeout=10m`; the others use the Go default.
+Per-tier timeouts: the integration target passes `-timeout=10m`; the end-to-end suite gives a
+test 30 seconds and an assertion 10, and its CI job has ten minutes; the others use the Go default.
 
 ## Backend unit tests
 
@@ -199,9 +200,11 @@ D3):
 
 - **Dex**, the reference: [`hack/dex/config.yaml`](../../hack/dex/config.yaml) in the container
   `cowork-dex` of `make dex-up`, at `COWORK_TEST_OIDC_ISSUER`. One static client, `cowork`
-  ([its secret](development-credentials.md#the-containers)), whose redirect URIs are `make dev`'s and the tests'
+  ([its secret](development-credentials.md#the-containers)), whose redirect URIs are `make dev`'s, the tests'
   `http://cowork.test/auth/callback` — a name that never has to resolve, because the test intercepts
-  the redirect and replays it against its own server. Four static users
+  the redirect and replays it against its own server — and the end-to-end tier's
+  `https://localhost:18443/auth/callback`, whose Dex is a container of its own made from the same
+  file ([below](#end-to-end-tests)). Four static users
   ([their password](development-credentials.md#signing-in-to-the-ui-under-make-dev)); under the gate of `make dev` and the tests (`cowork-users` allowed, `cowork-admins`
   the administrator group, the mapping `team-red` → `member` in the tenant `dev`):
 
@@ -318,6 +321,128 @@ reports under `frontend/coverage/frontend/`: `text-summary` on the console, `lco
 | A component that provides a service of its own (`TicketRelations`, `AccessList`): the real service over `HttpTestingController`, and `vi.spyOn` on its acts from `fixture.debugElement.injector` — not `TestBed.overrideComponent`, which compiles the component at test time and leaves its template out of the coverage | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
 | A request a test answers later: `fixture.whenStable()` waits for open requests in the zoneless test bed, so until the answer only change detection runs (`fixture.detectChanges()` after a macrotask) | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
 
+## End-to-end tests
+
+Playwright Test in [`frontend/e2e/`](../../frontend/e2e/) against the two built images
+([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)).
+Nothing of the dev server is in it: the browser talks to the Ingress stand-in in front of the
+images, as it talks to the Ingress of an installation.
+
+```bash
+make e2e-browsers                 # once: Chromium and WebKit of the @playwright/test version
+make docker-build e2e             # both images of this commit, then the stack, the suite and its removal
+make e2e E2E_ARGS="--project=chromium-dark board.spec.ts"   # a part; E2E_ARGS reaches playwright test
+
+make e2e-up                       # the stack alone, kept, to write tests against it:
+cd frontend && npx playwright test -c e2e [--ui | --headed | file]
+make e2e-down
+```
+
+`make e2e` uses `BACKEND_IMG` and `FRONTEND_IMG` as `make docker-build` names them and refuses
+two images whose `org.opencontainers.image.revision` labels differ. A failed run leaves
+`frontend/e2e/test-results/` — per failed test its trace, video and screenshot
+(`npx playwright show-trace <trace.zip>`), and the containers' logs in `containers/` — and the HTML
+report in `frontend/e2e/playwright-report/`.
+
+### The stack
+
+[`hack/e2e.sh`](../../hack/e2e.sh) makes everything it runs on a Docker network of its own,
+`cowork-e2e` (`E2E_NAME=` renames all of it), and removes it afterwards — never a container of
+`make dev-up`, never the development database. Two ports are published, on `CONTAINER_BIND`:
+
+| Container | What it is |
+|---|---|
+| `cowork-e2e-postgres` | `POSTGRES_IMAGE`; the database `cowork_e2e`, owned by `cowork_owner`, served as `cowork_app`; no published port |
+| `cowork-e2e-minio` | `MINIO_IMAGE`; the bucket `cowork-e2e`, made through a port Docker chooses, since the server never makes its bucket |
+| `cowork-e2e-dex` | `DEX_IMAGE` with [`hack/dex/config.yaml`](../../hack/dex/config.yaml), its issuer moved to `http://localhost:5557/dex` (`E2E_DEX_PORT`); it holds the network namespace below and publishes both ports |
+| `cowork-e2e-backend` | `BACKEND_IMG`, read-only, migrating on start; the local administrator `e2e-admin`, Dex as identity provider with `make dev`'s gate, `COWORK_BASE_URL=https://localhost:18443` (`E2E_PORT`), a server key per run, and the per-address login throttle off (`COWORK_LOGIN_ADDRESS_LIMIT=0`): every browser reaches the backend through the one stand-in, so all of them are one address to it, as in the integration tier |
+| `cowork-e2e-frontend` | `FRONTEND_IMG`, read-only, as the chart runs it |
+| `cowork-e2e-ingress` | `INGRESS_IMAGE` with [`hack/ingress/default.conf`](../../hack/ingress/default.conf) as it is, but listening with TLS on `E2E_PORT`, and a certificate for `localhost` made with `openssl` for the run and never stored |
+
+**Why the backend and the stand-in share Dex's network namespace** (`--network container:`, as
+containers of one pod share `localhost`): an issuer is one URL for the browser and for the backend,
+and the backend takes plain `http` only on a loopback host
+([`config/oidc.go`](../../backend/internal/config/oidc.go) `checkIssuer`). Inside the namespace,
+`http://localhost:5557/dex` is Dex and `https://localhost:18443` the stand-in; outside, the
+browser reaches both through the published ports. **Why TLS**: WebKit stores no `Secure` cookie from
+`http://localhost`, and the session cookie is `Secure` everywhere
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2); the suite sets
+`ignoreHTTPSErrors` for the run's certificate.
+
+### The suite
+
+| File | What it walks |
+|---|---|
+| [`playwright.config.ts`](../../frontend/e2e/playwright.config.ts) | Four projects — `chromium-light`, `chromium-dark`, `webkit-light`, `webkit-dark`, by `colorScheme` —; WebKit runs the tests tagged `@smoke` (all of today's); `visual.spec.ts` runs in the dark projects only; no retries (D7); trace and video kept for a failed test; four workers, two under `CI` |
+| [`global-setup.ts`](../../frontend/e2e/global-setup.ts) | Once per run, through the API: the local administrator signs in, makes the tenant `e2e` (the installation's first, so that Dex's people may sign in), maps `team-red` to `member` in it, makes the token `e2e-seed` the workers seed with (`COWORK_E2E_TOKEN`), seeds the visual board, and keeps its session in `e2e/.auth/admin.json` (ignored) |
+| [`login.spec.ts`](../../frontend/e2e/login.spec.ts) | The local administrator through the form: the session cookie stored with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` and invisible to the page's script, kept across a reload, a write through it (filing a ticket), the same write without `X-Requested-With` refused `403 csrf`, the sign-out, the session gone; a local account the administrator makes signing in with its temporary password, sent to the password page, choosing its own, signing in again with it; `bob@example.com` through *Sign in with Dex*, Dex's form, back as a member of `e2e` by the mapping |
+| [`tickets.spec.ts`](../../frontend/e2e/tickets.spec.ts) | A ticket filed with the dialog of the project's header, in the horizon `later` of the backlog, moved `filed → analysed` on its page, the move in the API and back in the backlog |
+| [`board.spec.ts`](../../frontend/e2e/board.spec.ts) | A project's address opening its board, and the navigation's link too; a card dragged from Refinement to Ready — the transition `analysed → decided`, in the column, the count, the live region and the API, and after a reload |
+| [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts) | A row dragged by its handle to the top of `later` — the order in the page, the live region and the project's rank in the API —, and one dragged into the empty `next` — the horizon in the page and the API, and the reason field a person may leave with Escape |
+| [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) | The board of the tenant `e2e-visual` in the dark scheme against its picture ([below](#the-dark-mode-screenshot)) |
+| [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) | **Pending** (`test.fixme`, listed as skipped): the phase's path with two identities — filing, assigning to a second identity, which sees the ticket in "assigned to me" and its inbox, moves and closes it; written with those pages |
+
+Every path checks that the page shows the scheme its project emulates (`.app-dark` on `<html>`, or
+not).
+
+| Fixture | Where | What it gives you |
+|---|---|---|
+| `test`, `asAdmin` | [`support/fixtures.ts`](../../frontend/e2e/support/fixtures.ts) | A test without a session (the login's paths), and one that starts as the local administrator from `.auth/admin.json` |
+| `project` | `support/fixtures.ts` | A project of `e2e` with a key of its own (`E` and seven random characters), made per test, so tests run in parallel without a reset (D7) |
+| `seed` (per worker) | `support/fixtures.ts`, [`support/api.ts`](../../frontend/e2e/support/api.ts) `Seed` | The administrator's token: `project`, `file` (a ticket at the end of its horizon, `later` by default), `transition` (with a reason or a block), `ticket`, `horizon` (a horizon's open tickets in the rank) |
+| `Session`, `sessionContext`, `signIn` | `support/api.ts` | A request context that holds a session and writes with the origin and `X-Requested-With: cowork`, for what only a session does: a tenant, a mapping, a token, a local account |
+| `expectScheme(page)` | `support/fixtures.ts` | The page's scheme is the emulated one |
+| `drag(page, handle, target, at)` | `support/fixtures.ts` | A drag the Angular CDK takes: press, a few pixels past its threshold, twenty steps to the point `at` of the target, release |
+| identities | [`support/identities.ts`](../../frontend/e2e/support/identities.ts) | `COWORK_BASE_URL`, the administrator (`COWORK_E2E_ADMIN`, `COWORK_E2E_ADMIN_PASSWORD`), Dex's `bob`, `freshPassword()` |
+
+Selectors are `data-testid` (`getByTestId`) except where the page has none to give: a PrimeNG menu
+item, found by its role and name (*Sign out*), and Dex's own login form, by its inputs' names.
+
+### The dark-mode screenshot
+
+[`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) compares the board of the project `VIEW` in
+the tenant `e2e-visual` — a card in every column, seeded by the global setup
+([`support/visual.ts`](../../frontend/e2e/support/visual.ts)) so that the navigation lists the same
+one project in every run — with one picture per browser,
+[`screenshots/visual.spec.ts/board-<project>.png`](../../frontend/e2e/screenshots/visual.spec.ts/),
+at most 2 % of the pixels different (`maxDiffPixelRatio`), animations stopped.
+[`screenshot.css`](../../frontend/e2e/screenshot.css) takes out what differs by build, not by
+change: PrimeNG's license notice of a build without the PrimeUI key (CI builds without it) and the
+version line.
+
+One picture serves every platform, and the threshold is what that costs. Measured on 2026-10-04
+with Playwright 1.63: the renderings of macOS and of Linux (`mcr.microsoft.com/playwright:v1.63.0-noble`
+on arm64) differ in about 1.2 % of the pixels at Playwright's per-pixel threshold, before its
+anti-aliasing exclusion, and pass against each other's picture; a sidebar, the cards or the top bar
+turned light fail it (8 to 22 % of the pixels, both browsers); card titles turned dark on the dark
+cards **pass** — text is too small a share of the page for this comparison. The committed pictures
+are the Linux renderings, the platform CI runs on; amd64, the runners' architecture, has not been
+compared. After a deliberate change, make them again in that image, against the stack of
+`make e2e-up`, whose namespace it joins:
+
+```bash
+docker run --rm --network container:cowork-e2e-dex -v "$PWD/frontend:/work" -w /work \
+  mcr.microsoft.com/playwright:v1.63.0-noble \
+  npx playwright test -c e2e visual.spec.ts --update-snapshots=all
+```
+
+The image's tag is the version of `@playwright/test` in `frontend/package.json`, and moves with it.
+A picture made on macOS (`--update-snapshots=all` without the container) passes as well, by the
+measurement above, with the same margin the other way.
+
+### In CI
+
+The `e2e` job ([ci-and-release.md](ci-and-release.md)) loads the images the container scan built
+and scanned, installs the browsers with their system packages, and runs `make e2e` — the same
+script, on the job's Docker daemon. Its artefact `e2e-results`, kept for a failed or cancelled run,
+holds the traces, which record the run's requests with their cookies and the seed token: they belong
+to a stack that is gone when the job ends.
+
+The suite reads `COWORK_BASE_URL`, `COWORK_E2E_ADMIN` and `COWORK_E2E_ADMIN_PASSWORD`, so it can be
+pointed at another stack ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)
+D1 allows it for iteration, never as the gate). There it makes the tenants `e2e` and `e2e-visual`;
+**not tried**: against `make dev`, whose login throttle is on.
+
 ## Container check
 
 Neither image has a unit test; what proves them is building and running them. CI builds each
@@ -325,7 +450,10 @@ Neither image has a unit test; what proves them is building and running them. CI
 image). Locally, `make docker-build` builds both, and
 [build-test-lint.md](build-test-lint.md#run-the-images-together) is the recipe for running them
 together read-only behind the Ingress stand-in; `make verify-phase-2` scripts the API half of that
-run by hand, and the nginx checks stay manual until the end-to-end tier exists.
+run by hand. The end-to-end tier runs both images behind the stand-in on every push and walks the
+UI through it ([above](#end-to-end-tests)); the nginx checks it does not make — the cache headers,
+the two body limits, the stream past the stand-in's read timeout, `SIGTERM` with a stream open —
+stay manual.
 
 ## Chart tests
 
@@ -344,7 +472,13 @@ which sets all three.
 | `COWORK_TEST_OIDC_ISSUER` | the integration tier | The issuer of Dex, `http://localhost:5556/dex` by `make`'s default; required, and its discovery must answer |
 | `DEX_PORT`, `DEX_IMAGE`, `DEX_CONTAINER` | `make dex-up`, `make test-integration` | Where and what to start locally; the issuer follows the port |
 | `CONTAINER_BIND` | `make postgres-up`, `make minio-up`, `make dex-up` | The address the containers publish their ports on, `127.0.0.1` by default |
-| `CI` | vitest through `ng test` | Non-interactive reporter and no watch |
+| `CI` | vitest through `ng test`; the end-to-end suite | Non-interactive reporter and no watch; in the suite two workers and `test.only` refused |
 | `POSTGRES_PORT`, `POSTGRES_IMAGE`, `POSTGRES_CONTAINER` | `make postgres-up` | Where and what to start locally |
 | `MINIO_PORT`, `MINIO_IMAGE`, `MINIO_CONTAINER`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | `make minio-up`, `make test-integration` | Where and what to start locally, and the keys the tests are given |
 | `COWORK_DEV_SEED_DATABASE_URL` | `test/devseed` | The administrative URL `make dev-seed` writes through |
+| `E2E_PORT`, `E2E_DEX_PORT`, `E2E_NAME` | `make e2e`, `make e2e-up`, `hack/e2e.sh` | The stand-in's HTTPS port (`18443` `# default`), Dex's (`5557` `# default`), and the prefix of the stack's containers and network (`cowork-e2e` `# default`); a moved port moves the issuer and the redirect URI in the copy of `hack/dex/config.yaml` |
+| `E2E_ARGS` | `make e2e` | Arguments of `playwright test`, e.g. `--project=webkit-dark login.spec.ts` |
+| `BACKEND_IMG`, `FRONTEND_IMG`, `INGRESS_IMAGE`, `POSTGRES_IMAGE`, `MINIO_IMAGE`, `DEX_IMAGE` | `make e2e`, `make e2e-up` | The images of the stack, the Makefile's |
+| `COWORK_BASE_URL`, `COWORK_E2E_ADMIN`, `COWORK_E2E_ADMIN_PASSWORD` | the end-to-end suite | The stand-in's origin (`https://localhost:18443` `# default`) and the local administrator's credentials (`e2e-admin` / `e2e-only-cowork` `# default`); `make e2e` sets all three |
+| `COWORK_E2E_TOKEN` | the end-to-end suite | Set by its global setup for the workers; never set by hand |
+| `PLAYWRIGHT_INSTALL_FLAGS` | `make e2e-browsers` | `--with-deps` installs the browsers' system packages as well (CI) |

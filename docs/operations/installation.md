@@ -456,7 +456,9 @@ endpoint (`TestLogoutAtTheIssuer`) and the bootstrap tenant of the administrator
 be discovered, or whose discovery breaks the rules above, is a unit test (`TestDiscoveryFailure`,
 `TestDiscoveryHoldsTheIssuerToItsRules`).
 **Not verified here:** an issuer other than Dex and the test's own; the start's refusal through the
-chart, on a cluster; the login page in a real browser — there is no end-to-end tier yet.
+chart, on a cluster. The login page in a real browser — the local form, a temporary password, the
+sign-in through Dex — is walked by the end-to-end tier against the built images
+([testing.md](../developer/testing.md#end-to-end-tests)).
 
 ## Object storage
 

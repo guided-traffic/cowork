@@ -129,13 +129,13 @@ change.
 
 ## What has no page here
 
-The tenant board, the score beside the rank, "next for me", deletion, import, metrics and the
-end-to-end tier are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
+The tenant board, the score beside the rank, "next for me", deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
 and the person-level lists are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the rank itself is a section of
 [domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
-its own security page, [identity-provider.md](../security/identity-provider.md).
+its own security page, [identity-provider.md](../security/identity-provider.md), and the
+end-to-end tier a section of [testing.md](testing.md#end-to-end-tests).
 The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
 each gets its page here when it exists.

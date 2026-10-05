@@ -29,7 +29,9 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   ([project-plan.md](../planning/project-plan.md)).
 - **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
   verification goes, exist; what is left of them is "next for me" (T35) and the mention (T36). The
-  end-to-end tier (T29), and what is left of each child below.
+  end-to-end tier (T29) is built with the login's paths, filing and moving, the board and the
+  backlog; its path with two identities through "assigned to me" and the inbox, and its required
+  check, are left. And what is left of each child below.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -73,22 +75,23 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T27 — the login's remainder: a token's project by key and the token form's longest lifetime
    - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, a check
      by hand, and its open question on the bundle budget
-   - T29 — the end-to-end tier: Playwright against the built images, two identities, both
-     schemes, the login's paths and every view's
+   - T29 — the end-to-end tier's remainder: the path with two identities through "assigned to
+     me" and the inbox, the ruleset's required check, the job's first run on a runner
    - T30 — the ticket page's editing on the end-to-end path of T29 (its editors are built)
    - T31 — the conversation's writes and the prerequisite tree seen by a second browser on the
      end-to-end path of T29 (the editors, the withdrawal and the tree are built)
    - T32 — the attachment quota (the upload to a comment, the raster preview and the correction
      of a time entry are built)
    - T33 — the rendered Markdown body and the server-side sanitiser
-   - T34 — the score beside the rank, and the rebalancing of the rank keys
+   - T34 — the score beside the rank, and the rebalancing of the rank keys (the backlog's
+     end-to-end path is built)
    - T35 — next for me, the person-level pages following every tenant, the lists in the score's order
    - T36 — the mention in a comment, and the inbox's end-to-end path
    - T37 — search
    - T38 — saved filters
    - T39 — ticket deletion and the purge
    - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
-   - T41 — the project board's end-to-end path
+   - T41 — done (the project board's end-to-end path); its move to the archive is left
    - T42 — the tenant board with swimlanes
    - T43 — the fixed dashboard
 2. **The phase verification**, recorded here with what was run, against what, with what result:
