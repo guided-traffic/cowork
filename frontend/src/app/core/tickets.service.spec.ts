@@ -1004,7 +1004,7 @@ describe('TicketsService', () => {
       },
     );
 
-    // docs/adr/0014 D3: the sort by the score moves no ticket's version; the lists hold the order.
+    // docs/adr/0014 D3: the sort by the score is the project's act, no ticket's event; the lists hold the order.
     it("reload on project.changed of the tenant the pages show, and on no other tenant's", async () => {
       stream.next({ name: 'project.changed', id: 'e1', key: 'globex/VKO', kind: 'ranked' });
       await wait(10 * listReloadDelay);

@@ -288,9 +288,13 @@ SET rank = NULL
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = ANY (sqlc.arg(ids)::uuid[]);
 
 -- name: SetRanks :exec
--- Gives each ticket its key, ids and keys pairwise, after ReleaseRanks.
+-- Gives each ticket its key, ids and keys pairwise, after ReleaseRanks. moved
+-- raises the version of each, as a move does (docs/adr/0050 D1): a sort by the
+-- score moves them; a rebalancing keeps every ticket's place and raises none.
 UPDATE tickets AS t
-SET rank = u.rank
+SET rank = u.rank,
+    version = t.version + CASE WHEN sqlc.arg(moved)::boolean THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN sqlc.arg(moved)::boolean THEN now() ELSE t.updated_at END
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(ranks)::text[]) AS rank) AS u
 WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = u.id;
 

@@ -123,7 +123,8 @@ func (e ticketEnv) sortRank(t *testing.T, c caller, project string) *http.Respon
 
 // docs/adr/0014 D3: "sort by score" reorders a project's open tickets to their
 // score in one recorded act, published as project.changed; a ticket the
-// caller cannot see keeps its key and its place; the tickets' versions stay;
+// caller cannot see keeps its key and its place; each ticket it moved gets a
+// new version, as a move gives one, and the hidden one keeps its own;
 // a rank that follows the score already records nothing; it needs rank of an
 // agent and the member role.
 func TestSortByScore(t *testing.T) {
@@ -149,8 +150,9 @@ func TestSortByScore(t *testing.T) {
 	assert.Equal(t, hidden, keyOf(t, f, secret.Id), "the hidden ticket keeps its key")
 	assert.Equal(t, []string{"critical", "secret", "medium", "low"}, e.titles(t, admin, e.projectTickets("ALPHA"), ""),
 		"and its place among the keys the others took")
-	assert.Equal(t, 1, e.get(t, member, "ALPHA", low.Number).JSON200.Version, "the tickets' versions stay")
-	assert.Equal(t, 1, e.get(t, member, "ALPHA", critical.Number).JSON200.Version)
+	assert.Equal(t, 2, e.get(t, member, "ALPHA", low.Number).JSON200.Version, "a ticket the sort moved has a new version")
+	assert.Equal(t, 2, e.get(t, member, "ALPHA", critical.Number).JSON200.Version)
+	assert.Equal(t, 1, e.get(t, admin, "ALPHA", secret.Number).JSON200.Version, "the hidden ticket was not moved")
 
 	m, ok := stream.next(t, time.Second)
 	require.True(t, ok, "the sort is published")

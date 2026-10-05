@@ -4660,9 +4660,10 @@ type ClientInterface interface {
 	// the places they hold among themselves in the score's order — highest first, each scored anew
 	// with the function as it stands — so every horizon's group and every parent's children read in
 	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-	// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-	// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
 	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 	// (docs/adr/0050 D4).
 	//
@@ -4677,9 +4678,10 @@ type ClientInterface interface {
 	// the places they hold among themselves in the score's order — highest first, each scored anew
 	// with the function as it stands — so every horizon's group and every parent's children read in
 	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-	// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-	// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
 	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 	// (docs/adr/0050 D4).
 	//
@@ -7017,9 +7019,10 @@ func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project 
 // the places they hold among themselves in the score's order — highest first, each scored anew
 // with the function as it stands — so every horizon's group and every parent's children read in
 // the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
 // needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 // (docs/adr/0050 D4).
 //
@@ -7044,9 +7047,10 @@ func (c *Client) SortProjectRankWithBody(ctx context.Context, tenant TenantSlug,
 // the places they hold among themselves in the score's order — highest first, each scored anew
 // with the function as it stands — so every horizon's group and every parent's children read in
 // the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
 // needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 // (docs/adr/0050 D4).
 //
@@ -16834,9 +16838,10 @@ type ClientWithResponsesInterface interface {
 	// the places they hold among themselves in the score's order — highest first, each scored anew
 	// with the function as it stands — so every horizon's group and every parent's children read in
 	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-	// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-	// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
 	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 	// (docs/adr/0050 D4).
 	//
@@ -16851,9 +16856,10 @@ type ClientWithResponsesInterface interface {
 	// the places they hold among themselves in the score's order — highest first, each scored anew
 	// with the function as it stands — so every horizon's group and every parent's children read in
 	// the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-	// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-	// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+	// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+	// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+	// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+	// and records nothing. Never automatic. A member's act with `write` scope; an agent
 	// needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 	// (docs/adr/0050 D4).
 	//
@@ -25006,9 +25012,10 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 // the places they hold among themselves in the score's order — highest first, each scored anew
 // with the function as it stands — so every horizon's group and every parent's children read in
 // the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
 // needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 // (docs/adr/0050 D4).
 //
@@ -25029,9 +25036,10 @@ func (c *ClientWithResponses) SortProjectRankWithBodyWithResponse(ctx context.Co
 // the places they hold among themselves in the score's order — highest first, each scored anew
 // with the function as it stands — so every horizon's group and every parent's children read in
 // the score's order; a ticket the caller cannot see keeps its key and its place. One act,
-// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, published as
-// `project.changed`; the tickets' versions stay. A rank that follows the score already answers
-// `moved: 0` and records nothing. Never automatic. A member's act with `write` scope; an agent
+// `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+// it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+// a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+// and records nothing. Never automatic. A member's act with `write` scope; an agent
 // needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
 // (docs/adr/0050 D4).
 //

@@ -65,7 +65,8 @@ func refreshScore(ctx context.Context, w *store.Writer, t tenantScope, id uuid.U
 // themselves in the score's order, so a ticket the caller cannot see keeps its
 // key and its place, and every horizon's group and every parent's children,
 // which read the rank over a part of the project, read in the score's order.
-// The tickets' versions stay: it is the project's act, not theirs.
+// Each ticket it moves gets a new version, as a move gives one
+// (docs/adr/0050 D1); the act is the project's.
 func (s *Server) SortProjectRank(ctx context.Context, req apigen.SortProjectRankRequestObject) (apigen.SortProjectRankResponseObject, error) {
 	t := tenantFrom(ctx)
 	if req.Body.By != sortedBy {
@@ -133,7 +134,7 @@ func sortRank(ctx context.Context, w *store.Writer, t tenantScope, projectID uui
 	if len(ids) == 0 {
 		return nil, store.ErrNoChange
 	}
-	if err := writeRanks(ctx, w, t, ids, ids, keys); err != nil {
+	if err := writeRanks(ctx, w, t, ids, ids, keys, true); err != nil {
 		return nil, err
 	}
 	return ids, nil
@@ -165,12 +166,12 @@ func sortByScore(tickets []rankedScore) ([]uuid.UUID, []string) {
 
 // writeRanks takes the keys of release away and gives ids their keys, keys
 // pairwise: a key belongs to one ticket of its project, so keys that change
-// hands are released first (ReleaseRanks).
-func writeRanks(ctx context.Context, w *store.Writer, t tenantScope, release, ids []uuid.UUID, keys []string) error {
+// hands are released first (ReleaseRanks). moved raises their versions.
+func writeRanks(ctx context.Context, w *store.Writer, t tenantScope, release, ids []uuid.UUID, keys []string, moved bool) error {
 	if err := w.ReleaseRanks(ctx, writeq.ReleaseRanksParams{TenantID: t.ID, Ids: release}); err != nil {
 		return fmt.Errorf("release the rank keys: %w", err)
 	}
-	if err := w.SetRanks(ctx, writeq.SetRanksParams{TenantID: t.ID, Ids: ids, Ranks: keys}); err != nil {
+	if err := w.SetRanks(ctx, writeq.SetRanksParams{TenantID: t.ID, Ids: ids, Ranks: keys, Moved: moved}); err != nil {
 		return fmt.Errorf("write the rank keys: %w", err)
 	}
 	return nil

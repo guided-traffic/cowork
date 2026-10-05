@@ -476,7 +476,7 @@ describe('TicketActions', () => {
       none(readUrl);
     });
   });
-  // docs/adr/0014 D3: the project's act, which moves no ticket's version.
+  // docs/adr/0014 D3: the project's act; the lists bring the versions of the tickets it moved.
   describe('sortByScore', () => {
     it("sorts the project's rank by the score and loads the open lists again", async () => {
       const reload = vi.spyOn(tickets, 'reloadLists');

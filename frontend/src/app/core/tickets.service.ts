@@ -264,8 +264,9 @@ export class TicketsService {
     ) {
       return;
     }
-    // A project's rank set as a whole — the sort by the score — moves no ticket's version: the
-    // lists, which hold the order, load again (docs/adr/0014 D3).
+    // A project's rank set as a whole — the sort by the score — is the project's act, with no
+    // event of the tickets it moved: the lists, which hold the order and bring their new versions,
+    // load again (docs/adr/0014 D3).
     if (event.name === 'project.changed') {
       this.reloadLists();
       return;

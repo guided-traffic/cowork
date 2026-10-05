@@ -780,20 +780,30 @@ func (q *Queries) SetConfidential(ctx context.Context, arg SetConfidentialParams
 
 const setRanks = `-- name: SetRanks :exec
 UPDATE tickets AS t
-SET rank = u.rank
-FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::text[]) AS rank) AS u
-WHERE t.tenant_id = $1 AND t.id = u.id
+SET rank = u.rank,
+    version = t.version + CASE WHEN $1::boolean THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN $1::boolean THEN now() ELSE t.updated_at END
+FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::text[]) AS rank) AS u
+WHERE t.tenant_id = $2 AND t.id = u.id
 `
 
 type SetRanksParams struct {
+	Moved    bool
 	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	Ranks    []string
 }
 
-// Gives each ticket its key, ids and keys pairwise, after ReleaseRanks.
+// Gives each ticket its key, ids and keys pairwise, after ReleaseRanks. moved
+// raises the version of each, as a move does (docs/adr/0050 D1): a sort by the
+// score moves them; a rebalancing keeps every ticket's place and raises none.
 func (q *Queries) SetRanks(ctx context.Context, arg SetRanksParams) error {
-	_, err := q.db.Exec(ctx, setRanks, arg.TenantID, arg.Ids, arg.Ranks)
+	_, err := q.db.Exec(ctx, setRanks,
+		arg.Moved,
+		arg.TenantID,
+		arg.Ids,
+		arg.Ranks,
+	)
 	return err
 }
 

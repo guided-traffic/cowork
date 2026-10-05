@@ -248,7 +248,7 @@ func rebalanceRank(ctx context.Context, w *store.Writer, t tenantScope, projectI
 			open = append(open, r.ID)
 		}
 	}
-	return writeRanks(ctx, w, t, held, open, domain.RankSpread(len(open)))
+	return writeRanks(ctx, w, t, held, open, domain.RankSpread(len(open)), false)
 }
 
 // beside reads what lies next to a key on one side of the project's rank:

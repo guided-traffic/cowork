@@ -116,6 +116,15 @@ func TestRenderContextNamesTheTokenOfAPersonsAct(t *testing.T) {
 	assert.Equal(t, string(want), string(got))
 }
 
+// docs/adr/0014 D3: the sort of a project's rank by the score is told apart
+// from a move in the rank.
+func TestSummaryOfASortByScore(t *testing.T) {
+	assert.Equal(t, "ranked by score", summary(Act{Action: "ranked", After: map[string]any{"by": "score", "moved": 3}}))
+	assert.Equal(t, "ranked", summary(Act{Action: "ranked", After: map[string]any{"after": "acme/COW-2"}}))
+	assert.Equal(t, "ranked (the details name a ticket you cannot see)",
+		summary(Act{Action: "ranked", After: map[string]any{"by": "score"}, Redacted: true}))
+}
+
 func TestSize(t *testing.T) {
 	assert.Equal(t, "512 B", size(512))
 	assert.Equal(t, "1.5 KiB", size(1536))
