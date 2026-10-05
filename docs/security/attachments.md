@@ -2,7 +2,8 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04, the tenant's
+quota on 2026-10-05. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -119,6 +120,22 @@ any web page, and the reason the type is the server's, sniffed, never the client
   other there, so they cannot pass the count together
   ([`store/jobs.go`](../../backend/internal/store/jobs.go) `LockAttachments`;
   `TestSimultaneousUploadsKeepTheCount`).
+- **The tenant's quota.** `COWORK_ATTACHMENT_TENANT_QUOTA` — bytes, `0`, the default, for none —
+  bounds what a tenant's attachments hold together
+  ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+  D6 as amended 2026-10-05). Where it is set, the upload's transaction takes the tenant's quota
+  lock first (`LockAttachmentQuota`, before the ticket's), and, once the act is authorised, sums
+  the sizes of every attachment of the tenant — of every ticket, a confidential one and a
+  restricted project's included, which the uploader may not see — and refuses a file that would
+  take the sum above the quota with `409 attachment_quota`, before the row or the object exists
+  ([`api/attachments.go`](../../backend/internal/api/attachments.go) `withinQuota`). The lock is
+  held until the upload commits, so uploads of one tenant pass the check one after the other —
+  also to different tickets (`TestSimultaneousUploadsKeepTheTenantQuota`) — and one tenant's
+  uploads never wait for another's. Row-level security holds the sum to the tenant: another
+  tenant's files neither count against it nor show (`TestTheTenantAttachmentQuota`). The refusal
+  names the quota and the file's size, never the sum. The tenant's administrators read the sum,
+  the count and the quota (`GET …/attachment-usage`, on the tenant's settings page); anybody else
+  is `403`, because the sum counts files they may not see.
 - **Shape.** One file per upload; the multipart body takes `file` and an optional
   `comment_id`, and nothing else.
 - **Order.** The act is authorised on the tenant role, the scope and, for an agent, the
@@ -126,8 +143,8 @@ any web page, and the reason the type is the server's, sniffed, never the client
   judged and its name sanitised; an agent's upload must carry an `Idempotency-Key`. Then, in
   one transaction, the ticket is read through its predicate, the role in its project is
   checked, a `comment_id` must name a comment of that ticket written by the caller's person,
-  the count is checked, the row and its `uploaded` act are written, the object is put, and the
-  transaction commits. When the row does not commit, or a concurrent request with the same key
+  the count is checked, the tenant's quota is checked, the row and its `uploaded` act are written,
+  the object is put, and the transaction commits. When the row does not commit, or a concurrent request with the same key
   won, the object is deleted again ([`api/attachments.go`](../../backend/internal/api/attachments.go)
   `UploadAttachment`). A failed deletion leaves an object no row names; nothing sweeps the
   bucket for such objects — the consistency check of
@@ -193,13 +210,21 @@ SHA-256 lets a reader confirm, without downloading, that a file is one they alre
 ADR 0016 accepts this among its residual risks.
 
 <a id="h-10"></a>
-### H-10 — No per-tenant quota is enforced
+### H-10 — The tenant's quota is off unless the installation sets it, and its refusal says how full the tenant is
 
-Live today. ADR 0016 D6's per-tenant quota is neither enforced nor reported. What bounds a
-tenant's storage is the per-file maximum times the per-ticket count times the number of
-tickets, which any member with `write` scope can grow — at the defaults about a gibibyte per
-ticket. Mitigation: a quota on the bucket in the storage itself; the tenant's audit
-view shows the uploads by token, and revoking the token stops a runaway client.
+Live today, in two ways. **Off by default**: `COWORK_ATTACHMENT_TENANT_QUOTA` is `0` unless the
+operator sets it, because no number fits every installation and an upgrade must not start refusing
+uploads ([runtime.md](../operations/runtime.md#limits)). Until it is set, what bounds a tenant's
+storage is the per-file maximum times the per-ticket count times the number of tickets, which any
+member with `write` scope — or an agent with `upload` — can grow, at the defaults about a gibibyte
+per ticket, and one tenant can fill the storage every tenant of the installation shares; a quota on
+the bucket then stops every tenant at once. **A refusal is a signal**: a member who uploads files of
+chosen sizes learns, from which are refused, how many bytes the tenant has left once it is within one
+file of the quota — a figure that counts the files of confidential tickets and restricted projects
+the member cannot see, and that moves when one of them is uploaded. It tells no name, no ticket and
+no content. Mitigation: set the quota on an installation of several tenants, with headroom above the
+largest tenant's use (the tenant's settings page shows it to its administrators); the audit view
+shows the uploads by token, and revoking the token stops a runaway client.
 
 <a id="h-11"></a>
 ### H-11 — A plain http:// storage endpoint is accepted

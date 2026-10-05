@@ -4,9 +4,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Problem, Tenant } from '../../api/models';
+import { AttachmentUsage, Problem, Tenant } from '../../api/models';
+import { Api } from '../../api/api';
+import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
-import { TenantSettings } from './tenant-settings';
+import { byteSize, quotaShare, TenantSettings } from './tenant-settings';
 
 function tenant(overrides: Partial<Tenant> = {}): Tenant {
   return {
@@ -27,17 +29,99 @@ function refusal(status: number, title: string, detail: string) {
   return new HttpErrorResponse({ status, statusText: title, error: body });
 }
 
+describe('the attachment usage helpers', () => {
+  it('names a count of bytes in binary units', () => {
+    expect(byteSize(0)).toBe('0 bytes');
+    expect(byteSize(1)).toBe('1 byte');
+    expect(byteSize(1023)).toBe('1023 bytes');
+    expect(byteSize(1536)).toBe('1.5 KiB');
+    expect(byteSize(70 * 1024 * 1024)).toBe('70 MiB');
+    expect(byteSize(10 * 1024 ** 3)).toBe('10 GiB');
+  });
+
+  it('gives the share of the quota in whole percent, at most 100, and none without a quota', () => {
+    expect(quotaShare({ used_bytes: 25, attachments: 1, quota_bytes: 100 })).toBe(25);
+    expect(quotaShare({ used_bytes: 999, attachments: 3, quota_bytes: 1000 })).toBe(99);
+    expect(quotaShare({ used_bytes: 150, attachments: 3, quota_bytes: 100 })).toBe(100);
+    expect(quotaShare({ used_bytes: 150, attachments: 3, quota_bytes: null })).toBeNull();
+  });
+});
+
 describe('TenantSettings', () => {
   let value: WritableSignal<Tenant | undefined>;
   let isAdmin: WritableSignal<boolean>;
   let update: MockInstance<TenantService['update']>;
+  let usage: WritableSignal<AttachmentUsage | undefined>;
+  let usageError: WritableSignal<unknown>;
+  let getUsage: MockInstance<(fn: unknown, params: { tenant: string }) => Promise<unknown>>;
 
   beforeEach(() => {
     value = signal<Tenant | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
+    usage = signal<AttachmentUsage | undefined>({
+      used_bytes: 75 * 1024 * 1024,
+      attachments: 41,
+      quota_bytes: 100 * 1024 * 1024,
+    });
+    usageError = signal<unknown>(undefined);
+    getUsage = vi.fn().mockImplementation(async () => {
+      const error = usageError();
+      if (error) {
+        throw error;
+      }
+      return usage();
+    });
     TestBed.configureTestingModule({
-      providers: [MessageService, { provide: TenantService, useValue: { value, isAdmin, update } }],
+      providers: [
+        MessageService,
+        { provide: TenantService, useValue: { value, isAdmin, update } },
+        { provide: SessionService, useValue: { tenant: signal('acme') } },
+        { provide: Api, useValue: { invoke: getUsage } },
+      ],
+    });
+  });
+
+  describe("the attachments' usage (docs/adr/0016 D6)", () => {
+    it('shows an administrator what the files hold of the quota, with a meter', async () => {
+      const fixture = await render();
+
+      expect(getUsage).toHaveBeenCalledWith(expect.anything(), { tenant: 'acme' });
+      expect(el(fixture, 'attachment-usage-text')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        '75 MiB in 41 files of a quota of 100 MiB',
+      );
+      expect(el(fixture, 'attachment-usage-meter')?.getAttribute('aria-valuenow')).toBe('75');
+    });
+
+    it('says that the installation sets no quota where it sets none', async () => {
+      usage.set({ used_bytes: 1, attachments: 1, quota_bytes: null });
+      const fixture = await render();
+
+      expect(el(fixture, 'attachment-usage-text')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        '1 byte in 1 file',
+      );
+      expect(el(fixture, 'attachment-usage-meter')).toBeNull();
+      expect(el(fixture, 'attachment-usage-no-quota')?.textContent).toContain(
+        'COWORK_ATTACHMENT_TENANT_QUOTA',
+      );
+    });
+
+    it('says why when the usage could not be loaded', async () => {
+      usage.set(undefined);
+      usageError.set(refusal(503, 'Not ready', 'The database is starting.'));
+      const fixture = await render();
+
+      expect(el(fixture, 'attachment-usage-failure')?.textContent).toBe(
+        'The usage could not be loaded: The database is starting.',
+      );
+    });
+
+    it('shows nothing of it to anybody but an administrator', async () => {
+      isAdmin.set(false);
+      const fixture = await render();
+
+      expect(el(fixture, 'attachment-usage')).toBeNull();
+      expect(getUsage).not.toHaveBeenCalled();
     });
   });
 

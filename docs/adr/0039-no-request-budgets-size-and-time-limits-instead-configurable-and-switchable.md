@@ -29,7 +29,11 @@ provisionally with that record (D2: a turn's limits; D3: the turn's stream behin
 the same day ([`config/chat.go`](../../backend/internal/config/chat.go),
 [`api/chat.go`](../../backend/internal/api/chat.go)). Amended again on 2026-10-04 by the owner's
 answers recorded in ADR 0076 (D2: no decisions in a turn's body; the person's stop of their turns, on
-the replica that answers it), built the same day. Amended on 2026-10-04 by the owner's decision on
+the replica that answers it), built the same day. Amended 2026-10-05 with the answer on the tenant's
+attachment quota recorded in
+[ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6 — enforce, over report only — built on the recommendation, the owner reviewing the result (D2:
+the quota is a limit of the table, `0` for none, and the one whose default is `0`). Amended on 2026-10-04 by the owner's decision on
 the routing recorded in
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
 (D3: the frontend proxies nothing, so the proxy sized above the backend's limits is the Ingress
@@ -60,12 +64,17 @@ not guessed.
 |---|---|---|
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413` with a JSON error |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md) D6) | `413` before bytes are stored |
+| `COWORK_ATTACHMENT_TENANT_QUOTA` *(added 2026-10-05)* | `0`, none (ADR 0016 D6) | `409 attachment_quota` before bytes are stored |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled; `504` with a JSON error |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused |
 | `COWORK_MAX_QUERY_LENGTH` | `256` | a longer search query answers `400` |
 
 A value of `0` disables that limit; the operations page says that a disabled body limit lets
-one request hold unbounded memory and that `0` belongs in no production values file.
+one request hold unbounded memory and that `0` belongs in no production values file. *(Added
+2026-10-05: the tenant's attachment quota is no bound on what one request costs but on what a
+tenant keeps, and its default is `0` — no quota — because no figure suits every installation and an
+upgrade must not start refusing uploads; an installation of several tenants sets it, which the
+operations page says.)*
 *(Added 2026-10-02:)* the event stream of ADR 0054 is exempt from `COWORK_REQUEST_TIMEOUT`; its
 heartbeat bounds an idle stream instead. The timeout is a context deadline that rolls the
 transaction back, never a buffering handler, and a read deadline on the request body, lifted

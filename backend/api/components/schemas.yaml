@@ -1246,6 +1246,17 @@ Attachment:
         - type: 'null'
     created_at: {type: string, format: date-time}
     content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
+AttachmentUsage:
+  type: object
+  description: What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+  required: [used_bytes, attachments, quota_bytes]
+  properties:
+    used_bytes: {type: integer, format: int64, description: 'The sizes of every attachment of the tenant, summed'}
+    attachments: {type: integer, format: int64, description: How many attachments the tenant holds}
+    quota_bytes:
+      type: [integer, 'null']
+      format: int64
+      description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
 AttachmentList:
   type: object
   required: [items, next_cursor]

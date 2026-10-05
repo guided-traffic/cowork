@@ -69,6 +69,7 @@ var (
 	ParentCycle            = Code{"parent_cycle", http.StatusConflict, "Parent cycle", "The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2)"}
 	LinkCycle              = Code{"link_cycle", http.StatusConflict, "Link cycle", "The blocks link would close a cycle of prerequisites (docs/adr/0012 D4)"}
 	AttachmentLimit        = Code{"attachment_limit", http.StatusConflict, "Attachment limit", "The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6)"}
+	AttachmentQuota        = Code{"attachment_quota", http.StatusConflict, "Attachment quota", "The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6)"}
 	UploadsDisabled        = Code{"uploads_disabled", http.StatusNotImplemented, "Uploads disabled", "The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1)"}
 	ChatUnavailable        = Code{"chat_unavailable", http.StatusConflict, "Chat unavailable", "The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076)"}
 	PeriodLocked           = Code{"period_locked", http.StatusConflict, "Period locked", "The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8)"}
@@ -93,7 +94,7 @@ var Catalogue = []Code{
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
 	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, RepositoryBound,
 	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,
-	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, UploadsDisabled,
+	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, AttachmentQuota, UploadsDisabled,
 	ChatUnavailable, PreconditionFailed, PayloadTooLarge,
 	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts, ChatBusy,
 	Internal, ChatProviderFailed, NotReady, Timeout,

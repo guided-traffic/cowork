@@ -246,6 +246,7 @@ the one on the ticket the query reads.
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `NoticeRecipients` ([notifications](#notifications)) |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
+| `TenantAttachmentUsage` | the bytes of every attachment of the tenant, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
@@ -292,6 +293,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the tenant, before the cycle walk |
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
+| `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TENANT_QUOTA` is set, before the ticket's attachment lock | the tenant's uploads, before the sum against its quota |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
 | `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 

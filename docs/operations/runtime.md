@@ -313,6 +313,7 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413 payload_too_large` — before reading when the declared length is larger, while reading otherwise | no limit |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` | `413` before anything is stored; the upload's body may be 64 KiB larger, for the multipart framing | no limit: one upload at a time is buffered whole, so a single upload can exhaust the container's memory ([attachments.md H-12](../security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
+| `COWORK_ATTACHMENT_TENANT_QUOTA` | `0`: none | the bytes a tenant's attachments hold together: an upload that would go above it is `409 attachment_quota` before anything is stored, the tenant's uploads checked one after the other under its lock; the tenant's administrators read the usage on its settings page | no quota — the default ([below](#the-tenants-attachment-quota)) |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
 | `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
@@ -332,6 +333,21 @@ database transaction for as long as it runs; a disabled stream limit lets one pe
 number of streams, each with a buffer of its own. Nothing warns when a limit is `0` — not the
 log, not the chart, whose notes then ask the Ingress controller for no body limit and an hour's
 read timeout in step. The chart's own defaults set none.
+
+### The tenant's attachment quota
+
+`COWORK_ATTACHMENT_TENANT_QUOTA` is the one limit of the table that is off by default: it is no
+bound on what a request costs but on what a tenant keeps, and no figure suits every installation —
+an installation with one tenant has the bucket's size as its bound, and an upgrade that brought a
+quota along would start refusing uploads that worked the day before
+([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6). An installation of several tenants sets it — a size such as `10GiB`, in the chart
+`backend.config.attachmentTenantQuota` in bytes — because without it one tenant, or an agent with
+`upload` in a loop, can fill the storage every tenant shares ([attachments.md H-10](../security/attachments.md#h-10)).
+Every attachment of the tenant counts, its confidential tickets' and restricted projects' too, and
+lowering the quota below what a tenant holds deletes nothing: the tenant's next upload is refused.
+Each tenant's administrators read what it holds and the quota on the tenant's settings page
+(`GET /api/v1/tenants/{tenant}/attachment-usage`).
 
 ## What answers what
 

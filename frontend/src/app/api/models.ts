@@ -10,6 +10,7 @@ export type { ActivityList } from './models/activity-list';
 export type { AnswerSet } from './models/answer-set';
 export type { Attachment } from './models/attachment';
 export type { AttachmentList } from './models/attachment-list';
+export type { AttachmentUsage } from './models/attachment-usage';
 export type { AuditAction } from './models/audit-action';
 export type { AuditEvent } from './models/audit-event';
 export type { AuditList } from './models/audit-list';

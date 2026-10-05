@@ -46,6 +46,7 @@ const (
 	EnvS3CA                   = "COWORK_S3_CA"
 	EnvAttachmentMaxBytes     = "COWORK_ATTACHMENT_MAX_BYTES"
 	EnvAttachmentMaxPerTicket = "COWORK_ATTACHMENT_MAX_PER_TICKET"
+	EnvAttachmentTenantQuota  = "COWORK_ATTACHMENT_TENANT_QUOTA"
 
 	EnvSSEReplayWindow        = "COWORK_SSE_REPLAY_WINDOW"
 	EnvSSEMaxStreamsPerPerson = "COWORK_SSE_MAX_STREAMS_PER_PERSON"
@@ -173,6 +174,10 @@ type Config struct {
 	// AttachmentMaxPerTicket is the number of attachments a ticket takes; 0
 	// disables the limit.
 	AttachmentMaxPerTicket int
+	// AttachmentTenantQuota is the bytes a tenant's attachments may hold
+	// together; 0, the default, sets no quota (docs/adr/0016 D6 as amended
+	// 2026-10-05).
+	AttachmentTenantQuota int64
 	// SSEReplayWindow is how long a replica keeps events for a reconnect's
 	// replay; SSEMaxStreamsPerPerson how many streams a person holds per
 	// replica, 0 for no limit (docs/adr/0054 D5, D8).
@@ -464,9 +469,10 @@ func (l *loader) limits(cfg *Config) {
 	}
 }
 
-// storage reads the object storage: all of endpoint, bucket and both keys,
-// or none of them. The secret key is never echoed.
-func (l *loader) storage(cfg *Config) {
+// attachmentLimits reads the limits of the attachments: the per-file maximum,
+// the per-ticket count and the tenant's quota (docs/adr/0016 D6), each 0 for
+// none.
+func (l *loader) attachmentLimits(cfg *Config) {
 	if v, ok := l.get(EnvAttachmentMaxBytes); ok {
 		n, err := parseSize(v)
 		if err != nil {
@@ -483,6 +489,20 @@ func (l *loader) storage(cfg *Config) {
 			cfg.AttachmentMaxPerTicket = n
 		}
 	}
+	if v, ok := l.get(EnvAttachmentTenantQuota); ok {
+		n, err := parseSize(v)
+		if err != nil {
+			l.fail("%s: %q is not a size such as 10GiB or 0", EnvAttachmentTenantQuota, v)
+		} else {
+			cfg.AttachmentTenantQuota = n
+		}
+	}
+}
+
+// storage reads the object storage: all of endpoint, bucket and both keys,
+// or none of them. The secret key is never echoed.
+func (l *loader) storage(cfg *Config) {
+	l.attachmentLimits(cfg)
 	st := Storage{PathStyle: true}
 	required := []struct {
 		env string

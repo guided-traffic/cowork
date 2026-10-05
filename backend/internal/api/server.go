@@ -28,6 +28,7 @@ const (
 	entityUser           = "user"
 	entityMembership     = "membership"
 	entityToken          = "token"
+	actionRevoked        = "revoked"
 	fieldName            = "name"
 	fieldDescription     = "description"
 	fieldTimeLockedUntil = "time_locked_until"

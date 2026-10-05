@@ -486,6 +486,7 @@ func (e MembershipSource) Valid() bool {
 const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
+	ProblemCodeAttachmentQuota        ProblemCode = "attachment_quota"
 	ProblemCodeChatBusy               ProblemCode = "chat_busy"
 	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
 	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
@@ -539,6 +540,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeAgentForbidden:
 		return true
 	case ProblemCodeAttachmentLimit:
+		return true
+	case ProblemCodeAttachmentQuota:
 		return true
 	case ProblemCodeChatBusy:
 		return true
@@ -1368,6 +1371,18 @@ type AttachmentContentType string
 type AttachmentList struct {
 	Items      []Attachment              `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// AttachmentUsage What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+type AttachmentUsage struct {
+	// Attachments How many attachments the tenant holds
+	Attachments int64 `json:"attachments"`
+
+	// QuotaBytes COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+	QuotaBytes nullable.Nullable[int64] `json:"quota_bytes"`
+
+	// UsedBytes The sizes of every attachment of the tenant, summed
+	UsedBytes int64 `json:"used_bytes"`
 }
 
 // AuditAction defines model for AuditAction.
@@ -4516,6 +4531,17 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	//
+	// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+	// restricted projects included — the sum the quota is checked against. The tenant's
+	// administrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum
+	// counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+	// null where the installation sets none.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+	GetAttachmentUsage(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
@@ -5067,7 +5093,10 @@ type ClientInterface interface {
 	// A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 	// attachment only its author or that person's agents. The type is detected from the bytes
 	// and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+	// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+	// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+	// checked under the tenant's lock before the bytes are stored; without object storage
 	// 501 `uploads_disabled`.
 	//
 	// Takes any type of body and a specified content type.
@@ -6595,6 +6624,27 @@ func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, user
 	return c.Client.Do(req)
 }
 
+// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+//
+// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+// restricted projects included — the sum the quota is checked against. The tenant's
+// administrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum
+// counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+// null where the installation sets none.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+func (c *Client) GetAttachmentUsage(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAttachmentUsageRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListAudit The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
@@ -7546,7 +7596,10 @@ func (c *Client) ListAttachments(ctx context.Context, tenant TenantSlug, project
 // A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 // attachment only its author or that person's agents. The type is detected from the bytes
 // and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+// checked under the tenant's lock before the bytes are stored; without object storage
 // 501 `uploads_disabled`.
 //
 // Takes any type of body and a specified content type.
@@ -10250,6 +10303,40 @@ func NewEndAccountSessionsRequest(server string, tenant TenantSlug, username Use
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAttachmentUsageRequest constructs an http.Request for the GetAttachmentUsage method
+func NewGetAttachmentUsageRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/attachment-usage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -16953,6 +17040,19 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessionsWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*EndAccountSessionsResponse, error)
 
+	// GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
+	//
+	// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+	// restricted projects included — the sum the quota is checked against. The tenant's
+	// administrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum
+	// counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+	// null where the installation sets none.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+	GetAttachmentUsageWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetAttachmentUsageResponse, error)
+
 	// ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
@@ -17540,7 +17640,10 @@ type ClientWithResponsesInterface interface {
 	// A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 	// attachment only its author or that person's agents. The type is detected from the bytes
 	// and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+	// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+	// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+	// checked under the tenant's lock before the bytes are stored; without object storage
 	// 501 `uploads_disabled`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -19775,6 +19878,61 @@ func (r EndAccountSessionsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r EndAccountSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAttachmentUsageResponseDefaultHeaders the declared response headers of an HTTP default response for GetAttachmentUsage
+type GetAttachmentUsageResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetAttachmentUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AttachmentUsage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetAttachmentUsageResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAttachmentUsageResponse) GetJSON200() *AttachmentUsage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAttachmentUsageResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAttachmentUsageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAttachmentUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAttachmentUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAttachmentUsageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -25160,6 +25318,25 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 	return ParseEndAccountSessionsResponse(rsp)
 }
 
+// GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
+//
+// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+// restricted projects included — the sum the quota is checked against. The tenant's
+// administrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum
+// counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+// null where the installation sets none.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+func (c *ClientWithResponses) GetAttachmentUsageWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetAttachmentUsageResponse, error) {
+	rsp, err := c.GetAttachmentUsage(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAttachmentUsageResponse(rsp)
+}
+
 // ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
@@ -25987,7 +26164,10 @@ func (c *ClientWithResponses) ListAttachmentsWithResponse(ctx context.Context, t
 // A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 // attachment only its author or that person's agents. The type is detected from the bytes
 // and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+// checked under the tenant's lock before the bytes are stored; without object storage
 // 501 `uploads_disabled`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -28412,6 +28592,52 @@ func ParseEndAccountSessionsResponse(rsp *http.Response) (*EndAccountSessionsRes
 	switch {
 	case true:
 		var headers EndAccountSessionsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAttachmentUsageResponse parses an HTTP response from a GetAttachmentUsageWithResponse call
+func ParseGetAttachmentUsageResponse(rsp *http.Response) (*GetAttachmentUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAttachmentUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AttachmentUsage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetAttachmentUsageResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -32858,6 +33084,9 @@ type ServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	// (GET /api/v1/tenants/{tenant}/attachment-usage)
+	GetAttachmentUsage(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
@@ -34081,6 +34310,32 @@ func (siw *ServerInterfaceWrapper) EndAccountSessions(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EndAccountSessions(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAttachmentUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetAttachmentUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAttachmentUsage(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -39786,6 +40041,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/lockout", wrapper.UnlockAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-usage", wrapper.GetAttachmentUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
@@ -41053,6 +41309,49 @@ type EndAccountSessionsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response EndAccountSessionsdefaultApplicationProblemPlusJSONResponse) VisitEndAccountSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentUsageRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetAttachmentUsageResponseObject interface {
+	VisitGetAttachmentUsageResponse(w http.ResponseWriter) error
+}
+
+type GetAttachmentUsage200JSONResponse AttachmentUsage
+
+func (response GetAttachmentUsage200JSONResponse) VisitGetAttachmentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentUsagedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetAttachmentUsagedefaultApplicationProblemPlusJSONResponse) VisitGetAttachmentUsageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -45483,6 +45782,9 @@ type StrictServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(ctx context.Context, request EndAccountSessionsRequestObject) (EndAccountSessionsResponseObject, error)
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	// (GET /api/v1/tenants/{tenant}/attachment-usage)
+	GetAttachmentUsage(ctx context.Context, request GetAttachmentUsageRequestObject) (GetAttachmentUsageResponseObject, error)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
@@ -46473,6 +46775,32 @@ func (sh *strictHandler) EndAccountSessions(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndAccountSessionsResponseObject); ok {
 		if err := validResponse.VisitEndAccountSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAttachmentUsage operation middleware
+func (sh *strictHandler) GetAttachmentUsage(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetAttachmentUsageRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAttachmentUsage(ctx, request.(GetAttachmentUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAttachmentUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAttachmentUsageResponseObject); ok {
+		if err := validResponse.VisitGetAttachmentUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

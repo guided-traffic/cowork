@@ -23,13 +23,29 @@ Amended 2026-10-04 by the owner's decision that every act made through a token i
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): D1, a file's metadata names the token it was uploaded through. Built the same day
 ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
 
+Amended 2026-10-05 (D6: the tenant's quota refuses; the residual risk of a quota only reported
+amended) by the answer to "does the tenant's attachment quota refuse an upload, or is it only
+reported?". The options were (a) enforce — a quota per tenant in a variable, `0` for none, the
+tenant's stored bytes summed and checked under a per-tenant lock before the bytes are stored, a
+refusal with a code of its own, the usage in the administration; and (b) report only — the usage in
+the administration, no refusal, D6's refusal narrowed to the per-file and per-ticket limits. (a) was
+the recommendation, and it was built on the owner's instruction of 2026-10-05 to build the
+recommended option, the owner reviewing the result.
+
 **Partly built** (phase 2, 2026-10-02): D1–D6 and D8 — [`internal/storage`](../../backend/internal/storage/)
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
-under the ticket's path. D6's per-tenant quota is neither enforced nor reported; D7 arrives
+under the ticket's path. ~~D6's per-tenant quota is neither enforced nor reported~~ *(built
+2026-10-05, below)*; D7 arrives
 with the sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6.
 *(2026-10-04.)* In the browser: an upload to a comment of the person's own, and the preview of a
 raster attachment — an image of its own URL, inline by D5, never an SVG — each load of which is a
 recorded download.
+
+**Built** (phase 3, 2026-10-05): D6's per-tenant quota as amended that day —
+`COWORK_ATTACHMENT_TENANT_QUOTA`, the check under the tenant's lock
+([`api/attachments.go`](../../backend/internal/api/attachments.go) `lockQuota`, `withinQuota`),
+`409 attachment_quota`, the usage at `GET /api/v1/tenants/{tenant}/attachment-usage` and on the
+tenant's settings page in the browser.
 
 ## Context
 
@@ -92,7 +108,20 @@ attachment_limit`; an upload is buffered in memory up to the maximum and one byt
 uploads in flight share a budget of 64 MiB, because the backend has no writable disk. The
 count is checked under a per-ticket lock, so simultaneous uploads cannot pass it together. A
 maximum of `0` switches the per-file limit off ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
-D2); one upload at a time is then read whole, whatever its size.)*
+D2); one upload at a time is then read whole, whatever its size.)* *(Amended 2026-10-05: the
+per-tenant quota refuses as the other limits do. `COWORK_ATTACHMENT_TENANT_QUOTA` is the bytes one
+tenant's attachments hold together, a size such as `10GiB`; `0` sets none and is the default —
+no figure suits every installation, one tenant's has the bucket as its bound, and an upgrade must
+not start refusing uploads that worked before; an installation of several tenants sets it. Where it
+is set, an upload takes the tenant's quota lock before the ticket's, sums the sizes of every
+attachment of the tenant — every ticket's, a confidential ticket's and a restricted project's
+included — and refuses a file that would take the sum above the quota with `409 attachment_quota`
+before a row or an object exists; the refusal names the quota and the file's size, never the sum.
+The lock is held until the upload commits, so the tenant's uploads pass the check one after the
+other, and one tenant's never wait for another's. The quota is "reported in the tenant's
+administration" as the usage — the sum, the number of files and the quota — which the tenant's
+administrators read, and nobody else, because the sum counts files of tickets a member may not
+see.)*
 
 **D7 — Markdown may embed a raster-image attachment of the same ticket, and nothing else.**
 The sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)
@@ -150,8 +179,14 @@ amendment when an installation needs it.
   something. Accepted.
 - D3's sniffing library is a dependency in the request path; its allow-list is a test
   fixture in the same way as the Markdown sanitiser's.
-- The tenant quota of D6 is reported, not enforced against a hard storage limit; a runaway
-  upload loop is bounded by the per-file and per-ticket limits only.
+- ~~The tenant quota of D6 is reported, not enforced against a hard storage limit; a runaway
+  upload loop is bounded by the per-file and per-ticket limits only.~~ *(Amended 2026-10-05: the
+  quota refuses where it is set; it is off by default, and until an installation sets it a runaway
+  upload loop — an agent with `upload` that files new tickets — is bounded by the per-file and
+  per-ticket limits only, and one tenant can fill the storage every tenant shares. Where it is set,
+  a member who uploads files of chosen sizes learns from the refusals how many bytes the tenant has
+  left once it is within one file of the quota, a figure that counts files they cannot see
+  ([docs/security/attachments.md](../security/attachments.md#h-10) H-10).)*
 
 ## References
 

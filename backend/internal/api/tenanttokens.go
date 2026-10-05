@@ -127,7 +127,7 @@ func (s *Server) RevokeTenantToken(ctx context.Context, req apigen.RevokeTenantT
 		if err != nil {
 			return err
 		}
-		w.Record(store.Event{EntityType: entityToken, EntityID: tok.ID, Action: "revoked",
+		w.Record(store.Event{EntityType: entityToken, EntityID: tok.ID, Action: actionRevoked,
 			After: map[string]any{fieldUser: tok.UserID, fieldName: tok.Name, "unrestricted": tok.RestrictedTenantID == nil}})
 		return nil
 	})

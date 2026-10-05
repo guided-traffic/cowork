@@ -507,6 +507,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 | `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` is `400 validation_failed` |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` `# default` | a size; `0` disables | The largest upload; above it `413`, before anything is stored. Uploads are buffered in memory: with `0` one upload at a time is read whole, whatever its size ([docs/security/attachments.md](docs/security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` `# default` | a count; `0` disables | The attachments one ticket takes; one more is `409 attachment_limit` |
+| `COWORK_ATTACHMENT_TENANT_QUOTA` | `0` `# default` | a size such as `10GiB`; `0` sets none | The bytes one tenant's attachments hold together — every ticket's, confidential ones included; an upload that would go above it is `409 attachment_quota` before anything is stored. Off by default: an installation of several tenants sets it, or one tenant can fill the storage all of them share ([docs/security/attachments.md](docs/security/attachments.md#h-10)) |
 
 **Object storage** ([ADR 0016](docs/adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) —
 the endpoint, the bucket and both keys together, or none of them. Without them uploads answer
@@ -898,14 +899,15 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Attachments — 4 routes</summary>
+<summary>Attachments — 5 routes</summary>
 
 | Method and path | Does |
 |---|---|
 | `GET …/{number}/attachments` | the ticket's attachments |
-| `POST …/{number}/attachments` | upload a file to the ticket, or to one of its comments: `multipart/form-data` with `file` and optionally `comment_id`; the type is detected from the bytes — PNG, JPEG, GIF, WebP, PDF, UTF-8 text, SVG — anything else is `415`; `501 uploads_disabled` without object storage |
+| `POST …/{number}/attachments` | upload a file to the ticket, or to one of its comments: `multipart/form-data` with `file` and optionally `comment_id`; the type is detected from the bytes — PNG, JPEG, GIF, WebP, PDF, UTF-8 text, SVG — anything else is `415`; above `COWORK_ATTACHMENT_MAX_BYTES` `413`, a ticket full by `COWORK_ATTACHMENT_MAX_PER_TICKET` `409 attachment_limit`, a file that would take the tenant above `COWORK_ATTACHMENT_TENANT_QUOTA` `409 attachment_quota` — each before anything is stored; `501 uploads_disabled` without object storage |
 | `GET …/{number}/attachments/{attachment}` | its metadata |
 | `GET …/{number}/attachments/{attachment}/content` | its bytes, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; raster images inline, everything else as a download; the `ETag` is the SHA-256 of the bytes; every `200` is recorded |
+| `GET /api/v1/tenants/{tenant}/attachment-usage` | the tenant's administrators, `read` scope: `{"used_bytes","attachments","quota_bytes"}` — every attachment of the tenant summed, confidential tickets' included, and `COWORK_ATTACHMENT_TENANT_QUOTA` or `null` without one; anybody else `403 forbidden` |
 
 </details>
 
@@ -951,6 +953,7 @@ every error body carries one of these as `code`.
 | `open_prerequisites` | 409 | Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7) |
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
+| `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
 | `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
 | `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
@@ -1072,6 +1075,7 @@ backend:
     maxJsonBody: 1048576              # COWORK_MAX_JSON_BODY, bytes; 0 disables
     attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (the notes then ask the controller for no body limit either)
     attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
+    attachmentTenantQuota: 0          # COWORK_ATTACHMENT_TENANT_QUOTA, bytes a tenant's attachments hold together; 0, the default, sets none — set it with several tenants
     requestTimeout: 30                # COWORK_REQUEST_TIMEOUT, seconds; 0 disables; the event stream is exempt
     maxPageSize: 200                  # COWORK_MAX_PAGE_SIZE; 0 disables
     maxQueryLength: 256               # COWORK_MAX_QUERY_LENGTH, characters; 0 disables

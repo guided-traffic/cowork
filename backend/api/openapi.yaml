@@ -192,6 +192,8 @@ paths:
     $ref: './time.yaml#/tenantTime'
   /api/v1/tenants/{tenant}/time-report:
     $ref: './time.yaml#/timeReport'
+  /api/v1/tenants/{tenant}/attachment-usage:
+    $ref: './attachments.yaml#/attachmentUsage'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments:
     $ref: './attachments.yaml#/attachments'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}:

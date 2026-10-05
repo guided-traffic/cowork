@@ -28,3 +28,13 @@ WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.ticket_id = sqlc.arg(ticket_id) AN
 SELECT count(*)::bigint AS attachments
 FROM attachments
 WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id = sqlc.arg(ticket_id);
+
+-- name: TenantAttachmentUsage :one
+-- The bytes and the count of every attachment of the tenant, against its quota
+-- (docs/adr/0016 D6): every ticket's, a confidential ticket's and a restricted
+-- project's included. Row-level security holds it to the tenant; the handlers
+-- answer it to the tenant's administrators only, who see every ticket.
+-- visibility: exempt (the tenant's stored bytes count whether or not the caller sees the ticket that holds them)
+SELECT coalesce(sum(size), 0)::bigint AS used_bytes, count(*)::bigint AS attachments
+FROM attachments
+WHERE tenant_id = sqlc.arg(tenant_id);

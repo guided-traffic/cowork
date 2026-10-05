@@ -177,6 +177,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		Storage:                objects,
 		AttachmentMaxBytes:     cfg.AttachmentMaxBytes,
 		AttachmentMaxPerTicket: cfg.AttachmentMaxPerTicket,
+		AttachmentTenantQuota:  cfg.AttachmentTenantQuota,
 		Events:                 hub,
 
 		BaseOrigin:           cfg.BaseOrigin,

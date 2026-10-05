@@ -734,6 +734,12 @@ page's edge, which its `id` tells. Beyond 10 000 rows the page says the file hol
 ones, and to narrow the period. A member who is no administrator reads that the record is the
 administrators'.
 
+**The tenant's settings** ([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts),
+`/t/:tenant/settings`) show its administrators what the tenant's attachments hold — the sum, the
+number of files and the quota, with a meter where there is one (`byteSize`, `quotaShare`), or that
+the installation sets none — read by the page itself when it opens (`GET …/attachment-usage`,
+[ADR 0016] D6); anybody else sees nothing of it, because the sum counts files they may not see.
+
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
 version without touching them, so neither takes back what is being typed; a save sends the newest

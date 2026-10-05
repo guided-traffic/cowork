@@ -982,6 +982,35 @@
         ],
         "type": "object"
       },
+      "AttachmentUsage": {
+        "description": "What the tenant's attachments hold against its quota (docs/adr/0016 D6)",
+        "properties": {
+          "attachments": {
+            "description": "How many attachments the tenant holds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quota_bytes": {
+            "description": "COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "used_bytes": {
+            "description": "The sizes of every attachment of the tenant, summed",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used_bytes",
+          "attachments",
+          "quota_bytes"
+        ],
+        "type": "object"
+      },
       "AuditAction": {
         "enum": [
           "created",
@@ -2956,6 +2985,7 @@
           "open_prerequisites",
           "period_locked",
           "attachment_limit",
+          "attachment_quota",
           "uploads_disabled",
           "chat_unavailable",
           "precondition_failed",
@@ -6053,6 +6083,41 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/attachment-usage": {
+      "get": {
+        "description": "Every attachment of the tenant counts, on every ticket, confidential ones and those of\nrestricted projects included — the sum the quota is checked against. The tenant's\nadministrators, a token's `read` scope; anybody else is `403 forbidden`, because the sum\ncounts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,\nnull where the installation sets none.\n",
+        "operationId": "getAttachmentUsage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "attachments": 41,
+                  "quota_bytes": 10737418240,
+                  "used_bytes": 73400320
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentUsage"
+                }
+              }
+            },
+            "description": "The usage"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The bytes the tenant's attachments hold, and the quota",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
         "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
@@ -7644,7 +7709,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage\n501 `uploads_disabled`.\n",
+        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds\nCOWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take\nthe tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,\nchecked under the tenant's lock before the bytes are stored; without object storage\n501 `uploads_disabled`.\n",
         "operationId": "uploadAttachment",
         "parameters": [
           {
