@@ -926,6 +926,18 @@ type Question struct {
 	AnsweredByTokenName *string
 }
 
+type SavedFilter struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	OwnerID    uuid.UUID
+	Name       string
+	Parameters []byte
+	Shared     bool
+	Version    int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type Session struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID
@@ -1000,6 +1012,8 @@ type Ticket struct {
 	ReporterAgent             *string
 	ReporterTokenID           *uuid.UUID
 	ReporterTokenName         *string
+	DeletedAt                 *time.Time
+	DeletedBy                 *uuid.UUID
 }
 
 type TicketCounter struct {

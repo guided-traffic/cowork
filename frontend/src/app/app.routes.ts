@@ -112,6 +112,12 @@ export const routes: Routes = [
             path: 'time',
             loadComponent: () => import('./features/time/time-report').then((m) => m.TimeReport),
           },
+          // The tenant's bin, mirroring GET …/deleted-tickets (docs/adr/0024 D1, docs/adr/0023 D4).
+          {
+            path: 'deleted-tickets',
+            loadComponent: () =>
+              import('./features/tenant/deleted-tickets').then((m) => m.DeletedTickets),
+          },
         ],
       },
       ...devRoutes,

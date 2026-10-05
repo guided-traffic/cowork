@@ -14,7 +14,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.ticket_id = sqlc.arg(ticket_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (sqlc.narg(after)::integer IS NULL OR q.number > sqlc.narg(after)::integer)
 ORDER BY q.number
 LIMIT sqlc.arg(page_size);
@@ -33,7 +33,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.ticket_id = sqlc.arg(ticket_id) AND q.number = sqlc.arg(number)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);
 
 -- name: CanSeeTicket :one
 -- Whether a person can see a ticket: its project (docs/adr/0034 D3) and,
@@ -65,7 +65,7 @@ LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.status = 'open'
   AND (q.asked_of = sqlc.arg(user_id)::uuid OR q.asked_of IS NULL)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT sqlc.arg(has_after)::boolean
        OR p.key > sqlc.arg(after_project)::text
        OR (p.key = sqlc.arg(after_project)::text

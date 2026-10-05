@@ -7,7 +7,7 @@ filters, and the media types beside JSON. The decisions are [ADR 0046] (spec fir
 (errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
 (versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ## The document
 
@@ -22,7 +22,8 @@ into the file of its path family.
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
 | [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
@@ -121,14 +122,14 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-sixteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+seventeen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`, `purgeTicket`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
-(`setMyChat`); a turn of the chat acts with the person's session and its stop ends the session's
+(`setMyChat`) and what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
@@ -298,7 +299,9 @@ another token and marking notifications read (`write` scope,
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets |
+| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
+| `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden` |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go) |
@@ -345,7 +348,7 @@ request id.
 ## Idempotency
 
 A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQuestion`, `addComment`,
-`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping` — calls
+`bookTime`, `uploadAttachment`, `addMember`, `createGroupMapping`, `createSavedFilter` — calls
 `keyed(ctx, key, op, scope, body)` in
 [`server.go`](../../backend/internal/api/server.go):
 
@@ -389,7 +392,7 @@ once: the state is written with `bump` false after the fields.
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
 `replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
-`editTimeEntry`, `updateGroupMapping` and `setProjectRestriction` (the project's version). A grant
+`editTimeEntry`, `updateGroupMapping`, `updateSavedFilter` and `setProjectRestriction` (the project's version). A deletion, a restoration and a purge of a ticket take none: they overwrite no field, and the deletion and the restoration raise the version. A grant
 and an access entry are addressed by their person and written without it, like a link. Links, interest and attachments are written without it and carry no version
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
@@ -397,7 +400,8 @@ the ticket goes, so the last move wins — and raises the ticket's version.
 The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
 `listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
-`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions` — answer a
+`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions`, `listDeletedTickets`,
+`listSavedFilters` — answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
 `304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
 `tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
@@ -439,7 +443,8 @@ list answers that `invalid_cursor`.
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's tenants by slug; the person's inbox newest first, merged
+  mappings by group; the installation's tenants by slug; a tenant's bin the last deleted first, its
+  position the deletion's time and the id; a tenant's saved filters by id; the person's inbox newest first, merged
   across the tenants by the notifications' ids, which order by time; the tickets assigned to the
   person and the open decisions by the tenant's slug, the project's key and the project's rank — the
   decisions by the ticket's place, `done` and `dropped` after the ranked ones, then the question's
@@ -467,6 +472,21 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 `COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
 the title and body hold every word, the list keeps its order —; the ranked search with snippets over
 comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
+The checks of the filters themselves are `parseFilters`, which the saved filters share.
+
+**Saved filters** ([`filters.go`](../../backend/internal/api/filters.go), [ADR 0018] D5, [ADR 0049]
+D6, D7) store a filter's parameters as the JSON object `SavedFilterParameters` — the query's names,
+each repeatable one an array —, whose schema refuses an unknown name (`additionalProperties:
+false`, D4). Written, the parameters go through `parseFilters` and every refused value is `400` at
+`/parameters/<name>` (`checkFilter`); `me` is stored as `me`. Read, they go through it again
+(`filterView`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
+project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
+another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
+withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change
+(`ownFilter`); the policies of migration 33 hold that in the data layer as well
+([data-access.md](data-access.md#the-settings-the-policies-read)). Saved filters are not published
+on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads
+again on a poll ([above](#versions-etag-if-match)).
 
 ## Media types beside JSON
 
@@ -494,8 +514,10 @@ comments, questions, file names and keys as well is the search routes' ([search.
   after the stream began is its `error` event, a problem body from `problem.BodyOf`
   ([chat.md](chat.md#a-turn)).
 
+[ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
@@ -512,3 +534,4 @@ comments, questions, file names and keys as well is the search routes' ([search.
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
+[ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

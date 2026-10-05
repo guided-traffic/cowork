@@ -25,7 +25,12 @@
             >
           }
         </div>
-        <app-ticket-moves [ticket]="t" />
+        <span class="head-acts">
+          <app-ticket-moves [ticket]="t" />
+          @if (administers()) {
+            <app-ticket-delete [ticket]="t" />
+          }
+        </span>
       </div>
       <app-ticket-title [ticket]="t" />
       @if (t.block; as block) {

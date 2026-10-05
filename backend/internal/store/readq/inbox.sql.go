@@ -20,8 +20,8 @@ JOIN tickets t ON t.tenant_id = n.tenant_id AND t.id = n.ticket_id
 JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
 JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
 WHERE n.tenant_id = $1 AND n.user_id = $2 AND n.read_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
 `
 
 type CountUnreadParams struct {
@@ -44,8 +44,8 @@ JOIN tickets t ON t.tenant_id = n.tenant_id AND t.id = n.ticket_id
 JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
 JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
 WHERE n.tenant_id = $1 AND n.user_id = $2 AND n.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
 `
 
 type FindNotificationParams struct {
@@ -84,8 +84,8 @@ LEFT JOIN users u ON u.id = a.actor_user_id
 LEFT JOIN comments c ON a.entity_type = 'comment' AND c.tenant_id = a.tenant_id AND c.id = a.entity_id
 LEFT JOIN questions q ON a.entity_type = 'question' AND q.tenant_id = a.tenant_id AND q.id = a.entity_id
 WHERE n.tenant_id = $1 AND n.user_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
   AND ($3::uuid IS NULL OR n.id < $3::uuid)
 ORDER BY n.id DESC
 LIMIT $4

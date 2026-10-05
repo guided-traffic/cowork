@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { listMyInbox, markMyInboxRead, markNotificationRead } from '../api/functions';
 import { ConditionalPages } from './conditional';
-import { changesVisibility, EventStreamService } from './event-stream.service';
+import { changesExistence, changesVisibility, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -79,10 +79,11 @@ export class InboxService {
         } else if (
           event.name === 'resync' ||
           event.name === 'poll' ||
-          (event.name === 'membership.changed' && changesVisibility(event, this.person()))
+          (event.name === 'membership.changed' && changesVisibility(event, this.person())) ||
+          changesExistence(event)
         ) {
-          // A tenant left, or a project hidden, takes its notifications out of the count, and
-          // tells the inbox nothing.
+          // A tenant left, a project hidden, or a ticket deleted or restored takes its notifications
+          // out of the count or puts them back, and tells the inbox nothing.
           refresh(this.unread, this.injector);
         }
       });

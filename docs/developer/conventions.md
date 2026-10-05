@@ -21,7 +21,10 @@ What every change in this repository follows.
   ever enters SQL text. The store's own fixed statements — `set_config`, the advisory locks,
   `pg_notify` and `LISTEN`, the role checks and the schema state — live in its Go files. A query that
   reads a ticket or a project calls the visibility predicate or names its exemption with
-  `-- visibility: exempt (<why>)` ([data-access.md](data-access.md#visibility-in-sql)).
+  `-- visibility: exempt (<why>)`, and leaves a deleted ticket out with `deleted_at IS NULL` or
+  names that exemption with `-- deletion: exempt (<why>)` ([data-access.md](data-access.md#visibility-in-sql)).
+  A function that runs with its owner's rights (`SECURITY DEFINER`) fixes its `search_path`, `pg_temp`
+  last, and is executable by the runtime role alone.
 - **Acts:** a request's write commits through `store.Mutate`, a job's through `store.RunJob`
   (the writes outside both are bookkeeping, not an act of a person: the token's last-used day, a
   session's idle clock, and the login's attempt count, `store.RecordLoginAttempt`, whose refusals

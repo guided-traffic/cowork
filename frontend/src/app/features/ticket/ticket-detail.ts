@@ -38,6 +38,7 @@ import { InterestControl } from './interest-control';
 import { PrerequisiteTree } from './prerequisite-tree';
 import { AttachmentsCard, TimeCard } from './records-cards';
 import { TicketBody } from './ticket-body';
+import { TicketDelete } from './ticket-delete';
 import { TicketFields } from './ticket-fields';
 import { TicketMoves } from './ticket-moves';
 import { address, TicketRelations } from './ticket-relations';
@@ -95,6 +96,7 @@ const notFound: ProblemView = {
     Skeleton,
     StateBadge,
     TicketBody,
+    TicketDelete,
     TicketFields,
     TicketMoves,
     TicketTitle,
@@ -134,12 +136,22 @@ export class TicketDetail {
     const key = this.fullKey();
     return key ? this.tickets.cache.entry(key)()?.value : undefined;
   });
-  /** A key that is not `<PROJECT>-<number>` names nothing; a refused load names its problem. */
+  /**
+   * A key that is not `<PROJECT>-<number>` names nothing; a refused load names its problem. A
+   * ticket that loaded and then left the cache is gone for the person — deleted, or out of their
+   * sight —, which a refetch after its event said with a `404` (docs/adr/0024 D1).
+   */
   protected readonly missing = computed<ProblemView | undefined>(() => {
     if (this.session.tenant() && !this.at()) {
       return notFound;
     }
-    return this.loading.error() ? this.problems.read(this.loading.error()) : undefined;
+    if (this.loading.error()) {
+      return this.problems.read(this.loading.error());
+    }
+    const loaded = this.loading.hasValue() ? this.loading.value() : undefined;
+    return loaded !== undefined && loaded === this.fullKey() && !this.ticket()
+      ? notFound
+      : undefined;
   });
   protected readonly openQuestions = computed(() =>
     this.relations.questions.hasValue()

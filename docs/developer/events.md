@@ -26,6 +26,18 @@ transaction: PostgreSQL delivers it at commit and never after a rollback (D4). T
 tenant, the project, the entity, the action, the ticket key, the ticket's version, and the
 confidential rule's inputs — the flag, the assignee, the reporter.
 
+**A deletion, a restoration and a purge** are ticket acts like any other — `ticket.changed` with the
+kind `deleted`, `restored` or `purged` — and reach whoever could see the ticket by the facts it had,
+on the tenant's streams and on the person-level stream of every person who sees it, whichever of
+their tenants that stream was opened in: a client that refetches the ticket gets `404` after a
+deletion or a purge and drops it, the bin of an administrator loads again, and the person-level
+pages and the inbox's count, which no `inbox.changed` tells of a deleted ticket, read again on a
+deletion or a restoration (`changesExistence` in
+[`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts)). A purge's act
+carries the facts the ticket had (`Event.Published`), because the row is gone when the act is
+written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
+`304` to the poll of the fallback when nothing changed.
+
 **A project's creation** is published as a notification of the entity `project`, with the
 tenant and the project and nothing else (`Event.NewProject`, set by `insertProject` in
 [`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
@@ -268,5 +280,6 @@ the heartbeat drops a tenant left and follows a tenant joined in the database pa
 `TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a token restricted to a tenant hears
 nothing of another.
 
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

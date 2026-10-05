@@ -192,5 +192,7 @@ func seedEveryTenantTable(t *testing.T, w world) {
 		require.NoError(t, f.Exec(ctx, `INSERT INTO notifications (tenant_id, user_id, ticket_id, audit_event_id, reason)
 			SELECT $1, $2, $3, id, 'commented' FROM audit_events WHERE tenant_id = $1 ORDER BY id DESC LIMIT 1`,
 			s.tenant, s.person, first))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared)
+			VALUES ($1, $2, 'seed', '{"state": ["filed"]}', true)`, s.tenant, s.person))
 	}
 }

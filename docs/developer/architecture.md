@@ -1,7 +1,7 @@
 # Architecture
 
 What runs where, what a request goes through, how the two logins make a session, and what happens
-between `cowork serve` and the first answered request. Read against the tree on 2026-10-04.
+between `cowork serve` and the first answered request. Read against the tree on 2026-10-05.
 Everything described here exists; what is not built is listed at the end.
 
 ## Two containers, one origin
@@ -97,7 +97,8 @@ the person's token, like a script — no path to the database, nothing the API d
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
     the server key the keys of the cursors, the fingerprints, the two address hashes and the two
     sealers of the identity provider); `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session and login expiries at start and every hour
+11. `go runJobs` runs the idempotency, session, login and notification expiries and the purge of the
+    tickets deleted thirty days ago at start and every hour
     ([data-access.md](data-access.md#jobs)).
 12. `httpserver.ListenAndServe` binds `COWORK_LISTEN_ADDR`, with `hub.Close` registered for the
     shutdown. On a signal every event stream ends at once, the server stops accepting and drains
@@ -308,10 +309,11 @@ of one's own sessions; a global administrator's reading of the installation-leve
 the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; "next for me" — the person-level
 lists "assigned to me" and "open decisions" and the inbox exist ([api.md](api.md#the-person-level-routes),
-[frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries the person's
-own events across their tenants but not the rest of their tenants' changes —; a mention in a
-comment; saved filters and the dashboard; the score beside the rank and the
-rebalancing of the rank's keys; deletion and purge; import; metrics. The order in which they come is
+[frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries every
+tenant of the person ([events.md](events.md#the-person-level-stream)) —; a mention in a
+comment; the saved filters of the tenant-wide list and the tenant board, and the dashboard; the
+score beside the rank and the rebalancing of the rank's keys; the deletion of a project; import;
+metrics. The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
 page of its own, when it exists.
 

@@ -29,7 +29,10 @@ D4's `/me/inbox`, `/me/assigned` and `/me/decisions`. Not built: D2's `next` ~~a
 each hit naming its tenant, `?tenant=<slug>` narrowing to one as on the other lists
 ([`api/search.go`](../../backend/internal/api/search.go)); the UI mirrors it and the tenant's own
 `GET /api/v1/tenants/{slug}/search` with `/me/search` and `/t/{slug}/search`, two routes D4 did not
-list.
+list. *(2026-10-05:)* D1's tenant-bound resources gain the bin, `…/deleted-tickets` with
+`…/deleted-tickets/{key}` and its `restore` — `{key}` one segment, `<PROJECT>-<number>`, as D3's —,
+and the saved filters, `…/filters` and `…/filters/{filter}`; D4's UI mirrors the bin as
+`/t/{slug}/deleted-tickets`.
 
 ## Context
 

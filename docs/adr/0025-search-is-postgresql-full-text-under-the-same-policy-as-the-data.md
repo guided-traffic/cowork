@@ -38,9 +38,11 @@ never HTML —; a hit in a comment or a question names it and the UI links to it
 is excluded by the query; an attachment's file name is searched by its words as well, which migration
 31 adds to its vector — the parser reads `shot.png` as one word. Every text is read through its
 ticket's visibility predicate ([docs/security/tenancy.md](../security/tenancy.md#search-finds-only-what-its-reader-sees)).
-Not built: D5's exclusion of soft-deleted tickets, which waits for the deletion of
+D5's exclusion of soft-deleted tickets came with the deletion of
 [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-— no ticket is deleted yet.
+(2026-10-05): every ticket the query reads — the hit's, and the one a comment, a question or a file
+name belongs to — carries `deleted_at IS NULL` beside its visibility predicate, as every read of
+tickets does ([data access](../developer/data-access.md#deletion-and-the-purge)).
 
 ## Context
 

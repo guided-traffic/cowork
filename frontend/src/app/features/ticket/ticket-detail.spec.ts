@@ -280,6 +280,7 @@ describe('TicketDetail', () => {
   let person: WritableSignal<Me | undefined>;
   let cache: EntityCache<Ticket>;
   let loadError: WritableSignal<unknown>;
+  let loaded: WritableSignal<string | undefined>;
   let shownKey: (() => string | undefined) | undefined;
   let http: HttpTestingController;
   let conversation: { unlink: MockInstance<Conversation['unlink']> };
@@ -297,6 +298,7 @@ describe('TicketDetail', () => {
     });
     cache = new EntityCache<Ticket>();
     loadError = signal<unknown>(undefined);
+    loaded = signal<string | undefined>(undefined);
     shownKey = undefined;
     conversation = { unlink: vi.fn<Conversation['unlink']>().mockResolvedValue(undefined) };
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
@@ -321,7 +323,7 @@ describe('TicketDetail', () => {
             cache,
             ticket: (key: () => string | undefined) => {
               shownKey = key;
-              return { error: loadError };
+              return { error: loadError, hasValue: () => loaded() !== undefined, value: loaded };
             },
           },
         },
@@ -484,6 +486,17 @@ describe('TicketDetail', () => {
       const { page } = await render();
 
       expect(page.querySelector('.badges > .pill')).toBeNull();
+    });
+
+    it('offers the deletion to a tenant administrator only (docs/adr/0024 D7)', async () => {
+      show();
+      const member = await render();
+      expect(member.page.querySelector('[data-testid="delete-ticket"]')).toBeNull();
+
+      role.set('admin');
+      member.fixture.detectChanges();
+
+      expect(member.page.querySelector('[data-testid="delete-ticket"]')).not.toBeNull();
     });
 
     it('shows why a ticket is blocked', async () => {
@@ -1613,6 +1626,29 @@ describe('TicketDetail', () => {
       const missing = page.querySelector('[data-testid="ticket-missing"]');
       expect(missing?.querySelector('h1')?.textContent).toBe('The service is not ready');
       expect(missing?.querySelector('p')?.textContent?.trim()).toBe('The database is starting.');
+    });
+
+    it('says there is no such ticket when the ticket it showed leaves the cache, deleted or out of sight', async () => {
+      show();
+      loaded.set('acme/COW-12');
+      const { fixture, page } = await render();
+      expect(text(page, '[data-testid="ticket-title"]')).toBe('The board flickers');
+
+      cache.delete('acme/COW-12');
+      fixture.detectChanges();
+
+      const missing = page.querySelector('[data-testid="ticket-missing"]');
+      expect(missing?.querySelector('h1')?.textContent).toBe('No such ticket');
+      expect(page.querySelector('p-skeleton')).toBeNull();
+    });
+
+    it('waits with skeletons while the load of another key has not answered yet', async () => {
+      loaded.set('acme/COW-11');
+
+      const { page } = await render('COW-12');
+
+      expect(page.querySelector('[data-testid="ticket-missing"]')).toBeNull();
+      expect(page.querySelectorAll('p-skeleton').length).toBeGreaterThan(0);
     });
 
     it('shows the ticket instead of the failure when it is in the cache', async () => {

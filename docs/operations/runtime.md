@@ -68,11 +68,16 @@ From then on each replica, at start and once an hour, removes the idempotency re
 than a day, the sessions past their absolute or their idle limit, the login's failed
 attempts and ended locks older than fifteen minutes, and the notifications read more than ninety
 days ago — an unread one stays ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
-D6); each job holds a transaction-level
+D6) —, and purges the tickets deleted more than thirty days ago, up to 200 a run, with their
+attachments' objects once the purge committed
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2); each job holds a transaction-level
 advisory lock of its own that lets one replica at a time do it, and the log says
-`job removed expired rows` with the job and the count when there were any. A session past a
+`job removed expired rows` with the job and the count when there were any — the purge says
+`ticket purged` with each key first. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
-table small.
+table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
+no setting for it yet.
 
 ## The migration run
 
@@ -167,6 +172,8 @@ an alert or a look:
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
+| `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |

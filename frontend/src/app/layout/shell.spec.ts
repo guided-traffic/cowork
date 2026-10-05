@@ -983,6 +983,19 @@ describe('Shell', () => {
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-group-mappings');
     });
 
+    it('offers the deleted tickets to an administrator of the tenant only (docs/adr/0024 D1)', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-deleted-tickets"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-deleted-tickets"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/deleted-tickets');
+      expect(link?.textContent).toBe('Deleted tickets');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-time');
+    });
+
     // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
     // administration — the members, the group mappings, the settings — and none of its work.
     it('offers a global administrator without a role the administration only', async () => {

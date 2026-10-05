@@ -108,6 +108,14 @@ describe('InboxService', () => {
       'a project restricted in any of their tenants',
       { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
     ],
+    [
+      'a ticket deleted in any of their tenants (docs/adr/0024 D1)',
+      { name: 'ticket.changed', id: 'e1', key: 'beta/COW-1', version: 4, kind: 'deleted' },
+    ],
+    [
+      'a ticket restored',
+      { name: 'ticket.changed', id: 'e1', key: 'beta/COW-1', version: 5, kind: 'restored' },
+    ],
   ])(
     'reads the count again on %s, which tells the inbox nothing (docs/adr/0054 D1)',
     async (_what, event) => {
@@ -132,6 +140,22 @@ describe('InboxService', () => {
     await settle();
 
     stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p2' });
+    await settle();
+
+    http.expectNone('/api/v1/me/inbox');
+  });
+
+  it('leaves the count alone on any other change of a ticket', async () => {
+    countRequest().flush({ items: [], next_cursor: null, unread: 4 });
+    await settle();
+
+    stream.next({
+      name: 'ticket.changed',
+      id: 'e1',
+      key: 'beta/COW-1',
+      version: 4,
+      kind: 'transitioned',
+    });
     await settle();
 
     http.expectNone('/api/v1/me/inbox');

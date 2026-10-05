@@ -106,6 +106,18 @@ export function changesVisibility(event: MembershipEvent, person: string | undef
   return event.projectId !== undefined || (person !== undefined && event.personId === person);
 }
 
+/** The acts that take a ticket out of existence for everybody but the bin, or bring it back. */
+const existenceKinds: ReadonlySet<string> = new Set(['deleted', 'restored', 'purged']);
+
+/**
+ * Whether an event deleted, restored or purged a ticket (docs/adr/0024 D1, D2): whatever names the
+ * ticket — the inbox and its count, the open decisions — changes without an event of its own, so
+ * the views that show them load again on it.
+ */
+export function changesExistence(event: StreamEvent): boolean {
+  return event.name === 'ticket.changed' && existenceKinds.has(event.kind);
+}
+
 /**
  * `connecting` until the stream is open, `live` while it is, `polling` while the fallback runs,
  * `idle` while the person belongs to no tenant.

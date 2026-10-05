@@ -67,3 +67,35 @@ func TestEveryReadOfProjectsAndTicketsCarriesTheVisibilityPredicate(t *testing.T
 		}
 	}
 }
+
+// Every query that reads a ticket leaves the deleted ones out, once per ticket
+// it reads, or it says why not (docs/adr/0024 D3): soft deletion is an
+// application filter beside the visibility predicate, never a call site's to
+// remember. The bin and the purge invert it; the integrity walks, the rank
+// keys and the publication of an act read past it.
+func TestEveryReadOfTicketsCarriesTheDeletionFilter(t *testing.T) {
+	files, err := filepath.Glob("queries/*/*.sql")
+	require.NoError(t, err)
+	tickets := regexp.MustCompile(`\b(FROM|JOIN)\s+tickets\b`)
+	for _, f := range files {
+		for name, q := range queryBlocks(t, f) {
+			if strings.Contains(q, "-- deletion: exempt") {
+				continue
+			}
+			if n := len(tickets.FindAllString(q, -1)); n > 0 {
+				assert.GreaterOrEqual(t, strings.Count(q, "deleted_at IS NULL"), n,
+					"%s in %s reads a ticket without leaving the deleted ones out", name, f)
+			}
+		}
+	}
+}
+
+// The list builder leaves the deleted tickets out as the named queries do: the
+// lint above cannot see Go.
+func TestTicketListLeavesTheDeletedOut(t *testing.T) {
+	b := &queryBuilder{}
+	b.live()
+	assert.Contains(t, b.conds, "t.deleted_at IS NULL")
+	assert.Contains(t, openBlocker, "bs.deleted_at IS NULL")
+	assert.Equal(t, strings.Count(ticketSelect+ticketFrom, "JOIN tickets"), strings.Count(ticketSelect+ticketFrom, "deleted_at IS NULL"))
+}

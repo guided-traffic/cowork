@@ -24,7 +24,7 @@ JOIN projects op ON op.tenant_id = o.tenant_id AND op.id = o.project_id
 LEFT JOIN users au ON au.id = o.assignee_id
 WHERE l.tenant_id = $2
   AND (l.source_id = $1::uuid OR l.target_id = $1::uuid)
-  AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
+  AND o.deleted_at IS NULL AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
 ORDER BY l.type, outgoing DESC, op.key, o.number
 LIMIT $3
 `

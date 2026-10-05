@@ -8,7 +8,8 @@
 -- then the title above the body (weights A and B of the ticket's vector)
 -- above comments, questions and file names (weight 0.1 each), a title found
 -- by trigram below them (D3, D4). A withdrawn comment is not searched
--- (docs/adr/0015 D3). The snippet is taken of the page's rows only, with the
+-- (docs/adr/0015 D3), nor is a deleted ticket or anything of it
+-- (docs/adr/0024 D1). The snippet is taken of the page's rows only, with the
 -- bytes 0x02 and 0x03 around the words found, which the text loses first; a
 -- file name, which the parser reads as one word, is its own snippet.
 WITH query AS (
@@ -19,12 +20,12 @@ matches AS (
            ts_rank(t.search, query.tsq) AS rank, 'ticket'::text AS found_in
     FROM tickets t CROSS JOIN query
     WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.search @@ query.tsq
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
     UNION ALL
     SELECT t.id, 5, NULL, NULL, (word_similarity(sqlc.arg(query)::text, t.title) * 0.05::real)::real, 'ticket'
     FROM tickets t
     WHERE t.tenant_id = sqlc.arg(tenant_id) AND sqlc.arg(query)::text <% t.title
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
     UNION ALL
     SELECT t.id, 0, NULL, NULL,
            (CASE WHEN p.key || '-' || t.number::text = sqlc.arg(key_prefix)::text THEN 4 ELSE 2 END)::real, 'key'
@@ -32,28 +33,28 @@ matches AS (
     JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
     WHERE t.tenant_id = sqlc.arg(tenant_id) AND sqlc.arg(key_prefix)::text <> ''
       AND starts_with(p.key || '-' || t.number::text, sqlc.arg(key_prefix)::text)
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
     UNION ALL
     SELECT c.ticket_id, 3, c.id, NULL, ts_rank(c.search, query.tsq), 'comment'
     FROM comments c
     JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
     CROSS JOIN query
     WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.withdrawn_at IS NULL AND c.search @@ query.tsq
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
     UNION ALL
     SELECT q.ticket_id, 2, NULL, q.number, ts_rank('{0.1, 0.1, 0.1, 0.1}', q.search, query.tsq), 'question'
     FROM questions q
     JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
     CROSS JOIN query
     WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.search @@ query.tsq
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
     UNION ALL
     SELECT a.ticket_id, 4, a.id, NULL, ts_rank(a.search, query.tsq), 'attachment'
     FROM attachments a
     JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
     CROSS JOIN query
     WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.search @@ query.tsq
-      AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+      AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ),
 best AS (
     SELECT DISTINCT ON (m.ticket_id) m.ticket_id, m.found_in, m.source_id, m.question_number, m.rank
@@ -91,5 +92,5 @@ LEFT JOIN questions qn ON h.found_in = 'question' AND qn.tenant_id = t.tenant_id
 LEFT JOIN attachments a ON h.found_in = 'attachment' AND a.tenant_id = t.tenant_id AND a.ticket_id = t.id
      AND a.id = h.source_id
 CROSS JOIN query
-WHERE app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+WHERE t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY h.rank DESC, h.ticket_id DESC;

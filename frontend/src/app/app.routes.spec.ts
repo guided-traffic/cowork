@@ -24,6 +24,7 @@ import { ProjectSettings } from './features/project/project-settings';
 import { SearchResults } from './features/search/search';
 import { Accounts } from './features/tenant/accounts';
 import { Audit } from './features/tenant/audit';
+import { DeletedTickets } from './features/tenant/deleted-tickets';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
 import { TenantOverview } from './features/tenant/overview';
@@ -70,6 +71,7 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/audit', Audit],
   ['t/:tenant/group-mappings', GroupMappings],
   ['t/:tenant/time', TimeReport],
+  ['t/:tenant/deleted-tickets', DeletedTickets],
   ['dev/design', DesignPreview],
   ['**', NotFound],
 ];

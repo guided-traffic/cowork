@@ -40,9 +40,9 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, sixteen routes take a session only — what can give access, or outlive a leaked
-  token, the chat's turn, its stop and its capabilities, and a global administrator's list of every
-  tenant — and a temporary
+  CSRF-checked, seventeen routes take a session only — what can give access, or outlive a leaked
+  token, the purge of a deleted ticket among them, the chat's turn, its stop and its capabilities,
+  and a global administrator's list of every tenant — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
   every act made through a token records and shows the token's id and name beside the agent mark
@@ -124,6 +124,7 @@ change.
 | A search | One statement per tenant, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's tenants one read each, merged by rank | [search.md](search.md) |
 | Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
+| A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
 | A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
 | Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
@@ -133,7 +134,10 @@ change.
 
 ## What has no page here
 
-The score beside the rank, "next for me", deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
+The score beside the rank, "next for me", the deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
+deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
+[domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
+the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog); the inbox
 and the person-level lists are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of

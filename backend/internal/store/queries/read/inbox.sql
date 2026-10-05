@@ -25,8 +25,8 @@ LEFT JOIN users u ON u.id = a.actor_user_id
 LEFT JOIN comments c ON a.entity_type = 'comment' AND c.tenant_id = a.tenant_id AND c.id = a.entity_id
 LEFT JOIN questions q ON a.entity_type = 'question' AND q.tenant_id = a.tenant_id AND q.id = a.entity_id
 WHERE n.tenant_id = sqlc.arg(tenant_id) AND n.user_id = sqlc.arg(user_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id)
   AND (sqlc.narg(before)::uuid IS NULL OR n.id < sqlc.narg(before)::uuid)
 ORDER BY n.id DESC
 LIMIT sqlc.arg(page_size);
@@ -39,8 +39,8 @@ JOIN tickets t ON t.tenant_id = n.tenant_id AND t.id = n.ticket_id
 JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
 JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
 WHERE n.tenant_id = sqlc.arg(tenant_id) AND n.user_id = sqlc.arg(user_id) AND n.read_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id);
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id);
 
 -- name: FindNotification :one
 -- Whether one of the person's notifications is in the tenant, and read, over
@@ -51,5 +51,5 @@ JOIN tickets t ON t.tenant_id = n.tenant_id AND t.id = n.ticket_id
 JOIN audit_events a ON a.tenant_id = n.tenant_id AND a.id = n.audit_event_id
 JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
 WHERE n.tenant_id = sqlc.arg(tenant_id) AND n.user_id = sqlc.arg(user_id) AND n.id = sqlc.arg(id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
-  AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id);
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND xt.deleted_at IS NULL AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id);

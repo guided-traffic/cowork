@@ -87,8 +87,14 @@ every tenant, and a page of results with where each hit was found and its snippe
 comment or question it is in ([`features/search/`](../../frontend/src/app/features/search/),
 [ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)); and D2's
 body, comments, options and answers shown as the server rendered them
-([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6). Not built:
-the score's marker in the backlog, D3's "next for me", D5 and D6.
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6).
+*(2026-10-05:)* D5 on the backlog: saved filters as named parameter sets of the lists
+([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D6, D7), a
+person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
+from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
+[`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
+Not built: the score's marker in the backlog, D3's "next for me", D5 on the tenant list view — no
+page lists a tenant's tickets — and on the tenant board, and D6.
 
 ## Context
 

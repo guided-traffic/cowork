@@ -16,7 +16,7 @@ SELECT a.file_name
 FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 WHERE a.tenant_id = $1 AND a.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY a.id
 `
 
@@ -50,7 +50,7 @@ SELECT q.number, q.question, q.options, q.recommendation, q.answer, q.status
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 WHERE q.tenant_id = $1 AND q.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY q.number
 `
 

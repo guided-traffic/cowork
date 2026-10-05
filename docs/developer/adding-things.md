@@ -43,7 +43,8 @@ the mechanics are [api.md](api.md)).
    watchers, or the watchers of the tickets it blocks — and the store writes the notifications in the
    same transaction ([data-access.md](data-access.md#notifications)).
 4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
-   the visibility predicate or naming its exemption ([data-access.md](data-access.md#visibility-in-sql));
+   the visibility predicate and, for every ticket it reads, `deleted_at IS NULL` — or naming its
+   exemption from either ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
 5. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
    unless its operation is in `tenantWideForProjectTokens` in
@@ -78,7 +79,7 @@ the mechanics are [api.md](api.md)).
 3. The grants in a `DO` block to `current_setting('cowork.runtime_role')`: `SELECT`, `INSERT`,
    `UPDATE` on the columns a route changes, `DELETE` only where rows are really removed.
 4. Every query that reads it from a ticket or a project joins that ticket and calls
-   `app_ticket_visible`. The visibility lint enforces the predicate once the ticket is joined;
+   `app_ticket_visible` beside `deleted_at IS NULL`. The two lints enforce both once the ticket is joined;
    the join itself is the author's to remember ([data-access.md](data-access.md#visibility-in-sql)).
 5. A row of each tenant in `seedEveryTenantTable` in
    [`helpers_test.go`](../../backend/test/integration/helpers_test.go), or
