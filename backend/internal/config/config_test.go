@@ -196,6 +196,19 @@ func TestStorageIsAllOrNone(t *testing.T) {
 	require.NoError(t, err, "0 disables the limit (docs/adr/0039 D2)")
 	assert.Zero(t, cfg.AttachmentMaxBytes)
 
+	// docs/adr/0016 D6 as amended 2026-10-05: no tenant quota unless one is set.
+	assert.Zero(t, cfg.AttachmentTenantQuota, "no quota by default")
+	cfg, err = with(map[string]string{EnvAttachmentTenantQuota: "2GiB"})
+	require.NoError(t, err)
+	assert.EqualValues(t, 2<<30, cfg.AttachmentTenantQuota)
+	cfg, err = with(map[string]string{EnvAttachmentTenantQuota: "0"})
+	require.NoError(t, err)
+	assert.Zero(t, cfg.AttachmentTenantQuota)
+	_, err = with(map[string]string{EnvAttachmentTenantQuota: "a lot"})
+	assert.ErrorContains(t, err, EnvAttachmentTenantQuota)
+	_, err = with(map[string]string{EnvAttachmentTenantQuota: "-1"})
+	assert.ErrorContains(t, err, EnvAttachmentTenantQuota)
+
 	_, err = with(map[string]string{EnvS3Endpoint: "minio:9000", EnvS3Bucket: "b", EnvS3AccessKeyID: "i", EnvS3SecretAccessKey: "s"})
 	assert.ErrorContains(t, err, "not an http:// or https:// URL")
 	_, err = with(map[string]string{EnvS3Endpoint: "ftp://key:s3cr3t@minio", EnvS3Bucket: "b", EnvS3AccessKeyID: "i", EnvS3SecretAccessKey: "s"})

@@ -409,3 +409,72 @@ projectAccess:
         description: The person is not on the list
       default:
         $ref: './components/responses.yaml#/Problem'
+# The tokens that can act in the tenant (docs/adr/0035 D5 as amended
+# 2026-10-05): the members' unrestricted tokens and those restricted to this
+# tenant, for its administrators. A token restricted to another tenant is not
+# there — not its name, not that it exists — and neither is a token of a person
+# who is no member here.
+tenantTokens:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listTenantTokens
+    tags: [tenants]
+    summary: The members' tokens that can act in the tenant, for its administrators
+    description: |
+      Every token of a member of the tenant that is unrestricted or restricted
+      to this tenant, revoked and expired ones included, with its person:
+      metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
+      null marks an unrestricted token, which reaches every tenant its person
+      belongs to — revoking it ends it there too. An unrestricted token's name
+      and last-used day are its person's across their tenants, and so may say
+      something of their work elsewhere. The tenant's administrators, a token's
+      `read` scope; anybody else is `403 forbidden`. Newest first, paged by
+      cursor, or by number with a total (docs/adr/0048 D2); a page the client
+      holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of tokens, newest first
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MemberTokenList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+tenantToken:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - name: token_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  delete:
+    operationId: revokeTenantToken
+    tags: [tenants]
+    summary: Revoke a member's token that can act in the tenant
+    description: |
+      Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
+      the tenant's audit as the administrator's act `revoked` (D9). Revoking an
+      unrestricted token ends it in every tenant of its person, not only in
+      this one; the person makes a new one in a session. A token this tenant's
+      list does not show — restricted to another tenant, or of a person who is
+      no member here — is `404 not_found`, as one that does not exist.
+      Revoking a revoked token changes nothing. It only takes access away, so
+      an administrator's `admin`-scope token may; an agent may not
+      (docs/adr/0043 D3).
+    responses:
+      '204':
+        description: Revoked
+      default:
+        $ref: './components/responses.yaml#/Problem'

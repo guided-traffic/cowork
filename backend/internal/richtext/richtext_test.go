@@ -50,7 +50,11 @@ func TestMarkdownRenders(t *testing.T) {
 		"an attachment image":                  {"![shot](" + pngPath + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
 		"an attachment by its URL on any host": {"![shot](https://cowork.example" + pngPath + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
 		"angle brackets in prose are text":     {"returns Vec<String> or Option<T>", "<p>returns Vec&lt;String&gt; or Option&lt;T&gt;</p>"},
-		"empty":                                {"   \n", ""},
+		// docs/adr/0015 D5: a mention is plain @Name text beside the comment's list
+		// of ids; the rendering reads no mention, links nobody and keeps the text.
+		"a mention is text":               {"@Sam Rivera, please look", "<p>@Sam Rivera, please look</p>"},
+		"a mention in emphasis and prose": {"**@Ada Lovelace** and @sam-r agree", "<p><strong>@Ada Lovelace</strong> and @sam-r agree</p>"},
+		"empty":                           {"   \n", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, c.want, HTML(c.in, images))

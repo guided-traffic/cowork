@@ -16,6 +16,14 @@ Amended 2026-10-04 by the owner's decision that every act made through a token i
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): D3, a comment and each edit of it record the token they came through. Built the
 same day ([migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
 
+Amended 2026-10-05 (D5: how a comment names the person it mentions, and what watching means for
+them) by the answer to "how does a comment name the person it mentions?". The options were (a)
+`@<username>` in the text, which only a local account has; (b) a Markdown link the UI writes into
+the text, `[@Sam Rivera](person:<id>)`, which needs a parser on every comment and a form the export
+must keep; (c) a list of person ids beside the text, `{"body", "mentions": [...]}`, each id checked
+like a question's `asked_of`. (c) was the recommendation, and it was built on the owner's
+instruction of 2026-10-05 to build the recommended option, the owner reviewing the result.
+
 **Partly built** (phase 2, 2026-10-02): D1–D4 and D6 — `comments` and `comment_revisions`
 (migration 11), the thread oldest first or reversed, edits with their history, withdrawal by the
 author, by the person for their agents' comments, by an agent for an agent's of the same person
@@ -24,7 +32,8 @@ changes and body changes, and the activity list over the audit record. ~~D5's me
 the inbox.~~ *(2026-10-04: the inbox of [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
 is built, and a comment tells the ticket's watchers; the mention is not: D5 names `@person` without
 saying how a comment's text names a person — a username, which only a local account has, an e-mail
-address, which only administrators read, or an id the UI writes — and that is an open decision.)* *(2026-10-04.)* In the browser the author edits a comment over its
+address, which only administrators read, or an id the UI writes — ~~and that is an open decision~~
+*(decided and built 2026-10-05, D5)*.)* *(2026-10-04.)* In the browser the author edits a comment over its
 version and reads its earlier texts, and the author or a tenant administrator withdraws it after a
 confirmation. *(2026-10-05:)* D1's score adoption: the sort of a project's rank by the score
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3) is one act of the project that
@@ -76,7 +85,26 @@ hides it from the thread, the history and the activity alike.)*
 person.** A person may edit or withdraw their own comments and those their agents wrote.
 
 **D5 — A mention `@person` in a comment notifies the person and makes them a watcher**
-(ADR 0013 D6). Mentions resolve inside the tenant only.
+(ADR 0013 D6). Mentions resolve inside the tenant only. *(Amended 2026-10-05: a comment names the
+persons it mentions as a list of person ids beside its text, `mentions`, on its creation and on an
+edit; the API reads no text, so the text names them as its writer likes and a name typed without the
+list mentions nobody. Each id must be a member of the tenant who sees the ticket — the check of a
+question's `asked_of` — or the comment is refused with `400` at `/mentions/<i>` and tells nobody. A
+mentioned person is told `mentioned` in their inbox
+([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2), and one act tells a person
+once, so a watcher the comment mentions is told that they are mentioned, not also that it was
+written. **"Makes them a watcher" means the watcher set of ADR 0013 D6**, not a stake: a person whom
+a comment that is not withdrawn mentions is among the ticket's watchers while the comment stands
+and mentions them, as the persons of an open question are while it is open. No `watch` stake is set
+in the mentioned person's name — a stake is the person's own, set and removed by them, and shown on
+the ticket as theirs (ADR 0013 D1, D2, D4); a mention is another person's act. An edit without the
+list keeps the comment's mentions; with one it replaces them, checks and tells only the persons it
+adds, and a person it drops watches by it no more; a withdrawal ends every mention's watch and hides
+the list with the text. The UI writes the list with a picker that `@` opens over the members who see
+the ticket; the MCP tool `comment` takes the persons by id, username or display name, resolved
+through the member list. Built in [migration 36](../../backend/internal/store/migrations/000036_comment_mentions.up.sql)
+(`comments.mentions`), [`api/comments.go`](../../backend/internal/api/comments.go) `checkMentions`,
+`ListWatchers`, and `store.NoticeMentioned`.)*
 
 **D6 — Both views are rendered from the record, not stored as views.** The activity list is
 a projection of the append-only audit record (the data record decides its table); the thread

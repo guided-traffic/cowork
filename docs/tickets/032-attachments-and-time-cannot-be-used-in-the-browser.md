@@ -5,12 +5,12 @@ state: in-progress
 severity: medium
 security: none
 threat:
-urgency: icebox       # rule 5: the quota needs the owner's call on Q1
+urgency: later        # rule 4: decided and built; the owner reviews the result
 effort: M
-blocked-by: decision
+blocked-by: human
 filed-from: T26
 opened: 2026-10-03
-decided: 2026-10-03
+decided: 2026-10-05
 done:
 ---
 
@@ -18,47 +18,46 @@ done:
 
 The browser uploads to a comment of the person's own, shows a raster attachment as a preview —
 each load a recorded download — and corrects a time entry over its version, with its earlier
-values on request ([`frontend.md`](../developer/frontend.md#the-detail-page)). Missing:
+values on request ([`frontend.md`](../developer/frontend.md#the-detail-page)).
 
-- **The per-tenant attachment quota** of ADR 0016 D6, carried over from phase 2: limits per file
-  (`COWORK_ATTACHMENT_MAX_BYTES`) and per ticket (`COWORK_ATTACHMENT_MAX_PER_TICKET`) exist,
-  nothing counts a tenant's bytes. Whether the quota refuses an upload is open (Q1).
+The per-tenant quota of ADR 0016 D6 is built on this branch, Q1 answered (a), enforce, on the
+recommendation, the owner reviewing the result
+([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6 and its residual risks, [ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+D2, amended 2026-10-05):
+
+- `COWORK_ATTACHMENT_TENANT_QUOTA`, a size, `0` — none — by default
+  ([`config.go`](../../backend/internal/config/config.go)), in the chart
+  `backend.config.attachmentTenantQuota`. The default is none because no figure suits every
+  installation, a single tenant's bound is the bucket, and an upgrade must not start refusing
+  uploads; [runtime.md](../operations/runtime.md#the-tenants-attachment-quota) tells an installation
+  of several tenants to set it.
+- Where it is set, an upload takes the tenant's quota lock (`cowu`, before the ticket's), sums every
+  attachment of the tenant and refuses a file that does not fit with `409 attachment_quota` before a
+  row or an object exists ([`attachments.go`](../../backend/internal/api/attachments.go)
+  `lockQuota`, `withinQuota`). A deleted ticket's files count until the purge removes them: they
+  occupy the bucket until then, so a deletion frees no quota and a purge does.
+- The usage for the tenant's administrators: `GET /api/v1/tenants/{tenant}/attachment-usage`, with a
+  weak `ETag` and `304`, shown on the tenant's settings page with a meter and read again on an upload
+  or a purge in the tenant
+  ([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts)).
+- Tests: `TestTheTenantAttachmentQuota` (a confidential ticket's file counts; the refusal names no
+  sum; tenant B's uploads ignore tenant A's usage and B's usage shows B's alone; the usage is the
+  administrators'; another tenant's administrator gets `404`) and
+  `TestSimultaneousUploadsKeepTheTenantQuota` (eight uploads to eight tickets at once, three fit),
+  `TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge`, `TestTheAttachmentUsageAnswersAWeakETag`;
+  `config_test.go`; `tenant-settings.spec.ts`.
+
+The README reference (variable, chart value, route, code), [storage.md](../developer/storage.md),
+[data-access.md](../developer/data-access.md), [api.md](../developer/api.md),
+[frontend.md](../developer/frontend.md), [runtime.md](../operations/runtime.md) and
+[attachments.md](../security/attachments.md) (H-10 rewritten) carry it.
 
 ## Required changes
 
-1. The per-tenant quota: its setting, the usage in the tenant's administration and, by Q1's
-   answer, the refusal before bytes are stored with its problem code; integration tests across
-   two tenants; the README reference for the quota's variable and code; ADR 0016 amended where
-   the answer departs from it.
+1. The owner's review of the built result — the default of none above all, and the settings page's
+   usage in a browser (`make dev`).
 
-## Open questions
+## Not verified
 
-### Q1: Does the tenant's attachment quota refuse an upload, or is it only reported?
-
-ADR 0016 D6 lists "a per-tenant quota reported in the tenant's administration" among the limits
-and says "uploads beyond a limit are refused before bytes are stored"; its Residual risks say the
-quota "is reported, not enforced against a hard storage limit; a runaway upload loop is bounded by
-the per-file and per-ticket limits only". The two readings disagree, and nothing of the quota is
-built.
-
-- **(a) Enforce:** a quota per tenant (a variable, `0` for none, as
-  [ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
-  D2 has every limit); the tenant's stored bytes summed and checked under a per-tenant lock
-  before the bytes are stored, as the per-ticket count is checked under its ticket's lock; a
-  refusal with a problem code of its own; the usage in the administration. It costs a lock that
-  orders one tenant's uploads, a sum per upload, a code and a variable; the residual risk is
-  amended.
-- **(b) Report only:** the usage in the administration, no refusal; D6's refusal is amended to
-  the per-file and per-ticket limits. One tenant — or an agent with `upload` in a loop, which
-  files tickets without bound and attaches up to the per-ticket count to each — can fill the
-  storage every tenant shares, and the operator's bucket quota, where there is one, stops every
-  tenant at once.
-
-Recommended: **(a)** — the tenant is the isolation unit
-([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)), and only a
-refusal per tenant keeps one tenant from using up what all of them share; the per-ticket count
-does not bound a loop that files new tickets, which is the gap the record's own residual risk
-names; and D6 already counts the quota among the limits that refuse, with the per-ticket count
-under its lock as the mechanism to copy.
-
-**Answer:** _open_
+The settings page's usage has not been looked at in a browser; `make dev` was not run for this work.

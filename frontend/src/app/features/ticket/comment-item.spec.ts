@@ -4,8 +4,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Attachment, Comment, Problem } from '../../api/models';
+import { Attachment, Comment, Member, Problem } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
+import { MembersService } from '../../core/members.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { Clock } from '../../shared/time';
 import { CommentItem } from './comment-item';
@@ -24,6 +25,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     body_html: null,
     edited: false,
     explains: [],
+    mentions: [],
     withdrawn: false,
     withdrawn_at: null,
     created_at: '2026-10-03T10:00:00Z',
@@ -43,6 +45,15 @@ const conflict = () =>
       code: 'precondition_failed',
     } satisfies Problem,
   });
+
+/** The tenant's members, for the mentions: Ada, who writes, and Sam. */
+const members: Member[] = [ada, sam].map((person) => ({
+  person: { ...person, username: null },
+  role: 'member',
+  origins: [{ source: 'grant', role: 'member' }],
+  local: false,
+  email: null,
+}));
 
 describe('CommentItem', () => {
   let conversation: {
@@ -68,6 +79,7 @@ describe('CommentItem', () => {
         { provide: TicketRecords, useValue: { attach } },
         { provide: ConfirmationService, useValue: { confirm } },
         { provide: Clock, useValue: { now: signal(Date.parse('2026-10-03T12:00:00Z')) } },
+        { provide: MembersService, useValue: { list: signal(members) } },
       ],
     });
   });
@@ -177,8 +189,43 @@ describe('CommentItem', () => {
         'acme/COW-12',
         comment(),
         'Reproduced on both boards.',
+        [],
       );
       expect(editor(fixture)).toBeNull();
+    });
+
+    describe('its mentions (docs/adr/0015 D5)', () => {
+      it('keeps a mention whose name the text still holds, and one it never named', async () => {
+        const fixture = await render(comment({ body: 'See @Sam Rivera', mentions: ['p2', 'p9'] }));
+        await edit(fixture, 'See @Sam Rivera again');
+        await save(fixture);
+
+        expect(conversation.editComment.mock.calls[0][3]).toEqual(['p2', 'p9']);
+      });
+
+      it('drops a mention whose @name the edit took out of the text', async () => {
+        const fixture = await render(comment({ body: 'See @Sam Rivera', mentions: ['p2'] }));
+        await edit(fixture, 'See nobody');
+        await save(fixture);
+
+        expect(conversation.editComment.mock.calls[0][3]).toEqual([]);
+      });
+
+      it('adds the person picked in the edit', async () => {
+        const fixture = await render();
+        await edit(fixture, 'Reproduced, @sa');
+        const box = editor(fixture) as HTMLTextAreaElement;
+        box.setSelectionRange(box.value.length, box.value.length);
+        box.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+        fixture.detectChanges();
+        expect(box.value).toBe('Reproduced, @Sam Rivera ');
+        await save(fixture);
+
+        expect(conversation.editComment.mock.calls[0][2]).toBe('Reproduced, @Sam Rivera');
+        expect(conversation.editComment.mock.calls[0][3]).toEqual(['p2']);
+      });
     });
 
     it('closes without a write when the text did not change', async () => {
@@ -224,6 +271,7 @@ describe('CommentItem', () => {
           'acme/COW-12',
           comment({ version: 3, body: 'From the other tab' }),
           'Mine',
+          [],
         );
       });
 

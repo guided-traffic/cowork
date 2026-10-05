@@ -23,8 +23,10 @@ nothing, and a stake set or removed scores its ticket again; the rank stays wher
 [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2 address — the stakes, the
 assignee, the reporter and the askers and the persons asked of the open questions (`ListWatchers` in
 [`queries/write/notifications.sql`](../../backend/internal/store/queries/write/notifications.sql));
-the person a mention names is not among them, because no mention is built
-([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5).
+~~the person a mention names is not among them, because no mention is built~~
+([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5). *(Amended
+2026-10-05 with ADR 0015 D5, built on the recommendation, the owner reviewing the result: D6, the
+persons a comment that is not withdrawn mentions are among the watchers, without a stake.)*
 
 ## Context
 
@@ -63,7 +65,10 @@ interest rows are kept and shown as settled, so the people who needed it are not
 outcome and the record of who wanted what remains.
 
 **D6 — The watchers of a ticket are: every person with an interest row of any weight, the
-assignee, the reporter, and whoever asked or was asked an open question on it.** This is the
+assignee, the reporter, and whoever asked or was asked an open question on it.** *(Amended
+2026-10-05, [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5: and
+whoever a comment on it that is not withdrawn mentions, while it mentions them. A mention sets no
+stake in the mentioned person's name: a stake is the person's own (D1, D2, D4).)* This is the
 set notifications address; the notifications record decides the channel.
 
 ## Consequences

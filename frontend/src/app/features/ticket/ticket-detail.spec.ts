@@ -139,6 +139,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     body_html: null,
     edited: false,
     explains: [],
+    mentions: [],
     withdrawn: false,
     withdrawn_at: null,
     created_at: '2026-10-03T10:00:00Z',

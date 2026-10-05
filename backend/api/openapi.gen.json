@@ -1022,6 +1022,35 @@
         ],
         "type": "object"
       },
+      "AttachmentUsage": {
+        "description": "What the tenant's attachments hold against its quota (docs/adr/0016 D6)",
+        "properties": {
+          "attachments": {
+            "description": "How many attachments the tenant holds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quota_bytes": {
+            "description": "COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "used_bytes": {
+            "description": "The sizes of every attachment of the tenant, summed",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used_bytes",
+          "attachments",
+          "quota_bytes"
+        ],
+        "type": "object"
+      },
       "AuditAction": {
         "enum": [
           "created",
@@ -1721,6 +1750,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the\nticket while the comment stands; empty once it is withdrawn\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "token": {
             "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
             "oneOf": [
@@ -1761,6 +1798,7 @@
           "withdrawn_at",
           "edited",
           "explains",
+          "mentions",
           "version",
           "created_at",
           "updated_at"
@@ -1857,6 +1895,16 @@
             "maxLength": 100000,
             "minLength": 1,
             "type": "string"
+          },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be\na member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/\u003ci\u003e`.\nEach is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The\ntext names them as the writer likes — the API reads no text, so a name typed without the list\ntells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the\nmentions stay as they are, and a list given replaces them — a person it adds is told, a person\nit drops is no longer a watcher by it.\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -2676,7 +2724,7 @@
         "type": "object"
       },
       "InboxReason": {
-        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them\n",
+        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a\ncomment that mentions them (docs/adr/0015 D5)\n",
         "enum": [
           "assigned",
           "asked",
@@ -2684,7 +2732,8 @@
           "state_changed",
           "blocker_closed",
           "commented",
-          "urgent"
+          "urgent",
+          "mentioned"
         ],
         "type": "string"
       },
@@ -3083,6 +3132,123 @@
         ],
         "type": "object"
       },
+      "MemberToken": {
+        "description": "A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):\nits person and its metadata, never its secret, hash or prefix\n",
+        "properties": {
+          "agent": {
+            "description": "The agent flag; every request of the token is an agent's (docs/adr/0036 D2)",
+            "type": "boolean"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_used_on": {
+            "description": "The last day it was used, wherever; for an unrestricted token possibly in another tenant",
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The name its person gave it, free text that may say more than what it is for",
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "restricted_project": {
+            "description": "The key of the project of this tenant the token is restricted to; null for none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restricted_tenant": {
+            "description": "This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches\nevery tenant its person belongs to, so revoking it ends it in all of them\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "person",
+          "scope",
+          "agent",
+          "capabilities",
+          "restricted_tenant",
+          "restricted_project",
+          "created_at",
+          "expires_at",
+          "last_used_on",
+          "revoked_at",
+          "state"
+        ],
+        "type": "object"
+      },
+      "MemberTokenList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberToken"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "Membership": {
         "properties": {
           "origins": {
@@ -3402,6 +3568,7 @@
           "open_prerequisites",
           "period_locked",
           "attachment_limit",
+          "attachment_quota",
           "uploads_disabled",
           "chat_unavailable",
           "precondition_failed",
@@ -7052,6 +7219,54 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/attachment-usage": {
+      "get": {
+        "description": "Every attachment of the tenant counts, on every ticket, confidential ones and those of\nrestricted projects included, and a deleted ticket's until the purge removes them — they\noccupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The\ntenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the\nsum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,\nnull where the installation sets none. An answer the client holds unchanged is `304` to its\nweak `ETag` (docs/adr/0054 D7).\n",
+        "operationId": "getAttachmentUsage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "attachments": 41,
+                  "quota_bytes": 10737418240,
+                  "used_bytes": 73400320
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentUsage"
+                }
+              }
+            },
+            "description": "The usage",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The bytes the tenant's attachments hold, and the quota",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
         "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
@@ -9067,7 +9282,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage\n501 `uploads_disabled`.\n",
+        "description": "A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's\nattachment only its author or that person's agents. The type is detected from the bytes\nand must be on the allow-list, else 415 names it (docs/adr/0016 D3); above\nCOWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds\nCOWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take\nthe tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,\nchecked under the tenant's lock before the bytes are stored; without object storage\n501 `uploads_disabled`.\n",
         "operationId": "uploadAttachment",
         "parameters": [
           {
@@ -9386,7 +9601,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the\nticket's watchers, and the persons `mentions` names — each a member who sees the ticket —\nthat they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).\n",
         "operationId": "addComment",
         "parameters": [
           {
@@ -9475,7 +9690,7 @@
         }
       ],
       "patch": {
-        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.\n",
+        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`\nleft out keeps the comment's mentions; a list replaces them, and tells the persons it adds\n(D5).\n",
         "operationId": "editComment",
         "parameters": [
           {
@@ -11183,6 +11398,93 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens": {
+      "get": {
+        "description": "Every token of a member of the tenant that is unrestricted or restricted\nto this tenant, revoked and expired ones included, with its person:\nmetadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`\nnull marks an unrestricted token, which reaches every tenant its person\nbelongs to — revoking it ends it there too. An unrestricted token's name\nand last-used day are its person's across their tenants, and so may say\nsomething of their work elsewhere. The tenant's administrators, a token's\n`read` scope; anybody else is `403 forbidden`. Newest first, paged by\ncursor, or by number with a total (docs/adr/0048 D2); a page the client\nholds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).\n",
+        "operationId": "listTenantTokens",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTokenList"
+                }
+              }
+            },
+            "description": "A page of tokens, newest first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The members' tokens that can act in the tenant, for its administrators",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/tokens/{token_id}": {
+      "delete": {
+        "description": "Immediate and final, the row kept (docs/adr/0035 D6), and recorded in\nthe tenant's audit as the administrator's act `revoked` (D9). Revoking an\nunrestricted token ends it in every tenant of its person, not only in\nthis one; the person makes a new one in a session. A token this tenant's\nlist does not show — restricted to another tenant, or of a person who is\nno member here — is `404 not_found`, as one that does not exist.\nRevoking a revoked token changes nothing. It only takes access away, so\nan administrator's `admin`-scope token may; an agent may not\n(docs/adr/0043 D3).\n",
+        "operationId": "revokeTenantToken",
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Revoke a member's token that can act in the tenant",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "in": "path",
+          "name": "token_id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
         }
       ]
     },

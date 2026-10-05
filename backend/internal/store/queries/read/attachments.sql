@@ -38,3 +38,15 @@ ORDER BY a.ticket_id, a.id;
 SELECT count(*)::bigint AS attachments
 FROM attachments
 WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id = sqlc.arg(ticket_id);
+
+-- name: TenantAttachmentUsage :one
+-- The bytes and the count of every attachment of the tenant, against its quota
+-- (docs/adr/0016 D6): every ticket's, a confidential ticket's and a restricted
+-- project's included, and a deleted ticket's until the purge removes its rows.
+-- Row-level security holds it to the tenant; the handlers answer it to the
+-- tenant's administrators only, who see every ticket.
+-- visibility: exempt (the tenant's stored bytes count whether or not the caller sees the ticket that holds them)
+-- deletion: exempt (a deleted ticket's files occupy the bucket until the purge removes them, docs/adr/0024 D2)
+SELECT coalesce(sum(size), 0)::bigint AS used_bytes, count(*)::bigint AS attachments
+FROM attachments
+WHERE tenant_id = sqlc.arg(tenant_id);

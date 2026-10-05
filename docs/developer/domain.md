@@ -414,6 +414,19 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
   (D3, D4).
 - **Comment texts never enter the audit record**, which cannot forget: `commented`, `edited`
   and `withdrawn` carry no text.
+- **Mentions** are a list of person ids beside the text, `comments.mentions` (migration 36,
+  [ADR 0015] D5): `checkMentions` admits each like a question's `asked_of` — a member of the tenant
+  who sees the ticket (`CanSeeTicket`) — and refuses the first that is not at `/mentions/<i>`; the
+  API reads no text, so a name typed without the list mentions nobody. A new comment's act tells the
+  persons it mentions `mentioned` before it tells the watchers `commented`, and one act tells a
+  person once about a ticket ([who is told](#who-is-told)). An edit without `mentions` keeps the
+  list; with one it replaces it, checks and tells only the persons it adds — those it keeps were
+  checked when they came — and a person it drops watches by it no more. A withdrawn comment answers
+  `mentions: []`, and its mentions watch by it no more either. An explaining comment mentions
+  nobody. The rendered `body_html` shows `@Name` as the text it is: the rendering reads no mention.
+  A deleted ticket tells nobody, its mentions included: a comment on it is `404`, and every
+  recipient is held to their sight of the ticket, which a deletion ends
+  (`TestAMentionOnADeletedTicketTellsNobody`).
 - **An explaining comment** — the `comment` field of `PATCH` on a ticket, `PUT …/body` and
   `POST …/transitions` — is written in the same transaction as the act; the act's
   `explained_by_comment_id` names it, and the comment's `explains` lists the actions it explains
@@ -538,11 +551,12 @@ assigned to them, a question asked of them, a question they asked answered, a st
 ticket they watch — a block's reason comes only with a move into `blocked` —, a comment on one, a
 ticket that blocks one they watch reaching `done` or `dropped`, and an `urgent` stake on a ticket
 assigned to them. The watchers are everyone with a stake of any weight, the assignee, the reporter
-and whoever asked or was asked an open question on the ticket ([ADR 0013] D6). A person's own act
-tells them nothing, nor does their agent's, and a person who cannot see the ticket is told nothing of
-it ([ADR 0065] D5). The table and the store's side are
-[data-access.md](data-access.md#notifications). A mention in a comment tells nobody yet: how a
-comment names a person is not decided.
+and whoever asked or was asked an open question on the ticket, or is mentioned by a comment on it
+that is not withdrawn ([ADR 0013] D6, [ADR 0015] D5), and a comment that mentions a person tells
+them that they are mentioned. A person's own act tells them nothing, nor does their agent's, and a
+person who cannot see the ticket is told nothing of it ([ADR 0065] D5); an act that names a person
+for two reasons — a watcher the comment mentions — tells them once, by the first. The table and the
+store's side are [data-access.md](data-access.md#notifications).
 
 ## Deletion, the bin and the purge
 

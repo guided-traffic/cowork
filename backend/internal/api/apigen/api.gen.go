@@ -375,6 +375,7 @@ const (
 	InboxReasonAssigned      InboxReason = "assigned"
 	InboxReasonBlockerClosed InboxReason = "blocker_closed"
 	InboxReasonCommented     InboxReason = "commented"
+	InboxReasonMentioned     InboxReason = "mentioned"
 	InboxReasonStateChanged  InboxReason = "state_changed"
 	InboxReasonUrgent        InboxReason = "urgent"
 )
@@ -391,6 +392,8 @@ func (e InboxReason) Valid() bool {
 	case InboxReasonBlockerClosed:
 		return true
 	case InboxReasonCommented:
+		return true
+	case InboxReasonMentioned:
 		return true
 	case InboxReasonStateChanged:
 		return true
@@ -486,6 +489,7 @@ func (e MembershipSource) Valid() bool {
 const (
 	ProblemCodeAgentForbidden         ProblemCode = "agent_forbidden"
 	ProblemCodeAttachmentLimit        ProblemCode = "attachment_limit"
+	ProblemCodeAttachmentQuota        ProblemCode = "attachment_quota"
 	ProblemCodeChatBusy               ProblemCode = "chat_busy"
 	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
 	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
@@ -539,6 +543,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeAgentForbidden:
 		return true
 	case ProblemCodeAttachmentLimit:
+		return true
+	case ProblemCodeAttachmentQuota:
 		return true
 	case ProblemCodeChatBusy:
 		return true
@@ -1274,6 +1280,27 @@ func (e TimeReportParamsGroupBy) Valid() bool {
 	}
 }
 
+// Defines values for ListTenantTokensParamsPerPage.
+const (
+	ListTenantTokensParamsPerPageN100 ListTenantTokensParamsPerPage = 100
+	ListTenantTokensParamsPerPageN25  ListTenantTokensParamsPerPage = 25
+	ListTenantTokensParamsPerPageN50  ListTenantTokensParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListTenantTokensParamsPerPage enum.
+func (e ListTenantTokensParamsPerPage) Valid() bool {
+	switch e {
+	case ListTenantTokensParamsPerPageN100:
+		return true
+	case ListTenantTokensParamsPerPageN25:
+		return true
+	case ListTenantTokensParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
 // Account defines model for Account.
 type Account struct {
 	CreatedAt     time.Time                    `json:"created_at"`
@@ -1389,6 +1416,18 @@ type AttachmentContentType string
 type AttachmentList struct {
 	Items      []Attachment              `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// AttachmentUsage What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+type AttachmentUsage struct {
+	// Attachments How many attachments the tenant holds
+	Attachments int64 `json:"attachments"`
+
+	// QuotaBytes COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+	QuotaBytes nullable.Nullable[int64] `json:"quota_bytes"`
+
+	// UsedBytes The sizes of every attachment of the tenant, summed
+	UsedBytes int64 `json:"used_bytes"`
 }
 
 // AuditAction defines model for AuditAction.
@@ -1687,6 +1726,10 @@ type Comment struct {
 	Explains []AuditAction      `json:"explains"`
 	Id       openapi_types.UUID `json:"id"`
 
+	// Mentions The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+	// ticket while the comment stands; empty once it is withdrawn
+	Mentions []openapi_types.UUID `json:"mentions"`
+
 	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
 	Token       nullable.Nullable[TokenMark] `json:"token"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
@@ -1724,6 +1767,15 @@ type CommentRevisionList struct {
 // CommentWrite defines model for CommentWrite.
 type CommentWrite struct {
 	Body string `json:"body"`
+
+	// Mentions The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
+	// a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+	// Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
+	// text names them as the writer likes — the API reads no text, so a name typed without the list
+	// tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the
+	// mentions stay as they are, and a list given replaces them — a person it adds is told, a person
+	// it drops is no longer a watcher by it.
+	Mentions *[]openapi_types.UUID `json:"mentions,omitempty"`
 }
 
 // ConfidentialSet defines model for ConfidentialSet.
@@ -2104,7 +2156,8 @@ type InboxEntry struct {
 
 	// Reason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 	// question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-	// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+	// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+	// comment that mentions them (docs/adr/0015 D5)
 	Reason InboxReason `json:"reason"`
 	Tenant TenantRef   `json:"tenant"`
 	Ticket TicketRef   `json:"ticket"`
@@ -2130,7 +2183,8 @@ type InboxReadThrough struct {
 
 // InboxReason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 // question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+// comment that mentions them (docs/adr/0015 D5)
 type InboxReason string
 
 // InboxState defines model for InboxState.
@@ -2294,6 +2348,49 @@ type MemberGrantSet struct {
 // MemberList defines model for MemberList.
 type MemberList struct {
 	Items []Member `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
+}
+
+// MemberToken A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):
+// its person and its metadata, never its secret, hash or prefix
+type MemberToken struct {
+	// Agent The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
+	Agent        bool               `json:"agent"`
+	Capabilities []Capability       `json:"capabilities"`
+	CreatedAt    time.Time          `json:"created_at"`
+	ExpiresAt    time.Time          `json:"expires_at"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// LastUsedOn The last day it was used, wherever; for an unrestricted token possibly in another tenant
+	LastUsedOn nullable.Nullable[openapi_types.Date] `json:"last_used_on"`
+
+	// Name The name its person gave it, free text that may say more than what it is for
+	Name   string `json:"name"`
+	Person Person `json:"person"`
+
+	// RestrictedProject The key of the project of this tenant the token is restricted to; null for none
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedTenant This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches
+	// every tenant its person belongs to, so revoking it ends it in all of them
+	RestrictedTenant nullable.Nullable[string]    `json:"restricted_tenant"`
+	RevokedAt        nullable.Nullable[time.Time] `json:"revoked_at"`
+
+	// Scope A token's scope (docs/adr/0035 D3)
+	Scope Scope      `json:"scope"`
+	State TokenState `json:"state"`
+}
+
+// MemberTokenList defines model for MemberTokenList.
+type MemberTokenList struct {
+	Items []MemberToken `json:"items"`
 
 	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
@@ -3731,6 +3828,12 @@ type CreateAccountParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// GetAttachmentUsageParams defines parameters for GetAttachmentUsage.
+type GetAttachmentUsageParams struct {
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
 // ListAuditParams defines parameters for ListAudit.
 type ListAuditParams struct {
 	// Actor A person's id
@@ -4386,6 +4489,25 @@ type TimeReportParams struct {
 
 // TimeReportParamsGroupBy defines parameters for TimeReport.
 type TimeReportParamsGroupBy string
+
+// ListTenantTokensParams defines parameters for ListTenantTokens.
+type ListTenantTokensParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                          `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListTenantTokensParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// ListTenantTokensParamsPerPage defines parameters for ListTenantTokens.
+type ListTenantTokensParamsPerPage int
 
 // OidcCallbackParams defines parameters for OidcCallback.
 type OidcCallbackParams struct {
@@ -5080,6 +5202,19 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	//
+	// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+	// restricted projects included, and a deleted ticket's until the purge removes them — they
+	// occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
+	// tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+	// sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+	// null where the installation sets none. An answer the client holds unchanged is `304` to its
+	// weak `ETag` (docs/adr/0054 D7).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+	GetAttachmentUsage(ctx context.Context, tenant TenantSlug, params *GetAttachmentUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	//
@@ -5816,7 +5951,10 @@ type ClientInterface interface {
 	// A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 	// attachment only its author or that person's agents. The type is detected from the bytes
 	// and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+	// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+	// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+	// checked under the tenant's lock before the bytes are stored; without object storage
 	// 501 `uploads_disabled`.
 	//
 	// Takes any type of body and a specified content type.
@@ -5881,7 +6019,9 @@ type ClientInterface interface {
 
 	// AddCommentWithBody Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5890,7 +6030,9 @@ type ClientInterface interface {
 
 	// AddComment Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5905,7 +6047,9 @@ type ClientInterface interface {
 	// EditCommentWithBody Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5915,7 +6059,9 @@ type ClientInterface interface {
 	// EditComment Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6382,6 +6528,37 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/time-report (the `TimeReport` operationId).
 	TimeReport(ctx context.Context, tenant TenantSlug, params *TimeReportParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTenantTokens The members' tokens that can act in the tenant, for its administrators
+	//
+	// Every token of a member of the tenant that is unrestricted or restricted
+	// to this tenant, revoked and expired ones included, with its person:
+	// metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
+	// null marks an unrestricted token, which reaches every tenant its person
+	// belongs to — revoking it ends it there too. An unrestricted token's name
+	// and last-used day are its person's across their tenants, and so may say
+	// something of their work elsewhere. The tenant's administrators, a token's
+	// `read` scope; anybody else is `403 forbidden`. Newest first, paged by
+	// cursor, or by number with a total (docs/adr/0048 D2); a page the client
+	// holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/tokens (the `ListTenantTokens` operationId).
+	ListTenantTokens(ctx context.Context, tenant TenantSlug, params *ListTenantTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeTenantToken Revoke a member's token that can act in the tenant
+	//
+	// Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
+	// the tenant's audit as the administrator's act `revoked` (D9). Revoking an
+	// unrestricted token ends it in every tenant of its person, not only in
+	// this one; the person makes a new one in a session. A token this tenant's
+	// list does not show — restricted to another tenant, or of a person who is
+	// no member here — is `404 not_found`, as one that does not exist.
+	// Revoking a revoked token changes nothing. It only takes access away, so
+	// an administrator's `admin`-scope token may; an agent may not
+	// (docs/adr/0043 D3).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/tokens/{token_id} (the `RevokeTenantToken` operationId).
+	RevokeTenantToken(ctx context.Context, tenant TenantSlug, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResolveTicket A ticket by its key
 	//
@@ -7393,6 +7570,29 @@ func (c *Client) ResetAccountPassword(ctx context.Context, tenant TenantSlug, us
 // Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEndAccountSessionsRequest(c.Server, tenant, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+//
+// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+// restricted projects included, and a deleted ticket's until the purge removes them — they
+// occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
+// tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+// sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+// null where the installation sets none. An answer the client holds unchanged is `304` to its
+// weak `ETag` (docs/adr/0054 D7).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+func (c *Client) GetAttachmentUsage(ctx context.Context, tenant TenantSlug, params *GetAttachmentUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAttachmentUsageRequest(c.Server, tenant, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8678,7 +8878,10 @@ func (c *Client) ListAttachments(ctx context.Context, tenant TenantSlug, project
 // A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 // attachment only its author or that person's agents. The type is detected from the bytes
 // and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+// checked under the tenant's lock before the bytes are stored; without object storage
 // 501 `uploads_disabled`.
 //
 // Takes any type of body and a specified content type.
@@ -8813,7 +9016,9 @@ func (c *Client) ListComments(ctx context.Context, tenant TenantSlug, project Pr
 
 // AddCommentWithBody Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes any type of body and a specified content type.
 //
@@ -8832,7 +9037,9 @@ func (c *Client) AddCommentWithBody(ctx context.Context, tenant TenantSlug, proj
 
 // AddComment Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8867,7 +9074,9 @@ func (c *Client) GetComment(ctx context.Context, tenant TenantSlug, project Proj
 // EditCommentWithBody Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes any type of body and a specified content type.
 //
@@ -8887,7 +9096,9 @@ func (c *Client) EditCommentWithBody(ctx context.Context, tenant TenantSlug, pro
 // EditComment Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -9775,6 +9986,57 @@ func (c *Client) ListTenantTime(ctx context.Context, tenant TenantSlug, params *
 // Corresponds with GET /api/v1/tenants/{tenant}/time-report (the `TimeReport` operationId).
 func (c *Client) TimeReport(ctx context.Context, tenant TenantSlug, params *TimeReportParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTimeReportRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTenantTokens The members' tokens that can act in the tenant, for its administrators
+//
+// Every token of a member of the tenant that is unrestricted or restricted
+// to this tenant, revoked and expired ones included, with its person:
+// metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
+// null marks an unrestricted token, which reaches every tenant its person
+// belongs to — revoking it ends it there too. An unrestricted token's name
+// and last-used day are its person's across their tenants, and so may say
+// something of their work elsewhere. The tenant's administrators, a token's
+// `read` scope; anybody else is `403 forbidden`. Newest first, paged by
+// cursor, or by number with a total (docs/adr/0048 D2); a page the client
+// holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/tokens (the `ListTenantTokens` operationId).
+func (c *Client) ListTenantTokens(ctx context.Context, tenant TenantSlug, params *ListTenantTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTenantTokensRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeTenantToken Revoke a member's token that can act in the tenant
+//
+// Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
+// the tenant's audit as the administrator's act `revoked` (D9). Revoking an
+// unrestricted token ends it in every tenant of its person, not only in
+// this one; the person makes a new one in a session. A token this tenant's
+// list does not show — restricted to another tenant, or of a person who is
+// no member here — is `404 not_found`, as one that does not exist.
+// Revoking a revoked token changes nothing. It only takes access away, so
+// an administrator's `admin`-scope token may; an agent may not
+// (docs/adr/0043 D3).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/tokens/{token_id} (the `RevokeTenantToken` operationId).
+func (c *Client) RevokeTenantToken(ctx context.Context, tenant TenantSlug, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeTenantTokenRequest(c.Server, tenant, tokenId)
 	if err != nil {
 		return nil, err
 	}
@@ -11589,6 +11851,55 @@ func NewEndAccountSessionsRequest(server string, tenant TenantSlug, username Use
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAttachmentUsageRequest constructs an http.Request for the GetAttachmentUsage method
+func NewGetAttachmentUsageRequest(server string, tenant TenantSlug, params *GetAttachmentUsageParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/attachment-usage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -18103,6 +18414,159 @@ func NewTimeReportRequest(server string, tenant TenantSlug, params *TimeReportPa
 	return req, nil
 }
 
+// NewListTenantTokensRequest constructs an http.Request for the ListTenantTokens method
+func NewListTenantTokensRequest(server string, tenant TenantSlug, params *ListTenantTokensParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/tokens", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewRevokeTenantTokenRequest constructs an http.Request for the RevokeTenantToken method
+func NewRevokeTenantTokenRequest(server string, tenant TenantSlug, tokenId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "token_id", tokenId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/tokens/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewResolveTicketRequest constructs an http.Request for the ResolveTicket method
 func NewResolveTicketRequest(server string, tenant TenantSlug, key string) (*http.Request, error) {
 	var err error
@@ -18983,6 +19447,21 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessionsWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*EndAccountSessionsResponse, error)
 
+	// GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
+	//
+	// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+	// restricted projects included, and a deleted ticket's until the purge removes them — they
+	// occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
+	// tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+	// sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+	// null where the installation sets none. An answer the client holds unchanged is `304` to its
+	// weak `ETag` (docs/adr/0054 D7).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+	GetAttachmentUsageWithResponse(ctx context.Context, tenant TenantSlug, params *GetAttachmentUsageParams, reqEditors ...RequestEditorFn) (*GetAttachmentUsageResponse, error)
+
 	// ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
@@ -19770,7 +20249,10 @@ type ClientWithResponsesInterface interface {
 	// A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 	// attachment only its author or that person's agents. The type is detected from the bytes
 	// and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+	// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+	// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+	// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+	// checked under the tenant's lock before the bytes are stored; without object storage
 	// 501 `uploads_disabled`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -19843,7 +20325,9 @@ type ClientWithResponsesInterface interface {
 
 	// AddCommentWithBodyWithResponse Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19852,7 +20336,9 @@ type ClientWithResponsesInterface interface {
 
 	// AddCommentWithResponse Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19869,7 +20355,9 @@ type ClientWithResponsesInterface interface {
 	// EditCommentWithBodyWithResponse Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19879,7 +20367,9 @@ type ClientWithResponsesInterface interface {
 	// EditCommentWithResponse Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20390,6 +20880,41 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/time-report (the `TimeReport` operationId).
 	TimeReportWithResponse(ctx context.Context, tenant TenantSlug, params *TimeReportParams, reqEditors ...RequestEditorFn) (*TimeReportResponse, error)
+
+	// ListTenantTokensWithResponse The members' tokens that can act in the tenant, for its administrators
+	//
+	// Every token of a member of the tenant that is unrestricted or restricted
+	// to this tenant, revoked and expired ones included, with its person:
+	// metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
+	// null marks an unrestricted token, which reaches every tenant its person
+	// belongs to — revoking it ends it there too. An unrestricted token's name
+	// and last-used day are its person's across their tenants, and so may say
+	// something of their work elsewhere. The tenant's administrators, a token's
+	// `read` scope; anybody else is `403 forbidden`. Newest first, paged by
+	// cursor, or by number with a total (docs/adr/0048 D2); a page the client
+	// holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/tokens (the `ListTenantTokens` operationId).
+	ListTenantTokensWithResponse(ctx context.Context, tenant TenantSlug, params *ListTenantTokensParams, reqEditors ...RequestEditorFn) (*ListTenantTokensResponse, error)
+
+	// RevokeTenantTokenWithResponse Revoke a member's token that can act in the tenant
+	//
+	// Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
+	// the tenant's audit as the administrator's act `revoked` (D9). Revoking an
+	// unrestricted token ends it in every tenant of its person, not only in
+	// this one; the person makes a new one in a session. A token this tenant's
+	// list does not show — restricted to another tenant, or of a person who is
+	// no member here — is `404 not_found`, as one that does not exist.
+	// Revoking a revoked token changes nothing. It only takes access away, so
+	// an administrator's `admin`-scope token may; an agent may not
+	// (docs/adr/0043 D3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/tokens/{token_id} (the `RevokeTenantToken` operationId).
+	RevokeTenantTokenWithResponse(ctx context.Context, tenant TenantSlug, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeTenantTokenResponse, error)
 
 	// ResolveTicketWithResponse A ticket by its key
 	//
@@ -22143,6 +22668,75 @@ func (r EndAccountSessionsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r EndAccountSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAttachmentUsageResponse200Headers the declared response headers of an HTTP 200 response for GetAttachmentUsage
+type GetAttachmentUsageResponse200Headers struct {
+	ETag *string
+}
+
+// GetAttachmentUsageResponse304Headers the declared response headers of an HTTP 304 response for GetAttachmentUsage
+type GetAttachmentUsageResponse304Headers struct {
+	ETag *string
+}
+
+// GetAttachmentUsageResponseDefaultHeaders the declared response headers of an HTTP default response for GetAttachmentUsage
+type GetAttachmentUsageResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetAttachmentUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AttachmentUsage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetAttachmentUsageResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *GetAttachmentUsageResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetAttachmentUsageResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAttachmentUsageResponse) GetJSON200() *AttachmentUsage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAttachmentUsageResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAttachmentUsageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAttachmentUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAttachmentUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAttachmentUsageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -27070,6 +27664,123 @@ func (r TimeReportResponse) ContentType() string {
 	return ""
 }
 
+// ListTenantTokensResponse200Headers the declared response headers of an HTTP 200 response for ListTenantTokens
+type ListTenantTokensResponse200Headers struct {
+	ETag *string
+}
+
+// ListTenantTokensResponse304Headers the declared response headers of an HTTP 304 response for ListTenantTokens
+type ListTenantTokensResponse304Headers struct {
+	ETag *string
+}
+
+// ListTenantTokensResponseDefaultHeaders the declared response headers of an HTTP default response for ListTenantTokens
+type ListTenantTokensResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListTenantTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MemberTokenList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTenantTokensResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTenantTokensResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListTenantTokensResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTenantTokensResponse) GetJSON200() *MemberTokenList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTenantTokensResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTenantTokensResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTenantTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTenantTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTenantTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RevokeTenantTokenResponseDefaultHeaders the declared response headers of an HTTP default response for RevokeTenantToken
+type RevokeTenantTokenResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RevokeTenantTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RevokeTenantTokenResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RevokeTenantTokenResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeTenantTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeTenantTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeTenantTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeTenantTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ResolveTicketResponse200Headers the declared response headers of an HTTP 200 response for ResolveTicket
 type ResolveTicketResponse200Headers struct {
 	ETag *string
@@ -28238,6 +28949,27 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 	return ParseEndAccountSessionsResponse(rsp)
 }
 
+// GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
+//
+// Every attachment of the tenant counts, on every ticket, confidential ones and those of
+// restricted projects included, and a deleted ticket's until the purge removes them — they
+// occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
+// tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+// sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+// null where the installation sets none. An answer the client holds unchanged is `304` to its
+// weak `ETag` (docs/adr/0054 D7).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-usage (the `GetAttachmentUsage` operationId).
+func (c *ClientWithResponses) GetAttachmentUsageWithResponse(ctx context.Context, tenant TenantSlug, params *GetAttachmentUsageParams, reqEditors ...RequestEditorFn) (*GetAttachmentUsageResponse, error) {
+	rsp, err := c.GetAttachmentUsage(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAttachmentUsageResponse(rsp)
+}
+
 // ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
@@ -29349,7 +30081,10 @@ func (c *ClientWithResponses) ListAttachmentsWithResponse(ctx context.Context, t
 // A member's act with `write` scope; an agent needs `upload` (docs/adr/0043 D4); a comment's
 // attachment only its author or that person's agents. The type is detected from the bytes
 // and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
-// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); without object storage
+// COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
+// COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
+// the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
+// checked under the tenant's lock before the bytes are stored; without object storage
 // 501 `uploads_disabled`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -29464,7 +30199,9 @@ func (c *ClientWithResponses) ListCommentsWithResponse(ctx context.Context, tena
 
 // AddCommentWithBodyWithResponse Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29479,7 +30216,9 @@ func (c *ClientWithResponses) AddCommentWithBodyWithResponse(ctx context.Context
 
 // AddCommentWithResponse Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29508,7 +30247,9 @@ func (c *ClientWithResponses) GetCommentWithResponse(ctx context.Context, tenant
 // EditCommentWithBodyWithResponse Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29524,7 +30265,9 @@ func (c *ClientWithResponses) EditCommentWithBodyWithResponse(ctx context.Contex
 // EditCommentWithResponse Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -30292,6 +31035,53 @@ func (c *ClientWithResponses) TimeReportWithResponse(ctx context.Context, tenant
 		return nil, err
 	}
 	return ParseTimeReportResponse(rsp)
+}
+
+// ListTenantTokensWithResponse The members' tokens that can act in the tenant, for its administrators
+//
+// Every token of a member of the tenant that is unrestricted or restricted
+// to this tenant, revoked and expired ones included, with its person:
+// metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
+// null marks an unrestricted token, which reaches every tenant its person
+// belongs to — revoking it ends it there too. An unrestricted token's name
+// and last-used day are its person's across their tenants, and so may say
+// something of their work elsewhere. The tenant's administrators, a token's
+// `read` scope; anybody else is `403 forbidden`. Newest first, paged by
+// cursor, or by number with a total (docs/adr/0048 D2); a page the client
+// holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/tokens (the `ListTenantTokens` operationId).
+func (c *ClientWithResponses) ListTenantTokensWithResponse(ctx context.Context, tenant TenantSlug, params *ListTenantTokensParams, reqEditors ...RequestEditorFn) (*ListTenantTokensResponse, error) {
+	rsp, err := c.ListTenantTokens(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTenantTokensResponse(rsp)
+}
+
+// RevokeTenantTokenWithResponse Revoke a member's token that can act in the tenant
+//
+// Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
+// the tenant's audit as the administrator's act `revoked` (D9). Revoking an
+// unrestricted token ends it in every tenant of its person, not only in
+// this one; the person makes a new one in a session. A token this tenant's
+// list does not show — restricted to another tenant, or of a person who is
+// no member here — is `404 not_found`, as one that does not exist.
+// Revoking a revoked token changes nothing. It only takes access away, so
+// an administrator's `admin`-scope token may; an agent may not
+// (docs/adr/0043 D3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/tokens/{token_id} (the `RevokeTenantToken` operationId).
+func (c *ClientWithResponses) RevokeTenantTokenWithResponse(ctx context.Context, tenant TenantSlug, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeTenantTokenResponse, error) {
+	rsp, err := c.RevokeTenantToken(ctx, tenant, tokenId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeTenantTokenResponse(rsp)
 }
 
 // ResolveTicketWithResponse A ticket by its key
@@ -31903,6 +32693,75 @@ func ParseEndAccountSessionsResponse(rsp *http.Response) (*EndAccountSessionsRes
 	switch {
 	case true:
 		var headers EndAccountSessionsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAttachmentUsageResponse parses an HTTP response from a GetAttachmentUsageWithResponse call
+func ParseGetAttachmentUsageResponse(rsp *http.Response) (*GetAttachmentUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAttachmentUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AttachmentUsage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetAttachmentUsageResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers GetAttachmentUsageResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers GetAttachmentUsageResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -36489,6 +37348,117 @@ func ParseTimeReportResponse(rsp *http.Response) (*TimeReportResponse, error) {
 	return response, nil
 }
 
+// ParseListTenantTokensResponse parses an HTTP response from a ListTenantTokensWithResponse call
+func ParseListTenantTokensResponse(rsp *http.Response) (*ListTenantTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTenantTokensResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MemberTokenList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTenantTokensResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTenantTokensResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListTenantTokensResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRevokeTenantTokenResponse parses an HTTP response from a RevokeTenantTokenWithResponse call
+func ParseRevokeTenantTokenResponse(rsp *http.Response) (*RevokeTenantTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeTenantTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RevokeTenantTokenResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseResolveTicketResponse parses an HTTP response from a ResolveTicketWithResponse call
 func ParseResolveTicketResponse(rsp *http.Response) (*ResolveTicketResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -36979,6 +37949,9 @@ type ServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	// (GET /api/v1/tenants/{tenant}/attachment-usage)
+	GetAttachmentUsage(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAttachmentUsageParams)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListAuditParams)
@@ -37222,6 +38195,12 @@ type ServerInterface interface {
 	// TimeReport Minutes summed per ticket, project, person or for the tenant over a period
 	// (GET /api/v1/tenants/{tenant}/time-report)
 	TimeReport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params TimeReportParams)
+	// ListTenantTokens The members' tokens that can act in the tenant, for its administrators
+	// (GET /api/v1/tenants/{tenant}/tokens)
+	ListTenantTokens(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantTokensParams)
+	// RevokeTenantToken Revoke a member's token that can act in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/tokens/{token_id})
+	RevokeTenantToken(w http.ResponseWriter, r *http.Request, tenant TenantSlug, tokenId openapi_types.UUID)
 	// ResolveTicket A ticket by its key
 	// (GET /api/v1/tickets/{tenant}/{key})
 	ResolveTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key string)
@@ -38400,6 +39379,56 @@ func (siw *ServerInterfaceWrapper) EndAccountSessions(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EndAccountSessions(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAttachmentUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetAttachmentUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAttachmentUsageParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAttachmentUsage(w, r, tenant, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -44328,6 +45357,143 @@ func (siw *ServerInterfaceWrapper) TimeReport(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListTenantTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListTenantTokens(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantTokensParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenantTokens(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeTenantToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeTenantToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "token_id" -------------
+	var tokenId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token_id", r.PathValue("token_id"), &tokenId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeTenantToken(w, r, tenant, tokenId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ResolveTicket operation middleware
 func (siw *ServerInterfaceWrapper) ResolveTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -44672,6 +45838,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/lockout", wrapper.UnlockAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-usage", wrapper.GetAttachmentUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
@@ -44753,6 +45920,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tickets", wrapper.ListTenantTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-entries", wrapper.ListTenantTime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-report", wrapper.TimeReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tokens", wrapper.ListTenantTokens)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tokens/{token_id}", wrapper.RevokeTenantToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tickets/{tenant}/{key}", wrapper.ResolveTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/version", wrapper.GetVersion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/callback", wrapper.OidcCallback)
@@ -46056,6 +47225,70 @@ type EndAccountSessionsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response EndAccountSessionsdefaultApplicationProblemPlusJSONResponse) VisitEndAccountSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentUsageRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params GetAttachmentUsageParams
+}
+
+type GetAttachmentUsageResponseObject interface {
+	VisitGetAttachmentUsageResponse(w http.ResponseWriter) error
+}
+
+type GetAttachmentUsage200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetAttachmentUsage200JSONResponse struct {
+	Body    AttachmentUsage
+	Headers GetAttachmentUsage200ResponseHeaders
+}
+
+func (response GetAttachmentUsage200JSONResponse) VisitGetAttachmentUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentUsage304Response = NotModifiedResponse
+
+func (response GetAttachmentUsage304Response) VisitGetAttachmentUsageResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetAttachmentUsagedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetAttachmentUsagedefaultApplicationProblemPlusJSONResponse) VisitGetAttachmentUsageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -50631,6 +51864,108 @@ func (response TimeReportdefaultApplicationProblemPlusJSONResponse) VisitTimeRep
 	return err
 }
 
+type ListTenantTokensRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListTenantTokensParams
+}
+
+type ListTenantTokensResponseObject interface {
+	VisitListTenantTokensResponse(w http.ResponseWriter) error
+}
+
+type ListTenantTokens200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTenantTokens200JSONResponse struct {
+	Body    MemberTokenList
+	Headers ListTenantTokens200ResponseHeaders
+}
+
+func (response ListTenantTokens200JSONResponse) VisitListTenantTokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantTokens304Response = NotModifiedResponse
+
+func (response ListTenantTokens304Response) VisitListTenantTokensResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListTenantTokensdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTenantTokensdefaultApplicationProblemPlusJSONResponse) VisitListTenantTokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTenantTokenRequestObject struct {
+	Tenant  TenantSlug         `json:"tenant"`
+	TokenId openapi_types.UUID `json:"token_id"`
+}
+
+type RevokeTenantTokenResponseObject interface {
+	VisitRevokeTenantTokenResponse(w http.ResponseWriter) error
+}
+
+type RevokeTenantToken204Response struct {
+}
+
+func (response RevokeTenantToken204Response) VisitRevokeTenantTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeTenantTokendefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RevokeTenantTokendefaultApplicationProblemPlusJSONResponse) VisitRevokeTenantTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ResolveTicketRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Key    string     `json:"key"`
@@ -51084,6 +52419,9 @@ type StrictServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(ctx context.Context, request EndAccountSessionsRequestObject) (EndAccountSessionsResponseObject, error)
+	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
+	// (GET /api/v1/tenants/{tenant}/attachment-usage)
+	GetAttachmentUsage(ctx context.Context, request GetAttachmentUsageRequestObject) (GetAttachmentUsageResponseObject, error)
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	// (GET /api/v1/tenants/{tenant}/audit)
 	ListAudit(ctx context.Context, request ListAuditRequestObject) (ListAuditResponseObject, error)
@@ -51327,6 +52665,12 @@ type StrictServerInterface interface {
 	// TimeReport Minutes summed per ticket, project, person or for the tenant over a period
 	// (GET /api/v1/tenants/{tenant}/time-report)
 	TimeReport(ctx context.Context, request TimeReportRequestObject) (TimeReportResponseObject, error)
+	// ListTenantTokens The members' tokens that can act in the tenant, for its administrators
+	// (GET /api/v1/tenants/{tenant}/tokens)
+	ListTenantTokens(ctx context.Context, request ListTenantTokensRequestObject) (ListTenantTokensResponseObject, error)
+	// RevokeTenantToken Revoke a member's token that can act in the tenant
+	// (DELETE /api/v1/tenants/{tenant}/tokens/{token_id})
+	RevokeTenantToken(ctx context.Context, request RevokeTenantTokenRequestObject) (RevokeTenantTokenResponseObject, error)
 	// ResolveTicket A ticket by its key
 	// (GET /api/v1/tickets/{tenant}/{key})
 	ResolveTicket(ctx context.Context, request ResolveTicketRequestObject) (ResolveTicketResponseObject, error)
@@ -52159,6 +53503,33 @@ func (sh *strictHandler) EndAccountSessions(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndAccountSessionsResponseObject); ok {
 		if err := validResponse.VisitEndAccountSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAttachmentUsage operation middleware
+func (sh *strictHandler) GetAttachmentUsage(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAttachmentUsageParams) {
+	var request GetAttachmentUsageRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAttachmentUsage(ctx, request.(GetAttachmentUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAttachmentUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAttachmentUsageResponseObject); ok {
+		if err := validResponse.VisitGetAttachmentUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -54638,6 +56009,60 @@ func (sh *strictHandler) TimeReport(w http.ResponseWriter, r *http.Request, tena
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TimeReportResponseObject); ok {
 		if err := validResponse.VisitTimeReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenantTokens operation middleware
+func (sh *strictHandler) ListTenantTokens(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantTokensParams) {
+	var request ListTenantTokensRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenantTokens(ctx, request.(ListTenantTokensRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenantTokens")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantTokensResponseObject); ok {
+		if err := validResponse.VisitListTenantTokensResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeTenantToken operation middleware
+func (sh *strictHandler) RevokeTenantToken(w http.ResponseWriter, r *http.Request, tenant TenantSlug, tokenId openapi_types.UUID) {
+	var request RevokeTenantTokenRequestObject
+
+	request.Tenant = tenant
+	request.TokenId = tokenId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeTenantToken(ctx, request.(RevokeTenantTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeTenantToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeTenantTokenResponseObject); ok {
+		if err := validResponse.VisitRevokeTenantTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

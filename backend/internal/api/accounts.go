@@ -365,7 +365,7 @@ func (s *Server) EndAccountSessions(ctx context.Context, req apigen.EndAccountSe
 		if ended == 0 {
 			return store.ErrNoChange
 		}
-		w.Record(store.Event{EntityType: entityUser, EntityID: target.ID, Action: "revoked",
+		w.Record(store.Event{EntityType: entityUser, EntityID: target.ID, Action: actionRevoked,
 			After: map[string]any{fieldSessionsEnded: ended}})
 		return nil
 	})

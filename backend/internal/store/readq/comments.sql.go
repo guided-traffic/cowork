@@ -18,7 +18,7 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
@@ -44,6 +44,7 @@ type GetCommentRow struct {
 	WithdrawnAt    *time.Time
 	Edited         bool
 	Explains       []string
+	Mentions       []uuid.UUID
 	Version        int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -64,6 +65,7 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 		&i.WithdrawnAt,
 		&i.Edited,
 		&i.Explains,
+		&i.Mentions,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -72,7 +74,7 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 }
 
 const getCommentForWrite = `-- name: GetCommentForWrite :one
-SELECT c.id, c.author_id, c.agent, c.body, c.withdrawn_at, c.version
+SELECT c.id, c.author_id, c.agent, c.body, c.mentions, c.withdrawn_at, c.version
 FROM comments c
 WHERE c.tenant_id = $1 AND c.ticket_id = $2 AND c.id = $3
 `
@@ -88,6 +90,7 @@ type GetCommentForWriteRow struct {
 	AuthorID    uuid.UUID
 	Agent       *string
 	Body        string
+	Mentions    []uuid.UUID
 	WithdrawnAt *time.Time
 	Version     int32
 }
@@ -101,6 +104,7 @@ func (q *Queries) GetCommentForWrite(ctx context.Context, arg GetCommentForWrite
 		&i.AuthorID,
 		&i.Agent,
 		&i.Body,
+		&i.Mentions,
 		&i.WithdrawnAt,
 		&i.Version,
 	)
@@ -183,7 +187,7 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
@@ -217,6 +221,7 @@ type ListCommentsRow struct {
 	WithdrawnAt    *time.Time
 	Edited         bool
 	Explains       []string
+	Mentions       []uuid.UUID
 	Version        int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -252,6 +257,7 @@ func (q *Queries) ListComments(ctx context.Context, arg ListCommentsParams) ([]L
 			&i.WithdrawnAt,
 			&i.Edited,
 			&i.Explains,
+			&i.Mentions,
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,

@@ -25,9 +25,9 @@ into the file of its path family.
 | [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag, and the bin of deleted tickets with its restoration and purge |
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
+| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
-| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
+| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the tenant's attachment usage (`/tenants/{tenant}/attachment-usage`) |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
 | [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
@@ -346,7 +346,7 @@ another token and marking notifications read (`write` scope,
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) |
 | `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
 | `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden` |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
@@ -363,9 +363,9 @@ a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
-(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go)
-and the writes of [`members.go`](../../backend/internal/api/members.go) use `administer`, the
-member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
+the writes of [`members.go`](../../backend/internal/api/members.go) and the revocation of a member's
+token (`RevokeTenantToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
 (`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
 `409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
 tenant's lock first);
@@ -448,7 +448,8 @@ The two ticket lists, and every list the UI loads again on a poll — `listProje
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
 `listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
 `listPrerequisites`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
-`listDeletedTickets`, `listSavedFilters` — and the dashboard, `getDashboard`, answer a
+`listDeletedTickets`, `listSavedFilters`, `listTenantTokens` — and the dashboard, `getDashboard`, and
+the attachments' usage, `getAttachmentUsage`, answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
 `304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
 `tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
@@ -476,7 +477,7 @@ list answers that `invalid_cursor`.
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
 - The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
-  `listMembers`, `listMyTokens` and `listProjects` — also take numbered pages: `page` with
+  `listMembers`, `listMyTokens`, `listTenantTokens` and `listProjects` — also take numbered pages: `page` with
   `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
   and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
   beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
@@ -490,7 +491,7 @@ list answers that `invalid_cursor`.
   is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's tenants by slug; a tenant's bin the last deleted first, its
+  mappings by group; the installation's tenants by slug; the tenant's tokens newest first; a tenant's bin the last deleted first, its
   position the deletion's time and the id; a tenant's saved filters by id; the person's inbox newest
   first, merged across the tenants by the notifications' ids, which order by time; "next for me" and
   the tickets assigned to the person by the score, highest first, then the ticket's id, and the open

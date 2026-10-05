@@ -339,6 +339,11 @@ backend:
     attachmentMaxBytes: 10485760
     # COWORK_ATTACHMENT_MAX_PER_TICKET.
     attachmentMaxPerTicket: 100
+    # COWORK_ATTACHMENT_TENANT_QUOTA, in bytes: what one tenant's attachments
+    # hold together; 0, the default, sets no quota. An installation of several
+    # tenants sets one, so that no tenant fills the storage all of them share
+    # (docs/adr/0016 D6, docs/security/attachments.md H-10).
+    attachmentTenantQuota: 0
     # COWORK_REQUEST_TIMEOUT, in seconds; the event stream is exempt.
     requestTimeout: 30
     # COWORK_MAX_PAGE_SIZE: the largest page a list returns.

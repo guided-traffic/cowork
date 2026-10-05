@@ -28,6 +28,7 @@ const (
 	entityUser           = "user"
 	entityMembership     = "membership"
 	entityToken          = "token"
+	actionRevoked        = "revoked"
 	fieldName            = "name"
 	fieldDescription     = "description"
 	fieldTimeLockedUntil = "time_locked_until"
@@ -219,9 +220,10 @@ type unset interface {
 }
 
 // nullUnstored sets each required nullable field of a struct that its JSON did
-// not specify to null. A field the document leaves optional (`omitempty`) is
-// left alone: the server leaves it out on purpose, and the replay leaves it
-// out as the stored answer did.
+// not specify to null, and each required list it did not carry — a comment's
+// mentions, stored before they existed — to an empty list, never null. A field
+// the document leaves optional (`omitempty`) is left alone: the server leaves
+// it out on purpose, and the replay leaves it out as the stored answer did.
 func nullUnstored(v reflect.Value) {
 	if v.Kind() != reflect.Struct {
 		return
@@ -233,6 +235,10 @@ func nullUnstored(v reflect.Value) {
 		}
 		if n, ok := field.Addr().Interface().(unset); ok && !n.IsSpecified() {
 			n.SetNull()
+			continue
+		}
+		if field.Kind() == reflect.Slice && field.IsNil() && field.CanSet() {
+			field.Set(reflect.MakeSlice(field.Type(), 0, 0))
 		}
 	}
 }

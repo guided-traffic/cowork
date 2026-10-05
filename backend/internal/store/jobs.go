@@ -24,12 +24,13 @@ const (
 // The first keys of the locks that order concurrent writes: re-parentings
 // per project, "cowp", and blocks links per tenant, "cowb", which an
 // integrity walk checks; question numbers per ticket, "cowq"; the attachment
-// count per ticket, "cowa".
+// count per ticket, "cowa"; the attachment quota per tenant, "cowu".
 const (
 	parentLockNamespace     int32 = 0x636f7770
 	blocksLockNamespace     int32 = 0x636f7762
 	questionLockNamespace   int32 = 0x636f7771
 	attachmentLockNamespace int32 = 0x636f7761
+	quotaLockNamespace      int32 = 0x636f7775
 )
 
 // LockParents takes the project's re-parenting lock until the transaction
@@ -56,6 +57,13 @@ func (w *Writer) LockQuestions(ctx context.Context, ticketID uuid.UUID) error {
 // both pass the per-ticket count.
 func (w *Writer) LockAttachments(ctx context.Context, ticketID uuid.UUID) error {
 	return w.lock(ctx, attachmentLockNamespace, ticketID, "attachment")
+}
+
+// LockAttachmentQuota takes the tenant's attachment quota lock, so two uploads
+// cannot both pass the tenant's quota (docs/adr/0016 D6). An upload takes it
+// before the ticket's attachment lock.
+func (w *Writer) LockAttachmentQuota(ctx context.Context) error {
+	return w.lock(ctx, quotaLockNamespace, w.TenantID, "attachment quota")
 }
 
 func (w *Writer) lock(ctx context.Context, namespace int32, key uuid.UUID, name string) error {

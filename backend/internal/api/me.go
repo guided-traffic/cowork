@@ -229,7 +229,7 @@ func (s *Server) RevokeMyToken(ctx context.Context, req apigen.RevokeMyTokenRequ
 		if err != nil {
 			return err
 		}
-		w.Record(store.Event{EntityType: entityToken, EntityID: target, Action: "revoked"})
+		w.Record(store.Event{EntityType: entityToken, EntityID: target, Action: actionRevoked})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {

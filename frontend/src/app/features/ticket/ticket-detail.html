@@ -14,7 +14,7 @@
       <div class="head-top">
         <div class="badges">
           <app-type [value]="t.type" [showLabel]="true" />
-          <app-state [value]="t.state" />
+          <app-state [value]="t.state" data-testid="ticket-state" />
           <app-severity [value]="t.severity" />
           <app-security [value]="t.security" />
           @if (t.confidential) {
@@ -155,6 +155,7 @@
                   [files]="commentFiles().get(comment.id) ?? []"
                   [me]="session.person()?.id"
                   [administers]="administers()"
+                  [ticket]="t"
                 />
               </article>
             } @empty {
@@ -163,7 +164,7 @@
           } @else {
             <p-skeleton height="4rem" />
           }
-          <app-comment-composer [ticketKey]="t.key" />
+          <app-comment-composer [ticketKey]="t.key" [ticket]="t" />
         </section>
 
         <section class="card">

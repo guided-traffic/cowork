@@ -12,9 +12,9 @@ import (
 )
 
 const insertComment = `-- name: InsertComment :one
-INSERT INTO comments (tenant_id, ticket_id, author_id, agent, token_id, token_name, body)
+INSERT INTO comments (tenant_id, ticket_id, author_id, agent, token_id, token_name, body, mentions)
 VALUES ($1, $2, $3, $4, $5,
-        $6, $7)
+        $6, $7, $8::uuid[])
 RETURNING id
 `
 
@@ -26,6 +26,7 @@ type InsertCommentParams struct {
 	TokenID   *uuid.UUID
 	TokenName *string
 	Body      string
+	Mentions  []uuid.UUID
 }
 
 func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (uuid.UUID, error) {
@@ -37,6 +38,7 @@ func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (u
 		arg.TokenID,
 		arg.TokenName,
 		arg.Body,
+		arg.Mentions,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -74,21 +76,25 @@ func (q *Queries) InsertCommentRevision(ctx context.Context, arg InsertCommentRe
 
 const updateCommentBody = `-- name: UpdateCommentBody :one
 UPDATE comments
-SET body = $1, version = version + 1, updated_at = now()
-WHERE tenant_id = $2 AND id = $3 AND version = $4 AND withdrawn_at IS NULL
+SET body = $1, mentions = $2::uuid[], version = version + 1, updated_at = now()
+WHERE tenant_id = $3 AND id = $4 AND version = $5 AND withdrawn_at IS NULL
 RETURNING version
 `
 
 type UpdateCommentBodyParams struct {
 	Body     string
+	Mentions []uuid.UUID
 	TenantID uuid.UUID
 	ID       uuid.UUID
 	Version  int32
 }
 
+// The comment's text and its mentions, which an edit replaces together
+// (docs/adr/0015 D3, D5).
 func (q *Queries) UpdateCommentBody(ctx context.Context, arg UpdateCommentBodyParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updateCommentBody,
 		arg.Body,
+		arg.Mentions,
 		arg.TenantID,
 		arg.ID,
 		arg.Version,

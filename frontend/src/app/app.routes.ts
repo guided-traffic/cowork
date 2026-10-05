@@ -119,6 +119,11 @@ export const routes: Routes = [
             loadComponent: () => import('./features/tenant/audit').then((m) => m.Audit),
           },
           {
+            path: 'tokens',
+            loadComponent: () =>
+              import('./features/tenant/tenant-tokens').then((m) => m.TenantTokens),
+          },
+          {
             path: 'group-mappings',
             loadComponent: () =>
               import('./features/tenant/group-mappings').then((m) => m.GroupMappings),

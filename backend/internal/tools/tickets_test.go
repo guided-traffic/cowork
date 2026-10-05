@@ -212,6 +212,34 @@ func TestCommentLinkAndWatch(t *testing.T) {
 	res = call(t, s, "watch", `{"key": "COW-12"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Equal(t, "watch", decodeBody(t, f.calls(http.MethodPut, ticketPath+"/interest")[0])["weight"])
+	assert.NotContains(t, decodeBody(t, c), "mentions", "a comment that mentions nobody sends no list")
+}
+
+// comment mentions persons named as open_question names the person asked —
+// me, a username, a display name, an id — and sends their ids beside the text,
+// each once (docs/adr/0015 D5); a name that is no member is refused before
+// anything is written.
+func TestCommentMentions(t *testing.T) {
+	f := newFake(t)
+	f.on("POST "+ticketPath+"/comments", http.StatusCreated, map[string]any{"id": uuid.NewString()})
+	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "in-progress"), "ETag", `"3"`)
+	f.on("GET /api/v1/tenants/acme/members", http.StatusOK, list(
+		map[string]any{"person": map[string]any{"id": adaID, "username": "ada", "display_name": "Ada"}, "role": "admin"},
+		map[string]any{"person": map[string]any{"id": samID, "username": "sam", "display_name": "Sam Doe"}, "role": "member"}))
+	f.on("GET /api/v1/me", http.StatusOK, map[string]any{"id": adaID, "display_name": "Ada", "memberships": []any{}})
+	s := f.session(true)
+
+	res := call(t, s, "comment", `{"key": "COW-12", "text": "@Sam Doe, @Ada: done.", "mentions": ["Sam Doe", "me", "sam"]}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Contains(t, res.Text, "mentioning Sam Doe, Ada")
+	body := decodeBody(t, f.calls(http.MethodPost, ticketPath+"/comments")[0])
+	assert.Equal(t, "@Sam Doe, @Ada: done.", body["body"])
+	assert.Equal(t, []any{samID, adaID}, body["mentions"], "each person once, by id")
+
+	res = call(t, s, "comment", `{"key": "COW-12", "text": "x", "mentions": ["nobody"]}`)
+	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "no member of the tenant acme")
+	assert.Len(t, f.calls(http.MethodPost, ticketPath+"/comments"), 1, "nothing written for a name that is no member")
 }
 
 // place_ticket moves a ticket to another horizon with a reason and the

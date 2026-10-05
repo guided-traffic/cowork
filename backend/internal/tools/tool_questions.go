@@ -26,7 +26,7 @@ func openQuestionTool() Tool {
 		Description: "Open a decision on a ticket as a question for a person: the context, the options, the recommended one " +
 			"with its reason. One question at a time: wait for the answer before the next. The answer is the person's — " +
 			"in the UI, or in chat, where you write it down with record_answer; never answer it yourself.",
-		Operations: []string{"askQuestion", "listQuestions", "getMe", "listMembers"},
+		Operations: []string{"askQuestion", "listQuestions", opGetMe, opListMembers},
 		limits:     limitsOf(refusalNote),
 	}, func(s *jsonschema.Schema) {
 		minLen := 1

@@ -27,7 +27,10 @@ D2's numbered pages on the two ticket lists and the tenant's time entries — ~~
 members, tokens and projects carry the cursor only so far~~ *(built 2026-10-04: the audit view,
 the members, the person's tokens and the projects take them as well,
 [`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`; the tenant's audit page in
-the browser reads them with page numbers and a choice of 25, 50 or 100, as D4 has tables do)*; D4's
+the browser reads them with page numbers and a choice of 25, 50 or 100, as D4 has tables do; so do
+the members page and the person's tokens page since 2026-10-05, and the tenant's token list of
+[ADR 0035](0035-personal-access-tokens.md) D5 takes numbered pages from the start, while the pickers
+of the UI keep reading every member)*; D4's
 markings and client helpers arrive with the generated frontend client. *(2026-10-05:)* the tenant's
 ticket list in the browser, `/t/{slug}/tickets`, reads `listTenantTickets` in numbered pages as
 the audit page does, fifty a page to begin with — the API's default. *(2026-10-04:)* D3's inbox,

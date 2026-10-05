@@ -129,5 +129,17 @@
         </tr>
       </ng-template>
     </p-table>
+    @if (tokens.table.total() > 0) {
+      <p-paginator
+        [first]="(tokens.table.page() - 1) * tokens.table.perPage()"
+        [rows]="tokens.table.perPage()"
+        [totalRecords]="tokens.table.total()"
+        [rowsPerPageOptions]="perPageOptions"
+        [showCurrentPageReport]="true"
+        currentPageReportTemplate="{first}–{last} of {totalRecords}"
+        (onPageChange)="tokens.table.turn($event)"
+        data-testid="tokens-pages"
+      />
+    }
   </div>
 </section>

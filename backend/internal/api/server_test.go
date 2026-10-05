@@ -34,6 +34,7 @@ func TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull(t *testing.T) {
 		"version":1,"created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:00:00Z"}`)
 	assert.Contains(t, comment, "token")
 	assert.Nil(t, comment["token"], "a token the stored answer did not carry")
+	assert.Equal(t, []any{}, comment["mentions"], "a required list the stored answer did not carry is empty, never null")
 	assert.Equal(t, "Found it.", comment["body"], "what the stored answer carries stays")
 
 	question := replay[apigen.Question](t, `{"id":"0199a3c2-1d2e-7f00-8000-000000000003","number":1,

@@ -205,7 +205,7 @@ which have no tenant at all:
 | `tenants` | the row inside its own tenant's transaction, and to its members; every row to a global administrator (migration 26); updates only inside its own transaction; read by the login, the start-up synchronisation and the identity provider named in `app.job`, so a login can ask whether any tenant exists; inserted by a global administrator or the synchronisation |
 | `users` | the person, everyone who shares the current tenant with them, the login and the synchronisation, and the identity provider every person; a tenant's administrator also the persons a lookup by address or username names (`app.person_lookup`, below); inserted by an administrator of the current tenant (never a global administrator, never a person of the identity provider), by the synchronisation, or by the identity provider (only a person of the provider, without a username); updated by the administrators of the accounts their tenant manages, by the synchronisation, and by the identity provider (only its own persons) |
 | `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a grant inserted by an administrator into their own tenant, by a global administrator for themselves in any role (migration 26), or by the synchronisation, and changed and removed by an administrator of the tenant — a global administrator's own also changed by them (migration 26); a mapped membership inserted, changed and removed by the identity provider alone |
-| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; inserted for the person's own account only |
+| `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; an administrator of the current tenant reads and revokes every token of a member of it that is unrestricted or restricted to it, and no token restricted to another tenant (`app_tenant_reaches_token`, migration 35; [tokens.md](tokens.md#h-57) H-57); inserted for the person's own account only |
 | `idempotency_keys` | the person's own rows, and every row to the expiry job named in `app.job` |
 | `audit_events` | a tenant's rows inside that tenant, an installation-level row to the person it names; a row is inserted only into the context it belongs to |
 | `local_accounts` | the person's own row, the managing tenant's administrators, the login and the synchronisation; inserted for `tenant` by an administrator of that tenant and for `config` by the synchronisation, updated by the person only while a `tenant` account |
@@ -494,8 +494,12 @@ setting a grant, making or changing a mapping, restricting or opening a project,
 its access list — and making or changing a mapping takes a global administrator besides (above).
 Removing a grant, a mapping or an access entry only takes access away, and an administrator's
 `admin`-scope token may do it too ([tokens.md](tokens.md#what-only-a-session-does)).
-The mappings and a project's access list are read by the tenant's administrators — with a token's
-`read` scope — and the member list by every member; the mappings and the member list also by a
+The mappings, a project's access list and the tokens that can act in the tenant are read by the
+tenant's administrators — with a token's `read` scope — and the member list by every member. The
+token list holds the members' unrestricted tokens and those restricted to this tenant, and never a
+token restricted to another tenant, not even by its name; revoking an unrestricted one ends it in
+the person's other tenants too — an act of a tenant's administrator that reaches past the tenant,
+as the deactivation of an account the tenant manages does ([tokens.md](tokens.md#h-57) H-57). The mappings and the member list are also read by a
 global administrator who holds no role in the tenant, in a browser session.
 
 **`409 last_admin`.** A change of a grant or of a mapping, or the deactivation of a local account
@@ -679,7 +683,14 @@ restricted project, the confidential ticket, the narrowing and the restricted to
 tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an
 active member of the tenant who sees, by `person_sees_ticket`, both the ticket it is about and the
 ticket the act is on — never the actor
-([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). Reading it holds again: a
+([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). A comment's mention is held to
+the same sight before it is written: each person the comment's `mentions` names must be a member who
+sees the ticket, or the comment is refused at `/mentions/<i>` and tells nobody
+([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5;
+`TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`). That refusal tells the writer — who sees the
+ticket — whether a person sees it, as a question's `asked_of` does: of a restricted project, whether a
+member is on its access list, which only the tenant's administrators read otherwise ([H-58](#h-58)).
+Reading it holds again: a
 notification is listed and counted only while its person sees both tickets, so one whose ticket turned
 confidential, whose project was restricted away, or whose tenant the person left is absent and counts
 nowhere (`TestTheInboxIsThePersonsAcrossTheirTenants`); its act is shown as the ticket's activity shows
@@ -955,6 +966,22 @@ question or a comment keeps their text in `idempotency_keys` for up to a day aft
 (H-2); and an object whose removal failed after the commit stays in the bucket with no row naming it
 ([attachments.md](attachments.md#h-13)). Backups taken before the purge keep everything. A legal
 retention shorter or longer than thirty days is not configurable.
+
+<a id="h-58"></a>
+### H-58 — A question's person asked and a comment's mention tell the writer who sees a ticket
+
+Live today, in every tenant with a confidential ticket or a restricted project. Asking a question of
+a person (`asked_of`) and mentioning a person in a comment (`mentions`) are refused at the field when
+the person does not see the ticket ([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md)
+D5, `checkAskedOf`, `checkMentions`). The writer sees the ticket, and the refusal tells them one fact
+more than the ticket shows: whether that member sees it — for a restricted project, whether the
+member is on its access list, which only the tenant's administrators read otherwise; for a
+confidential ticket, nothing the ticket does not show already, since it names its assignee and
+reporter and the member list names the administrators. A writer can ask it member by member, and
+nothing records a refused attempt. It tells nothing of the ticket's content or of another ticket.
+Mitigation: none in cowork; the access list of a restricted project is a matter of the tenant's own
+members, and an administrator who must keep it from them keeps the project's work in a tenant of
+its own.
 
 ### The owner credential in the serving process
 

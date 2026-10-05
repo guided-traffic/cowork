@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -30,17 +31,18 @@ const (
 type comment = readq.GetCommentRow
 
 // commentView renders a comment without its HTML, which renderedComment adds;
-// a withdrawn comment's text never leaves (docs/adr/0015 D3).
+// a withdrawn comment's text and mentions never leave (docs/adr/0015 D3, D5).
 func commentView(c comment) apigen.Comment {
 	v := apigen.Comment{
 		Id: c.ID, Author: personView(c.AuthorID, c.AuthorUsername, c.AuthorName), Agent: nullableOf(c.Agent),
 		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), BodyHtml: nullableString(nil),
 		Withdrawn: c.WithdrawnAt != nil, WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited,
-		Explains: make([]apigen.AuditAction, 0, len(c.Explains)), Version: int(c.Version), CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
+		Explains: make([]apigen.AuditAction, 0, len(c.Explains)), Mentions: append([]uuid.UUID{}, c.Mentions...),
+		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if v.Withdrawn {
 		v.Body = nullableString(nil)
+		v.Mentions = []uuid.UUID{}
 	}
 	for _, a := range c.Explains {
 		v.Explains = append(v.Explains, apigen.AuditAction(a))
@@ -153,10 +155,12 @@ func (s *Server) GetComment(ctx context.Context, req apigen.GetCommentRequestObj
 
 // writeComment adds a comment as the caller, with its act; an agent writes
 // in its person's name with its mark (docs/adr/0015 D3), and a token's comment
-// carries the token (docs/adr/0036 D6).
-func writeComment(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, text string) (uuid.UUID, error) {
+// carries the token (docs/adr/0036 D6). The act tells the persons it mentions
+// first, then the ticket's watchers — each person once (docs/adr/0020 D2).
+func writeComment(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, text string, mentions []uuid.UUID) (uuid.UUID, error) {
 	p := principal(ctx)
-	ins := writeq.InsertCommentParams{TenantID: t.ID, TicketID: tc.row.ID, AuthorID: p.PersonID, Body: text}
+	ins := writeq.InsertCommentParams{TenantID: t.ID, TicketID: tc.row.ID, AuthorID: p.PersonID, Body: text,
+		Mentions: append([]uuid.UUID{}, mentions...)}
 	ins.TokenID, ins.TokenName = actToken(p)
 	if p.IsAgent() {
 		ins.Agent = &p.Agent
@@ -165,18 +169,57 @@ func writeComment(ctx context.Context, w *store.Writer, t tenantScope, tc ticket
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("insert the comment: %w", err)
 	}
+	notices := []store.Notice{{Reason: store.NoticeCommented, Watchers: true}}
+	if len(mentions) > 0 {
+		notices = append([]store.Notice{{Reason: store.NoticeMentioned, People: mentions}}, notices...)
+	}
 	w.Record(store.Event{EntityType: entityComment, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-		Action: actionCommented, Notices: []store.Notice{{Reason: store.NoticeCommented, Watchers: true}}})
+		Action: actionCommented, Notices: notices})
 	return id, nil
 }
 
 // explain writes the comment that explains an act of the same request, when
-// one was sent (docs/adr/0015 D2); uuid.Nil without one.
+// one was sent (docs/adr/0015 D2); uuid.Nil without one. It mentions nobody.
 func explain(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, text *string) (uuid.UUID, error) {
 	if text == nil {
 		return uuid.Nil, nil
 	}
-	return writeComment(ctx, w, t, tc, *text)
+	return writeComment(ctx, w, t, tc, *text, nil)
+}
+
+// checkMentions admits as a mention only a member of the tenant who can see
+// the ticket, as a question's asked_of (docs/adr/0015 D5 as amended
+// 2026-10-05); the first that is none is refused at its place in the body's
+// list. at maps a person to that place.
+func checkMentions(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, persons []uuid.UUID, at func(uuid.UUID) int) error {
+	for _, person := range persons {
+		visible, err := r.CanSeeTicket(ctx, readq.CanSeeTicketParams{TenantID: t.ID, TicketID: tc.row.ID, UserID: person})
+		if err != nil {
+			return fmt.Errorf("check a mention: %w", err)
+		}
+		if !visible {
+			return problem.Field(fmt.Sprintf("/mentions/%d", at(person)), "not a member who can see the ticket")
+		}
+	}
+	return nil
+}
+
+// placeIn finds a person's place in a list of mentions, for the pointer of a
+// refusal.
+func placeIn(list []uuid.UUID) func(uuid.UUID) int {
+	return func(person uuid.UUID) int { return slices.Index(list, person) }
+}
+
+// mentionsAdded are the persons of next that previous does not hold, in next's
+// order.
+func mentionsAdded(previous, next []uuid.UUID) []uuid.UUID {
+	var out []uuid.UUID
+	for _, person := range next {
+		if !slices.Contains(previous, person) {
+			out = append(out, person)
+		}
+	}
+	return out
 }
 
 // AddComment comments on a ticket: a member's act, in the agent baseline
@@ -201,7 +244,11 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		if perr := auth.Authorize(principal(ctx), tc.role, work); perr != nil {
 			return perr
 		}
-		id, err := writeComment(ctx, w, t, tc, body.Body)
+		mentions := deref(body.Mentions)
+		if err := checkMentions(ctx, w.Reader, t, tc, mentions, placeIn(mentions)); err != nil {
+			return err
+		}
+		id, err := writeComment(ctx, w, t, tc, body.Body, mentions)
 		if err != nil {
 			return err
 		}
@@ -277,52 +324,94 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 		images richtext.Images
 	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
-		if err != nil {
-			return err
-		}
-		c, err := commentForWrite(ctx, w.Reader, t, tc, req.Comment)
-		if err != nil {
-			return err
-		}
-		p := principal(ctx)
-		if perr := mayChangeComment(p, tc, c, false); perr != nil {
-			return perr
-		}
-		if c.WithdrawnAt != nil {
-			return problem.New(problem.StateConflict, "the comment is withdrawn")
-		}
-		if c.Version != version {
-			return stale(c.Version, map[string]any{fieldBody: c.Body})
-		}
-		if c.Body == req.Body.Body {
-			out, images, err = writtenComment(ctx, w.Reader, t, tc, c.ID)
-			if err == nil {
-				err = store.ErrNoChange
-			}
-			return err
-		}
-		rev := writeq.InsertCommentRevisionParams{TenantID: t.ID, CommentID: c.ID, Body: c.Body, EditedBy: p.PersonID}
-		rev.TokenID, rev.TokenName = actToken(p)
-		if p.IsAgent() {
-			rev.Agent = &p.Agent
-		}
-		if err := w.InsertCommentRevision(ctx, rev); err != nil {
-			return fmt.Errorf("keep the previous text: %w", err)
-		}
-		if _, err := w.UpdateCommentBody(ctx, writeq.UpdateCommentBodyParams{TenantID: t.ID, ID: c.ID, Version: version, Body: req.Body.Body}); errors.Is(err, pgx.ErrNoRows) {
-			return stale(c.Version, map[string]any{fieldBody: c.Body})
-		} else if err != nil {
-			return err
-		}
-		w.Record(store.Event{EntityType: entityComment, EntityID: c.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row), Action: actionEdited})
-		out, images, err = writtenComment(ctx, w.Reader, t, tc, c.ID)
+		var err error
+		out, images, err = s.editComment(ctx, w, t, req, version)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
 	return apigen.EditComment200JSONResponse{Body: renderedComment(out, images), Headers: apigen.EditComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
+}
+
+// editComment is the edit's transaction: the comment through its ticket's
+// predicate, the author's rule, the version the edit read, and the text and
+// mentions written with the act, which tells the persons the edit adds
+// (docs/adr/0015 D3–D5). It answers the comment as the write left it, with the
+// images its text may show; a write that changes nothing answers it as it is
+// with store.ErrNoChange.
+func (s *Server) editComment(ctx context.Context, w *store.Writer, t tenantScope, req apigen.EditCommentRequestObject,
+	version int32) (comment, richtext.Images, error) {
+	tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
+	if err != nil {
+		return comment{}, nil, err
+	}
+	c, err := commentForWrite(ctx, w.Reader, t, tc, req.Comment)
+	if err != nil {
+		return comment{}, nil, err
+	}
+	if perr := mayChangeComment(principal(ctx), tc, c, false); perr != nil {
+		return comment{}, nil, perr
+	}
+	if c.WithdrawnAt != nil {
+		return comment{}, nil, problem.New(problem.StateConflict, "the comment is withdrawn")
+	}
+	if c.Version != version {
+		return comment{}, nil, stale(c.Version, map[string]any{fieldBody: c.Body})
+	}
+	mentions := c.Mentions
+	if req.Body.Mentions != nil {
+		mentions = *req.Body.Mentions
+	}
+	if c.Body == req.Body.Body && sameMentions(c.Mentions, mentions) {
+		out, images, err := writtenComment(ctx, w.Reader, t, tc, c.ID)
+		if err == nil {
+			err = store.ErrNoChange
+		}
+		return out, images, err
+	}
+	// Only a person the edit adds is checked and told: those it keeps were
+	// checked when they were added (docs/adr/0015 D5).
+	anew := mentionsAdded(c.Mentions, mentions)
+	if err := checkMentions(ctx, w.Reader, t, tc, anew, placeIn(mentions)); err != nil {
+		return comment{}, nil, err
+	}
+	if err := s.reviseComment(ctx, w, t, c, version, req.Body.Body, mentions); err != nil {
+		return comment{}, nil, err
+	}
+	ev := store.Event{EntityType: entityComment, EntityID: c.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row), Action: actionEdited}
+	if len(anew) > 0 {
+		ev.Notices = []store.Notice{{Reason: store.NoticeMentioned, People: anew}}
+	}
+	w.Record(ev)
+	return writtenComment(ctx, w.Reader, t, tc, c.ID)
+}
+
+// reviseComment keeps the comment's previous text in its history and writes
+// the new text and mentions over the version the edit read (docs/adr/0015
+// D3, docs/adr/0050 D3).
+func (s *Server) reviseComment(ctx context.Context, w *store.Writer, t tenantScope, c readq.GetCommentForWriteRow, version int32,
+	body string, mentions []uuid.UUID) error {
+	p := principal(ctx)
+	rev := writeq.InsertCommentRevisionParams{TenantID: t.ID, CommentID: c.ID, Body: c.Body, EditedBy: p.PersonID}
+	rev.TokenID, rev.TokenName = actToken(p)
+	if p.IsAgent() {
+		rev.Agent = &p.Agent
+	}
+	if err := w.InsertCommentRevision(ctx, rev); err != nil {
+		return fmt.Errorf("keep the previous text: %w", err)
+	}
+	_, err := w.UpdateCommentBody(ctx, writeq.UpdateCommentBodyParams{TenantID: t.ID, ID: c.ID, Version: version, Body: body,
+		Mentions: append([]uuid.UUID{}, mentions...)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return stale(c.Version, map[string]any{fieldBody: c.Body})
+	}
+	return err
+}
+
+// sameMentions reports whether two lists name the same persons, in any order.
+func sameMentions(a, b []uuid.UUID) bool {
+	return len(mentionsAdded(a, b)) == 0 && len(mentionsAdded(b, a)) == 0
 }
 
 // WithdrawComment hides a comment's text and keeps the entry

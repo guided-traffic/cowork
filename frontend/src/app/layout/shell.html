@@ -205,6 +205,13 @@
             data-testid="nav-audit"
             ><i class="pi pi-history"></i>Audit record</a
           >
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'tokens']"
+            routerLinkActive="active"
+            data-testid="nav-tenant-tokens"
+            ><i class="pi pi-key"></i>Tokens</a
+          >
         }
         @if (!session.oversight()) {
           <a

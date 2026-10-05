@@ -9,18 +9,22 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Message } from 'primeng/message';
+import { Paginator } from 'primeng/paginator';
 import { Select } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { Member, MembershipSource, Role } from '../../api/models';
+import { changesMemberships, EventStreamService } from '../../core/event-stream.service';
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
+import { perPageOptions, tablePages } from '../../core/table-pages';
 import { TenantService } from '../../core/tenant.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { refocus } from '../../shared/refocus';
@@ -37,7 +41,8 @@ import {
 } from './roles';
 
 /**
- * The tenant's members (docs/adr/0034 D7), every page of them: each with the effective role — the
+ * The tenant's members (docs/adr/0034 D7) in numbered pages of 25, 50 or 100 (docs/adr/0048 D2,
+ * D4), loaded again on `membership.changed`, a resync and a poll: each with the effective role — the
  * higher of the mapped and the granted one (docs/adr/0030 D4) — and where it comes from, the group
  * mapping, the grant and the local account, as badges. The tenant's administrators see the e-mail
  * address under the name, which tells two persons of one name apart: the list carries it for them
@@ -60,6 +65,7 @@ import {
     ConfirmDialog,
     FormsModule,
     Message,
+    Paginator,
     Select,
     SelfGrant,
     TableModule,
@@ -80,6 +86,12 @@ export class Members {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly roles = roles;
+  protected readonly perPageOptions = perPageOptions;
+  /** The page of members shown, apart from the every-member list the pickers read. */
+  protected readonly table = tablePages(
+    () => this.session.tenant() ?? undefined,
+    (tenant, page, perPage) => this.members.page(tenant, page, perPage),
+  );
   /** The sources of a membership with a badge, each explained once on the page. */
   protected readonly sources: (MembershipSource | 'local')[] = ['mapping', 'grant', 'local'];
   /** A row stays the row of its person when the list loads again, and the focus in it with it. */
@@ -94,7 +106,7 @@ export class Members {
   protected readonly notice = signal<string | null>(null);
 
   protected readonly failure = computed(() => {
-    const error = this.members.members.error();
+    const error = this.table.rows.error();
     if (!error) {
       return undefined;
     }
@@ -103,6 +115,13 @@ export class Members {
   });
 
   constructor() {
+    inject(EventStreamService)
+      .events.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (changesMemberships(event, this.session.tenant())) {
+          refresh(this.table.rows, this.injector);
+        }
+      });
     // A dialog, a question and a message belong to the tenant they came from; another tenant's page
     // starts clean. The page is reused when only the tenant of the path changes: a question
     // answered then would act on the person of the same id in the tenant shown now, and the grant
@@ -152,6 +171,7 @@ export class Members {
   }
 
   protected added(member: Member): void {
+    refresh(this.table.rows, this.injector);
     this.messages.add({
       severity: 'success',
       summary: 'Member added',
@@ -231,6 +251,7 @@ export class Members {
         this.notice.set(null);
         try {
           await this.members.removeGrant(id);
+          refresh(this.table.rows, this.injector);
           this.messages.add({
             severity: 'success',
             summary: 'Grant removed',
@@ -262,9 +283,9 @@ export class Members {
     return `tr[data-row="${personId}"] .remove`;
   }
 
-  /** The selects of the rows beside the person's, the next one first. */
+  /** The selects of the rows beside the person's on the page, the next one first. */
   private neighbours(personId: string): string[] {
-    const list = this.members.list();
+    const list = this.table.items();
     const at = list.findIndex((each) => each.person.id === personId);
     return [list[at + 1], list[at - 1]].flatMap((each) =>
       each ? [this.select(each.person.id)] : [],
@@ -280,7 +301,7 @@ export class Members {
   private async writeGrant(member: Member, role: Role): Promise<boolean> {
     this.notice.set(null);
     try {
-      await this.members.setGrant(member.person.id, role);
+      this.shown(await this.members.setGrant(member.person.id, role));
       return true;
     } catch (error) {
       this.refused(error, member);
@@ -288,6 +309,21 @@ export class Members {
     } finally {
       this.release(member);
     }
+  }
+
+  /**
+   * Puts the member as the answer has them into the page at once — the row's select must not jump
+   * back while the page loads again — and loads the page again.
+   */
+  private shown(member: Member): void {
+    if (this.table.rows.hasValue()) {
+      const held = this.table.rows.value();
+      this.table.rows.set({
+        ...held,
+        items: held.items.map((each) => (each.person.id === member.person.id ? member : each)),
+      });
+    }
+    refresh(this.table.rows, this.injector);
   }
 
   private hold(member: Member, role: Role): void {
@@ -309,6 +345,7 @@ export class Members {
     } else if (problem.code === 'person_not_found') {
       this.notice.set(`${member.person.display_name} is no longer a member of this tenant.`);
       refresh(this.members.members, this.injector);
+      refresh(this.table.rows, this.injector);
     } else {
       this.problems.report(error);
     }

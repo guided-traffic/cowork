@@ -204,3 +204,28 @@ func (q *Queries) ListTicketImages(ctx context.Context, arg ListTicketImagesPara
 	}
 	return items, nil
 }
+
+const tenantAttachmentUsage = `-- name: TenantAttachmentUsage :one
+SELECT coalesce(sum(size), 0)::bigint AS used_bytes, count(*)::bigint AS attachments
+FROM attachments
+WHERE tenant_id = $1
+`
+
+type TenantAttachmentUsageRow struct {
+	UsedBytes   int64
+	Attachments int64
+}
+
+// The bytes and the count of every attachment of the tenant, against its quota
+// (docs/adr/0016 D6): every ticket's, a confidential ticket's and a restricted
+// project's included, and a deleted ticket's until the purge removes its rows.
+// Row-level security holds it to the tenant; the handlers answer it to the
+// tenant's administrators only, who see every ticket.
+// visibility: exempt (the tenant's stored bytes count whether or not the caller sees the ticket that holds them)
+// deletion: exempt (a deleted ticket's files occupy the bucket until the purge removes them, docs/adr/0024 D2)
+func (q *Queries) TenantAttachmentUsage(ctx context.Context, tenantID uuid.UUID) (TenantAttachmentUsageRow, error) {
+	row := q.db.QueryRow(ctx, tenantAttachmentUsage, tenantID)
+	var i TenantAttachmentUsageRow
+	err := row.Scan(&i.UsedBytes, &i.Attachments)
+	return i, err
+}

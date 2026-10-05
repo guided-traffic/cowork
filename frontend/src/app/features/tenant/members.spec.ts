@@ -4,8 +4,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
 import { Tooltip } from 'primeng/tooltip';
+import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
-import { Me, Member, Problem, ProblemCode } from '../../api/models';
+import { Me, Member, MemberList, Problem, ProblemCode } from '../../api/models';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
@@ -86,6 +88,17 @@ describe('Members', () => {
   let add: MockInstance<MembersService['add']>;
   let setGrant: MockInstance<MembersService['setGrant']>;
   let removeGrant: MockInstance<MembersService['removeGrant']>;
+  let page: MockInstance<MembersService['page']>;
+  let events: Subject<StreamEvent>;
+
+  /** The page the server would answer: every member of the list, as one page of the table. */
+  const pageOf = (number: number, perPage: number): MemberList => ({
+    items: list(),
+    total: list().length,
+    page: number,
+    per_page: perPage,
+    next_cursor: null,
+  });
 
   beforeEach(() => {
     list = signal<Member[]>([ada, sam, bob]);
@@ -103,6 +116,10 @@ describe('Members', () => {
       role,
     }));
     removeGrant = vi.fn<MembersService['removeGrant']>().mockResolvedValue(undefined);
+    page = vi
+      .fn<MembersService['page']>()
+      .mockImplementation(async (_tenant, number, perPage) => pageOf(number, perPage));
+    events = new Subject<StreamEvent>();
     TestBed.configureTestingModule({
       providers: [
         MessageService,
@@ -114,8 +131,10 @@ describe('Members', () => {
             add,
             setGrant,
             removeGrant,
+            page,
           },
         },
+        { provide: EventStreamService, useValue: { events } },
         {
           provide: SessionService,
           useValue: {
@@ -303,9 +322,44 @@ describe('Members', () => {
       expect(row(fixture, cyd)).toBeNull();
 
       list.set([cyd]);
+      events.next({ name: 'membership.changed', id: 'e1', personId: cyd.person.id });
       await settle(fixture);
 
       expect(row(fixture, cyd)).not.toBeNull();
+    });
+
+    it('reads one numbered page at a time, 25 at first, and a page and a size of the paginator', async () => {
+      list.set(
+        Array.from({ length: 30 }, (_, at) => ({
+          ...cyd,
+          person: { ...cyd.person, id: `n${at}`, display_name: `Member ${at}` },
+        })),
+      );
+      const fixture = await render();
+      expect(page).toHaveBeenLastCalledWith('acme', 1, 25);
+      expect(el(fixture, 'members-pages')?.textContent).toContain('1–25 of 30');
+
+      fixture.debugElement
+        .query(By.css('[data-testid="members-pages"]'))
+        .triggerEventHandler('onPageChange', { page: 1, rows: 25, first: 25 });
+      await settle(fixture);
+      expect(page).toHaveBeenLastCalledWith('acme', 2, 25);
+
+      fixture.debugElement
+        .query(By.css('[data-testid="members-pages"]'))
+        .triggerEventHandler('onPageChange', { page: 1, rows: 50, first: 50 });
+      await settle(fixture);
+      expect(page).toHaveBeenLastCalledWith('acme', 1, 50);
+    });
+
+    it('loads the page again on a membership event, a resync and a poll', async () => {
+      await render();
+      const before = page.mock.calls.length;
+
+      events.next({ name: 'poll' });
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(page.mock.calls.length).toBeGreaterThan(before);
     });
   });
 
@@ -315,7 +369,7 @@ describe('Members', () => {
 
       expect(el(fixture, 'add-member')).toBeNull();
       expect(el(fixture, 'members-lead')).toBeNull();
-      expect(host(fixture).querySelector('p-select')).toBeNull();
+      expect(host(fixture).querySelector('[data-testid="members"] p-select')).toBeNull();
       expect(host(fixture).querySelector('[data-testid^="remove-grant-"]')).toBeNull();
       expect(host(fixture).querySelector('app-self-grant')).toBeNull();
     });
@@ -526,7 +580,6 @@ describe('Members', () => {
           role: 'admin',
           origins: [...bob.origins, { source: 'grant', role: 'admin' }],
         };
-        list.set([ada, sam, granted]);
         finish(granted);
         await settle(fixture);
 
@@ -823,6 +876,7 @@ describe('Members', () => {
 
           // The list as it loads again: other objects of the same people, without Cyd.
           list.set([{ ...ada }, { ...sam }]);
+          events.next({ name: 'membership.changed', id: 'e2', personId: cyd.person.id });
           await settle(fixture);
 
           expect(row(fixture, cyd)).toBeNull();
@@ -994,12 +1048,16 @@ describe('Members', () => {
     });
 
     it('does not say so while the members load', async () => {
-      loading.set(true);
+      let answer: (list: MemberList) => void = () => undefined;
+      page.mockReturnValue(new Promise<MemberList>((resolve) => (answer = resolve)));
 
-      const fixture = await render();
+      const fixture = TestBed.createComponent(Members);
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
       expect(el(fixture, 'members-empty')).toBeNull();
 
-      loading.set(false);
+      answer(pageOf(1, 25));
       await settle(fixture);
 
       expect(el(fixture, 'members-empty')?.textContent?.trim()).toBe('No members.');
@@ -1010,7 +1068,7 @@ describe('Members', () => {
     beforeEach(() => list.set([]));
 
     it('says why, with the detail of the problem', async () => {
-      error.set(refusal(503, 'not_ready', 'The database is starting.'));
+      page.mockRejectedValue(refusal(503, 'not_ready', 'The database is starting.'));
 
       const fixture = await render();
 
@@ -1020,7 +1078,7 @@ describe('Members', () => {
     });
 
     it('says why with the title when the problem has no detail', async () => {
-      error.set(refusal(403, 'forbidden', ''));
+      page.mockRejectedValue(refusal(403, 'forbidden', ''));
 
       const fixture = await render();
 
@@ -1030,7 +1088,7 @@ describe('Members', () => {
     });
 
     it('says why when the backend cannot be reached', async () => {
-      error.set(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
+      page.mockRejectedValue(new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }));
 
       const fixture = await render();
 

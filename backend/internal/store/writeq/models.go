@@ -321,6 +321,7 @@ const (
 	NotificationReasonBlockerClosed NotificationReason = "blocker_closed"
 	NotificationReasonCommented     NotificationReason = "commented"
 	NotificationReasonUrgent        NotificationReason = "urgent"
+	NotificationReasonMentioned     NotificationReason = "mentioned"
 )
 
 func (e *NotificationReason) Scan(src interface{}) error {
@@ -778,6 +779,7 @@ type Comment struct {
 	UpdatedAt   time.Time
 	TokenID     *uuid.UUID
 	TokenName   *string
+	Mentions    []uuid.UUID
 }
 
 type CommentRevision struct {

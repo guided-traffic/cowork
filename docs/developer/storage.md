@@ -49,15 +49,28 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
    naming what was detected. The name is sanitised and given an extension of the detected type.
 5. The idempotency fingerprint covers the file's SHA-256, the name and the comment, keyed like
    every fingerprint ([api.md](api.md)).
-6. In `Mutate`: the ticket through the predicate; the ticket's attachment lock
+6. In `Mutate`: the ticket through the predicate; where `COWORK_ATTACHMENT_TENANT_QUOTA` is set,
+   the tenant's quota lock (`Writer.LockAttachmentQuota`, `lockQuota`), first, so the tenant's
+   uploads check the quota one after the other; the ticket's attachment lock
    (`Writer.LockAttachments`), so simultaneous uploads to it count one after the other; the
    project role; a `comment_id` must name a comment of this ticket written by the caller's
    person; the ticket's attachment count must be below `COWORK_ATTACHMENT_MAX_PER_TICKET`
-   (0: no limit), else `409 attachment_limit`. Then the
+   (0: no limit), else `409 attachment_limit`; the tenant's attachments summed
+   (`TenantAttachmentUsage`, every ticket's — the query is exempt from the predicate — and a
+   deleted ticket's until the purge removes its rows: they occupy the bucket until then) plus the
+   file must not exceed the quota, else `409 attachment_quota`, whose detail names the quota and
+   the file's size and never the sum (`withinQuota`). Then the
    row and its `uploaded` act, then `Put`, then the stored `201` response.
 7. When the object was written and the row did not commit — or a concurrent request with the same
    key committed first and this one replays — the object is deleted again: no row names those
    bytes.
+
+`GetAttachmentUsage` (`GET /api/v1/tenants/{tenant}/attachment-usage`) answers the same sum, the
+count and the quota to the tenant's administrators (`adminRead`), with a weak `ETag` and `304` for an
+answer the client holds: the sum counts files of tickets a member may not see, and a deleted
+ticket's until the purge. The tenant's settings page shows it
+([frontend.md](frontend.md#the-tenants-administration)). The quota is off by default, and why is
+[runtime.md](../operations/runtime.md#the-tenants-attachment-quota).
 
 ## Type detection
 

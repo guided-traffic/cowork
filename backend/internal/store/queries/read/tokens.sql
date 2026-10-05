@@ -54,3 +54,39 @@ SELECT EXISTS (
     WHERE t.id = sqlc.arg(token_id) AND t.user_id = sqlc.arg(user_id) AND t.revoked_at IS NULL
       AND t.expires_at > now() AND u.deactivated_at IS NULL
 ) AS usable;
+
+-- name: ListTenantTokens :many
+-- The tokens that can act in the tenant, for its administrators
+-- (docs/adr/0035 D5 as amended 2026-10-05): every token of a member of the
+-- tenant that is unrestricted or restricted to it, newest first, revoked and
+-- expired ones included. The tokens policy of migration 35 admits exactly
+-- these rows to an administrator of the current tenant; the query names them
+-- as well (docs/adr/0021 D4). By id after a cursor, or a numbered page by
+-- offset (docs/adr/0048 D1, D2).
+SELECT t.id, t.user_id, u.username, u.display_name, t.name, t.scope, t.agent, t.capabilities,
+       t.restricted_tenant_id, t.restricted_project_id, p.key AS restricted_project_key,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at
+FROM tokens t
+JOIN users u ON u.id = t.user_id
+LEFT JOIN projects p ON p.tenant_id = t.restricted_tenant_id AND p.id = t.restricted_project_id
+     AND app_project_visible(p.id)
+WHERE (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = sqlc.arg(tenant_id)::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = sqlc.arg(tenant_id)::uuid AND m.user_id = t.user_id)
+  AND (sqlc.narg(before)::uuid IS NULL OR t.id < sqlc.narg(before)::uuid)
+ORDER BY t.id DESC
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
+-- name: CountTenantTokens :one
+-- The tokens of ListTenantTokens, for a numbered page's total.
+SELECT count(*)::bigint AS tokens
+FROM tokens t
+WHERE (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = sqlc.arg(tenant_id)::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = sqlc.arg(tenant_id)::uuid AND m.user_id = t.user_id);
+
+-- name: GetTenantToken :one
+-- One token of ListTenantTokens, for its revocation.
+SELECT t.id, t.user_id, t.name, t.restricted_tenant_id, t.revoked_at
+FROM tokens t
+WHERE t.id = sqlc.arg(token_id)
+  AND (t.restricted_tenant_id IS NULL OR t.restricted_tenant_id = sqlc.arg(tenant_id)::uuid)
+  AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = sqlc.arg(tenant_id)::uuid AND m.user_id = t.user_id);

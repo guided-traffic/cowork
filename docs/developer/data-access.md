@@ -169,7 +169,12 @@ policy, and restrictive ones that hold reading and marking to the notification's
 `user_id` filter must not show one person another's inbox (`TestTheInboxPolicyHoldsAPersonToTheirOwn`)
 — and deleting to the job `notification-expiry`, which a permissive policy admits past the tenant
 ([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)); migration
-35 admits the purge's delete of the notifications of a deleted ticket beside it. On
+32 admits the purge's delete of the notifications of a deleted ticket beside it. `tokens` admits an
+administrator of the current tenant, since
+[migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql), every token of
+a member of the tenant that is unrestricted or restricted to it — to read and to revoke, the rows of
+the tenant's token list (`app_tenant_reaches_token`, `ListTenantTokens`) — and no token restricted
+to another tenant; the queries name the same rows. On
 `memberships` the writes are split by source instead: a grant is inserted, changed and removed by
 an administrator of its tenant, a mapped membership only in a transaction named
 `identity-provider`. `saved_filters` carries `tenant_id` and the canonical policy, and restrictive
@@ -256,6 +261,7 @@ the one on the ticket the query reads.
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `NoticeRecipients` ([notifications](#notifications)) |
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
+| `TenantAttachmentUsage` | the bytes of every attachment of the tenant, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 
@@ -356,6 +362,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the tenant, before the cycle walk |
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
+| `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TENANT_QUOTA` is set, before the ticket's attachment lock | the tenant's uploads, before the sum against its quota |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
 | `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
@@ -536,10 +543,14 @@ row, writes them:
 | `transitioned` — a transition, the done act and the reopen of the stages | `state_changed` | the watchers of the ticket |
 | `transitioned` to `done` or `dropped` | `blocker_closed`, about each ticket it blocks | the watchers of that ticket |
 | `commented`, the explaining comment of a write included | `commented` | the watchers of the ticket |
+| `commented` with `mentions`; `edited` that adds a person to them | `mentioned`, before `commented` | the persons it mentions, or the persons the edit adds |
 | `interest` that makes a stake `urgent` | `urgent` | the assignee |
 
-The watchers (`ListWatchers`, [ADR 0013] D6) are everyone with a stake, the assignee, the reporter
-and whoever asked or was asked an open question on the ticket. `NoticeRecipients` keeps of the
+The watchers (`ListWatchers`, [ADR 0013] D6) are everyone with a stake, the assignee, the reporter,
+whoever asked or was asked an open question on the ticket, and whoever a comment on it that is not
+withdrawn mentions (`comments.mentions`, migration 36). One act tells a person once about a ticket:
+`deliver` keeps whom it told per ticket and leaves them out of the act's later notices, so a watcher
+a comment mentions is told `mentioned`, not also `commented`. `NoticeRecipients` keeps of the
 persons named those who are not deactivated, are not the actor — whose own act, and whose agent's,
 tells them nothing — and see, by `person_sees_ticket`, both the ticket the notification is about and
 the ticket the act is on (for `blocker_closed` the blocker). `InsertNotifications` writes one row per

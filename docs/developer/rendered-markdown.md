@@ -53,7 +53,7 @@ maintained one exists. Both chosen libraries are the newest stable versions on 2
 | What | Where | Why there |
 |---|---|---|
 | A ticket's body | `GET …/{number}/body` (`GetTicketBody`), `{"body","body_html","version"}` with the ticket's `ETag` | a route of its own: the ticket lists carry every row's Markdown, and rendering a page of bodies is work no list needs |
-| A comment's text | `body_html` beside `body` on every comment the API answers (`renderedComment`), `null` once withdrawn | a comment is read in its thread a page at a time; the images are read once per page |
+| A comment's text | `body_html` beside `body` on every comment the API answers (`renderedComment`), `null` once withdrawn; a mention is plain `@Name` text beside the comment's `mentions`, the ids, so the rendering knows nothing of it and links nobody ([domain.md](domain.md#comments-and-the-activity-list); `TestMarkdownRenders`, `TestAMentionTellsThePersonAndMakesThemAWatcher`) | a comment is read in its thread a page at a time; the images are read once per page |
 | A question's options and answer | `options_html` and `answer_html` beside `options` and `answer` on every question (`questionView`), the open decisions of `/me/decisions` included (`imagesOf` per tenant's page) | likewise |
 
 The context document, the Markdown export, the revisions of a comment and the MCP tools stay

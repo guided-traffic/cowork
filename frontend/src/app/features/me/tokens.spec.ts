@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { isSignal, signal, WritableSignal } from '@angular/core';
+import { computed, isSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -99,6 +99,7 @@ describe('Tokens', () => {
   let error: WritableSignal<unknown>;
   let reload: MockInstance<() => boolean>;
   let revoke: MockInstance<TokensService['revoke']>;
+  let turn: MockInstance<(state: unknown) => void>;
   let memberships: WritableSignal<Membership[]>;
 
   beforeEach(() => {
@@ -107,6 +108,7 @@ describe('Tokens', () => {
     error = signal<unknown>(undefined);
     reload = vi.fn<() => boolean>().mockReturnValue(true);
     revoke = vi.fn<TokensService['revoke']>().mockResolvedValue(undefined);
+    turn = vi.fn<(state: unknown) => void>();
     memberships = signal<Membership[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -116,6 +118,12 @@ describe('Tokens', () => {
           useValue: {
             list,
             tokens: { isLoading: loading, error, reload },
+            table: {
+              page: signal(1),
+              perPage: signal(25),
+              total: computed(() => list().length),
+              turn,
+            },
             revoke,
             create: vi.fn(),
             projectsOf: vi.fn().mockResolvedValue([]),
@@ -195,6 +203,16 @@ describe('Tokens', () => {
       await settle(fixture);
 
       expect(row(fixture, 't2')).not.toBeNull();
+    });
+
+    it('shows the numbered pages under the list and hands a turn of the paginator to the table', async () => {
+      const fixture = await render();
+      const pages = fixture.debugElement.query(By.css('[data-testid="tokens-pages"]'));
+      expect(pages.nativeElement.textContent).toContain('1–4 of 4');
+
+      pages.triggerEventHandler('onPageChange', { page: 0, rows: 50, first: 0 });
+
+      expect(turn).toHaveBeenCalledWith({ page: 0, rows: 50, first: 0 });
     });
 
     it('asks for the tokens again, because what the list holds is as old as the last visit', async () => {

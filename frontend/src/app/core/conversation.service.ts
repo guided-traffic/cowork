@@ -36,28 +36,34 @@ export class Conversation {
   private readonly api = inject(Api);
 
   /**
-   * Comments on the ticket. The idempotency key is the form's, one for each content it holds, so
-   * a retry of a lost answer is answered again instead of commenting twice (docs/adr/0045 D3); so
-   * is the one of a question.
+   * Comments on the ticket, mentioning the persons of `mentions` by id (docs/adr/0015 D5). The
+   * idempotency key is the form's, one for each content it holds, so a retry of a lost answer is
+   * answered again instead of commenting twice (docs/adr/0045 D3); so is the one of a question.
    */
-  comment(key: string, body: string, idempotencyKey: string): Promise<Comment> {
+  comment(
+    key: string,
+    body: string,
+    idempotencyKey: string,
+    mentions: string[] = [],
+  ): Promise<Comment> {
     return this.api.invoke(addComment, {
       ...routeOf(key),
       'Idempotency-Key': idempotencyKey,
-      body: { body },
+      body: mentions.length > 0 ? { body, mentions } : { body },
     });
   }
 
   /**
    * Replaces a comment's text over the version the editing began with (docs/adr/0015 D3,
-   * docs/adr/0050 D3): the author's act; the previous text is kept in its history.
+   * docs/adr/0050 D3): the author's act; the previous text is kept in its history. `mentions`
+   * replaces the comment's, and tells the persons it adds (D5); left out, they stay.
    */
-  editComment(key: string, comment: Comment, body: string): Promise<Comment> {
+  editComment(key: string, comment: Comment, body: string, mentions?: string[]): Promise<Comment> {
     return this.api.invoke(editComment, {
       ...routeOf(key),
       comment: comment.id,
       'If-Match': etagOf(comment.version),
-      body: { body },
+      body: mentions ? { body, mentions } : { body },
     });
   }
 
