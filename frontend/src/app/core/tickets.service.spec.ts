@@ -47,6 +47,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     severity: 'medium',
     security: 'none',
     effort: 'M',
+    horizon: 'later',
+    horizon_set: null,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,

@@ -5,21 +5,20 @@ import { createTicket } from '../api/fn/tickets/create-ticket';
 import { deleteTicket } from '../api/fn/tickets/delete-ticket';
 import { listPrerequisites } from '../api/fn/tickets/list-prerequisites';
 import { moveTicketRank } from '../api/fn/tickets/move-ticket-rank';
-import { overrideUrgency } from '../api/fn/tickets/override-urgency';
 import { replaceTicketBody } from '../api/fn/tickets/replace-ticket-body';
 import { setConfidential } from '../api/fn/tickets/set-confidential';
+import { setHorizon } from '../api/fn/tickets/set-horizon';
 import { sortProjectRank } from '../api/fn/tickets/sort-project-rank';
 import { transitionTicket } from '../api/fn/tickets/transition-ticket';
 import { updateTicket } from '../api/fn/tickets/update-ticket';
-import { withdrawUrgencyOverride } from '../api/fn/tickets/withdraw-urgency-override';
 import {
   ConfidentialSet,
+  Horizon,
+  HorizonUpdate,
   Ticket,
   TicketCreate,
   TicketPatch,
   Transition,
-  Urgency,
-  UrgencyOverrideSet,
 } from '../api/models';
 import { etagOf } from './entity-cache';
 import { ProblemService, ProblemView } from './problem.service';
@@ -172,26 +171,17 @@ export class TicketActions {
   }
 
   /**
-   * Sets the horizon, the API's urgency override (docs/adr/0010 D3). `reason` goes into the
-   * request only when the person gave one: it is optional for a person and never made up.
+   * Sets the horizon (docs/adr/0010 D3); `later` clears the horizon set, which is where a ticket
+   * nobody placed stands. `reason` goes into the request only when the person gave one: it is
+   * optional for a person and never made up.
    */
-  async overrideUrgency(key: string, value: Urgency, reason?: string): Promise<Ticket> {
-    const body: UrgencyOverrideSet = { value, ...(reason ? { reason } : {}) };
+  async setHorizon(key: string, value: Horizon, reason?: string): Promise<Ticket> {
+    const body: HorizonUpdate = { value, ...(reason ? { reason } : {}) };
     const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
     return this.writeOver(
       key,
-      (etag) => this.api.invoke(overrideUrgency, { ...routeOf(key), 'If-Match': etag, body }),
-      (current) => current.urgency === held.urgency,
-    );
-  }
-
-  /** Withdraws the horizon set on the ticket, which returns it to `later`; it needs no reason. */
-  async withdrawUrgency(key: string): Promise<Ticket> {
-    const held = this.tickets.cache.value(key) ?? (await this.tickets.refresh(key));
-    return this.writeOver(
-      key,
-      (etag) => this.api.invoke(withdrawUrgencyOverride, { ...routeOf(key), 'If-Match': etag }),
-      (current) => current.urgency === held.urgency,
+      (etag) => this.api.invoke(setHorizon, { ...routeOf(key), 'If-Match': etag, body }),
+      (current) => current.horizon === held.horizon,
     );
   }
 

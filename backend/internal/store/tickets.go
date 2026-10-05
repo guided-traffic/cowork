@@ -80,10 +80,12 @@ type TicketFilter struct {
 	Types      ValueSet
 	Severities ValueSet
 	Securities ValueSet
-	Urgencies  ValueSet
-	Efforts    ValueSet
-	Assignees  PersonSet
-	Reporters  PersonSet
+	// Horizons filters by the horizon a ticket stands in, which the columns
+	// keep as the urgency (docs/adr/0010 D1): the one set, else the derived.
+	Horizons  ValueSet
+	Efforts   ValueSet
+	Assignees PersonSet
+	Reporters PersonSet
 	// Parents filters by parent ticket id, None for roots.
 	Parents       PersonSet
 	ProgressMin   *int
@@ -330,7 +332,7 @@ func (b *queryBuilder) filter(f TicketFilter) {
 	b.textSet("t.type::text", f.Types)
 	b.textSet("t.severity::text", f.Severities)
 	b.textSet("t.security::text", f.Securities)
-	b.textSet("coalesce(t.urgency_override, t.urgency_derived)::text", f.Urgencies)
+	b.textSet("coalesce(t.urgency_override, t.urgency_derived)::text", f.Horizons)
 	b.textSet("t.effort::text", f.Efforts)
 	b.personSet("t.assignee_id", f.Assignees)
 	b.personSet("t.reporter_id", f.Reporters)

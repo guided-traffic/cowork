@@ -266,7 +266,7 @@ func TestAChatTurnFilesARankedTicket(t *testing.T) {
 	ticket, err := member.ResolveTicketWithResponse(e.ctx, e.SlugA, parts[1])
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, ticket.StatusCode())
-	assert.Equal(t, apigen.UrgencyNow, ticket.JSON200.Urgency)
+	assert.Equal(t, apigen.HorizonNow, ticket.JSON200.Horizon)
 	assert.Equal(t, "The gate stays open", ticket.JSON200.Title)
 
 	mark := "chat/stub:model/" + conversation.String()
@@ -328,14 +328,14 @@ func TestTheChatHoldsThePersonsCapabilities(t *testing.T) {
 	}
 
 	mine := decode[map[string]any](t, e.b.request(http.MethodGet, "/api/v1/me/chat", nil))
-	assert.Equal(t, map[string]any{"chosen": false, "capabilities": []any{"rank", "override-urgency", "interest", "upload", "create-project"}},
+	assert.Equal(t, map[string]any{"chosen": false, "capabilities": []any{"rank", "set-horizon", "interest", "upload", "create-project"}},
 		mine, "the default leaves decide, close, drop and record-answer to the person")
 	refused := eventData[apigen.ChatToolResultEvent](t, lastEvent(t, closeIt(), "tool_result"))
 	assert.False(t, refused.Ok)
 	assert.Contains(t, refused.Summary, "`agent_forbidden`: missing capability: close")
 	assert.Equal(t, apigen.TicketStateInProgress, stateOf())
 	got := e.stub.Requests()
-	assert.Contains(t, got[0].System, "these capabilities: rank, override-urgency, interest, upload, create-project.")
+	assert.Contains(t, got[0].System, "these capabilities: rank, set-horizon, interest, upload, create-project.")
 
 	path := "/api/v1/me/chat"
 	choice := map[string]any{"capabilities": []string{"close", "rank", "close"}}
@@ -352,7 +352,7 @@ func TestTheChatHoldsThePersonsCapabilities(t *testing.T) {
 		decode[map[string]any](t, e.s.do(t, caller{Token: e.tk.MemberA}, http.MethodGet, path, nil)), "a token reads it")
 	recorded, err := fixtures(t).QueryCount(e.ctx, `SELECT count(*) FROM audit_events WHERE tenant_id IS NULL AND entity_type = 'user'
 		AND entity_id = $1 AND action = 'updated' AND actor_user_id = $1
-		AND before = '{"chat_capabilities": ["rank", "override-urgency", "interest", "upload", "create-project"]}'
+		AND before = '{"chat_capabilities": ["rank", "set-horizon", "interest", "upload", "create-project"]}'
 		AND after = '{"chat_capabilities": ["close", "rank"]}'`, e.MemberA)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, recorded, "the choice is the person's recorded act")

@@ -6,7 +6,7 @@ const vocabulary = {
   severity: ['critical', 'high', 'medium', 'low', 'cosmetic'],
   security: ['live', 'boundary', 'hardening', 'none'],
   type: ['task', 'bug', 'feature', 'decision', 'question'],
-  urgency: ['now', 'release', 'next', 'later', 'icebox'],
+  horizon: ['now', 'release', 'next', 'later', 'icebox'],
 };
 
 describe('meanings', () => {

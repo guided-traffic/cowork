@@ -6,7 +6,10 @@ Accepted, amended 2026-10-02 (D3: the rule set v1 over the facts cowork holds, a
 sentence that ADR 0043 D4 replaced) and 2026-10-03 (D3: an override holds until it is
 withdrawn or replaced, and a person may leave its reason out) and 2026-10-04 (D1, D3: the five
 values are the ticket's horizon, a planning category a person or an agent sets in whatever state
-the ticket is; nothing derives them any more; a ticket can be filed into one). Date: 2026-09-29. Decided by
+the ticket is; nothing derives them any more; a ticket can be filed into one) and 2026-10-05 (D1,
+D3: the API names the five values by the word horizon — `horizon`, `horizon_set`, `PUT
+…/horizon`, the capability `set-horizon` — and keeps the names before for at least one release, deprecated;
+the database keeps `urgency`). Date: 2026-09-29. Decided by
 the owner as the answer to the catalog question "which frontmatter fields become
 first-class?": all of them, with the vocabularies the ticket rules already define. The
 amendment of D3 is the owner's answer of 2026-10-02 to the question which rules the
@@ -35,6 +38,20 @@ chose the same model for both, over retiring them and over keeping `icebox` alon
 a word for the five: *horizon* is this record's proposal, and so are the meanings of `release`
 and `icebox`, open to objection.
 
+The amendment of 2026-10-05 answers what the amendment of 2026-10-04 left open: do the identifiers
+follow the word? The API said `urgency`, `urgency_derived`, `urgency_rule`, `urgency_override` and
+`…/urgency-override`, the capability was `override-urgency`, the database had the enum `urgency`
+and the columns `urgency_*`. Three options were put: (a) leave them — *horizon* in the UI, the
+documentation and the tools' arguments, the API and the database keep their names, the reference
+maps them, and an agent that reads the API document meets "urgency override" for what the UI calls
+the horizon; (b) rename the API and keep the database — `horizon` and `PUT …/horizon` beside the
+old names for one release, the old names removed in the next, the capability renamed, the columns
+staying, mapped in the backend, so that every surface an agent reads says horizon and a
+`cowork-mcp` of the release before keeps working through the release that carries both; (c)
+rename everything, the columns and the enum type included, over two releases of dual writes for
+names nobody outside the code reads. The owner had the recommended option of every open question
+built on 2026-10-05 and reviews the result: (b).
+
 **Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
 as a CHECK and in the API, rule set v1 (`DeriveUrgency`, removed 2026-10-04),
 the override and its end. D4's `found-in` link exists; D5 arrives with the importer. The
@@ -48,8 +65,19 @@ that derives — no state, block or link writes the urgency any more; a filing n
 (`urgency` of `POST …/tickets`, `filingOf` in [`tickets.go`](../../backend/internal/api/tickets.go));
 [migration 29](../../backend/internal/store/migrations/000029_horizon_set_by_people_only.up.sql)
 keeps the horizon every ticket showed; the UI says *horizon*, and its detail page sets it as the
-backlog and the board do, with the reason a person may add. Not built: the identifiers keep
-the name `urgency`.
+backlog and the board do, with the reason a person may add. ~~Not built: the identifiers keep
+the name `urgency`.~~ The amendment of 2026-10-05 is built (2026-10-05), its expand half: a
+ticket answers `horizon` and `horizon_set` (`ticketView` in
+[`tickets.go`](../../backend/internal/api/tickets.go)); `PUT …/horizon` sets it (`SetHorizon`);
+a filing, both ticket lists and the saved filters take `horizon`; the capability is
+`set-horizon` ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4); the export and the context write `horizon:` ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
+D1); the tools, the chat and the UI use the new names. The names before stay in `/api/v1`,
+deprecated, behaving as they did ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md)
+D7), and the database keeps the enum `urgency` and its columns, which the API maps. Not built:
+the contract — removing the deprecated names, rewriting the stored capability sets and dropping
+`override-urgency` from their checks — which a later release does, once no supported client reads
+the names before.
 
 ## Context
 
@@ -69,7 +97,7 @@ person belongs to, derivable, importable one to one — or becomes labels and pr
 | `severity` | `critical`, `high`, `medium`, `low`, `cosmetic` | impact if never fixed — for a `feature`, the impact of never building it |
 | `security` | `live`, `boundary`, `hardening`, `none` | the threat-model class of the tickets page |
 | `threat` | text | required when `security` is not `none`; names the guarantee or principal, verb and target |
-| `urgency` | `now`, `release`, `next`, `later`, `icebox` | ~~derived (D3)~~ *(amended 2026-10-04:)* the ticket's horizon (D3) |
+| `urgency` *(amended 2026-10-05: the database's name; the API's is `horizon`, the one set `horizon_set` — `urgency` and its fields stay in `/api/v1`, deprecated, until a later release removes them)* | `now`, `release`, `next`, `later`, `icebox` | ~~derived (D3)~~ *(amended 2026-10-04:)* the ticket's horizon (D3) |
 | `effort` | `XS`, `S`, `M`, `L` | size, not time |
 | `opened_at` | timestamp | creation, or the imported `opened:` date |
 
@@ -108,8 +136,11 @@ block, no link moves a ticket to another horizon. The five, in order:
 A ticket filed without a horizon is `later`; a filing may name its horizon, and the ticket stands
 in it from its filing — the filing is the act, and it needs no reason, since a new ticket has no
 standing call to change. **Rule set v2** has one row, `later` (`v2:default`), so the derived value
-is `later` for every ticket, and the horizon a person or an agent set is what the API still calls
-the override: setting it is the override, withdrawing it returns the ticket to `later`. The rule
+is `later` for every ticket, and the horizon a person or an agent set is ~~what the API still calls
+the override: setting it is the override, withdrawing it returns the ticket to `later`~~
+*(amended 2026-10-05:)* what the API answers as `horizon_set` and sets with `PUT …/horizon`;
+setting `later` clears it, which returns the ticket to where a ticket nobody placed stands. The
+columns keep the name override, and the audit record the act `overridden`. The rule
 of the reason stands as amended 2026-10-03 for a horizon set on an existing ticket. Migration 29
 keeps what every ticket showed: a ticket that derived `release` or `icebox` under v1 and had no
 override holds that value as a set horizon, set by nobody and without an act, its reason naming
@@ -168,9 +199,16 @@ guessing; the report names the field and the ticket.
 - *(Added 2026-10-04.)* A blocked ticket stays in its horizon: waiting shows in the state and its
   block, not in a move to `icebox` or `release`. A ticket nobody placed is `later`, whatever
   happens to it, until somebody plans it.
-- *(Added 2026-10-04.)* The API, the database and the capability `override-urgency` keep the
+- *(Added 2026-10-04.)* ~~The API, the database and the capability `override-urgency` keep the
   names `urgency` and override for what is now the horizon a person or an agent set; whether the
-  names follow the word is open.
+  names follow the word is open.~~ *(Amended 2026-10-05:)* The API and the capability follow the
+  word; the database keeps `urgency` and its columns, which the API maps, and the audit record keeps
+  the act `overridden` with its payload `urgency_override`, which the activity, the context and the
+  session start read as setting the horizon. For one release every ticket carries both names, and a
+  filing, a list filter and a saved filter take either: a filing that names both with different
+  values, a list request or a saved filter that names both, is refused rather than combined, and a
+  filter saved with `urgency` reads back as `horizon`. A later release removes the names before,
+  once no supported client reads them.
 
 ## Alternatives Considered
 
@@ -200,6 +238,13 @@ guessing; the report names the field and the ticket.
 - *(Added 2026-10-04.)* **`icebox` kept, `release` folded into `now`.** Lost with the above.
 - *(Added 2026-10-04.)* **Rule set v1 kept for tickets nobody placed.** A blocked ticket would
   still leave the horizon it was filed in. Lost: a horizon holds in any state.
+- *(Added 2026-10-05.)* **The identifiers left as they are** — *horizon* in the UI, the
+  documentation and the tools' arguments, `urgency` in the API and the database. No contract change,
+  but an agent that reads the API document meets "urgency override" for what the UI calls the
+  horizon. Lost.
+- *(Added 2026-10-05.)* **Everything renamed, the columns and the enum type included**, over two
+  releases. The cleanest tree, at the price of two releases of dual writes for names nobody outside
+  the code reads. Lost.
 
 ## Residual risks
 
@@ -211,6 +256,11 @@ guessing; the report names the field and the ticket.
 - *(Added 2026-10-03.)* A later rule set that derives importance from facts — a live security
   finding as `now` — would be outranked by a standing override set before that fact. Whether
   an override then yields to such a row is a question for the amendment that brings the row.
+- *(Added 2026-10-05.)* The names before stay in `/api/v1` by promise, not by a check: the
+  release that removes them breaks every client that still reads them — the `cowork-mcp` of the
+  release before this one reads `urgency`, `urgency_derived`, the two urgency-override routes and
+  the capability name `override-urgency` — so the removal waits until no supported client does,
+  which nothing checks.
 
 ## References
 

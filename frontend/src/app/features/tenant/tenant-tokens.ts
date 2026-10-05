@@ -15,7 +15,6 @@ import { Skeleton } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { MemberToken, Scope, TokenState } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { changesMemberships, EventStreamService } from '../../core/event-stream.service';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
@@ -23,6 +22,7 @@ import { SessionService } from '../../core/session.service';
 import { perPageOptions, tablePages } from '../../core/table-pages';
 import { TenantTokensService } from '../../core/tenant-tokens.service';
 import { TenantService } from '../../core/tenant.service';
+import { selectableCapabilities } from '../../shared/capabilities';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { dateTime } from '../../shared/time';
 import { scopeMeanings } from '../me/new-token-dialog';
@@ -155,7 +155,7 @@ export class TenantTokens {
 
   /** What an agent token may do, as text in the cell, as the person's own token page says it. */
   protected capabilitiesText(token: MemberToken): string {
-    if (token.capabilities.length === CAPABILITY.length) {
+    if (token.capabilities.length === selectableCapabilities.length) {
       return 'all nine capabilities';
     }
     return token.capabilities.length === 0 ? 'the baseline only' : token.capabilities.join(', ');

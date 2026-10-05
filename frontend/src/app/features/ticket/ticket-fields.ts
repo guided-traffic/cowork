@@ -21,12 +21,12 @@ import { Textarea } from 'primeng/textarea';
 import { Tooltip } from 'primeng/tooltip';
 import {
   Effort,
+  Horizon,
   SecurityClass,
   Severity,
   Ticket,
   TicketPatch,
   TicketType,
-  Urgency,
 } from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
@@ -60,7 +60,7 @@ export function shown(value: unknown): string {
 }
 
 /** The horizons in their order (docs/adr/0010 D3). */
-const horizons: Urgency[] = ['now', 'release', 'next', 'later', 'icebox'];
+const horizons: Horizon[] = ['now', 'release', 'next', 'later', 'icebox'];
 
 /**
  * The editable frontmatter of the detail page (docs/adr/0018 D2): each change is one `PATCH`
@@ -138,7 +138,7 @@ export class TicketFields {
   protected readonly threat = linkedSignal({ source: this.key, computation: () => '' });
 
   /** The horizon just set, waiting for the reason the person may add; another ticket drops it. */
-  protected readonly horizonAsked = linkedSignal<string, Urgency | null>({
+  protected readonly horizonAsked = linkedSignal<string, Horizon | null>({
     source: this.key,
     computation: () => null,
   });
@@ -213,31 +213,26 @@ export class TicketFields {
   }
 
   /**
-   * Sets the horizon (docs/adr/0010 D3): the API's override with the value, or its withdrawal
-   * where the value is the derived one, `later`; a set horizon then offers the reason, which the
-   * person may leave out. A horizon somebody else set meanwhile is asked about, as a field is.
+   * Sets the horizon (docs/adr/0010 D3); `later`, where a ticket nobody placed stands, clears the
+   * horizon set. Another horizon then offers the reason, which the person may leave out. A horizon
+   * somebody else set meanwhile is asked about, as a field is.
    */
-  protected async setHorizon(value: Urgency | null): Promise<void> {
+  protected async setHorizon(value: Horizon | null): Promise<void> {
     const ticket = this.ticket();
-    if (!value || value === ticket.urgency) {
+    if (!value || value === ticket.horizon) {
       return;
     }
     this.horizonAsked.set(null);
-    const withdraw = value === ticket.urgency_derived && ticket.urgency_override !== null;
     try {
-      if (withdraw) {
-        await this.actions.withdrawUrgency(ticket.key);
-      } else {
-        await this.actions.overrideUrgency(ticket.key, value);
-        if (this.key() === ticket.key) {
-          this.askReason(value);
-        }
+      await this.actions.setHorizon(ticket.key, value);
+      if (value !== 'later' && this.key() === ticket.key) {
+        this.askReason(value);
       }
     } catch (error) {
       if (error instanceof StaleWrite) {
         this.confirm.confirm({
           header: 'Changed meanwhile',
-          message: `Someone set the horizon of this ticket while you chose: now ${error.current.urgency}, yours ${value}. Set yours over it?`,
+          message: `Someone set the horizon of this ticket while you chose: now ${error.current.horizon}, yours ${value}. Set yours over it?`,
           acceptLabel: 'Set mine',
           rejectLabel: 'Keep theirs',
           accept: () => void this.setHorizon(value),
@@ -248,11 +243,11 @@ export class TicketFields {
     }
   }
 
-  protected horizonMeaning(value: Urgency): string {
-    return meanings.urgency[value];
+  protected horizonMeaning(value: Horizon): string {
+    return meanings.horizon[value];
   }
 
-  private askReason(value: Urgency): void {
+  private askReason(value: Horizon): void {
     this.horizonReason.set('');
     this.horizonAsked.set(value);
     afterNextRender(
@@ -278,7 +273,7 @@ export class TicketFields {
     const key = this.key();
     this.sendingReason.set(true);
     try {
-      await this.actions.overrideUrgency(key, value, reason);
+      await this.actions.setHorizon(key, value, reason);
       if (this.key() === key) {
         this.horizonAsked.set(null);
       }

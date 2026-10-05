@@ -1,4 +1,4 @@
-import { Ticket, Urgency } from '../../api/models';
+import { Horizon, Ticket } from '../../api/models';
 import {
   alwaysShown,
   arrange,
@@ -14,7 +14,7 @@ import {
   Row,
   scoreMarks,
   unanswered,
-  urgencies,
+  horizons,
   withMoves,
 } from './backlog-model';
 
@@ -24,26 +24,26 @@ function t(number: number, overrides: Partial<Ticket> = {}): Ticket {
     key: `acme/COW-${number}`,
     number,
     parent: null,
-    urgency: 'later',
+    horizon: 'later',
     ...overrides,
   } as Ticket;
 }
 
 const under = (parent: number) => `acme/COW-${parent}`;
 const keys = (rows: readonly Row[]) => rows.map((row) => row.ticket.number);
-const group = (groups: Group[], urgency: Urgency) =>
-  groups.find((each) => each.urgency === urgency)?.rows ?? [];
+const group = (groups: Group[], horizon: Horizon) =>
+  groups.find((each) => each.horizon === horizon)?.rows ?? [];
 /** `after 3`, `before 5` or `none`: a placement as a test reads it. */
 const shown = (placement: Placement | null | undefined) =>
   placement ? `${placement.side} ${placement.neighbour.number}` : 'none';
 
 /** The rows of a group of tickets, as the page shows them. */
-const rowsOf = (...tickets: Ticket[]) => group(arrange(tickets), tickets[0]?.urgency ?? 'later');
+const rowsOf = (...tickets: Ticket[]) => group(arrange(tickets), tickets[0]?.horizon ?? 'later');
 
 describe('the groups', () => {
   it('are now, release, next, later and icebox, in this order (docs/adr/0018 D1)', () => {
-    expect(urgencies).toEqual(['now', 'release', 'next', 'later', 'icebox']);
-    expect(arrange([]).map((each) => each.urgency)).toEqual([...urgencies]);
+    expect(horizons).toEqual(['now', 'release', 'next', 'later', 'icebox']);
+    expect(arrange([]).map((each) => each.horizon)).toEqual([...horizons]);
   });
 
   it('show while empty only for now, next and later; release and icebox wait for a ticket or a drag', () => {
@@ -54,8 +54,8 @@ describe('the groups', () => {
 });
 
 describe('arrange', () => {
-  it('has an empty group for every urgency that no ticket has', () => {
-    const groups = arrange([t(1, { urgency: 'now' })]);
+  it('has an empty group for every horizon that no ticket has', () => {
+    const groups = arrange([t(1, { horizon: 'now' })]);
 
     expect(groups).toHaveLength(5);
     expect(keys(group(groups, 'now'))).toEqual([1]);
@@ -63,15 +63,15 @@ describe('arrange', () => {
     expect(group(groups, 'icebox')).toEqual([]);
   });
 
-  it('puts each ticket into the group of its urgency and keeps the rank inside it', () => {
+  it('puts each ticket into the group of its horizon and keeps the rank inside it', () => {
     const groups = arrange([
-      t(5, { urgency: 'later' }),
-      t(2, { urgency: 'now' }),
-      t(9, { urgency: 'later' }),
-      t(1, { urgency: 'icebox' }),
-      t(7, { urgency: 'now' }),
-      t(3, { urgency: 'release' }),
-      t(4, { urgency: 'next' }),
+      t(5, { horizon: 'later' }),
+      t(2, { horizon: 'now' }),
+      t(9, { horizon: 'later' }),
+      t(1, { horizon: 'icebox' }),
+      t(7, { horizon: 'now' }),
+      t(3, { horizon: 'release' }),
+      t(4, { horizon: 'next' }),
     ]);
 
     expect(keys(group(groups, 'now'))).toEqual([2, 7]);
@@ -81,9 +81,9 @@ describe('arrange', () => {
     expect(keys(group(groups, 'icebox'))).toEqual([1]);
   });
 
-  it('shows a ticket in the group that urgencyOf names, which is how a drag shows at once', () => {
-    const groups = arrange([t(1, { urgency: 'later' }), t(2, { urgency: 'later' })], (ticket) =>
-      ticket.number === 2 ? 'now' : ticket.urgency,
+  it('shows a ticket in the group that horizonOf names, which is how a drag shows at once', () => {
+    const groups = arrange([t(1, { horizon: 'later' }), t(2, { horizon: 'later' })], (ticket) =>
+      ticket.number === 2 ? 'now' : ticket.horizon,
     );
 
     expect(keys(group(groups, 'later'))).toEqual([1]);
@@ -120,8 +120,8 @@ describe('arrange', () => {
 
   it('names the parent of a ticket whose parent sits in another group, and indents nothing', () => {
     const groups = arrange([
-      t(1, { urgency: 'now' }),
-      t(2, { urgency: 'later', parent: under(1) }),
+      t(1, { horizon: 'now' }),
+      t(2, { horizon: 'later', parent: under(1) }),
     ]);
 
     const [child] = group(groups, 'later');
@@ -192,7 +192,7 @@ describe('planDrop within a group', () => {
 
     expect(shown(plan?.placement)).toBe('after 3');
     expect(plan?.ticket).toBe(a);
-    expect(plan?.urgency).toBeUndefined();
+    expect(plan?.horizon).toBeUndefined();
   });
 
   it('places a row that lands at the bottom after the last row', () => {
@@ -276,17 +276,17 @@ describe('planDrop within a group', () => {
 });
 
 describe('planDrop into another group', () => {
-  const x = t(11, { urgency: 'now' });
-  const y = t(12, { urgency: 'now' });
+  const x = t(11, { horizon: 'now' });
+  const y = t(12, { horizon: 'now' });
   const target = rowsOf(x, y);
-  const ticket = t(1, { urgency: 'later' });
+  const ticket = t(1, { horizon: 'later' });
   const drop = (rows: readonly Row[], at: number, subject = ticket) =>
     planDrop(subject, 'later', 'now', rows, at);
 
-  it('sets the urgency and places the row before the first row where it lands at the top', () => {
+  it('sets the horizon and places the row before the first row where it lands at the top', () => {
     const plan = drop(target, 0);
 
-    expect(plan?.urgency).toBe('now');
+    expect(plan?.horizon).toBe('now');
     expect(shown(plan?.placement)).toBe('before 11');
     expect(plan?.ticket).toBe(ticket);
   });
@@ -299,18 +299,18 @@ describe('planDrop into another group', () => {
     expect(shown(drop(target, 2)?.placement)).toBe('after 12');
   });
 
-  it('sets the urgency and places nothing when the group was empty', () => {
+  it('sets the horizon and places nothing when the group was empty', () => {
     const plan = drop([], 0);
 
-    expect(plan?.urgency).toBe('now');
+    expect(plan?.horizon).toBe('now');
     expect(plan?.placement).toBeNull();
   });
 
   it('puts a row behind the whole family where it lands inside one', () => {
     const family = rowsOf(
-      t(11, { urgency: 'now' }),
-      t(12, { urgency: 'now', parent: under(11) }),
-      t(13, { urgency: 'now' }),
+      t(11, { horizon: 'now' }),
+      t(12, { horizon: 'now', parent: under(11) }),
+      t(13, { horizon: 'now' }),
     );
 
     expect(shown(drop(family, 1)?.placement)).toBe('after 11');
@@ -319,25 +319,25 @@ describe('planDrop into another group', () => {
   });
 
   it('is a plan whatever the place, for a child whose parent is in the group it lands in', () => {
-    const child = t(1, { urgency: 'later', parent: under(11) });
+    const child = t(1, { horizon: 'later', parent: under(11) });
     const family = rowsOf(
-      t(11, { urgency: 'now' }),
-      t(12, { urgency: 'now', parent: under(11) }),
-      t(13, { urgency: 'now' }),
+      t(11, { horizon: 'now' }),
+      t(12, { horizon: 'now', parent: under(11) }),
+      t(13, { horizon: 'now' }),
     );
 
     // Inside the family: among the children of the parent.
     expect(shown(drop(family, 1, child)?.placement)).toBe('before 12');
     expect(shown(drop(family, 2, child)?.placement)).toBe('after 12');
-    // Outside the family it is shown under its parent anyway: the urgency is set, the rank kept.
+    // Outside the family it is shown under its parent anyway: the horizon is set, the rank kept.
     const outside = drop(family, 3, child);
-    expect(outside?.urgency).toBe('now');
+    expect(outside?.horizon).toBe('now');
     expect(outside?.placement).toBeNull();
     expect(drop(family, 0, child)?.placement).toBeNull();
   });
 
   it('treats a child whose parent is in another group as a root of the group it lands in', () => {
-    const child = t(1, { urgency: 'later', parent: under(99) });
+    const child = t(1, { horizon: 'later', parent: under(99) });
 
     expect(shown(drop(target, 1, child)?.placement)).toBe('after 11');
   });
@@ -366,8 +366,8 @@ describe('planStep', () => {
     expect(shown(planStep(rows, root(2), 1)?.placement)).toBe('after 3');
   });
 
-  it('never sets an urgency', () => {
-    expect(planStep(rows, root(5), 0)?.urgency).toBeUndefined();
+  it('never sets a horizon', () => {
+    expect(planStep(rows, root(5), 0)?.horizon).toBeUndefined();
   });
 
   it.each([
@@ -390,16 +390,16 @@ describe('planStep', () => {
 });
 
 describe('planGroup', () => {
-  const ticket = t(1, { urgency: 'later' });
+  const ticket = t(1, { horizon: 'later' });
 
-  it('puts the ticket at the end of the group and sets its urgency', () => {
+  it('puts the ticket at the end of the group and sets its horizon', () => {
     const plan = planGroup(
-      rowsOf(t(11, { urgency: 'next' }), t(12, { urgency: 'next' })),
+      rowsOf(t(11, { horizon: 'next' }), t(12, { horizon: 'next' })),
       ticket,
       'next',
     );
 
-    expect(plan.urgency).toBe('next');
+    expect(plan.horizon).toBe('next');
     expect(shown(plan.placement)).toBe('after 12');
     expect(plan.ticket).toBe(ticket);
   });
@@ -407,16 +407,16 @@ describe('planGroup', () => {
   it('places nothing in an empty group', () => {
     const plan = planGroup([], ticket, 'release');
 
-    expect(plan.urgency).toBe('release');
+    expect(plan.horizon).toBe('release');
     expect(plan.placement).toBeNull();
   });
 
   it('puts a child behind the children of its parent where the parent is in the group', () => {
-    const child = t(1, { urgency: 'later', parent: under(11) });
+    const child = t(1, { horizon: 'later', parent: under(11) });
     const rows = rowsOf(
-      t(11, { urgency: 'now' }),
-      t(12, { urgency: 'now', parent: under(11) }),
-      t(13, { urgency: 'now' }),
+      t(11, { horizon: 'now' }),
+      t(12, { horizon: 'now', parent: under(11) }),
+      t(13, { horizon: 'now' }),
     );
 
     expect(shown(planGroup(rows, child, 'now').placement)).toBe('after 12');
@@ -594,7 +594,7 @@ describe('scoreMarks', () => {
 
   it('compares within a horizon, and among the children of one parent', () => {
     expect(
-      marksOf(s(1, 9, { urgency: 'now' }), s(2, 2), s(3, 9, { urgency: 'now' }), s(4, 1)),
+      marksOf(s(1, 9, { horizon: 'now' }), s(2, 2), s(3, 9, { horizon: 'now' }), s(4, 1)),
     ).toEqual({});
     expect(
       marksOf(s(1, 1), s(2, 2, { parent: under(1) }), s(3, 7, { parent: under(1) }), s(4, 0.5)),

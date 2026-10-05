@@ -266,7 +266,7 @@ func candidatesSection(ctx context.Context, s *Session, b Binding) (string, erro
 	for i, it := range list {
 		t := it.Ticket
 		fmt.Fprintf(&out, "%d. %s — %s (%s, %s, %s; %s, #%d of %s in the backlog)\n", i+1, t.Key, t.Title, t.State, t.Effort,
-			assigneeName(t), scoreText(t), it.Place, t.Urgency)
+			assigneeName(t), scoreText(t), it.Place, t.Horizon)
 	}
 	out.WriteString("\nPick one with the person: the active ticket is the one in progress and assigned to them.\n")
 	return out.String(), nil
@@ -369,12 +369,31 @@ func actLine(a apigen.Activity) string {
 	if a.Redacted {
 		return line
 	}
+	if a.Action == actionOverridden {
+		return who + " " + horizonAct(a)
+	}
 	if before, err := a.Before.Get(); err == nil {
 		if after, err := a.After.Get(); err == nil && before["state"] != nil && after["state"] != nil {
 			line += fmt.Sprintf(" %v → %v", before["state"], after["state"])
 		}
 	}
 	return line
+}
+
+// actionOverridden is the act on a ticket's horizon, which the audit record
+// keeps under its name before (docs/adr/0010 D1).
+const actionOverridden = "overridden"
+
+// horizonAct says what an act on the horizon did, as the context document
+// says it: a horizon set, or a set horizon cleared, which leaves the ticket in
+// later.
+func horizonAct(a apigen.Activity) string {
+	if after, err := a.After.Get(); err == nil {
+		if h, ok := after["urgency_override"].(string); ok && h != "" {
+			return "set the horizon to " + h
+		}
+	}
+	return "returned the ticket to later"
 }
 
 func stamp(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC") }

@@ -3,7 +3,10 @@
 
 
 /**
- * An agent capability (docs/adr/0043 D4)
+ * An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of
+ * `set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in
+ * `request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;
+ * a later release removes the name (docs/adr/0046 D7).
  */
-export type Capability = 'decide' | 'close' | 'drop' | 'rank' | 'override-urgency' | 'interest' | 'upload' | 'create-project' | 'record-answer';
+export type Capability = 'decide' | 'close' | 'drop' | 'rank' | 'set-horizon' | 'interest' | 'upload' | 'create-project' | 'record-answer' | 'override-urgency';
 

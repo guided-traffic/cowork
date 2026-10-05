@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   Account,
   Effort,
+  Horizon,
   Project,
   SecurityClass,
   Severity,
@@ -11,7 +12,6 @@ import type {
   TicketState,
   TicketType,
   TokenCreated,
-  Urgency,
 } from '../../src/app/api/models';
 
 /**
@@ -149,7 +149,7 @@ export interface Filing {
   security?: SecurityClass;
   threat?: string;
   effort?: Effort;
-  urgency?: Urgency;
+  horizon?: Horizon;
 }
 
 /** What a transition carries beside the two states: a reason, a block (docs/adr/0009 D2). */
@@ -236,10 +236,10 @@ export class Seed {
   }
 
   /** The project's open tickets of a horizon, in the project's rank. */
-  async horizon(project: string, urgency: Urgency): Promise<Ticket[]> {
+  async horizon(project: string, horizon: Horizon): Promise<Ticket[]> {
     const list = await ok<TicketList>(
-      `list ${project} in ${urgency}`,
-      await this.context.get(this.path(project, '/tickets'), { params: { urgency } }),
+      `list ${project} in ${horizon}`,
+      await this.context.get(this.path(project, '/tickets'), { params: { horizon } }),
     );
     return list.items;
   }

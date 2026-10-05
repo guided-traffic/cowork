@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
@@ -55,9 +56,35 @@ func (s *Server) GetMyToken(ctx context.Context, _ apigen.GetMyTokenRequestObjec
 	}
 	if p.IsAgent() {
 		out.Request.AgentMark = nullableOf(&p.Agent)
-		for _, c := range p.Capabilities {
-			out.Request.Capabilities = append(out.Request.Capabilities, apigen.Capability(c))
-		}
+		out.Request.Capabilities = requestCapabilities(p.Capabilities)
 	}
 	return out, nil
+}
+
+// capabilitiesView is a capability set as the API answers it, under this
+// release's names: a set stored before with override-urgency shows
+// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
+func capabilitiesView(caps []string) []apigen.Capability {
+	canonical := auth.Canonical(caps)
+	out := make([]apigen.Capability, 0, len(canonical))
+	for _, c := range canonical {
+		out = append(out, apigen.Capability(c))
+	}
+	return out
+}
+
+// requestCapabilities is the set an agent's request holds as /me/token
+// answers it: set-horizon is followed by override-urgency, its name before,
+// which a cowork-mcp of the release before looks for in this list to describe
+// its tools — taking the name away would tell its model it lacks an act the
+// API grants (docs/adr/0046 D7). A later release drops the old name here.
+func requestCapabilities(caps []string) []apigen.Capability {
+	out := []apigen.Capability{}
+	for _, c := range capabilitiesView(caps) {
+		out = append(out, c)
+		if c == apigen.CapabilitySetHorizon {
+			out = append(out, apigen.CapabilityOverrideUrgency)
+		}
+	}
+	return out
 }

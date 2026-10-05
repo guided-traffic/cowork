@@ -3,6 +3,13 @@
 
 import { Person } from '../models/person';
 import { Urgency } from '../models/urgency';
+
+/**
+ * The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in
+ * `/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).
+ *
+ * @deprecated
+ */
 export interface UrgencyOverride {
   at: string;
   by?: (Person | null);

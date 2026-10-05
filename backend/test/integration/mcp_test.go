@@ -190,6 +190,12 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 	ticket := mustCall(t, cs, "get_ticket", map[string]any{"key": key})
 	assert.Contains(t, ticket, "## Links\n\n- relates to "+e.SlugA+"/VO-2")
 	assert.Contains(t, ticket, "> Retrying now, @admin-a.")
+	// What an agent reads names the horizon by its word (docs/adr/0010 D1).
+	whole := mustCall(t, cs, "get_ticket", map[string]any{"key": key, "activity": 50})
+	assert.Contains(t, whole, "\nhorizon: now\n")
+	assert.Contains(t, whole, `set the horizon to now — reason: "the failover gates the release"`)
+	assert.NotContains(t, whole, "urgency")
+	assert.NotContains(t, whole, "overridden")
 	assert.Contains(t, mustCall(t, cs, "api", map[string]any{"method": "GET", "path": "/api/v1/me"}), "200 OK")
 
 	finished := mustCall(t, cs, "finish_work", map[string]any{"key": "VO-1", "verification_note": "go test ./... passed against the fixture"})

@@ -17,7 +17,7 @@ import { CAPABILITY } from '../../api/models/capability-array';
 import { AuthService } from '../../core/auth.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
-import { assisted, capabilityMeanings } from '../../shared/capabilities';
+import { assisted, capabilityMeanings, selectableCapabilities } from '../../shared/capabilities';
 import { maxLifetimeDays, NewTokenDialog, scopeMeanings } from './new-token-dialog';
 
 const acme: Membership = {
@@ -49,7 +49,7 @@ const issued: TokenCreated = {
   name: 'claude on my laptop',
   scope: 'write',
   agent: true,
-  capabilities: [...CAPABILITY],
+  capabilities: [...selectableCapabilities],
   created_at: '2026-10-03T10:00:00Z',
   expires_at: '2026-12-31T10:00:00Z',
   last_used_on: null,
@@ -82,12 +82,18 @@ describe('the vocabulary of a token', () => {
   });
 
   it('says what each of the nine capabilities lets an agent do', () => {
-    expect(CAPABILITY).toHaveLength(9);
-    expect(Object.keys(capabilityMeanings).sort()).toEqual([...CAPABILITY].sort());
+    expect(selectableCapabilities).toHaveLength(9);
+    expect(Object.keys(capabilityMeanings).sort()).toEqual([...selectableCapabilities].sort());
+  });
+
+  it('offers no switch for override-urgency, the name set-horizon had before (docs/adr/0043 D4)', () => {
+    expect(CAPABILITY).toContain('override-urgency');
+    expect(selectableCapabilities).not.toContain('override-urgency');
+    expect(selectableCapabilities).toEqual(CAPABILITY.filter((each) => each !== 'override-urgency'));
   });
 
   it('has the assisted set of docs/adr/0043 D4: decide, close, rank, create-project and record-answer are off', () => {
-    expect(assisted).toEqual(['drop', 'override-urgency', 'interest', 'upload']);
+    expect(assisted).toEqual(['drop', 'set-horizon', 'interest', 'upload']);
   });
 
   it('takes up to 3650 days, the bound of the schema, within which the installation holds its own maximum (docs/adr/0035 D4)', () => {
@@ -391,9 +397,9 @@ describe('NewTokenDialog', () => {
         value: Capability;
         meaning: string;
       }[];
-      expect(options.map((option) => option.value)).toEqual([...CAPABILITY]);
+      expect(options.map((option) => option.value)).toEqual([...selectableCapabilities]);
       expect(options.map((option) => option.meaning)).toEqual(
-        CAPABILITY.map((each) => capabilityMeanings[each]),
+        selectableCapabilities.map((each) => capabilityMeanings[each]),
       );
     });
 
@@ -414,9 +420,9 @@ describe('NewTokenDialog', () => {
       await settle(fixture);
 
       const items = [...document.body.querySelectorAll('.p-select-option .capability')];
-      expect(items.map((item) => item.querySelector('span')?.textContent)).toEqual([...CAPABILITY]);
+      expect(items.map((item) => item.querySelector('span')?.textContent)).toEqual([...selectableCapabilities]);
       expect(items.map((item) => item.querySelector('small')?.textContent)).toEqual(
-        CAPABILITY.map((each) => capabilityMeanings[each]),
+        selectableCapabilities.map((each) => capabilityMeanings[each]),
       );
     });
 
@@ -424,7 +430,7 @@ describe('NewTokenDialog', () => {
       const fixture = await render();
       await agent(fixture);
 
-      expect(label(fixture, 'token-capabilities')).toBe(CAPABILITY.join(', '));
+      expect(label(fixture, 'token-capabilities')).toBe(selectableCapabilities.join(', '));
     });
 
     it('are named for a screen reader, as the other selects of the dialog are, and grouped with their shortcuts', async () => {
@@ -460,7 +466,7 @@ describe('NewTokenDialog', () => {
 
       el(fixture, 'token-capabilities-assisted')?.click();
       await settle(fixture);
-      expect(label(fixture, 'token-capabilities')).toBe('drop, override-urgency, interest, upload');
+      expect(label(fixture, 'token-capabilities')).toBe('drop, set-horizon, interest, upload');
       expect(text(fixture, 'token-capabilities-count')).toContain('4 of 9 chosen');
 
       el(fixture, 'token-capabilities-full')?.click();
@@ -878,7 +884,7 @@ describe('NewTokenDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create.mock.calls[0][0]).toMatchObject({ agent: true, capabilities: [...CAPABILITY] });
+      expect(create.mock.calls[0][0]).toMatchObject({ agent: true, capabilities: [...selectableCapabilities] });
     });
 
     it('creates the assisted token with the four capabilities that are left', async () => {
@@ -893,7 +899,7 @@ describe('NewTokenDialog', () => {
 
       expect(create.mock.calls[0][0].capabilities).toEqual([
         'drop',
-        'override-urgency',
+        'set-horizon',
         'interest',
         'upload',
       ]);

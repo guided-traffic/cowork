@@ -20,9 +20,8 @@ import { Textarea } from 'primeng/textarea';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
 import { Capability } from '../api/models';
-import { CAPABILITY } from '../api/models/capability-array';
 import { CallState, ChatService } from '../core/chat.service';
-import { assisted, capabilityMeanings } from '../shared/capabilities';
+import { assisted, capabilityMeanings, selectableCapabilities } from '../shared/capabilities';
 
 /** What a call's card says of where it stands. */
 const stateTexts: Record<CallState, string> = {
@@ -67,7 +66,7 @@ export class ChatPanel {
   protected readonly settings = signal(false);
   /** A choice of the capabilities is on its way to the backend. */
   protected readonly saving = signal(false);
-  protected readonly catalogue = CAPABILITY;
+  protected readonly catalogue = selectableCapabilities;
   protected readonly meanings = capabilityMeanings;
   /** The capabilities the chat holds, once read. */
   protected readonly held = computed(() =>
@@ -140,12 +139,14 @@ export class ChatPanel {
 
   /** One switch of the chat's capabilities: the set with it on or off, in the catalogue's order. */
   protected toggle(held: Capability[], capability: Capability, on: boolean): void {
-    void this.choose(CAPABILITY.filter((each) => (each === capability ? on : held.includes(each))));
+    void this.choose(
+      selectableCapabilities.filter((each) => (each === capability ? on : held.includes(each))),
+    );
   }
 
   /** Full or assisted, the shortcuts of the token page (docs/adr/0043 D4). */
   protected shortcut(which: 'full' | 'assisted'): void {
-    void this.choose(which === 'full' ? [...CAPABILITY] : assisted);
+    void this.choose(which === 'full' ? [...selectableCapabilities] : assisted);
   }
 
   private async choose(capabilities: Capability[]): Promise<void> {

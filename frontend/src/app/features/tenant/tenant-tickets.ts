@@ -142,8 +142,8 @@ export class TenantTickets {
     this.field('security', 'Security', 'Any class', () =>
       vocabulary(Object.keys(meanings.security)),
     ),
-    this.field('urgency', 'Horizon', 'Any horizon', () =>
-      vocabulary(Object.keys(meanings.urgency)),
+    this.field('horizon', 'Horizon', 'Any horizon', () =>
+      vocabulary(Object.keys(meanings.horizon)),
     ),
     this.field('effort', 'Effort', 'Any effort', () => vocabulary(EFFORT)),
     this.field('assignee', 'Assignee', 'Anyone', () => [

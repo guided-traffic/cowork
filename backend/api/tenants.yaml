@@ -392,13 +392,15 @@ tenantTickets:
       The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
       value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
       show only with include_terminal or when state names them; done_after keeps those done
-      after a time.
+      after a time. `urgency` is the deprecated name of `horizon`, and a request that names
+      both is 400 at `query:urgency`.
     parameters:
       - $ref: './components/parameters.yaml#/FilterProject'
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
       - $ref: './components/parameters.yaml#/FilterSeverity'
       - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
       - $ref: './components/parameters.yaml#/FilterUrgency'
       - $ref: './components/parameters.yaml#/FilterEffort'
       - $ref: './components/parameters.yaml#/FilterAssignee'
@@ -454,12 +456,14 @@ projectTickets:
       and the number sealed, since a key is computed over tickets the caller may not see, and is
       bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
       D5). `state=done&done_after=<time>` counts what the board shows for done
-      (docs/adr/0018 D1).
+      (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
+      names both is 400 at `query:urgency`.
     parameters:
       - $ref: './components/parameters.yaml#/FilterState'
       - $ref: './components/parameters.yaml#/FilterType'
       - $ref: './components/parameters.yaml#/FilterSeverity'
       - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
       - $ref: './components/parameters.yaml#/FilterUrgency'
       - $ref: './components/parameters.yaml#/FilterEffort'
       - $ref: './components/parameters.yaml#/FilterAssignee'
@@ -507,12 +511,13 @@ projectTickets:
     summary: File a ticket
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-      the project's next. `urgency` is the ticket's horizon, a planning category independent of
-      the state, `later` when left out; another horizon is stored as the override, set by the
-      caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
-      the end of its horizon, or directly `after` or `before` the open ticket of the project
-      named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
-      `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+      the project's next. `horizon` is the ticket's horizon, a planning category independent of
+      the state, `later` when left out; another horizon is the ticket's set horizon, set by the
+      caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
+      as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
+      at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
+      the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+      `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
       `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
       confidential (docs/adr/0065 D2). An archived project refuses.
     parameters:
@@ -767,6 +772,47 @@ ticketBody:
               $ref: './components/schemas.yaml#/Ticket'
       default:
         $ref: './components/responses.yaml#/Problem'
+ticketHorizon:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: setHorizon
+    tags: [tickets]
+    summary: Set the horizon
+    description: |
+      Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+      category independent of the state, which holds until a person or an agent sets another;
+      nothing changes it on its own (docs/adr/0010 D3). `later` is where a ticket nobody placed
+      stands: setting it clears the set horizon, so `horizon_set` is null afterwards, and on a
+      ticket with none set it changes nothing. The reason is optional for a person and required
+      of an agent, whose request without one is 400 at `/reason`; it is recorded on the act and,
+      for a horizon other than `later`, shown with it. An agent needs the set-horizon capability
+      (docs/adr/0043 D4). A 412 names the current `horizon` and `horizon_set`.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/HorizonUpdate'
+          example:
+            value: next
+            reason: Taken up once the import works
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
 ticketUrgencyOverride:
   parameters:
     - $ref: './components/parameters.yaml#/TenantSlug'
@@ -775,13 +821,16 @@ ticketUrgencyOverride:
   put:
     operationId: overrideUrgency
     tags: [tickets]
-    summary: Set the horizon
+    deprecated: true
+    summary: Set the horizon, under the name it had before
     description: |
-      Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
-      category independent of the state, which holds until a person or an agent withdraws it or
-      sets another; nothing derives it, the derived value is `later` for every ticket
-      (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
-      request without one is 400 at `/reason`. An agent needs the override-urgency capability
+      Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
+      and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
+      `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
+      holds until a person or an agent withdraws it or sets another; nothing derives it, the
+      derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
+      person and required of an agent, whose request without one is 400 at `/reason`. An agent
+      needs the set-horizon capability, which its deprecated name override-urgency names as well
       (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
@@ -806,8 +855,13 @@ ticketUrgencyOverride:
   delete:
     operationId: withdrawUrgencyOverride
     tags: [tickets]
-    summary: Return the ticket to the horizon later
-    description: Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
+    deprecated: true
+    summary: Return the ticket to the horizon later, under the name it had before
+    description: |
+      Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
+      removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
+      derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
+      capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     responses:

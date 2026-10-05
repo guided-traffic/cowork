@@ -19,7 +19,7 @@ const everything: SavedFilterParameters = {
   type: ['bug'],
   severity: ['high', 'critical'],
   security: ['live'],
-  urgency: ['now'],
+  horizon: ['now'],
   effort: ['S'],
   assignee: ['me', 'none'],
   reporter: ['p-2'],
@@ -36,6 +36,8 @@ const everything: SavedFilterParameters = {
   updated_after: '2026-10-02T00:00:00Z',
   updated_before: '2026-10-04T00:00:00Z',
   done_after: '2026-09-21T00:00:00Z',
+  // The name horizon had before (docs/adr/0010 D1), which an address may still name.
+  urgency: ['next'],
 };
 
 describe('the address of the tenant’s ticket list', () => {
@@ -89,7 +91,7 @@ describe('the bar of the tenant’s ticket list', () => {
       'type',
       'severity',
       'security',
-      'urgency',
+      'horizon',
       'effort',
       'assignee',
       'reporter',
@@ -128,6 +130,7 @@ describe('the bar of the tenant’s ticket list', () => {
       updated_after: '2026-10-02T00:00:00Z',
       updated_before: '2026-10-04T00:00:00Z',
       done_after: '2026-09-21T00:00:00Z',
+      urgency: ['next'],
     });
     expect(beyondBar({ state: ['filed'], q: 'crash' })).toEqual({});
   });

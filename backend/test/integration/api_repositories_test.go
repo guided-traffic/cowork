@@ -356,12 +356,16 @@ func TestTheTokenOfTheRequest(t *testing.T) {
 	assert.False(t, marked.Agent, "the flag stays the token's")
 	assert.True(t, marked.Request.Agent, "the header marks the request")
 	assert.Equal(t, agentHeader, marked.Request.AgentMark.MustGet())
-	assert.Len(t, marked.Request.Capabilities, 9, "a plain token the header marks holds every capability")
+	// Every capability — nine — and the deprecated name of set-horizon beside it, which a
+	// cowork-mcp of the release before looks for (docs/adr/0043 D4 as amended 2026-10-05).
+	assert.Len(t, marked.Request.Capabilities, 10, "a plain token the header marks holds every capability")
 
 	assisted := get(caller{Token: tk.AssistedAgentA})
 	assert.True(t, assisted.Agent)
 	assert.Equal(t, "unknown-agent", assisted.Request.AgentMark.MustGet())
-	assert.ElementsMatch(t, assisted.Capabilities, assisted.Request.Capabilities)
+	assert.Equal(t, []apigen.Capability{"drop", "set-horizon", "interest", "upload"}, assisted.Capabilities)
+	assert.Equal(t, []apigen.Capability{"drop", "set-horizon", "override-urgency", "interest", "upload"},
+		assisted.Request.Capabilities, "the request's set, the name before after set-horizon")
 	assert.NotContains(t, assisted.Request.Capabilities, apigen.CapabilityClose)
 
 	scoped, id, err := fixtures(t).Token(ctx, fixture.TokenSpec{UserID: w.MemberA, TenantID: w.A, ProjectID: w.ProjectA})

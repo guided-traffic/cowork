@@ -10,7 +10,7 @@ import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
-import { Problem, Project, SavedFilter, Ticket, TicketState, Urgency } from '../../api/models';
+import { Horizon, Problem, Project, SavedFilter, Ticket, TicketState } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
@@ -52,6 +52,8 @@ function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
     progress_refinement: 0,
     progress_review: 0,
     progress_derived: false,
+    horizon: 'later',
+    horizon_set: null,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,
@@ -128,8 +130,7 @@ describe('Backlog', () => {
   let openParams: () => ProjectTicketPagesParams | undefined;
   let closedParams: () => ProjectTicketPagesParams | undefined;
   let rank: Mock<TicketActions['rank']>;
-  let overrideUrgency: Mock<TicketActions['overrideUrgency']>;
-  let withdrawUrgency: Mock<TicketActions['withdrawUrgency']>;
+  let setHorizon: Mock<TicketActions['setHorizon']>;
   let sortByScore: Mock<TicketActions['sortByScore']>;
   let membership: WritableSignal<{ role: string } | undefined>;
   let navigate: MockInstance<Router['navigate']>;
@@ -158,23 +159,13 @@ describe('Backlog', () => {
       cache.put(key, answer);
       return answer;
     });
-    overrideUrgency = vi.fn<TicketActions['overrideUrgency']>(async (key, value) => {
+    // later clears the horizon set, as the API does (docs/adr/0010 D3).
+    setHorizon = vi.fn<TicketActions['setHorizon']>(async (key, value) => {
       const held = cache.value(key) as Ticket;
       const answer = {
         ...held,
-        urgency: value,
-        urgency_override: { value, at: 'then', reason: 'because' },
-        version: held.version + 1,
-      } as Ticket;
-      cache.put(key, answer);
-      return answer;
-    });
-    withdrawUrgency = vi.fn<TicketActions['withdrawUrgency']>(async (key) => {
-      const held = cache.value(key) as Ticket;
-      const answer = {
-        ...held,
-        urgency: held.urgency_derived,
-        urgency_override: null,
+        horizon: value,
+        horizon_set: value === 'later' ? null : { value, at: 'then', reason: 'because' },
         version: held.version + 1,
       } as Ticket;
       cache.put(key, answer);
@@ -186,7 +177,7 @@ describe('Backlog', () => {
         MessageService,
         {
           provide: TicketActions,
-          useValue: { create: vi.fn(), rank, overrideUrgency, withdrawUrgency, sortByScore },
+          useValue: { create: vi.fn(), rank, setHorizon, sortByScore },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
         {
@@ -275,11 +266,11 @@ describe('Backlog', () => {
   const numberOf = (row: Element) => Number(row.getAttribute('data-testid')?.split('-').pop());
 
   /** The numbers of the tickets in the rows of a group, in the order shown. */
-  const rowsIn = (page: HTMLElement, urgency: string) =>
-    [...page.querySelectorAll(`[data-testid="group-${urgency}"] tr.row`)].map(numberOf);
+  const rowsIn = (page: HTMLElement, horizon: string) =>
+    [...page.querySelectorAll(`[data-testid="group-${horizon}"] tr.row`)].map(numberOf);
 
   const groupsShown = (page: HTMLElement) =>
-    [...page.querySelectorAll('tbody.group')].map((group) => group.getAttribute('data-urgency'));
+    [...page.querySelectorAll('tbody.group')].map((group) => group.getAttribute('data-horizon'));
 
   const rowOf = (page: HTMLElement, number: number) =>
     page.querySelector<HTMLElement>(`[data-testid="row-acme/COW-${number}"]`);
@@ -309,13 +300,13 @@ describe('Backlog', () => {
       expect(groupsShown(page)).toEqual(['now', 'next', 'later']);
     });
 
-    it('put each ticket into the group of its urgency, in the order of the list', async () => {
+    it('put each ticket into the group of its horizon, in the order of the list', async () => {
       load([
-        ticket(1, { urgency: 'later' }),
-        ticket(2, { urgency: 'now' }),
-        ticket(3, { urgency: 'later' }),
-        ticket(4, { urgency: 'next' }),
-        ticket(5, { urgency: 'now' }),
+        ticket(1, { horizon: 'later' }),
+        ticket(2, { horizon: 'now' }),
+        ticket(3, { horizon: 'later' }),
+        ticket(4, { horizon: 'next' }),
+        ticket(5, { horizon: 'now' }),
       ]);
 
       const { page } = await render();
@@ -327,11 +318,11 @@ describe('Backlog', () => {
 
     it('show release and icebox only while they hold a ticket, in the order now, release, next, later, icebox', async () => {
       load([
-        ticket(1, { urgency: 'icebox' }),
-        ticket(2, { urgency: 'later' }),
-        ticket(3, { urgency: 'release' }),
-        ticket(4, { urgency: 'now' }),
-        ticket(5, { urgency: 'next' }),
+        ticket(1, { horizon: 'icebox' }),
+        ticket(2, { horizon: 'later' }),
+        ticket(3, { horizon: 'release' }),
+        ticket(4, { horizon: 'now' }),
+        ticket(5, { horizon: 'next' }),
       ]);
 
       const { page } = await render();
@@ -340,18 +331,18 @@ describe('Backlog', () => {
     });
 
     it('leave out release when only icebox holds a ticket, and the other way round', async () => {
-      load([ticket(1, { urgency: 'icebox' })]);
+      load([ticket(1, { horizon: 'icebox' })]);
       const first = await render();
       expect(groupsShown(first.page)).toEqual(['now', 'next', 'later', 'icebox']);
       first.fixture.destroy();
 
-      load([ticket(2, { urgency: 'release' })]);
+      load([ticket(2, { horizon: 'release' })]);
       const second = await render();
       expect(groupsShown(second.page)).toEqual(['now', 'release', 'next', 'later']);
     });
 
     it('have a header row with the name, the count and the meaning as a tooltip', async () => {
-      load([ticket(1, { urgency: 'now' }), ticket(2, { urgency: 'now' }), ticket(3)]);
+      load([ticket(1, { horizon: 'now' }), ticket(2, { horizon: 'now' }), ticket(3)]);
 
       const { fixture, page } = await render();
 
@@ -359,9 +350,9 @@ describe('Backlog', () => {
       expect(text(page, '[data-testid="count-now"]')).toBe('2');
       expect(text(page, '[data-testid="count-next"]')).toBe('0');
       expect(text(page, '[data-testid="count-later"]')).toBe('1');
-      const tooltip = (urgency: string) =>
+      const tooltip = (horizon: string) =>
         fixture.debugElement
-          .query(By.css(`[data-testid="group-${urgency}"] .group-name`))
+          .query(By.css(`[data-testid="group-${horizon}"] .group-name`))
           .injector.get(Tooltip)
           .content();
       expect(tooltip('now')).toBe(
@@ -389,7 +380,7 @@ describe('Backlog', () => {
     });
 
     it('say that they have no ticket while they have none', async () => {
-      load([ticket(1, { urgency: 'later' })]);
+      load([ticket(1, { horizon: 'later' })]);
 
       const { page } = await render();
 
@@ -443,7 +434,7 @@ describe('Backlog', () => {
       expect(row?.querySelector('.col-when')?.textContent).toBe('5 minutes ago');
     });
 
-    it('has the columns Key, Title, Size, State, Severity, Assignee, Progress and Updated, and no Urgency, which the group says', async () => {
+    it('has the columns Key, Title, Size, State, Severity, Assignee, Progress and Updated, and no Horizon, which the group says', async () => {
       load([]);
 
       const { page } = await render();
@@ -516,10 +507,10 @@ describe('Backlog', () => {
     });
 
     it('moves to the group that a refetched ticket belongs to now', async () => {
-      load([ticket(1, { urgency: 'later' }), ticket(2, { urgency: 'later' })]);
+      load([ticket(1, { horizon: 'later' }), ticket(2, { horizon: 'later' })]);
       const { fixture, page } = await render();
 
-      cache.put('acme/COW-1', ticket(1, { urgency: 'now', version: 2 }));
+      cache.put('acme/COW-1', ticket(1, { horizon: 'now', version: 2 }));
       await fixture.whenStable();
 
       expect(rowsIn(page, 'now')).toEqual([1]);
@@ -611,7 +602,7 @@ describe('Backlog', () => {
     });
 
     it('names the parent in a small chip where the parent is in another group, and indents nothing', async () => {
-      load([ticket(1, { urgency: 'now' }), ticket(2, { urgency: 'later', parent: 'acme/COW-1' })]);
+      load([ticket(1, { horizon: 'now' }), ticket(2, { horizon: 'later', parent: 'acme/COW-1' })]);
 
       const { page } = await render();
 
@@ -1372,16 +1363,16 @@ describe('Backlog', () => {
 
   const dropLists = (fixture: ComponentFixture<Backlog>) =>
     fixture.debugElement.queryAll(By.directive(CdkDropList));
-  const listFor = (fixture: ComponentFixture<Backlog>, urgency: Urgency) =>
+  const listFor = (fixture: ComponentFixture<Backlog>, horizon: Horizon) =>
     dropLists(fixture).find(
-      (each) => (each.injector.get(CdkDropList).data as Group).urgency === urgency,
+      (each) => (each.injector.get(CdkDropList).data as Group).horizon === horizon,
     );
 
   /** Drops the row of a ticket at an index of a group, the way the CDK reports it. */
   function drop(
     fixture: ComponentFixture<Backlog>,
     number: number,
-    to: Urgency,
+    to: Horizon,
     at: number,
     over = true,
   ) {
@@ -1433,8 +1424,7 @@ describe('Backlog', () => {
       await settle(fixture);
 
       expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { before: 1 });
-      expect(overrideUrgency).not.toHaveBeenCalled();
-      expect(withdrawUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
     });
 
     it('places a row that lands in the middle after the row above it', async () => {
@@ -1635,22 +1625,21 @@ describe('Backlog', () => {
   describe('a drop into another group', () => {
     beforeEach(() => {
       load([
-        ticket(1, { urgency: 'now' }),
-        ticket(2, { urgency: 'now' }),
-        ticket(3, { urgency: 'later' }),
-        ticket(4, { urgency: 'later' }),
-        ticket(5, { urgency: 'later' }),
+        ticket(1, { horizon: 'now' }),
+        ticket(2, { horizon: 'now' }),
+        ticket(3, { horizon: 'later' }),
+        ticket(4, { horizon: 'later' }),
+        ticket(5, { horizon: 'later' }),
       ]);
     });
 
-    it('sets the urgency to the value of the group with the override, and no reason', async () => {
+    it('sets the horizon to the value of the group with the override, and no reason', async () => {
       const { fixture } = await render();
 
       drop(fixture, 3, 'now', 1);
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
-      expect(withdrawUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
     });
 
     it('then places the row after the row above it where it lands in the middle', async () => {
@@ -1680,21 +1669,21 @@ describe('Backlog', () => {
       expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 2 });
     });
 
-    it('sets the urgency and places nothing where the group was empty', async () => {
+    it('sets the horizon and places nothing where the group was empty', async () => {
       const { fixture, page } = await render();
 
       drop(fixture, 3, 'next', 0);
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
       expect(rank).not.toHaveBeenCalled();
       expect(rowsIn(page, 'next')).toEqual([3]);
     });
 
-    it('writes the urgency first and the place after it', async () => {
+    it('writes the horizon first and the place after it', async () => {
       const calls: string[] = [];
-      overrideUrgency.mockImplementation(async (key) => {
-        calls.push('override');
+      setHorizon.mockImplementation(async (key) => {
+        calls.push('horizon');
         return cache.value(key) as Ticket;
       });
       rank.mockImplementation(async (key) => {
@@ -1706,26 +1695,26 @@ describe('Backlog', () => {
       drop(fixture, 3, 'now', 1);
       await settle(fixture);
 
-      expect(calls).toEqual(['override', 'rank']);
+      expect(calls).toEqual(['horizon', 'rank']);
     });
 
     it('shows the row in its new group and place at once, and keeps it there when the writes are answered', async () => {
       const pending = deferred<Ticket>();
-      overrideUrgency.mockImplementation(() => pending.promise);
+      setHorizon.mockImplementation(() => pending.promise);
       const { fixture, page } = await render();
 
       drop(fixture, 3, 'now', 1);
       fixture.detectChanges();
       await tick();
 
-      expect(overrideUrgency).toHaveBeenCalledOnce();
+      expect(setHorizon).toHaveBeenCalledOnce();
       expect(rowsIn(page, 'now')).toEqual([1, 3, 2]);
       expect(rowsIn(page, 'later')).toEqual([4, 5]);
       expect(text(page, '[data-testid="count-now"]')).toBe('3');
-      pending.resolve({ ...(cache.value('acme/COW-3') as Ticket), urgency: 'now', version: 2 });
+      pending.resolve({ ...(cache.value('acme/COW-3') as Ticket), horizon: 'now', version: 2 });
       cache.put('acme/COW-3', {
         ...(cache.value('acme/COW-3') as Ticket),
-        urgency: 'now',
+        horizon: 'now',
         version: 2,
       });
       await settle(fixture);
@@ -1743,40 +1732,25 @@ describe('Backlog', () => {
       expect(rowsIn(page, 'later')).toEqual([4, 5]);
     });
 
-    it('withdraws the override, which needs no reason, where the group is the derived urgency of the ticket', async () => {
+    it('sets later through the same route, and asks for no reason: later keeps none', async () => {
       load([
-        ticket(1, { urgency: 'now' }),
-        ticket(3, {
-          urgency: 'now',
-          urgency_derived: 'later',
-          urgency_override: { value: 'now', at: 'then', reason: 'x' },
-        }),
-        ticket(4, { urgency: 'later' }),
+        ticket(1, { horizon: 'now' }),
+        ticket(3, { horizon: 'now', horizon_set: { value: 'now', at: 'then', reason: 'x' } }),
+        ticket(4, { horizon: 'later' }),
       ]);
       const { fixture, page } = await render();
 
       drop(fixture, 3, 'later', 1);
       await settle(fixture);
 
-      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3');
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'later');
       expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 4 });
       expect(rowsIn(page, 'later')).toEqual([4, 3]);
       expect(page.querySelector('[data-testid="reason"]')).toBeNull();
     });
 
-    it('decides between the override and its withdrawal by what the cache holds now', async () => {
-      const { fixture } = await render();
-      cache.put('acme/COW-3', ticket(3, { urgency: 'later', urgency_derived: 'next', version: 2 }));
-
-      drop(fixture, 3, 'next', 0);
-      await settle(fixture);
-
-      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3');
-    });
-
-    it('puts the row back, writes no place and says why when the urgency cannot be set', async () => {
-      overrideUrgency.mockRejectedValue(
+    it('puts the row back, writes no place and says why when the horizon cannot be set', async () => {
+      setHorizon.mockRejectedValue(
         refusal(400, 'validation_failed', 'Validation failed', 'The reason is required.'),
       );
       const { fixture, page } = await render();
@@ -1811,8 +1785,8 @@ describe('Backlog', () => {
       expect(open.reload).toHaveBeenCalledOnce();
     });
 
-    it('tells the person that somebody else changed the urgency meanwhile, and puts the row back', async () => {
-      overrideUrgency.mockRejectedValue(
+    it('tells the person that somebody else changed the horizon meanwhile, and puts the row back', async () => {
+      setHorizon.mockRejectedValue(
         new StaleWrite(
           {
             status: 412,
@@ -1822,7 +1796,7 @@ describe('Backlog', () => {
             fields: {},
             current: {},
           },
-          ticket(3, { urgency: 'next', version: 3 }),
+          ticket(3, { horizon: 'next', version: 3 }),
         ),
       );
       const { fixture, page } = await render();
@@ -1846,23 +1820,23 @@ describe('Backlog', () => {
       drop(fixture, 3, 'now', 1, false);
       await settle(fixture);
 
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
       expect(rowsIn(page, 'later')).toEqual([3, 4, 5]);
     });
 
-    it('sets the urgency of a child without placing it where it cannot be shown, outside the family of its parent', async () => {
+    it('sets the horizon of a child without placing it where it cannot be shown, outside the family of its parent', async () => {
       load([
-        ticket(1, { urgency: 'now' }),
-        ticket(2, { urgency: 'now', parent: 'acme/COW-1' }),
-        ticket(3, { urgency: 'now' }),
-        ticket(4, { urgency: 'later', parent: 'acme/COW-1' }),
+        ticket(1, { horizon: 'now' }),
+        ticket(2, { horizon: 'now', parent: 'acme/COW-1' }),
+        ticket(3, { horizon: 'now' }),
+        ticket(4, { horizon: 'later', parent: 'acme/COW-1' }),
       ]);
       const { fixture, page } = await render();
 
       drop(fixture, 4, 'now', 3);
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-4', 'now');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-4', 'now');
       expect(rank).not.toHaveBeenCalled();
       // It stands under its parent, behind its sibling, as their rank has it.
       expect(rowsIn(page, 'now')).toEqual([1, 2, 4, 3]);
@@ -1920,9 +1894,9 @@ describe('Backlog', () => {
     });
   });
 
-  describe('the reason of an urgency', () => {
+  describe('the reason of a horizon', () => {
     beforeEach(() => {
-      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3)]);
+      load([ticket(1, { horizon: 'now' }), ticket(2), ticket(3)]);
     });
 
     const field = (page: HTMLElement) =>
@@ -1966,13 +1940,13 @@ describe('Backlog', () => {
 
     it('is not offered before the override is written', async () => {
       const pending = deferred<Ticket>();
-      overrideUrgency.mockImplementation(() => pending.promise);
+      setHorizon.mockImplementation(() => pending.promise);
       const { fixture, page } = await render();
 
       drop(fixture, 2, 'now', 1);
       fixture.detectChanges();
       await tick();
-      expect(overrideUrgency).toHaveBeenCalledOnce();
+      expect(setHorizon).toHaveBeenCalledOnce();
       expect(field(page)).toBeNull();
 
       pending.resolve(cache.value('acme/COW-2') as Ticket);
@@ -1991,13 +1965,13 @@ describe('Backlog', () => {
 
     it('sends the override again with the same value, the reason and no other change, when Enter is pressed', async () => {
       const { fixture, page } = await dropIntoNow();
-      overrideUrgency.mockClear();
+      setHorizon.mockClear();
 
       typeReason(fixture, '  The client escalated it  ');
       press(page, 'Enter');
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith(
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith(
         'acme/COW-2',
         'now',
         'The client escalated it',
@@ -2008,15 +1982,15 @@ describe('Backlog', () => {
     it('keeps the field, read only, while the reason is on its way', async () => {
       const { fixture, page } = await dropIntoNow();
       const pending = deferred<Ticket>();
-      overrideUrgency.mockClear();
-      overrideUrgency.mockImplementation(() => pending.promise);
+      setHorizon.mockClear();
+      setHorizon.mockImplementation(() => pending.promise);
 
       typeReason(fixture, 'Because');
       press(page, 'Enter');
       fixture.detectChanges();
       expect(field(page)?.readOnly).toBe(true);
       press(page, 'Enter');
-      expect(overrideUrgency).toHaveBeenCalledTimes(1);
+      expect(setHorizon).toHaveBeenCalledTimes(1);
 
       pending.resolve(cache.value('acme/COW-2') as Ticket);
       await settle(fixture);
@@ -2025,37 +1999,37 @@ describe('Backlog', () => {
 
     it('is dismissed by Enter on an empty field, without a write', async () => {
       const { fixture, page } = await dropIntoNow();
-      overrideUrgency.mockClear();
+      setHorizon.mockClear();
 
       typeReason(fixture, '   ');
       press(page, 'Enter');
       await settle(fixture);
 
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
       expect(field(page)).toBeNull();
     });
 
     it('is dismissed by Escape, without a write', async () => {
       const { fixture, page } = await dropIntoNow();
-      overrideUrgency.mockClear();
+      setHorizon.mockClear();
 
       typeReason(fixture, 'Because');
       press(page, 'Escape');
       await settle(fixture);
 
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
       expect(field(page)).toBeNull();
     });
 
     it('is dismissed when the person leaves the field, without a write', async () => {
       const { fixture, page } = await dropIntoNow();
-      overrideUrgency.mockClear();
+      setHorizon.mockClear();
 
       typeReason(fixture, 'Because');
       field(page)?.dispatchEvent(new Event('blur'));
       await settle(fixture);
 
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
       expect(field(page)).toBeNull();
     });
 
@@ -2069,7 +2043,7 @@ describe('Backlog', () => {
 
     it('says why when the reason cannot be written, and goes away', async () => {
       const { fixture, page } = await dropIntoNow();
-      overrideUrgency.mockRejectedValue(refusal(403, 'forbidden', 'Forbidden', 'Not allowed.'));
+      setHorizon.mockRejectedValue(refusal(403, 'forbidden', 'Forbidden', 'Not allowed.'));
 
       typeReason(fixture, 'Because');
       press(page, 'Enter');
@@ -2089,13 +2063,13 @@ describe('Backlog', () => {
       expect(page.querySelectorAll('[data-testid="reason"]')).toHaveLength(1);
       expect(rowOf(page, 3)?.contains(field(page))).toBe(true);
       expect(field(page)?.value).toBe('');
-      expect(overrideUrgency).not.toHaveBeenCalledWith('acme/COW-2', 'now', 'Half a thought');
+      expect(setHorizon).not.toHaveBeenCalledWith('acme/COW-2', 'now', 'Half a thought');
     });
 
     it('does not take the field of the next row away when an earlier reason is answered', async () => {
       const { fixture, page } = await dropIntoNow();
       const pending = deferred<Ticket>();
-      overrideUrgency.mockImplementationOnce(() => pending.promise);
+      setHorizon.mockImplementationOnce(() => pending.promise);
       typeReason(fixture, 'Because');
       press(page, 'Enter');
       fixture.detectChanges();
@@ -2112,14 +2086,14 @@ describe('Backlog', () => {
 
   describe('while a row is dragged', () => {
     beforeEach(() => {
-      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3, { title: 'Before' })]);
+      load([ticket(1, { horizon: 'now' }), ticket(2), ticket(3, { title: 'Before' })]);
     });
 
     it('holds back the list: a new order and a new group wait until the row is put down', async () => {
       const { fixture, page } = await render();
       pickUp(fixture, 2);
 
-      load([ticket(3), ticket(2), ticket(1, { urgency: 'next' })]);
+      load([ticket(3), ticket(2), ticket(1, { horizon: 'next' })]);
       await settle(fixture);
       expect(rowsIn(page, 'now')).toEqual([1]);
       expect(rowsIn(page, 'later')).toEqual([2, 3]);
@@ -2151,7 +2125,7 @@ describe('Backlog', () => {
       const { fixture, page } = await render();
       pickUp(fixture, 3);
 
-      load([ticket(1, { urgency: 'now' }), ticket(2), ticket(3), ticket(4)]);
+      load([ticket(1, { horizon: 'now' }), ticket(2), ticket(3), ticket(4)]);
       await settle(fixture);
       expect(rowOf(page, 4)).toBeNull();
 
@@ -2203,7 +2177,7 @@ describe('Backlog', () => {
     });
 
     it('offers no zone for a group that holds a ticket, which is in the table in its place', async () => {
-      load([ticket(1, { urgency: 'release' }), ticket(2), ticket(3, { urgency: 'next' })]);
+      load([ticket(1, { horizon: 'release' }), ticket(2), ticket(3, { horizon: 'next' })]);
       const { fixture, page } = await render();
       expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later']);
 
@@ -2214,7 +2188,7 @@ describe('Backlog', () => {
     });
 
     it('offers no bar at all when no group is empty and out of the table', async () => {
-      load([ticket(1, { urgency: 'release' }), ticket(2), ticket(3, { urgency: 'icebox' })]);
+      load([ticket(1, { horizon: 'release' }), ticket(2), ticket(3, { horizon: 'icebox' })]);
       const { fixture, page } = await render();
 
       pickUp(fixture, 2);
@@ -2222,14 +2196,14 @@ describe('Backlog', () => {
       expect(page.querySelector('[data-testid="zones"]')).toBeNull();
     });
 
-    it('sets the urgency of a row dropped into a zone, places nothing there and offers the reason', async () => {
+    it('sets the horizon of a row dropped into a zone, places nothing there and offers the reason', async () => {
       const { fixture, page } = await render();
       pickUp(fixture, 2);
 
       drop(fixture, 2, 'release', 0);
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-2', 'release');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-2', 'release');
       expect(rank).not.toHaveBeenCalled();
       expect(zones(page)).toEqual([]);
       expect(groupsShown(page)).toEqual(['now', 'release', 'next', 'later']);
@@ -2254,7 +2228,7 @@ describe('Backlog', () => {
 
       drop(fixture, 2, 'later', 0, false);
       await settle(fixture);
-      load([ticket(3), ticket(2), ticket(1, { urgency: 'now' })]);
+      load([ticket(3), ticket(2), ticket(1, { horizon: 'now' })]);
       await settle(fixture);
 
       expect(rowsIn(page, 'later')).toEqual([3, 2]);
@@ -2278,13 +2252,13 @@ describe('Backlog', () => {
       pickUp(fixture, 3);
       const dragged = cache.value('acme/COW-3') as Ticket;
       cache.delete('acme/COW-3');
-      overrideUrgency.mockResolvedValue({ ...dragged, urgency: 'now' });
+      setHorizon.mockResolvedValue({ ...dragged, horizon: 'now' });
       await settle(fixture);
 
       drop(fixture, 3, 'now', 1);
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'now');
     });
 
     it('lists the groups with the counts they had when the row was picked up', async () => {
@@ -2299,11 +2273,11 @@ describe('Backlog', () => {
   describe('the menu of a row', () => {
     beforeEach(() => {
       load([
-        ticket(1, { urgency: 'now' }),
-        ticket(2, { urgency: 'later' }),
-        ticket(3, { urgency: 'later' }),
-        ticket(4, { urgency: 'later' }),
-        ticket(5, { urgency: 'next' }),
+        ticket(1, { horizon: 'now' }),
+        ticket(2, { horizon: 'later' }),
+        ticket(3, { horizon: 'later' }),
+        ticket(4, { horizon: 'later' }),
+        ticket(5, { horizon: 'next' }),
       ]);
     });
 
@@ -2409,7 +2383,7 @@ describe('Backlog', () => {
 
         expect(rank).toHaveBeenCalledExactlyOnceWith(`acme/COW-${number}`, call);
         expect(rowsIn(page, 'later')).toEqual(order);
-        expect(overrideUrgency).not.toHaveBeenCalled();
+        expect(setHorizon).not.toHaveBeenCalled();
       },
     );
 
@@ -2446,40 +2420,36 @@ describe('Backlog', () => {
       expect(rank).toHaveBeenLastCalledWith('acme/COW-3', { after: 4 });
     });
 
-    it('moves a row to another group like a drop does: the urgency, then the end of that group', async () => {
+    it('moves a row to another group like a drop does: the horizon, then the end of that group', async () => {
       const { fixture, page } = await render();
       const { items } = await open$(fixture, page, 3);
 
       pick(items, 'Move to next');
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'next');
       expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-3', { after: 5 });
       expect(rowsIn(page, 'next')).toEqual([5, 3]);
       expect(rowsIn(page, 'later')).toEqual([2, 4]);
     });
 
-    it('sets the urgency and places nothing in a group that is empty', async () => {
+    it('sets the horizon and places nothing in a group that is empty', async () => {
       const { fixture, page } = await render();
       const { items } = await open$(fixture, page, 3);
 
       pick(items, 'Move to release');
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'release');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-3', 'release');
       expect(rank).not.toHaveBeenCalled();
       expect(groupsShown(page)).toContain('release');
       expect(rowsIn(page, 'release')).toEqual([3]);
     });
 
-    it('withdraws the override where the group is the derived urgency', async () => {
+    it('moves a ticket to later through the same route', async () => {
       load([
-        ticket(1, {
-          urgency: 'now',
-          urgency_derived: 'later',
-          urgency_override: { value: 'now', at: 'then', reason: 'x' },
-        }),
-        ticket(2, { urgency: 'later' }),
+        ticket(1, { horizon: 'now', horizon_set: { value: 'now', at: 'then', reason: 'x' } }),
+        ticket(2, { horizon: 'later' }),
       ]);
       const { fixture, page } = await render();
       const { items } = await open$(fixture, page, 1);
@@ -2487,12 +2457,11 @@ describe('Backlog', () => {
       pick(items, 'Move to later');
       await settle(fixture);
 
-      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-1');
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-1', 'later');
       expect(rank).toHaveBeenCalledExactlyOnceWith('acme/COW-1', { after: 2 });
     });
 
-    it('offers the reason of an urgency it has set, like a drop does', async () => {
+    it('offers the reason of a horizon it has set, like a drop does', async () => {
       const { fixture, page } = await render();
       const { items } = await open$(fixture, page, 3);
 
@@ -2532,7 +2501,7 @@ describe('Backlog', () => {
       );
     });
 
-    it('puts the keyboard in the field of the reason when the move set an urgency, and on the button once that is done', async () => {
+    it('puts the keyboard in the field of the reason when the move set a horizon, and on the button once that is done', async () => {
       const { fixture, page } = await render();
       const { items } = await open$(fixture, page, 3);
 

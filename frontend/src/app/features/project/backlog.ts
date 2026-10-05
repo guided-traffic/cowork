@@ -34,7 +34,7 @@ import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
-import { SavedFilter, SavedFilterParameters, Ticket, TicketState, Urgency } from '../../api/models';
+import { Horizon, SavedFilter, SavedFilterParameters, Ticket, TicketState } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -62,7 +62,7 @@ import {
   ScoreMark,
   scoreMarks,
   unanswered,
-  urgencies,
+  horizons,
   withMoves,
 } from './backlog-model';
 import { ProjectHeader } from './project-header';
@@ -81,10 +81,10 @@ function timeOf(value: string | undefined): string | undefined {
 }
 
 /**
- * A project's backlog (docs/adr/0018 D1): its open tickets in one table, grouped by urgency in the
+ * A project's backlog (docs/adr/0018 D1): its open tickets in one table, grouped by horizon in the
  * order now, release, next, later, icebox, each group in the project's rank (docs/adr/0014). A
  * row is dragged by its handle within its group, which moves the rank, and into another group,
- * which sets the urgency and then places the row there; a menu on every row does the same for
+ * which sets the horizon and then places the row there; a menu on every row does the same for
  * those who cannot drag. The list loads with the cursor and shows more on request (docs/adr/0048
  * D4); the closed tickets are in no group and load when asked for. The event stream keeps the
  * rows current, and holds back while a row is dragged, so that it is never taken from under the
@@ -262,7 +262,7 @@ export class Backlog {
       source.keys ?? (previous?.source.project === source.project ? previous.value : []),
   });
   /** The groups tickets that were dragged and are not yet written are shown in. */
-  private readonly shownIn = signal<ReadonlyMap<string, Urgency>>(new Map());
+  private readonly shownIn = signal<ReadonlyMap<string, Horizon>>(new Map());
 
   private readonly openTickets = computed(() => this.read(this.order()));
   /** Closed tickets stand in no group, so none is indented and each names its parent. */
@@ -275,7 +275,7 @@ export class Backlog {
     })),
   );
   private readonly groups = computed(() =>
-    arrange(this.openTickets(), (ticket) => this.shownIn().get(ticket.key) ?? ticket.urgency),
+    arrange(this.openTickets(), (ticket) => this.shownIn().get(ticket.key) ?? ticket.horizon),
   );
   /** The groups as they were when a row was picked up: the table does not move under the pointer. */
   private readonly held = signal<Group[] | undefined>(undefined);
@@ -283,7 +283,7 @@ export class Backlog {
   /** The groups the table shows: now, next and later always, release and icebox while they hold a ticket. */
   protected readonly visibleGroups = computed(() =>
     (this.held() ?? this.groups()).filter(
-      (group) => group.rows.length > 0 || alwaysShown.has(group.urgency),
+      (group) => group.rows.length > 0 || alwaysShown.has(group.horizon),
     ),
   );
   /**
@@ -295,7 +295,7 @@ export class Backlog {
    */
   protected readonly zones = computed(
     () =>
-      this.held()?.filter((group) => group.rows.length === 0 && !alwaysShown.has(group.urgency)) ??
+      this.held()?.filter((group) => group.rows.length === 0 && !alwaysShown.has(group.horizon)) ??
       [],
   );
 
@@ -330,8 +330,8 @@ export class Backlog {
   /** What a row's menu offers, for the row that opened it. */
   protected readonly menuItems = signal<MenuItem[]>([]);
   private readonly menu = viewChild.required<Menu>('rowMenu');
-  /** The ticket asked for the reason of its urgency, and what the person has typed. */
-  protected readonly asking = signal<{ key: string; value: Urgency } | null>(null);
+  /** The ticket asked for the reason of its horizon, and what the person has typed. */
+  protected readonly asking = signal<{ key: string; value: Horizon } | null>(null);
   protected readonly reason = signal('');
   protected readonly sendingReason = signal(false);
   /** What a screen reader is told about a move, which no one sees. */
@@ -495,7 +495,7 @@ export class Backlog {
     }
     const from = event.previousContainer.data;
     const to = event.container.data;
-    const plan = planDrop(event.item.data, from.urgency, to.urgency, to.rows, event.currentIndex);
+    const plan = planDrop(event.item.data, from.horizon, to.horizon, to.rows, event.currentIndex);
     if (plan) {
       void this.move(plan);
     }
@@ -526,15 +526,15 @@ export class Backlog {
         command: step(place.count),
       },
       { separator: true },
-      ...urgencies
-        .filter((urgency) => urgency !== group.urgency)
-        .map((urgency) => ({
-          label: `Move to ${urgency}`,
+      ...horizons
+        .filter((horizon) => horizon !== group.horizon)
+        .map((horizon) => ({
+          label: `Move to ${horizon}`,
           icon: 'pi pi-arrow-right-arrow-left',
           command: () => {
-            // Every urgency has a group, empty or not.
-            const target = this.groups().find((each) => each.urgency === urgency)!;
-            this.menuMove(planGroup(target.rows, ticket, urgency));
+            // Every horizon has a group, empty or not.
+            const target = this.groups().find((each) => each.horizon === horizon)!;
+            this.menuMove(planGroup(target.rows, ticket, horizon));
           },
         })),
     ]);
@@ -558,9 +558,9 @@ export class Backlog {
 
   private move(plan: Plan): Promise<void> {
     const key = plan.ticket.key;
-    if (plan.urgency) {
-      const urgency = plan.urgency;
-      this.shownIn.update((shown) => new Map(shown).set(key, urgency));
+    if (plan.horizon) {
+      const horizon = plan.horizon;
+      this.shownIn.update((shown) => new Map(shown).set(key, horizon));
     }
     const move: Move | null = plan.placement ? { key, placement: plan.placement } : null;
     if (move) {
@@ -579,7 +579,7 @@ export class Backlog {
       group && position(group.rows, group.rows.find((row) => row.ticket.key === key)!.ticket);
     this.status.set(
       group && place
-        ? `${this.shortKey(key)} moved to ${group.urgency}, place ${place.index + 1} of ${place.count + 1}`
+        ? `${this.shortKey(key)} moved to ${group.horizon}, place ${place.index + 1} of ${place.count + 1}`
         : `${this.shortKey(key)} moved`,
     );
   }
@@ -592,16 +592,9 @@ export class Backlog {
     const ticket = plan.ticket;
     const key = ticket.key;
     try {
-      let overridden = false;
-      if (plan.urgency) {
-        const derived = (this.tickets.cache.value(key) ?? ticket).urgency_derived;
-        if (plan.urgency === derived) {
-          await this.actions.withdrawUrgency(key);
-        } else {
-          await this.actions.overrideUrgency(key, plan.urgency);
-          overridden = true;
-        }
-        // The cache holds the ticket with its new urgency now.
+      if (plan.horizon) {
+        await this.actions.setHorizon(key, plan.horizon);
+        // The cache holds the ticket with its new horizon now.
         this.shownIn.update((shown) => {
           const next = new Map(shown);
           next.delete(key);
@@ -614,8 +607,9 @@ export class Backlog {
           moves.map((each) => (each === move ? { ...each, version } : each)),
         );
       }
-      if (overridden && plan.urgency) {
-        this.ask(key, plan.urgency);
+      // later is where a ticket nobody placed stands: it keeps no reason (docs/adr/0010 D3).
+      if (plan.horizon && plan.horizon !== 'later') {
+        this.ask(key, plan.horizon);
       }
     } catch (error) {
       this.shownIn.update((shown) => {
@@ -634,7 +628,7 @@ export class Backlog {
       this.messages.add({
         severity: 'warn',
         summary: 'Changed meanwhile',
-        detail: `${this.shortKey(key)} was changed by someone else: its horizon is ${error.current.urgency} now.`,
+        detail: `${this.shortKey(key)} was changed by someone else: its horizon is ${error.current.horizon} now.`,
         life: 6000,
       });
     } else {
@@ -642,9 +636,9 @@ export class Backlog {
     }
   }
 
-  // The reason of an urgency a person has just set, which they may add (docs/adr/0010 D3).
+  // The reason of a horizon a person has just set, which they may add (docs/adr/0010 D3).
 
-  private ask(key: string, value: Urgency): void {
+  private ask(key: string, value: Horizon): void {
     this.reason.set('');
     this.asking.set({ key, value });
     afterNextRender(
@@ -675,7 +669,7 @@ export class Backlog {
     }
     this.sendingReason.set(true);
     try {
-      await this.actions.overrideUrgency(asked.key, asked.value, text);
+      await this.actions.setHorizon(asked.key, asked.value, text);
     } catch (error) {
       this.report(error, asked.key);
     } finally {

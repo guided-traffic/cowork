@@ -90,7 +90,7 @@ const lists: Record<MyList, { title: string; lead: string; empty: string; op: ty
               tooltipEvent="both"
               [showDelay]="200"
               data-testid="place"
-              >{{ item.ticket.urgency }} #{{ item.place
+              >{{ item.ticket.horizon }} #{{ item.place
               }}<span class="sr-only">: {{ placeText(item) }}</span></span
             >
             <app-severity [value]="item.ticket.severity" />
@@ -208,7 +208,7 @@ export class MyTickets {
     const project = shortKey(item.ticket.key).split('-')[0];
     const score =
       item.ticket.score === null ? 'no score yet' : `score ${item.ticket.score.toFixed(1)}`;
-    return `#${item.place} of ${item.ticket.urgency} in the backlog of ${project}; ${score}`;
+    return `#${item.place} of ${item.ticket.horizon} in the backlog of ${project}; ${score}`;
   }
 
   protected ago(iso: string): string {

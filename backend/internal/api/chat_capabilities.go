@@ -47,7 +47,9 @@ func (s *Server) SetMyChat(ctx context.Context, req apigen.SetMyChatRequestObjec
 			before = auth.DefaultChatCapabilities
 		case err != nil:
 			return err
-		case slices.Equal(before, want):
+		case slices.Equal(auth.Canonical(before), want):
+			// A set stored under the names before is the same set
+			// (docs/adr/0043 D4 as amended 2026-10-05).
 			return store.ErrNoChange
 		}
 		if err := w.SetChatCapabilities(ctx, writeq.SetChatCapabilitiesParams{UserID: p.PersonID, Capabilities: want}); err != nil {
@@ -63,11 +65,18 @@ func (s *Server) SetMyChat(ctx context.Context, req apigen.SetMyChatRequestObjec
 	return apigen.SetMyChat200JSONResponse(chatCapabilitiesView(want, true)), nil
 }
 
-// ordered is a set of capabilities in the order of the catalogue, each once.
+// ordered is a set of capabilities in the order of the catalogue, each once,
+// under this release's names: override-urgency is set-horizon
+// (docs/adr/0043 D4 as amended 2026-10-05).
 func ordered(in []apigen.Capability) []string {
+	named := make([]string, 0, len(in))
+	for _, c := range in {
+		named = append(named, string(c))
+	}
+	named = auth.Canonical(named)
 	out := []string{}
 	for _, c := range auth.AllCapabilities {
-		if slices.Contains(in, apigen.Capability(c)) {
+		if slices.Contains(named, c) {
 			out = append(out, c)
 		}
 	}
@@ -75,9 +84,5 @@ func ordered(in []apigen.Capability) []string {
 }
 
 func chatCapabilitiesView(caps []string, chosen bool) apigen.ChatCapabilities {
-	v := apigen.ChatCapabilities{Capabilities: make([]apigen.Capability, 0, len(caps)), Chosen: chosen}
-	for _, c := range caps {
-		v.Capabilities = append(v.Capabilities, apigen.Capability(c))
-	}
-	return v
+	return apigen.ChatCapabilities{Capabilities: capabilitiesView(caps), Chosen: chosen}
 }

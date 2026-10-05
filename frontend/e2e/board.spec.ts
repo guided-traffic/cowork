@@ -6,7 +6,7 @@ import { asAdmin as test, drag, expect, expectScheme } from './support/fixtures'
  * another column is the transition of docs/adr/0009 that the column's state is.
  */
 test('a project opens on its board', { tag: '@smoke' }, async ({ page, seed, project }) => {
-  await seed.file(project, { title: 'On the board', urgency: 'now' });
+  await seed.file(project, { title: 'On the board', horizon: 'now' });
 
   await page.goto(`/t/${tenant}/p/${project}`);
   await expect(page).toHaveURL(new RegExp(`/t/${tenant}/p/${project}/board$`));
@@ -26,7 +26,7 @@ test(
   'a card dragged from Refinement to Ready is decided',
   { tag: '@smoke' },
   async ({ page, seed, project }) => {
-    const filed = await seed.file(project, { title: 'Ready to be decided', urgency: 'now' });
+    const filed = await seed.file(project, { title: 'Ready to be decided', horizon: 'now' });
     await seed.transition(project, filed.number, 'filed', 'analysed');
     const key = keyOf(project, filed.number);
 

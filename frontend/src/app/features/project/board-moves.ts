@@ -42,7 +42,7 @@ export class BoardMoves {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
-   * What the moves on their way change of their tickets — the state, or the urgency `now` — which
+   * What the moves on their way change of their tickets — the state, or the horizon `now` — which
    * the cards show, in the column it puts them in, until the writes are in.
    */
   private readonly shownAs = signal<ReadonlyMap<string, Partial<Ticket>>>(new Map());
@@ -108,15 +108,11 @@ export class BoardMoves {
   async makeNow(ticket: Ticket): Promise<void> {
     const key = ticket.key;
     const column = columnOf(ticket.state);
-    this.show(key, { urgency: 'now' });
+    this.show(key, { horizon: 'now' });
     // The card leaves Next at once, and the button with it; the keyboard follows the card.
     this.refocus(key);
     try {
-      if (ticket.urgency_derived === 'now') {
-        await this.actions.withdrawUrgency(key);
-      } else {
-        await this.actions.overrideUrgency(key, 'now');
-      }
+      await this.actions.setHorizon(key, 'now');
       if (column) {
         this.announce(key, column);
       }
@@ -192,7 +188,7 @@ export class BoardMoves {
       this.messages.add({
         severity: 'warn',
         summary: 'Changed meanwhile',
-        detail: `${shortKey(key)} was changed by someone else: its horizon is ${error.current.urgency} now.`,
+        detail: `${shortKey(key)} was changed by someone else: its horizon is ${error.current.horizon} now.`,
         life: 6000,
       });
     } else {

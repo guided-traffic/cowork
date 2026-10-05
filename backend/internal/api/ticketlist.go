@@ -32,15 +32,18 @@ const (
 // ticketQuery is what both ticket lists take: the filters of docs/adr/0049
 // and the paging of docs/adr/0048.
 type ticketQuery struct {
-	project, state, typ, severity, security, urgency, effort *[]string
-	assignee, reporter, parent, interest                     *[]string
-	progressMin, progressMax                                 *int
-	openedAfter, openedBefore, updatedAfter, updatedBefore   *time.Time
-	doneAfter                                                *time.Time
-	q                                                        *string
-	includeTerminal, blocked, hasOpenQuestions               *bool
-	cursor                                                   *string
-	limit, page, perPage                                     *int
+	project, state, typ, severity, security, horizon, effort *[]string
+	// urgency is horizon under the name it had before (docs/adr/0010 D1),
+	// taken until a later release removes it (docs/adr/0046 D7).
+	urgency                                                *[]string
+	assignee, reporter, parent, interest                   *[]string
+	progressMin, progressMax                               *int
+	openedAfter, openedBefore, updatedAfter, updatedBefore *time.Time
+	doneAfter                                              *time.Time
+	q                                                      *string
+	includeTerminal, blocked, hasOpenQuestions             *bool
+	cursor                                                 *string
+	limit, page, perPage                                   *int
 }
 
 // ticketListing is a parsed ticket list request.
@@ -62,7 +65,8 @@ type parentRef struct {
 func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectTicketsRequestObject) (apigen.ListProjectTicketsResponseObject, error) {
 	p := req.Params
 	q := ticketQuery{
-		state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, urgency: p.Urgency, effort: p.Effort,
+		state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, horizon: p.Horizon, effort: p.Effort,
+		urgency:  p.Urgency, //nolint:staticcheck // SA1019: deprecated in the document, taken as horizon until a later release removes it
 		assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax,
 		openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter, updatedBefore: p.UpdatedBefore,
@@ -84,8 +88,9 @@ func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectT
 func (s *Server) ListTenantTickets(ctx context.Context, req apigen.ListTenantTicketsRequestObject) (apigen.ListTenantTicketsResponseObject, error) {
 	p := req.Params
 	q := ticketQuery{
-		project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, urgency: p.Urgency,
-		effort: p.Effort, assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
+		project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, horizon: p.Horizon,
+		urgency: p.Urgency, //nolint:staticcheck // SA1019: deprecated in the document, taken as horizon until a later release removes it
+		effort:  p.Effort, assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent, interest: p.Interest, progressMin: p.ProgressMin,
 		progressMax: p.ProgressMax, openedAfter: p.OpenedAfter, openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter,
 		updatedBefore: p.UpdatedBefore, doneAfter: p.DoneAfter, q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked,
 		hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
@@ -209,7 +214,11 @@ func (s *Server) parseFilters(me uuid.UUID, q ticketQuery, l *ticketListing) []p
 	vocab("type", q.typ, func(v string) bool { return apigen.TicketType(v).Valid() }, &f.Types)
 	vocab("severity", q.severity, func(v string) bool { return apigen.Severity(v).Valid() }, &f.Severities)
 	vocab("security", q.security, func(v string) bool { return apigen.SecurityClass(v).Valid() }, &f.Securities)
-	vocab("urgency", q.urgency, func(v string) bool { return apigen.Urgency(v).Valid() }, &f.Urgencies)
+	name, horizons, conflict := q.horizons()
+	if conflict != nil {
+		errs = append(errs, *conflict)
+	}
+	vocab(name, horizons, func(v string) bool { return apigen.Horizon(v).Valid() }, &f.Horizons)
 	vocab("effort", q.effort, func(v string) bool { return apigen.Effort(v).Valid() }, &f.Efforts)
 	errs = append(errs, persons(fieldAssignee, q.assignee, me, true, &f.Assignees)...)
 	errs = append(errs, persons("reporter", q.reporter, me, false, &f.Reporters)...)
@@ -228,6 +237,21 @@ func (s *Server) parseFilters(me uuid.UUID, q ticketQuery, l *ticketListing) []p
 		f.Query = *q.q
 	}
 	return errs
+}
+
+// horizons is the horizon filter of a query and the name it came by: horizon,
+// or urgency, the name it had before (docs/adr/0010 D1). The two are one
+// filter, so a query that names both is refused at query:urgency rather than
+// combined into a list the caller did not mean (docs/adr/0049 D4).
+func (q ticketQuery) horizons() (string, *[]string, *problem.FieldError) {
+	switch {
+	case len(deref(q.horizon)) > 0 && len(deref(q.urgency)) > 0:
+		return fieldHorizon, q.horizon, &problem.FieldError{Pointer: "query:urgency",
+			Message: "urgency is the deprecated name of horizon: send horizon alone"}
+	case len(deref(q.urgency)) > 0:
+		return "urgency", q.urgency, nil
+	}
+	return fieldHorizon, q.horizon, nil
 }
 
 // persons parses a person filter: an id, me, and — where the column may be

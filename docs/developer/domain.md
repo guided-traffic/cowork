@@ -77,7 +77,7 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
 | `state` | `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` | changed by transitions, and by the progress stages that close and reopen a ticket; below |
 | `severity` | `critical`, `high`, `medium`, `low`, `cosmetic` | [ADR 0010] D1 |
 | `security` | `live`, `boundary`, `hardening`, `none` | `threat` is required unless the class is `none`, and absent with `none` — `400` at `/threat` (`checkThreat`) and a table `CHECK` ([ADR 0010] D2) |
-| `urgency` | `now`, `release`, `next`, `later`, `icebox` | the ticket's horizon, set by a person or an agent; below |
+| `horizon` (the column `urgency`) | `now`, `release`, `next`, `later`, `icebox` | the ticket's horizon, set by a person or an agent; the API says `horizon`, the database `urgency`; [below](#the-horizon) |
 | `effort` | `XS`, `S`, `M`, `L` | a size ([ADR 0017] D1) |
 | block kind | `decision`, `human`, `product`, `release`, `external`, `ticket` | only while blocked |
 
@@ -145,7 +145,7 @@ unranked ticket (`RankUnrankedTicket`) and the keys a rebalancing spreads (`SetR
 a concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
 attachments and time entries are entities of their own and leave the ticket's version alone.
 
-## Urgency, the horizon
+## The horizon
 
 The five values are the ticket's horizon — a planning category a person or an agent sets, in
 whatever state the ticket is ([ADR 0010] D3 as amended 2026-10-04). Nothing derives it: rule set
@@ -153,17 +153,30 @@ v2 has one row, [`domain.UrgencyDefault`](../../backend/internal/domain/ticket.g
 rule `UrgencyRuleDefault` `v2:default`, which every filing writes as `urgency_derived` and
 `urgency_rule`; no state, block or link changes them.
 
-What a person or an agent sets is stored as the override: `PUT …/urgency-override` with a value,
-`DELETE` to return the ticket to `later`; both with `If-Match`, both recorded as `overridden`, an
-agent's needing `override-urgency`. The reason is optional for a person — a drag between the
-backlog's groups — and required of an agent, whose request without one is `400` at `/reason`
-(`overrideInputs`); `urgency_override.reason` is `null` without one. A filing names its horizon
-with `urgency`: another than `later` is written as the override by `InsertTicket`, set by the
-filer and without a reason, and an agent needs `override-urgency` for it (`filing.capabilities`
-in [`tickets.go`](../../backend/internal/api/tickets.go)). The ticket shows the override when one
-stands, else `later`. Migration 29 turned what rule set v1 had derived — `release` and `icebox`
-for blocked tickets and those an open decision blocked — into overrides set by nobody, so no
-ticket moved when the derivation was retired.
+**The API says horizon, the database urgency** ([ADR 0010] D1 as amended 2026-10-05). The enum
+`urgency` and the columns `urgency_derived`, `urgency_rule` and `urgency_override*` stay, and so do
+the Go names sqlc gives them (`domain.Urgency`, `TicketRow.UrgencyOverride`); `ticketView` answers
+`horizon` — the horizon set, else `later` (`horizonOf`) — and `horizon_set` — its value, reason,
+person and time, or `null` (`horizonSetView`). Beside them, until a later release, the deprecated
+`urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` carry the same facts
+(`urgencyFields`, [api.md](api.md#deprecated-names)).
+
+What a person or an agent sets is the horizon set: `PUT …/horizon` with a value and `If-Match`
+(`SetHorizon`); `later` clears it, and on a ticket with none set it changes nothing. The act is
+`overridden`, the name it had before, with `urgency_override` before and after, and needs of an
+agent `set-horizon`. The reason is optional for a person — a drag between the backlog's groups —
+and required of an agent, for `later` too, whose request without one is `400` at `/reason`
+(`horizonInputs`); it is kept with a horizon set (`horizon_set.reason`, `null` without one) and
+recorded on the act either way, since a cleared horizon keeps none (migration 19). A `412` names
+the current `horizon` and `horizon_set`. The deprecated `PUT …/urgency-override` and `DELETE
+…/urgency-override` behave as they did: the `PUT` stores `later` as a set horizon too, the `DELETE`
+clears it without a reason from anybody, and their `412` names `urgency_override`. A filing names
+its horizon with `horizon` — or `urgency`, the same; both with different values are `400` at
+`/horizon` (`filedHorizon`): another than `later` is written as the horizon set by `InsertTicket`,
+set by the filer and without a reason, and an agent needs `set-horizon` for it
+(`filing.capabilities` in [`tickets.go`](../../backend/internal/api/tickets.go)). Migration 29
+turned what rule set v1 had derived — `release` and `icebox` for blocked tickets and those an open
+decision blocked — into horizons set by nobody, so no ticket moved when the derivation was retired.
 
 ## Links
 
@@ -540,9 +553,9 @@ read another person's `tokens` row ([ADR 0021] D6) and must still read it after 
 `null` only on an audit row written before migration 27, which named the token by its id alone.
 A stake's write sets its mark or clears it, so the stake shows who set it as it stands. The context
 document and the summary of `session_start` name a plain token's act `through the token <name>`
-where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A link's creator and an
-urgency override's setter carry no mark of their own — no view of the UI shows them; the activity
-marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
+where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A link's creator and the
+person who set a horizon (`horizon_set.by`) carry no mark of their own — no view of the UI shows
+them; the activity marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
 
 ## Who is told
 

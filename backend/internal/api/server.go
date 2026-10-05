@@ -36,6 +36,8 @@ const (
 	fieldAssignee        = "assignee"
 	fieldBody            = "body"
 	fieldUrgencyOverride = "urgency_override"
+	fieldHorizon         = "horizon"
+	fieldHorizonSet      = "horizon_set"
 	fieldType            = "type"
 	fieldParent          = "parent"
 	fieldNote            = "note"

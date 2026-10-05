@@ -53,6 +53,8 @@ function ticket(key: string, overrides: Partial<Ticket> = {}): Ticket {
     progress_refinement: 0,
     progress_review: 0,
     progress_derived: false,
+    horizon: 'later',
+    horizon_set: null,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,
@@ -297,7 +299,7 @@ describe('TenantTickets', () => {
         [
           ticket('acme/COW-2', {
             title: 'The export forgets the files',
-            urgency: 'now',
+            horizon: 'now',
             state: 'in-progress',
             assignee: { id: 'p-sam', display_name: 'Sam Rivera' },
           }),
@@ -393,7 +395,7 @@ describe('TenantTickets', () => {
       expect(values('type')).toEqual(['task', 'bug', 'feature', 'decision', 'question']);
       expect(values('severity')).toEqual(['critical', 'high', 'medium', 'low', 'cosmetic']);
       expect(values('security')).toEqual(['live', 'boundary', 'hardening', 'none']);
-      expect(values('urgency')).toEqual(['now', 'release', 'next', 'later', 'icebox']);
+      expect(values('horizon')).toEqual(['now', 'release', 'next', 'later', 'icebox']);
       expect(values('effort')).toEqual(['XS', 'S', 'M', 'L']);
       expect(select('assignee').options()).toEqual([
         { value: 'me', label: 'Me' },
@@ -402,8 +404,7 @@ describe('TenantTickets', () => {
         { value: 'p-sam', label: 'Sam Rivera' },
       ]);
       expect(values('reporter')).toEqual(['me', 'p-ada', 'p-sam']);
-      // The page says horizon where the API says urgency (docs/adr/0010 D3).
-      expect(page().querySelector('#tickets-urgency-label')?.textContent).toBe('Horizon');
+      expect(page().querySelector('#tickets-horizon-label')?.textContent).toBe('Horizon');
       for (const name of ['state', 'type', 'assignee']) {
         expect(select(name).multiple()).toBe(true);
       }

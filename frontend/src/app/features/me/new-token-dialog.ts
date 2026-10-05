@@ -18,12 +18,11 @@ import { InputNumber } from 'primeng/inputnumber';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { Capability, Scope, TokenCreate, TokenCreated } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { AuthService } from '../../core/auth.service';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
-import { assisted, capabilityMeanings } from '../../shared/capabilities';
+import { assisted, capabilityMeanings, selectableCapabilities } from '../../shared/capabilities';
 import { describedBy, numberAria, selectAria } from '../../shared/field-aria';
 import { keepOpenWhile } from '../../shared/keep-open';
 
@@ -455,7 +454,7 @@ export class NewTokenDialog {
   private readonly auth = inject(AuthService);
 
   protected readonly scopeMeanings = scopeMeanings;
-  protected readonly everything = [...CAPABILITY];
+  protected readonly everything = [...selectableCapabilities];
   protected readonly assistedSet = assisted;
   /**
    * The installation's longest lifetime in whole days, `COWORK_TOKEN_MAX_LIFETIME` as
@@ -469,7 +468,7 @@ export class NewTokenDialog {
     Math.min(maxLifetimeDays, this.installationMax() ?? maxLifetimeDays),
   );
   protected readonly describedBy = describedBy;
-  protected readonly capabilityOptions = CAPABILITY.map((value) => ({
+  protected readonly capabilityOptions = selectableCapabilities.map((value) => ({
     value,
     meaning: capabilityMeanings[value],
   }));
@@ -477,7 +476,7 @@ export class NewTokenDialog {
   protected readonly name = signal('');
   protected readonly scope = signal<Scope>('read');
   protected readonly agent = signal(false);
-  protected readonly capabilities = signal<Capability[]>([...CAPABILITY]);
+  protected readonly capabilities = signal<Capability[]>([...selectableCapabilities]);
   protected readonly tenant = signal<string | null>(null);
   protected readonly project = signal<string | null>(null);
   /** Empty is the installation's default: the request then leaves `lifetime_days` out. */
@@ -591,7 +590,7 @@ export class NewTokenDialog {
       ...(this.agent()
         ? {
             agent: true,
-            capabilities: CAPABILITY.filter((each) => this.capabilities().includes(each)),
+            capabilities: selectableCapabilities.filter((each) => this.capabilities().includes(each)),
           }
         : {}),
       ...(tenant ? { tenant, ...(project ? { project } : {}) } : {}),
@@ -629,7 +628,7 @@ export class NewTokenDialog {
     this.name.set('');
     this.scope.set('read');
     this.agent.set(false);
-    this.capabilities.set([...CAPABILITY]);
+    this.capabilities.set([...selectableCapabilities]);
     this.tenant.set(null);
     this.project.set(null);
     this.days.set(null);

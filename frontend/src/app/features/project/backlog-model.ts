@@ -1,13 +1,13 @@
-import { Ticket, Urgency } from '../../api/models';
+import { Horizon, Ticket } from '../../api/models';
 
 /** The groups of the backlog, in the order of docs/adr/0010 D1 (docs/adr/0018 D1). */
-export const urgencies: readonly Urgency[] = ['now', 'release', 'next', 'later', 'icebox'];
+export const horizons: readonly Horizon[] = ['now', 'release', 'next', 'later', 'icebox'];
 
 /**
  * The groups that show while they are empty. `release` and `icebox` show only while they hold a
  * ticket or while a ticket is dragged (docs/adr/0018 D1).
  */
-export const alwaysShown: ReadonlySet<Urgency> = new Set<Urgency>(['now', 'next', 'later']);
+export const alwaysShown: ReadonlySet<Horizon> = new Set<Horizon>(['now', 'next', 'later']);
 
 /** A row of a group: the ticket, and where it stands in the group's tree. */
 export interface Row {
@@ -21,7 +21,7 @@ export interface Row {
 }
 
 export interface Group {
-  urgency: Urgency;
+  horizon: Horizon;
   rows: Row[];
 }
 
@@ -35,11 +35,11 @@ export interface Placement {
   neighbour: Ticket;
 }
 
-/** What a drop or a menu choice asks for: an urgency, a place in the rank, or both. */
+/** What a drop or a menu choice asks for: a horizon, a place in the rank, or both. */
 export interface Plan {
   ticket: Ticket;
-  /** The group a move into another group sets the urgency to; absent within a group. */
-  urgency?: Urgency;
+  /** The group a move into another group sets the horizon to; absent within a group. */
+  horizon?: Horizon;
   /** Absent where the ticket has no sibling to be placed next to. */
   placement: Placement | null;
 }
@@ -48,13 +48,13 @@ export interface Plan {
  * The open tickets, which arrive in the project's rank, as the five groups (docs/adr/0018 D1).
  * Each group keeps the order of the rank, and a ticket whose parent is in the same group stands
  * under it, indented, with the rest of the parent's children in their rank (docs/adr/0008 D4).
- * `urgencyOf` lets a page show a ticket in the group it was just dragged to.
+ * `horizonOf` lets a page show a ticket in the group it was just dragged to.
  */
 export function arrange(
   tickets: readonly Ticket[],
-  urgencyOf: (ticket: Ticket) => Urgency = (ticket) => ticket.urgency,
+  horizonOf: (ticket: Ticket) => Horizon = (ticket) => ticket.horizon,
 ): Group[] {
-  const members: Record<Urgency, Ticket[]> = {
+  const members: Record<Horizon, Ticket[]> = {
     now: [],
     release: [],
     next: [],
@@ -62,9 +62,9 @@ export function arrange(
     icebox: [],
   };
   for (const ticket of tickets) {
-    members[urgencyOf(ticket)].push(ticket);
+    members[horizonOf(ticket)].push(ticket);
   }
-  return urgencies.map((urgency) => ({ urgency, rows: tree(members[urgency]) }));
+  return horizons.map((horizon) => ({ horizon, rows: tree(members[horizon]) }));
 }
 
 /** The tickets of one group as the depth-first rows of their parent relation. */
@@ -148,13 +148,13 @@ function placementAt(siblings: readonly Row[], index: number): Placement | null 
  * ticket behind the whole family, and a child only moves among its siblings.
  *
  * Returns null for a move within the group that changes nothing, or that the group's tree does not
- * allow (a child dropped outside its parent's family). Into another group the urgency is set
+ * allow (a child dropped outside its parent's family). Into another group the horizon is set
  * whatever the place is, and a child dropped outside its parent's family keeps its rank.
  */
 export function planDrop(
   ticket: Ticket,
-  from: Urgency,
-  to: Urgency,
+  from: Horizon,
+  to: Horizon,
   rows: readonly Row[],
   at: number,
 ): Plan | null {
@@ -164,13 +164,13 @@ export function planDrop(
   const index = slotIndex(others, under, at);
   const before = moves ? null : position(rows, ticket);
   if (index === null) {
-    return moves ? { ticket, urgency: to, placement: null } : null;
+    return moves ? { ticket, horizon: to, placement: null } : null;
   }
   if (before !== null && before.index === index) {
     return null;
   }
   const placement = placementAt(siblings, index);
-  return moves ? { ticket, urgency: to, placement } : { ticket, placement };
+  return moves ? { ticket, horizon: to, placement } : { ticket, placement };
 }
 
 /**
@@ -203,9 +203,9 @@ export function planStep(rows: readonly Row[], ticket: Ticket, index: number): P
 }
 
 /** The ticket at the end of the group it is moved to: the keyboard has no pointer to choose a place. */
-export function planGroup(rows: readonly Row[], ticket: Ticket, to: Urgency): Plan {
+export function planGroup(rows: readonly Row[], ticket: Ticket, to: Horizon): Plan {
   const { siblings } = siblingsOf(rows, ticket);
-  return { ticket, urgency: to, placement: placementAt(siblings, siblings.length) };
+  return { ticket, horizon: to, placement: placementAt(siblings, siblings.length) };
 }
 
 /**

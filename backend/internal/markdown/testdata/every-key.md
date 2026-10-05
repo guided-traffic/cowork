@@ -6,7 +6,7 @@ state: in-progress
 severity: high
 security: hardening
 threat: a crafted name could escape the archive
-urgency: now
+horizon: now
 effort: M
 progress-refinement: 100
 progress: 40

@@ -60,6 +60,25 @@ func TestMarkOnlyNarrows(t *testing.T) {
 	assert.Empty(t, caps)
 }
 
+// The capability set-horizon was override-urgency before (docs/adr/0043 D4 as
+// amended 2026-10-05): a set under either name is the set of this release's
+// names, each once, in the order given, and a token stored with the old name
+// holds the new one.
+func TestCanonical(t *testing.T) {
+	assert.Equal(t, []string{CapRank, CapSetHorizon, CapUpload}, Canonical([]string{CapRank, CapOverrideUrgency, CapUpload}))
+	assert.Equal(t, []string{CapSetHorizon}, Canonical([]string{CapOverrideUrgency, CapSetHorizon}), "both names are one capability")
+	assert.Equal(t, []string{CapSetHorizon}, Canonical([]string{CapSetHorizon, CapOverrideUrgency}))
+	assert.Equal(t, []string{}, Canonical(nil))
+	assert.Equal(t, AllCapabilities, Canonical(AllCapabilities), "this release's names stay")
+	assert.NotContains(t, AllCapabilities, CapOverrideUrgency)
+	assert.NotContains(t, DefaultChatCapabilities, CapOverrideUrgency)
+
+	_, caps := Mark(true, []string{CapClose, CapOverrideUrgency}, "")
+	p := Principal{Scope: domain.ScopeWrite, Agent: UnknownAgent, Capabilities: caps}
+	assert.True(t, p.Can(CapSetHorizon), "a token stored with the old name holds set-horizon")
+	assert.Nil(t, Authorize(p, domain.RoleMember, Need{Role: domain.RoleMember, Scope: domain.ScopeWrite, Capability: CapSetHorizon}))
+}
+
 func TestAuthorize(t *testing.T) {
 	person := Principal{Scope: domain.ScopeWrite}
 	agent := Principal{Scope: domain.ScopeWrite, Agent: "a/b/c", Capabilities: []string{CapClose}}

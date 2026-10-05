@@ -7,7 +7,7 @@ the shell's content-security policy. The decision is
 [ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md);
 running it is [docs/operations/chat.md](../operations/chat.md); what it leaves open,
 [docs/security/chat.md](../security/chat.md). The tool catalogue it runs is [mcp.md](mcp.md). Read
-against the tree on 2026-10-04.
+against the tree on 2026-10-05.
 
 ```
 ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► Ingress ─────► httpserver ─► api pipeline
@@ -156,9 +156,9 @@ Every other tool runs at once; what bounds it is the agent's capabilities and th
 
 | Where | What |
 |---|---|
-| `auth.DefaultChatCapabilities` | `rank`, `override-urgency`, `interest`, `upload`, `create-project` — the set of a person who never chose |
-| `chat_capabilities` | one row per person, `capabilities text[]` within the nine; the policies admit the person's own row only; no delete grant |
-| `PUT /api/v1/me/chat` (`setMyChat`) | session only; the whole set, in any order, unique; stored in the catalogue's order; an installation-level `updated` act on the person with `chat_capabilities` before and after; the same set again records nothing |
+| `auth.DefaultChatCapabilities` | `rank`, `set-horizon`, `interest`, `upload`, `create-project` — the set of a person who never chose |
+| `chat_capabilities` | one row per person, `capabilities text[]` within the nine — and `override-urgency`, the name `set-horizon` had before, which a set stored before may hold and `auth.Canonical` reads as `set-horizon` (migration 37) —; the policies admit the person's own row only; no delete grant |
+| `PUT /api/v1/me/chat` (`setMyChat`) | session only; the whole set, in any order, unique, `override-urgency` taken as `set-horizon`; stored in the catalogue's order under this release's names; an installation-level `updated` act on the person with `chat_capabilities` before and after; the same set again records nothing |
 | `GET /api/v1/me/chat` (`getMyChat`) | either credential; `{capabilities, chosen}` |
 | `authenticateSession` | a request with `X-Cowork-Agent` on a session holds the set (`chatCapabilities`) — the chat's, and any person's who sends the header themselves |
 | `auth.Authorize` | refuses an act whose capability the request lacks: `403 agent_forbidden`, `missing capability: …` |
@@ -286,7 +286,7 @@ watching the console for a violation; nginx has no unit test
   agent header on a session ([`api/session_test.go`](../../backend/internal/api/session_test.go)), the
   named table's policy in the migration set ([`store/policy_test.go`](../../backend/internal/store/policy_test.go)),
   the session-only operations ([`api/document_test.go`](../../backend/api/document_test.go)), and the
-  shared tools' arguments in [`tools/`](../../backend/internal/tools/) (`TestSetUrgency`,
+  shared tools' arguments in [`tools/`](../../backend/internal/tools/) (`TestPlaceTicket`,
   `TestPreconditionsTheCallerRead`, `TestAHostThatKnowsThePerson`).
 - **Integration** ([`api_chat_test.go`](../../backend/test/integration/api_chat_test.go)), through the
   whole server against [`test/stubllm`](../../backend/test/stubllm/stubllm.go) — no real model: the

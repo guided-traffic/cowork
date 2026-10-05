@@ -5,7 +5,7 @@ type: feature
 state: dropped
 severity: cosmetic
 security: none
-urgency: later
+horizon: later
 effort: L
 progress-refinement: 0
 progress: 0

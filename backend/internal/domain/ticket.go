@@ -21,7 +21,8 @@ type (
 	Severity string
 	// SecurityClass is the threat-model class of the tickets page.
 	SecurityClass string
-	// Urgency is when the ticket matters, derived by a rule set.
+	// Urgency is the ticket's horizon under the name the database keeps for
+	// it; the API says horizon (docs/adr/0010 D1, D3).
 	Urgency string
 	// Effort is a size, not a time.
 	Effort string
@@ -119,7 +120,8 @@ func (l LinkType) Name(outgoing bool) string {
 // The urgency is the ticket's horizon, a planning category a person or an
 // agent sets in whatever state the ticket is; nothing derives it (docs/adr/0010
 // D3 as amended 2026-10-04). Rule set v2 has one row: every ticket derives
-// later, and the horizon set on it is what the API calls its override.
+// later, and the horizon set on it is what the columns keep as its override
+// and the API answers as horizon_set (D1 as amended 2026-10-05).
 const (
 	UrgencyDefault     = UrgencyLater
 	UrgencyRuleDefault = "v2:default"

@@ -82,7 +82,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (`setHorizon`, `PUT …/horizon` — `later` included, which clears the horizon set), the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens in numbered pages (`table`, [`tablePages`](../../frontend/src/app/core/table-pages.ts)), each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
@@ -438,11 +438,15 @@ dash for `decided`, which waits, and for a closed ticket), the last update and t
 | `movedKeys`, `unanswered`, `withMoves` | The order the page shows while its own moves are not in the list yet |
 | `scoreMarks` | Where the score says higher or lower than the rank, among each set of siblings of a group |
 
-**Horizon, not urgency.** The five values are the ticket's horizon ([ADR 0010] D3): a person or an
-agent sets it, and nothing derives it. The API keeps the names — `urgency`, `urgency_override`,
-`urgency_derived`, which is `later` for every ticket, `urgency_rule`, the capability
-`override-urgency` —, and so do the code's identifiers and test ids; what the page says to the
-person is *horizon*, never urgency, a derived value, a rule or an override. The detail page's field
+**Horizon.** The five values are the ticket's horizon ([ADR 0010] D3): a person or an agent sets
+it, and nothing derives it. The page reads `horizon` and `horizon_set` and writes through `PUT
+…/horizon`; the API's deprecated `urgency` fields and routes and the capability name
+`override-urgency` ([ADR 0010] D1 as amended 2026-10-05) are read nowhere — but for an address of
+[the tenant's ticket list](#the-tenants-ticket-list) that still names `urgency`, which it passes on
+as it is — and nothing reads `urgency_derived`: a group is the horizon, `later` the one a ticket
+nobody placed stands in. The
+test ids keep their values (`group-now`); the group's attribute is `data-horizon`. What the page
+says to the person is *horizon*, never urgency, a derived value, a rule or an override. The detail page's field
 *Horizon* ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) is a
 select of the five that sets it as the backlog does ([the detail page](#the-detail-page)), with the
 meaning as its tooltip, followed by `— <reason>` where the horizon was set with one.
@@ -462,9 +466,9 @@ it next to the rows it shows, which the rank route takes:
 | Its group, at the top | `PUT …/tickets/{number}/rank` with `{before}` the first sibling |
 | Its group, elsewhere | `PUT …/rank` with `{after}` the sibling above |
 | Its group where it was, a child outside its parent's family, beside the table | Nothing; the row goes back |
-| Another group, which is the ticket's `urgency_derived` (`later`) | `DELETE …/urgency-override` with `If-Match`, then the rank as above |
-| Another group | `PUT …/urgency-override` `{value}` with `If-Match`, then the rank as above, then the reason field |
-| Another group that is empty, or a child outside its parent's family there | The horizon's write only (and the reason field after a `PUT`) |
+| `later`, from another group | `PUT …/horizon` `{value: later}` with `If-Match`, which clears the horizon set, then the rank as above; no reason field, `later` keeps none |
+| Another group | `PUT …/horizon` `{value}` with `If-Match`, then the rank as above, then the reason field |
+| Another group that is empty, or a child outside its parent's family there | The horizon's write only (and the reason field after a horizon other than `later`) |
 
 The menu of a row — *Move up*, *Move down*, *Move to top*, *Move to bottom*, *Move to* each other
 group, at its end — makes the same calls for the keyboard and screen readers, which the CDK drag
@@ -472,13 +476,13 @@ does not serve; the focus goes back to the row's menu button and a live region s
 ticket went.
 
 **The writes** of the moves run one after the other through `TicketActions` (`rank`,
-`overrideUrgency`, `withdrawUrgency`), and a move shows before them: its group from a map of the
+`setHorizon`), and a move shows before them: its group from a map of the
 horizons on their way, its place as a `Move` on top of the list's order. A failure takes back what
 was not written — the row is where the list and the cache have it —, shows the problem and reloads
 the list. A `412` on the horizon refetches the ticket and writes once more while its horizon is
 still the one the cache held; otherwise somebody else decided it, and the person is told. After a
-`PUT` of the horizon a field in the row offers the reason, which a person may leave out ([ADR 0010] D3): Enter
-sends the override again with the same value, the reason and the newer `ETag`; Escape, an empty
+horizon other than `later` a field in the row offers the reason, which a person may leave out ([ADR 0010] D3): Enter
+sends the horizon again with the same value, the reason and the newer `ETag`; Escape, an empty
 Enter or leaving the field drops it. A request carries a reason only when one was typed.
 
 **Live.** While a row is dragged, the table shows the groups as they were when it was picked up,
@@ -543,7 +547,7 @@ The board ([`board.ts`](../../frontend/src/app/features/project/board.ts), [ADR 
 current work under the project header: on the left the column *Next*, then *Refinement*, *Ready*,
 *In Progress*, *Blocked* and *Review*, a view over the states of [ADR 0009] D1. Its list is the
 project's open tickets in the horizons `now`, `release` and `next`, every page of it
-(`projectTicketPages` with `urgency` and no page limit), in the project's rank; the cards read the
+(`projectTicketPages` with `horizon` and no page limit), in the project's rank; the cards read the
 tickets through the cache. A parent is never on it — `progress_derived` is true exactly for a ticket
 with children — and neither are `later`, `icebox`, `done` and `dropped`. The decisions are pure
 functions in [`board-model.ts`](../../frontend/src/app/features/project/board-model.ts):
@@ -599,7 +603,7 @@ The board scrolls sideways where the window is narrow; like the shell's content 
 | A drop whose move needs input: back (`decided → analysed`, `in-progress → decided` or `analysed`, `review → in-progress`) or into `blocked` | The move's dialog first (the reason, or the block's kind and text), then the same call |
 | A drop on its own column, beside the board, or where the card is not taken | Nothing; the card goes back |
 | The card action | `POST …/transitions` `{to: analysed}` |
-| *Now* on a card of *Next* | `PUT …/urgency-override` `{value: now}` without a reason ([ADR 0010] D3), or `DELETE` where `urgency_derived` is `now`, which it is for no ticket since nothing derives |
+| *Now* on a card of *Next* | `PUT …/horizon` `{value: now}` without a reason ([ADR 0010] D3) |
 
 A move shows at once: the card stands in its new column with the state it goes to — while its
 dialog is open, too — and goes back when the dialog is cancelled or a write without a dialog fails,
@@ -683,7 +687,7 @@ parameter of the page, read by `filterOf` and written by `queryOf` in
 table `parameterKinds` is held to the generated `SavedFilterParameters`: a filter the API document
 adds does not compile until it has its kind there. The bar has a field for the text (`q`, written
 250 ms after the last keystroke) and a select of several values for the project and for each of the
-backlog's filters — state, type, severity, security, horizon (the API's `urgency`), effort, assignee
+backlog's filters — state, type, severity, security, horizon, effort, assignee
 (*Me*, *Unassigned* for `none`, the members) and reporter (*Me*, the members). A choice goes into the
 address with `replaceUrl` and is read back from it, so a filtered list is a link that comes back as
 it was after a reload. A select shows the plain values; a negated one (`state=!blocked`) stays
@@ -757,7 +761,10 @@ too.
 The ticket's page ([`ticket-detail.ts`](../../frontend/src/app/features/ticket/ticket-detail.ts),
 [ADR 0018] D2) shows the title as its heading, the body, the prerequisite tree, the questions, the
 comments and the activity, and beside them the fields, the stake, the links, the files and the time.
-Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
+An act of the activity reads as its person and its action (`describe`): the sort of the project's
+rank as *sorted the backlog by score*, and the act on the horizon, which the record keeps as
+`overridden`, as *set the horizon to now* or *returned the ticket to later* by its `after`
+([ADR 0010] D1). Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
 which the page provides; everything else reads the ticket through the cache. The body, a comment, a
 question's options and its answer show as the server rendered them, through
 [`RenderedText`](../../frontend/src/app/shared/rendered-text.ts) and Angular's sanitiser; the body's
@@ -771,7 +778,7 @@ a search hit's — scrolls the page to that part once it has loaded.
 |---|---|---|
 | [`TicketTitle`](../../frontend/src/app/features/ticket/ticket-title.ts) | The title edited in place, `PATCH` over the version the editing began with | The page's dialog names theirs and the person's, *Write mine* or *Keep theirs*, as the fields do |
 | [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
-| [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — the override, or its withdrawal where the choice is `later` and an override stands — and then a field for the reason a person may add (Enter sends the override again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
+| [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — `PUT …/horizon` with the choice, `later` clearing the horizon set — and after a horizon other than `later` a field for the reason a person may add (Enter sends the horizon again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
 | [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisites`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`) | — |
 | [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
@@ -985,7 +992,7 @@ The chat in the UI ([ADR 0076]; the backend's half is [chat.md](chat.md)) is thr
 
 | Piece | What it does |
 |---|---|
-| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `no result`) — every call runs at once, nothing waits for the person; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; in the header the provider's choice where more than one is configured, and the toggle of *What the assistant may do*: the nine capabilities as switches with their meaning (`shared/capabilities.ts`, the token page's too) and the *Full* and *Assisted* shortcuts; an empty state that names the picked provider and model and says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
+| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `no result`) — every call runs at once, nothing waits for the person; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; in the header the provider's choice where more than one is configured, and the toggle of *What the assistant may do*: the nine capabilities as switches with their meaning (`selectableCapabilities` and `capabilityMeanings` of `shared/capabilities.ts`, the token page's too: the API's `Capability` without `override-urgency`, the name `set-horizon` had before, which is never a switch) and the *Full* and *Assisted* shortcuts; an empty state that names the picked provider and model and says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
 | [`ChatService`](../../frontend/src/app/core/chat.service.ts) | The turn: `fetch` `POST …/chat` — the `HttpClient` waits for a whole body, and `EventSource` cannot `POST` — with the conversation so far, the page (`pageContext`), the conversation's id and the picked provider's id, `X-Requested-With: cowork` from [`http.ts`](../../frontend/src/app/core/http.ts) and the session's cookie; one turn at a time and never sent again by itself, because a repeated turn repeats its acts; `done`'s messages appended as they are; for a turn cut without `done`, `TurnRecord` writes down what its events reported, so the model hears next time what happened — held to what the next turn may carry: a step of blank text and no answered call left out, a step's text cut to the 100,000 characters of a message —; a `ui` event opened only when `navigable` accepts it — a ticket, a backlog or a board of the turn's tenant —, else the call's card says not opened; a `401` sends the browser to the login, a `chat_unavailable` loads the availability again and says why in a toast; a conversation too long for a turn (`payload_too_large` or any `413`, a `validation_failed` that points under `/messages`) is a notice that offers a new conversation — never trimmed by itself —, `chat_busy` a notice whose *Stop them* calls `DELETE …/chat/turns`, and an answer of white space only, whose `done` adds nothing, a notice that there was no answer; Stop aborts the `fetch` and calls `DELETE …/chat/turns` for the turn's tenant, so a proxy that keeps the backend's request open keeps no turn alive, and a `done` with the reason `stopped` — stopped from elsewhere — shows as stopped; a running turn stops once the chat is no longer available, because the panel and its Stop go with it |
 | [`chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts) | `EventStreamParser` cuts the response's text into events by the HTML standard's event-stream format — CRLF, LF or CR, a CR at a piece's end waiting for the next, comments read past, `data` lines joined —; `chatEvents` decodes the bytes, a character split between two pieces waiting for its rest, and cancels the body when the reader stops; `chatEvent` holds each event's data to the shape the API document gives it and reads past one it does not know |
 

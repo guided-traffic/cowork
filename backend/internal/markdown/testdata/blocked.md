@@ -5,7 +5,7 @@ type: task
 state: blocked
 severity: low
 security: none
-urgency: release
+horizon: release
 effort: S
 progress-refinement: 100
 progress: 0

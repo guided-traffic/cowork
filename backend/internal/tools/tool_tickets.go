@@ -248,8 +248,8 @@ func fileTicketTool() Tool {
 			"place it lands at the end of its horizon. A live or boundary security finding becomes confidential: only the " +
 			"tenant's administrators, its assignee and its reporter see it.",
 		Operations: []string{"createTicket", "linkTickets"},
-		limits: limitsOf("An agent needs override-urgency to file into a horizon other than later, and rank to name a place. "+
-			refusalNote, capOverrideUrgency, capRank),
+		limits: limitsOf("An agent needs set-horizon to file into a horizon other than later, and rank to name a place. "+
+			refusalNote, capSetHorizon, capRank),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "type", ticketTypes...)
 		enum(s, "horizon", horizons...)
@@ -281,8 +281,8 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 		body.Parent = &in.Parent
 	}
 	if in.Horizon != "" {
-		horizon := apigen.Urgency(in.Horizon)
-		body.Urgency = &horizon
+		horizon := apigen.Horizon(in.Horizon)
+		body.Horizon = &horizon
 	}
 	if body.After, body.Before, err = placeIn(s, tenant, project, in.After, in.Before); err != nil {
 		return "", err
@@ -297,7 +297,7 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 		return "", err
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "Filed %s — %s (%s, %s), in the horizon %s%s.", tk.Key, tk.Title, tk.Type, tk.State, tk.Urgency,
+	fmt.Fprintf(&out, "Filed %s — %s (%s, %s), in the horizon %s%s.", tk.Key, tk.Title, tk.Type, tk.State, tk.Horizon,
 		placed(in.After, in.Before))
 	if tk.Confidential {
 		out.WriteString(" It is confidential.")
@@ -542,9 +542,9 @@ func placeTicketTool() Tool {
 			"directly after or before another ticket of it —, or both in one call (docs/adr/0010 D3, docs/adr/0014 D2). " +
 			horizonMeaning + " Within a horizon the order is the person's: re-sort it when asked, one ticket per call, " +
 			"top down.",
-		Operations: []string{opGetTicket, "overrideUrgency", "moveTicketRank"},
-		limits: limitsOf("An agent needs override-urgency to move a ticket to another horizon, and gives a reason; rank to "+
-			"change its place. "+refusalNote, capOverrideUrgency, capRank),
+		Operations: []string{opGetTicket, "setHorizon", "moveTicketRank"},
+		limits: limitsOf("An agent needs set-horizon to move a ticket to another horizon, and gives a reason; rank to "+
+			"change its place. "+refusalNote, capSetHorizon, capRank),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "horizon", horizons...)
 	}, runPlaceTicket)
@@ -580,7 +580,7 @@ func runPlaceTicket(ctx context.Context, s *Session, in placeTicketInput) (strin
 	if err != nil {
 		return "", err
 	}
-	horizon := cmp.Or(in.Horizon, string(tk.Urgency))
+	horizon := cmp.Or(in.Horizon, string(tk.Horizon))
 	placing := after != nil || before != nil
 	if placing {
 		if err := sameHorizon(ctx, s, ref, in.After+in.Before, horizon); err != nil {
@@ -617,15 +617,15 @@ func partly(done []string, what string, err error) (string, error) {
 // moveToHorizon sets a ticket's horizon with the version read and the reason,
 // and says what it did; one the ticket stands in already sends nothing.
 func moveToHorizon(ctx context.Context, s *Session, ref ticketRef, tk apigen.Ticket, etag, horizon, reason string) (string, error) {
-	if string(tk.Urgency) == horizon {
+	if string(tk.Horizon) == horizon {
 		return fmt.Sprintf("%s stands in the horizon %s already", tk.Key, horizon), nil
 	}
-	res, err := s.API.OverrideUrgencyWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
-		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.Urgency(horizon), Reason: &reason})
+	res, err := s.API.SetHorizonWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+		&apigen.SetHorizonParams{IfMatch: &etag}, apigen.HorizonUpdate{Value: apigen.Horizon(horizon), Reason: &reason})
 	if err := check(res, err, http.StatusOK); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Moved %s from the horizon %s to %s, with the reason: %s", tk.Key, tk.Urgency, horizon, reason), nil
+	return fmt.Sprintf("Moved %s from the horizon %s to %s, with the reason: %s", tk.Key, tk.Horizon, horizon, reason), nil
 }
 
 // sameHorizon refuses a place next to a ticket of another horizon: in the
@@ -643,8 +643,8 @@ func sameHorizon(ctx context.Context, s *Session, ref ticketRef, key, horizon st
 	if err != nil {
 		return err
 	}
-	if string(tk.Urgency) != horizon {
-		return usage("%s stands in the horizon %s, not in %s: name a ticket of %s", tk.Key, tk.Urgency, horizon, horizon)
+	if string(tk.Horizon) != horizon {
+		return usage("%s stands in the horizon %s, not in %s: name a ticket of %s", tk.Key, tk.Horizon, horizon, horizon)
 	}
 	return nil
 }

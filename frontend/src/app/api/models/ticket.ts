@@ -3,6 +3,8 @@
 
 import { Block } from '../models/block';
 import { Effort } from '../models/effort';
+import { Horizon } from '../models/horizon';
+import { HorizonSet } from '../models/horizon-set';
 import { Person } from '../models/person';
 import { SecurityClass } from '../models/security-class';
 import { Severity } from '../models/severity';
@@ -39,6 +41,12 @@ export interface Ticket {
    */
   done_from: (TicketState | null);
   effort: Effort;
+  horizon: Horizon;
+
+  /**
+   * The horizon a person or an agent set; null for a ticket nobody placed, which stands in later
+   */
+  horizon_set: (HorizonSet | null);
   id: string;
 
   /**
@@ -116,12 +124,36 @@ export interface Ticket {
   title: string;
   type: TicketType;
   updated_at: string;
+
+  /**
+   * The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which
+   * replaces it; removed in a later release (docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
   urgency: Urgency;
+
+  /**
+   * What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more
+   * (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
   urgency_derived: Urgency;
+
+  /**
+   * The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which
+   * replaces it; removed in a later release (docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
   urgency_override: (UrgencyOverride | null);
 
   /**
-   * The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)
+   * The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04
+   * (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
+   *
+   * @deprecated
    */
   urgency_rule: string;
   version: number;

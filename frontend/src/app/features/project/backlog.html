@@ -86,24 +86,24 @@
         </tr>
       </thead>
 
-      @for (group of visibleGroups(); track group.urgency) {
+      @for (group of visibleGroups(); track group.horizon) {
         <tbody
           cdkDropList
           [cdkDropListData]="group"
           (cdkDropListDropped)="dropped($event)"
           class="group"
-          [attr.data-urgency]="group.urgency"
-          [attr.data-testid]="'group-' + group.urgency"
+          [attr.data-horizon]="group.horizon"
+          [attr.data-testid]="'group-' + group.horizon"
         >
           <tr class="group-head">
             <th colspan="10" scope="rowgroup">
               <span
                 class="group-name"
-                [pTooltip]="meanings.urgency[group.urgency]"
+                [pTooltip]="meanings.horizon[group.horizon]"
                 [showDelay]="400"
-                >{{ group.urgency }}</span
+                >{{ group.horizon }}</span
               >
-              <span class="count tabular" [attr.data-testid]="'count-' + group.urgency">{{
+              <span class="count tabular" [attr.data-testid]="'count-' + group.horizon">{{
                 group.rows.length
               }}</span>
             </th>
@@ -162,9 +162,9 @@
             </tr>
           } @empty {
             <tr class="group-empty">
-              <td colspan="10" [attr.data-testid]="'empty-' + group.urgency">
+              <td colspan="10" [attr.data-testid]="'empty-' + group.horizon">
                 @if (dragging()) {
-                  Drop here to move a ticket to {{ group.urgency }}
+                  Drop here to move a ticket to {{ group.horizon }}
                 } @else {
                   No tickets
                 }
@@ -271,16 +271,16 @@
 
   @if (zones().length > 0) {
     <div class="dock" aria-hidden="true" data-testid="zones">
-      @for (group of zones(); track group.urgency) {
+      @for (group of zones(); track group.horizon) {
         <div
           cdkDropList
           [cdkDropListData]="group"
           (cdkDropListDropped)="dropped($event)"
           class="zone"
-          [attr.data-testid]="'zone-' + group.urgency"
+          [attr.data-testid]="'zone-' + group.horizon"
         >
-          <span class="group-name">{{ group.urgency }}</span>
-          <span class="muted">Drop here to move a ticket to {{ group.urgency }}</span>
+          <span class="group-name">{{ group.horizon }}</span>
+          <span class="muted">Drop here to move a ticket to {{ group.horizon }}</span>
         </div>
       }
     </div>

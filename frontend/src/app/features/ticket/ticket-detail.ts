@@ -47,12 +47,20 @@ import { TicketTitle } from './ticket-title';
 /**
  * `transitioned` by Ada, with the agent that acted for her when there was one. The sort of the
  * project's rank by the score is the project's act, which the activity of every ticket it moved
- * shows (docs/adr/0014 D3, docs/adr/0015 D1).
+ * shows (docs/adr/0014 D3, docs/adr/0015 D1). An act on the horizon is recorded as `overridden`,
+ * its name before (docs/adr/0010 D1), and reads as what it did: a horizon set, or the ticket
+ * returned to `later`.
  */
 export function describe(activity: Activity): string {
   const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
   if (activity.entity_type === 'project' && activity.action === 'ranked') {
     return `${who} sorted the backlog by score`;
+  }
+  if (activity.action === 'overridden') {
+    const horizon = (activity.after as Record<string, unknown> | null)?.['urgency_override'];
+    return typeof horizon === 'string'
+      ? `${who} set the horizon to ${horizon}`
+      : `${who} returned the ticket to later`;
   }
   return `${who} ${activity.action.replace(/_/g, ' ')}`;
 }

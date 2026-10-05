@@ -92,16 +92,16 @@
 
   <dt>Horizon</dt>
   <dd>
-    @let reason = ticket().urgency_override?.reason;
+    @let reason = ticket().horizon_set?.reason;
     <p-select
       [options]="horizons"
-      [ngModel]="ticket().urgency"
+      [ngModel]="ticket().horizon"
       (ngModelChange)="setHorizon($event)"
       size="small"
       variant="filled"
       ariaLabel="Horizon"
       data-testid="field-horizon"
-      [pTooltip]="meanings.urgency[ticket().urgency] + (reason ? ' — ' + reason : '')"
+      [pTooltip]="meanings.horizon[ticket().horizon] + (reason ? ' — ' + reason : '')"
       tooltipPosition="left"
     >
       <ng-template #item let-option>

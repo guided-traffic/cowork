@@ -112,7 +112,7 @@ is not offered: the chat reaches only the routes its tools call.
 D5). A request the header marks holds the set its person gave the chat — read on every such request
 by the session's resolver ([`authenticateSession`](../../backend/internal/api/session.go)), so a
 change reaches a running turn at its next call — and a person who never chose holds the default,
-`auth.DefaultChatCapabilities`: `rank`, `override-urgency`, `interest`, `upload` and `create-project`.
+`auth.DefaultChatCapabilities`: `rank`, `set-horizon`, `interest`, `upload` and `create-project`.
 Off by default are `decide`, `close` and `drop`, which the owner keeps a person's, and `record-answer`,
 because with nothing waiting for the person a text the model read could record an answer in the
 person's name. An act that needs a capability the chat does not hold is `403 agent_forbidden` with
@@ -249,13 +249,13 @@ within the API's rules the chat can, at once, file a ticket in any project of th
 may file in, replace a ticket's body, comment, ask a question of anyone in the tenant, link two
 tickets, watch a ticket, move a ticket forward or out of `blocked`, set a progress stage short of
 closing it, take a ticket backward, reopen it or withdraw a done where the API lets an agent — and,
-with the default capabilities, rank, set or withdraw an urgency override, register interest and
+with the default capabilities, rank, set a ticket's horizon, register interest and
 create a project. A person who gives the chat `decide`, `close`, `drop` or `record-answer` gives it
 those acts too, with no Run in front of them. The confidential instruction to the model is a request,
 not a hold: a steered model can copy what it read into a ticket or a comment people who may not read
 the original do read. Each act is recorded with the chat's mark, shown as a card while it happens,
 and reaches the open pages through the event stream; most can be undone by a person — a body replaced
-again from the record, a comment withdrawn, a link removed, an override withdrawn, a ticket dropped
+again from the record, a comment withdrawn, a link removed, a horizon set back, a ticket dropped
 with a reason, as tickets cannot be deleted — but an act that told other people something has told
 them. The open agent gates of [tokens.md H-6](tokens.md#h-6) have no tool in the chat. Mitigation:
 the default set, a narrower set in *What the assistant may do*, the cards, the activity's mark, and
