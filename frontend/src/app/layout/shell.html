@@ -163,6 +163,15 @@
             ><i class="pi pi-clock"></i>Time</a
           >
         }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'deleted-tickets']"
+            routerLinkActive="active"
+            data-testid="nav-deleted-tickets"
+            ><i class="pi pi-trash"></i>Deleted tickets</a
+          >
+        }
         <a
           class="item"
           [routerLink]="['/t', tenant, 'settings']"

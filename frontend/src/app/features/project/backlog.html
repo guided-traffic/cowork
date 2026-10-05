@@ -26,6 +26,11 @@
       ariaLabel="States"
       data-testid="state-filter"
     />
+    <app-saved-filters
+      [current]="currentFilter()"
+      [applied]="applied()"
+      (chosen)="applyFilter($event)"
+    />
     <span class="spacer"></span>
     <span class="muted tabular" data-testid="total">{{ summary() }}</span>
     <label class="closed-toggle">
