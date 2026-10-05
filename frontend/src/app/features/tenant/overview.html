@@ -24,7 +24,7 @@
       @for (project of summaries(); track project.key) {
         <a
           class="project"
-          [routerLink]="['/t', session.tenant(), 'p', project.key, 'backlog']"
+          [routerLink]="['/t', session.tenant(), 'p', project.key, 'board']"
           [attr.data-testid]="'project-' + project.key"
         >
           <div class="title">

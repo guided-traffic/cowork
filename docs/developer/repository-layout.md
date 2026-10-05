@@ -58,6 +58,7 @@ cowork/
 │   └── .golangci.yml
 ├── frontend/                   # Angular 22 workspace, project "frontend"
 │   ├── src/app/                # api/ (generated), brand/, theme/, core/, layout/, features/, shared/, dev/ (frontend.md)
+│   ├── e2e/                    # the end-to-end suite: Playwright config, specs, support/, the dark screenshots' pictures (testing.md)
 │   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
 │   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
 │   ├── ng-openapi-gen.json     # the client generator's configuration
@@ -68,7 +69,7 @@ cowork/
 ├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
-├── hack/                       # dev.sh + dev_demo.py (make dev); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
+├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
 │   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together
 ├── docs/

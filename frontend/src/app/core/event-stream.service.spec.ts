@@ -128,14 +128,14 @@ describe('EventStreamService', () => {
     it('opens the stream of the tenant and is connecting until it is open', () => {
       service.connect('acme');
 
-      expect(sources.map((source) => source.url)).toEqual(['/api/v1/tenants/acme/events']);
+      expect(sources.map((source) => source.url)).toEqual(['/api/v1/tenants/acme/events?me=true']);
       expect(service.status()).toBe('connecting');
     });
 
     it('writes the tenant into the path as one segment', () => {
       service.connect('a b/c');
 
-      expect(sources[0].url).toBe('/api/v1/tenants/a%20b%2Fc/events');
+      expect(sources[0].url).toBe('/api/v1/tenants/a%20b%2Fc/events?me=true');
     });
 
     it('is live once the stream is open', () => {
@@ -175,11 +175,17 @@ describe('EventStreamService', () => {
       expect(events).toEqual([]);
     });
 
-    it('listens to the events that name a ticket, to membership.changed, to resync and to unavailable (docs/adr/0054 D2)', () => {
+    it('listens to the events that name a ticket, to membership.changed, to inbox.changed, to resync and to unavailable (docs/adr/0054 D2)', () => {
       service.connect('acme');
 
       expect([...sources[0].eventNames].sort()).toEqual(
-        [...ticketEventNames, 'membership.changed', 'resync', 'unavailable'].sort(),
+        [
+          ...ticketEventNames,
+          'membership.changed',
+          'inbox.changed',
+          'resync',
+          'unavailable',
+        ].sort(),
       );
       expect([...ticketEventNames].sort()).toEqual([
         'comment.changed',
@@ -226,8 +232,8 @@ describe('EventStreamService', () => {
 
       expect(sources[0].isClosed).toBe(true);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events',
-        '/api/v1/tenants/globex/events',
+        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/tenants/globex/events?me=true',
       ]);
       expect(service.status()).toBe('connecting');
     });
@@ -257,8 +263,8 @@ describe('EventStreamService', () => {
       expect(service.status()).toBe('connecting');
       expect(events).toEqual([]);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events',
-        '/api/v1/tenants/globex/events',
+        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/tenants/globex/events?me=true',
       ]);
     });
 
@@ -371,6 +377,70 @@ describe('EventStreamService', () => {
       sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2);
 
       expect(events).toHaveLength(1);
+    });
+  });
+
+  describe('the person-level stream (docs/adr/0054 D1)', () => {
+    it("is held on the person's tenant while no tenant page is open", () => {
+      service.personal('acme');
+
+      expect(sources.map((source) => source.url)).toEqual(['/api/v1/tenants/acme/events?me=true']);
+      expect(service.status()).toBe('connecting');
+    });
+
+    it("follows the page's tenant over the person's, and goes back to the person's when the page leaves", () => {
+      service.personal('acme');
+      service.connect('globex');
+      service.connect(null);
+
+      expect(sources.map((source) => source.url)).toEqual([
+        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/tenants/globex/events?me=true',
+        '/api/v1/tenants/acme/events?me=true',
+      ]);
+      expect(sources.slice(0, 2).every((source) => source.isClosed)).toBe(true);
+    });
+
+    it("keeps the stream open when the page leaves a tenant that is the person's", () => {
+      service.personal('acme');
+      service.connect('acme');
+      sources[0].open();
+
+      service.connect(null);
+
+      expect(sources).toHaveLength(1);
+      expect(service.status()).toBe('live');
+    });
+
+    it('holds no stream for a person who belongs to no tenant', () => {
+      service.personal(null);
+
+      expect(sources).toEqual([]);
+      expect(service.status()).toBe('idle');
+    });
+
+    it('passes the unread count on', () => {
+      service.connect('acme');
+      sources[0].open();
+
+      sources[0].send('inbox.changed', '{"unread":3}');
+
+      expect(events).toEqual([{ name: 'inbox.changed', unread: 3 }]);
+    });
+
+    it.each([
+      ['text that is not JSON', 'not json'],
+      ['a JSON object without the count', '{}'],
+      ['a count that is text', '{"unread":"3"}'],
+      ['a negative count', '{"unread":-1}'],
+      ['a fraction', '{"unread":1.5}'],
+    ])('ignores an inbox.changed with %s', (_description, data) => {
+      service.connect('acme');
+      sources[0].open();
+
+      sources[0].send('inbox.changed', data);
+
+      expect(events).toEqual([]);
     });
   });
 
@@ -547,8 +617,8 @@ describe('EventStreamService', () => {
 
       vi.advanceTimersByTime(1);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events',
-        '/api/v1/tenants/acme/events',
+        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/tenants/acme/events?me=true',
       ]);
       expect(service.status()).toBe('polling');
     });
@@ -742,6 +812,20 @@ describe('EventStreamService', () => {
     beforeEach(() => {
       service.connect('acme');
       sources[0].open();
+    });
+
+    it('sends the latest unread count last when the tab is visible again', () => {
+      setVisibility('hidden');
+      sources[0].send('inbox.changed', '{"unread":1}');
+      sources[0].sendTicket('ticket.changed', 'acme/VKO-1', 2, 'edited', 'a');
+      sources[0].send('inbox.changed', '{"unread":2}');
+
+      setVisibility('visible');
+
+      expect(events).toEqual([
+        { name: 'ticket.changed', id: 'a', key: 'acme/VKO-1', version: 2, kind: 'edited' },
+        { name: 'inbox.changed', unread: 2 },
+      ]);
     });
 
     it('passes events on at once while the tab is visible', () => {

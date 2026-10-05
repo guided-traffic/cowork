@@ -447,7 +447,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated]
+    password_reset, deactivated, reactivated, read]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -771,6 +771,7 @@ SecurityClass:
   enum: [live, boundary, hardening, none]
 Urgency:
   type: string
+  description: The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
   enum: [now, release, next, later, icebox]
 Effort:
   type: string
@@ -834,7 +835,7 @@ Ticket:
       $ref: '#/Urgency'
     urgency_derived:
       $ref: '#/Urgency'
-    urgency_rule: {type: string, description: 'The rule that derived the urgency, such as v1:default (docs/adr/0010 D3)'}
+    urgency_rule: {type: string, description: 'The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)'}
     urgency_override:
       oneOf:
         - $ref: '#/UrgencyOverride'
@@ -919,6 +920,10 @@ TicketCreate:
       $ref: '#/Effort'
     parent: {type: string, description: 'A ticket key of the same project, short or full'}
     assignee: {type: string, format: uuid, description: A member of the tenant}
+    urgency:
+      $ref: '#/Urgency'
+    after: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly after; not with before'}
+    before: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly before; not with after'}
 TicketPatch:
   type: object
   additionalProperties: false
@@ -1461,6 +1466,52 @@ LinkList:
         $ref: '#/Link'
     next_cursor:
       type: [string, 'null']
+PrerequisiteNode:
+  type: object
+  description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
+  required: [key, title, state, blocked_from, assignee, progress, progress_refinement, progress_review,
+    progress_derived, depth, settled, repeated]
+  properties:
+    key: {type: string, description: 'The canonical key; a ticket of another project names it'}
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    blocked_from:
+      description: The state a blocked ticket came from; null unless it is blocked (docs/adr/0009 D2)
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    assignee:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    progress: {type: integer, minimum: 0, maximum: 100, description: 'The implementation stage as the ticket shows it (docs/adr/0017 D2, D3)'}
+    progress_refinement: {type: integer, minimum: 0, maximum: 100}
+    progress_review: {type: integer, minimum: 0, maximum: 100}
+    progress_derived: {type: boolean, description: The stages are derived from the ticket's children}
+    depth:
+      type: integer
+      minimum: 1
+      maximum: 8
+      description: 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
+    settled: {type: boolean, description: Done or dropped (docs/adr/0012 D6)}
+    repeated:
+      type: boolean
+      description: The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it
+PrerequisiteTree:
+  type: object
+  required: [items, next_cursor, open]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/PrerequisiteNode'
+    next_cursor:
+      type: [string, 'null']
+    open:
+      type: integer
+      minimum: 0
+      description: The open tickets of the whole tree the caller can see, each counted once, on every page
 TicketList:
   type: object
   required: [items, next_cursor]
@@ -1836,3 +1887,98 @@ ChatCapabilitiesUpdate:
       description: The whole set; an empty one leaves the chat the baseline
       items:
         $ref: '#/Capability'
+InboxReason:
+  type: string
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent]
+  description: |
+    Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
+    question they asked answered, a ticket they watch changed state or got a comment, a ticket that
+    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+InboxEntry:
+  type: object
+  required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
+  properties:
+    id: {type: string, format: uuid}
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    reason:
+      $ref: '#/InboxReason'
+    act:
+      $ref: '#/Activity'
+    blocker:
+      description: For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+      oneOf:
+        - $ref: '#/TicketRef'
+        - type: 'null'
+    withdrawn:
+      type: boolean
+      description: The comment or question the act is on has been withdrawn since
+    read: {type: boolean}
+    created_at: {type: string, format: date-time}
+InboxList:
+  type: object
+  required: [items, next_cursor, unread]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/InboxEntry'
+    next_cursor:
+      type: [string, 'null']
+    unread:
+      type: integer
+      description: The person's unread notifications in the tenants the request reaches
+InboxState:
+  type: object
+  required: [unread]
+  properties:
+    unread: {type: integer}
+InboxReadThrough:
+  type: object
+  additionalProperties: false
+  required: [through]
+  properties:
+    through:
+      type: string
+      format: uuid
+      description: The newest notification the person saw; it and every older one are marked read
+MyTicket:
+  type: object
+  required: [tenant, ticket]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/Ticket'
+MyTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MyTicket'
+    next_cursor:
+      type: [string, 'null']
+Decision:
+  type: object
+  required: [tenant, ticket, question]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    ticket:
+      $ref: '#/TicketRef'
+    question:
+      $ref: '#/Question'
+DecisionList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Decision'
+    next_cursor:
+      type: [string, 'null']

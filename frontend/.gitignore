@@ -39,6 +39,11 @@ testem.log
 /typings
 __screenshots__/
 
+# The end-to-end suite's output and the administrator's session of its last run
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/.auth/
+
 # System files
 .DS_Store
 Thumbs.db

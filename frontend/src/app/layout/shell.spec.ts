@@ -14,6 +14,7 @@ import { AuthService } from '../core/auth.service';
 import { ChatEntry, ChatService } from '../core/chat.service';
 import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
+import { InboxService } from '../core/inbox.service';
 import { ProjectsService } from '../core/projects.service';
 import { OpenableTenant, SessionService } from '../core/session.service';
 import { TenantService } from '../core/tenant.service';
@@ -111,6 +112,8 @@ describe('Shell', () => {
     projects: { isLoading: WritableSignal<boolean> };
   };
   let status: WritableSignal<StreamStatus>;
+  let personal: MockInstance<(tenant: string | null) => void>;
+  let unread: WritableSignal<number>;
   let canCreateProjects: WritableSignal<boolean>;
   let isAdmin: WritableSignal<boolean>;
   let logout: MockInstance<AuthService['logout']>;
@@ -131,6 +134,8 @@ describe('Shell', () => {
     person = signal<Me | undefined>(ada);
     projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
     status = signal<StreamStatus>('idle');
+    personal = vi.fn<(tenant: string | null) => void>();
+    unread = signal(0);
     canCreateProjects = signal(false);
     isAdmin = signal(false);
     logout = vi.fn<AuthService['logout']>().mockResolvedValue(null);
@@ -170,7 +175,8 @@ describe('Shell', () => {
         { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
         { provide: AuthService, useValue: { logout } },
         { provide: HARD_NAVIGATION, useValue: hardNavigate },
-        { provide: EventStreamService, useValue: { status } },
+        { provide: EventStreamService, useValue: { status, personal } },
+        { provide: InboxService, useValue: { count: () => unread() } },
         { provide: ThemeService, useValue: { preference, cycle } },
         { provide: VersionService, useValue: { get: version } },
         { provide: ChatService, useValue: chat },
@@ -188,6 +194,60 @@ describe('Shell', () => {
 
   const text = (page: HTMLElement, testId: string) =>
     page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
+
+  describe('the person-level pages (docs/adr/0018 D3, docs/adr/0020 D1)', () => {
+    it('offers the inbox, the tickets assigned to the person and the open decisions to every person', async () => {
+      tenant.set(null);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="nav-inbox"]')?.getAttribute('href')).toBe(
+        '/me/inbox',
+      );
+      expect(page.querySelector('[data-testid="nav-assigned"]')?.getAttribute('href')).toBe(
+        '/me/assigned',
+      );
+      expect(page.querySelector('[data-testid="nav-decisions"]')?.getAttribute('href')).toBe(
+        '/me/decisions',
+      );
+    });
+
+    it('shows the bell without a count while nothing is unread', async () => {
+      const { page } = await render();
+
+      const bell = page.querySelector('[data-testid="bell"]');
+      expect(bell?.getAttribute('href')).toBe('/me/inbox');
+      expect(bell?.getAttribute('aria-label')).toBe('Inbox');
+      expect(page.querySelector('[data-testid="bell-count"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-inbox-count"]')).toBeNull();
+    });
+
+    it('counts the unread notifications on the bell and beside the inbox, live', async () => {
+      const { fixture, page } = await render();
+
+      unread.set(3);
+      await fixture.whenStable();
+
+      expect(text(page, 'bell-count')).toBe('3');
+      expect(text(page, 'nav-inbox-count')).toBe('3');
+      expect(page.querySelector('[data-testid="bell"]')?.getAttribute('aria-label')).toBe(
+        'Inbox, 3 unread',
+      );
+      unread.set(120);
+      await fixture.whenStable();
+      expect(text(page, 'bell-count')).toBe('99+');
+    });
+
+    it("holds the person-level stream on the person's first tenant, and on none without one", async () => {
+      memberships.set([acme, globex]);
+      const { fixture } = await render();
+
+      expect(personal).toHaveBeenLastCalledWith('acme');
+      memberships.set([]);
+      await fixture.whenStable();
+      expect(personal).toHaveBeenLastCalledWith(null);
+    });
+  });
 
   describe("the person's own menu", () => {
     const items = (fixture: ComponentFixture<Shell>): MenuItem[] =>
@@ -772,17 +832,17 @@ describe('Shell', () => {
       ]);
     });
 
-    it('lists the projects of the tenant, each linked to its backlog', async () => {
+    it('lists the projects of the tenant, each linked to its board', async () => {
       projects.list.set([project('COW', 'Cowork'), project('OPS', 'Operations')]);
 
       const { page } = await render();
 
       const cow = page.querySelector('[data-testid="nav-project-COW"]');
-      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/board');
       expect(cow?.querySelector('.key')?.textContent).toBe('COW');
       expect(cow?.querySelector('.name')?.textContent).toBe('Cowork');
       expect(page.querySelector('[data-testid="nav-project-OPS"]')?.getAttribute('href')).toBe(
-        '/t/acme/p/OPS/backlog',
+        '/t/acme/p/OPS/board',
       );
       expect(page.querySelector('.empty')).toBeNull();
     });
@@ -854,6 +914,9 @@ describe('Shell', () => {
         link.getAttribute('data-testid'),
       );
       expect(shown).toEqual([
+        'nav-inbox',
+        'nav-assigned',
+        'nav-decisions',
         'nav-overview',
         'nav-members',
         'nav-group-mappings',
@@ -912,7 +975,7 @@ describe('Shell', () => {
       await fixture.whenStable();
       expect(active()).toEqual(['nav-settings']);
 
-      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/backlog');
+      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/board');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-project-COW']);
     });
@@ -946,7 +1009,11 @@ describe('Shell, creating a project', () => {
           useValue: { list: signal<Project[]>([]), projects: { isLoading: signal(false) } },
         },
         { provide: TenantService, useValue: { canCreateProjects, isAdmin: signal(false) } },
-        { provide: EventStreamService, useValue: { status: signal<StreamStatus>('idle') } },
+        {
+          provide: EventStreamService,
+          useValue: { status: signal<StreamStatus>('idle'), personal: vi.fn() },
+        },
+        { provide: InboxService, useValue: { count: () => 0 } },
         {
           provide: ThemeService,
           useValue: { preference: signal<ThemePreference>('system'), cycle: vi.fn() },

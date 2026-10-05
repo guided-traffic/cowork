@@ -77,7 +77,7 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
 | `state` | `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` | changed by transitions, and by the progress stages that close and reopen a ticket; below |
 | `severity` | `critical`, `high`, `medium`, `low`, `cosmetic` | [ADR 0010] D1 |
 | `security` | `live`, `boundary`, `hardening`, `none` | `threat` is required unless the class is `none`, and absent with `none` — `400` at `/threat` (`checkThreat`) and a table `CHECK` ([ADR 0010] D2) |
-| `urgency` | `now`, `release`, `next`, `later`, `icebox` | derived, may be overridden; below |
+| `urgency` | `now`, `release`, `next`, `later`, `icebox` | the ticket's horizon, set by a person or an agent; below |
 | `effort` | `XS`, `S`, `M`, `L` | a size ([ADR 0017] D1) |
 | block kind | `decision`, `human`, `product`, `release`, `external`, `ticket` | only while blocked |
 
@@ -136,43 +136,30 @@ parent, assignee, the three progress stages, the flag set with a class), `Update
 `SetUrgencyOverride`, `SetConfidential`, `TransitionTicket`, `EndDoneByHand` and
 `MoveTicketRank` (a move in the rank) raise `version` by one. A `PATCH` whose stages close or
 reopen the ticket writes its state with `TransitionTicket` too, with `bump` false: one request,
-one version. A re-derived urgency, derived stages and the first key the rank gives an unranked
-ticket (`RankUnrankedTicket`) do not: they are caused by other tickets' writes and would fail a
+one version. Derived stages and the first key the rank gives an unranked ticket
+(`RankUnrankedTicket`) do not: they are caused by other tickets' writes and would fail a
 concurrent writer for nothing ([ADR 0050] D1). Comments, questions, links, interest,
 attachments and time entries are entities of their own and leave the ticket's version alone.
 
-## Urgency
+## Urgency, the horizon
 
-Rule set v1 is [`domain.DeriveUrgency`](../../backend/internal/domain/ticket.go), first match
-([ADR 0010] D3):
+The five values are the ticket's horizon — a planning category a person or an agent sets, in
+whatever state the ticket is ([ADR 0010] D3 as amended 2026-10-04). Nothing derives it: rule set
+v2 has one row, [`domain.UrgencyDefault`](../../backend/internal/domain/ticket.go) `later` with the
+rule `UrgencyRuleDefault` `v2:default`, which every filing writes as `urgency_derived` and
+`urgency_rule`; no state, block or link changes them.
 
-| Inputs | Urgency | `urgency_rule` |
-|---|---|---|
-| blocked on `release` | `release` | `v1:release-block` |
-| blocked on `decision`, `human` or `product` | `icebox` | `v1:icebox-block` |
-| an open ticket of type `decision` blocks it | `icebox` | `v1:icebox-decision` |
-| anything else | `later` | `v1:default` |
-
-`now` and `next` therefore come only from an override: `PUT …/urgency-override` with a value,
-`DELETE` to withdraw; both with `If-Match`, both recorded as `overridden`, an agent's needing
-`override-urgency`. The reason is optional for a person — a drag between the backlog's urgency
-groups — and required of an agent, whose override without one is `400` at `/reason`
-(`overrideInputs`); `urgency_override.reason` is `null` without one (migration 19 relaxed the
-`CHECK` that tied the two). The override holds until a person or an agent withdraws it or sets
-another. The ticket shows the override when one stands, else the derived value;
-`urgency_derived` and `urgency_rule` are always there.
-
-`rederive` in [`links.go`](../../backend/internal/api/links.go) re-applies the rules when an
-input may have changed, comparing `UrgencyInputs.Normalized()` before and after: the state only
-as blocked or not, the block kind only while blocked, and whether an open decision blocks the
-ticket. A real change writes the new derivation with `RederiveUrgency`, without raising the
-version and without an act of its own; a standing override stays, the new derived value and
-rule beside it ([ADR 0010] D3). It runs for the target of a `blocks` link that is added or
-removed, for the ticket itself on every state change — a transition, or the done act and the
-reopen of the stages — and for the tickets a decision blocks when the decision opens or settles
-(a change between open and terminal) or when an open ticket becomes or stops being a decision.
-The inputs are read past the visibility predicate — the derivation is the ticket's, not the
-reader's — and only the derived value leaves.
+What a person or an agent sets is stored as the override: `PUT …/urgency-override` with a value,
+`DELETE` to return the ticket to `later`; both with `If-Match`, both recorded as `overridden`, an
+agent's needing `override-urgency`. The reason is optional for a person — a drag between the
+backlog's groups — and required of an agent, whose request without one is `400` at `/reason`
+(`overrideInputs`); `urgency_override.reason` is `null` without one. A filing names its horizon
+with `urgency`: another than `later` is written as the override by `InsertTicket`, set by the
+filer and without a reason, and an agent needs `override-urgency` for it (`filing.capabilities`
+in [`tickets.go`](../../backend/internal/api/tickets.go)). The ticket shows the override when one
+stands, else `later`. Migration 29 turned what rule set v1 had derived — `release` and `icebox`
+for blocked tickets and those an open decision blocked — into overrides set by nobody, so no
+ticket moved when the derivation was retired.
 
 ## Links
 
@@ -195,6 +182,33 @@ tenant's lock (`LockBlocks`) and refuses a cycle (`blocks_path_exists`) with
 `404` — and a listed link whose other end the caller cannot see is absent. A link is an act on
 both tickets (`linked`, `unlinked`, each with the other ticket in `Refs`). An existing link is
 `200` without a second act, a new one `201`; removing a missing link is `204`.
+
+### The prerequisite tree
+
+`GET …/{number}/prerequisites` ([ADR 0012] D6,
+[`prerequisites.go`](../../backend/internal/api/prerequisites.go)) is the tree of the tickets that
+block a ticket, what blocks those, and so on; `direction=up` reads the `blocks` links the other
+way, the dependents. The walk is SQL, `ListPrerequisites` and its mirror `ListDependents` in
+[`links.sql`](../../backend/internal/store/queries/read/links.sql):
+
+- **Each link once per depth, never each path.** The recursive part keeps `(ticket, the ticket it
+  blocks, depth)` with `UNION`, so a dense graph costs its links times the depth. A walk that
+  carried each path — the context's before this route — costs the number of paths: forty tickets
+  in eight layers of five, every one blocking the five below, are 5^8 paths and took eleven seconds
+  for one request; the same graph answers in milliseconds now
+  (`TestPrerequisiteTreeCostsItsLinksNotItsPaths`).
+- **Eight levels** (`treeDepth`), depth first, siblings by id — in the order they were filed.
+- **A ticket under two others** stands in full once, under the first of them nearest the root (the
+  smallest depth, then the earliest filed), and under each other one as a `repeated` leaf, without
+  what lies behind it. The context's `## Prerequisites` leaves the repeated ones out.
+- **Visibility.** Every step calls `app_ticket_visible` on the ticket it steps to: the walk never
+  passes a ticket the caller cannot see, so that ticket and whatever lies only behind it are absent,
+  and nothing is counted for them ([ADR 0065] D5).
+- **`open`** counts the open tickets of the whole tree, each once, on every page (a window count
+  before the page is cut); `settled` marks done and dropped.
+- **Paging.** The cursor carries the node's path — its ids from the first level down, sixteen
+  bytes each in base64url, which at eight levels keeps the cursor within the document's 512
+  characters (`TestATreeCursorFitsTheDocument`) — bound to the ticket and the direction.
 
 ## Transitions
 
@@ -276,7 +290,13 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
   cannot see included (`LastRank`, `NextRankedTicket`, `PreviousRankedTicket`) — so two writes
   never compute a key from the same neighbours and no key is handed out twice.
 - **A filing, a reopen, a withdrawal and a lower stage that reopens** get `rankAtBottom`: the key
-  after the greatest of the project.
+  after the greatest of the project — for a filing the end of its horizon, since a horizon's group
+  is the rank read over it.
+- **A filing with a place** — `after` or `before`, a number of the same project — gets
+  `rankBeside` ([ADR 0014] D2 as amended 2026-10-04): under the lock, the neighbour the caller can
+  see, open and in the horizon the ticket is filed into (else `400` at the pointer, or `409
+  state_conflict` for a done or dropped one), and a key strictly between its key and the next key
+  of any ticket on that side, as a move computes it. The filing act names the neighbour.
 - **A move** is `PUT …/{number}/rank` with `{"after": n}` or `{"before": n}`, a number of the
   same project. Under the lock it reads the ticket and the neighbour again, and beside the
   neighbour on that side (`beside`) the first open ticket the caller can see
@@ -454,10 +474,24 @@ where they name an agent's `via <agent>` (`markdown.via`, `tools.actLine`). A li
 urgency override's setter carry no mark of their own — no view of the UI shows them; the activity
 marks their acts ([tokens.md H-50](../security/tokens.md#h-50)).
 
+## Who is told
+
+A person's inbox ([ADR 0020]) holds a notification for each act of D2 that concerns them: a ticket
+assigned to them, a question asked of them, a question they asked answered, a state change of a
+ticket they watch — a block's reason comes only with a move into `blocked` —, a comment on one, a
+ticket that blocks one they watch reaching `done` or `dropped`, and an `urgent` stake on a ticket
+assigned to them. The watchers are everyone with a stake of any weight, the assignee, the reporter
+and whoever asked or was asked an open question on the ticket ([ADR 0013] D6). A person's own act
+tells them nothing, nor does their agent's, and a person who cannot see the ticket is told nothing of
+it ([ADR 0065] D5). The table and the store's side are
+[data-access.md](data-access.md#notifications). A mention in a comment tells nobody yet: how a
+comment names a person is not decided.
+
 ## Not built
 
-The score of [ADR 0014] D3–D5 is not built — no score beside the rank, and no person-level
-lists for it to order — nor is the rebalancing of the rank's keys. There is no `deleted_at` and
+The score of [ADR 0014] D3–D5 is not built — no score beside the rank; the person-level lists,
+which it would order, are ordered by the tenant, the project and the project's rank meanwhile — nor
+is the rebalancing of the rank's keys. There is no `deleted_at` and
 no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
@@ -473,6 +507,7 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0014]: ../adr/0014-rank-is-the-decision-score-is-the-warning.md
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
+[ADR 0020]: ../adr/0020-notifications-are-an-in-app-inbox-per-person.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0022]: ../adr/0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md

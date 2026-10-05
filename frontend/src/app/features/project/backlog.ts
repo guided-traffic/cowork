@@ -533,7 +533,7 @@ export class Backlog {
       this.messages.add({
         severity: 'warn',
         summary: 'Changed meanwhile',
-        detail: `${this.shortKey(key)} was changed by someone else: its urgency is ${error.current.urgency} now.`,
+        detail: `${this.shortKey(key)} was changed by someone else: its horizon is ${error.current.urgency} now.`,
         life: 6000,
       });
     } else {

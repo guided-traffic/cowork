@@ -78,6 +78,16 @@ paths:
     $ref: './me.yaml#/chat'
   /api/v1/me/repositories/lookup:
     $ref: './repositories.yaml#/lookup'
+  /api/v1/me/inbox:
+    $ref: './me.yaml#/inbox'
+  /api/v1/me/inbox/read:
+    $ref: './me.yaml#/inboxRead'
+  /api/v1/me/inbox/{notification}/read:
+    $ref: './me.yaml#/notificationRead'
+  /api/v1/me/assigned:
+    $ref: './me.yaml#/assigned'
+  /api/v1/me/decisions:
+    $ref: './me.yaml#/decisions'
   /api/v1/tenants:
     $ref: './tenants.yaml#/tenants'
   /api/v1/tenants/{tenant}:
@@ -164,6 +174,8 @@ paths:
     $ref: './comments.yaml#/activity'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest:
     $ref: './tickets.yaml#/interest'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites:
+    $ref: './tickets.yaml#/prerequisites'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries:
     $ref: './time.yaml#/ticketTime'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}:

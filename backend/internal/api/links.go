@@ -167,21 +167,10 @@ func (s *Server) LinkTickets(ctx context.Context, req apigen.LinkTicketsRequestO
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		var before domain.UrgencyInputs
-		if e.typ == domain.LinkBlocks {
-			if before, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
-				return err
-			}
-		}
 		me := principal(ctx)
 		ins, err := addLink(ctx, w, t, e, "path:other")
 		if err != nil {
 			return err
-		}
-		if e.typ == domain.LinkBlocks {
-			if err := rederive(ctx, w, t, e.target.ID, before); err != nil {
-				return err
-			}
 		}
 		out = e.view(t, ins.ID, apigen.Person{Id: me.PersonID, DisplayName: me.DisplayName, Username: nullableString(nil)}, e.other.row)
 		out.CreatedAt, created = ins.CreatedAt, true
@@ -242,92 +231,14 @@ func (s *Server) UnlinkTickets(ctx context.Context, req apigen.UnlinkTicketsRequ
 		if err != nil {
 			return err
 		}
-		var before domain.UrgencyInputs
-		if e.typ == domain.LinkBlocks {
-			if before, err = urgencyInputs(ctx, w.Reader, t, e.target.ID); err != nil {
-				return err
-			}
-		}
 		if _, err := w.DeleteLink(ctx, writeq.DeleteLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source.ID, TargetID: e.target.ID}); err != nil {
 			return err
 		}
 		e.record(w, t, actionUnlinked, existing.ID)
-		if e.typ == domain.LinkBlocks {
-			return rederive(ctx, w, t, e.target.ID, before)
-		}
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
 	return apigen.UnlinkTickets204Response{}, nil
-}
-
-// urgencyInputs reads the facts rule set v1 derives from.
-func urgencyInputs(ctx context.Context, r *store.Reader, t tenantScope, id uuid.UUID) (domain.UrgencyInputs, error) {
-	row, err := r.GetUrgencyInputs(ctx, readq.GetUrgencyInputsParams{TenantID: t.ID, ID: id})
-	if err != nil {
-		return domain.UrgencyInputs{}, fmt.Errorf("read the urgency inputs: %w", err)
-	}
-	in := domain.UrgencyInputs{State: row.State, OpenDecisionBlocker: row.OpenDecisionBlocker}
-	if row.BlockKind != nil {
-		in.BlockKind = *row.BlockKind
-	}
-	return in, nil
-}
-
-// rederive applies rule set v1 again when one of its inputs changed. A
-// standing override stays — it holds until a person or an agent withdraws it
-// or sets another — and the new derived value and its rule show beside it
-// (docs/adr/0010 D3). The derivation is no act of its own: the act that
-// changed the input is recorded.
-func rederive(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID, before domain.UrgencyInputs) error {
-	after, err := urgencyInputs(ctx, w.Reader, t, id)
-	if err != nil {
-		return err
-	}
-	if after.Normalized() == before.Normalized() {
-		return nil
-	}
-	u, rule := domain.DeriveUrgency(after)
-	if err := w.RederiveUrgency(ctx, writeq.RederiveUrgencyParams{TenantID: t.ID, ID: id, UrgencyDerived: u, UrgencyRule: rule}); err != nil {
-		return fmt.Errorf("derive the urgency again: %w", err)
-	}
-	return nil
-}
-
-// dependent is a ticket whose urgency derivation reads another ticket, with
-// its inputs before a change of that ticket.
-type dependent struct {
-	id     uuid.UUID
-	before domain.UrgencyInputs
-}
-
-// dependentsOf reads the tickets a ticket blocks and their inputs, before a
-// change of the ticket that may be one of their inputs: a decision opening
-// or settling (docs/adr/0010 D3).
-func dependentsOf(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID) ([]dependent, error) {
-	rows, err := w.ListBlockedTickets(ctx, readq.ListBlockedTicketsParams{TenantID: t.ID, TicketID: id})
-	if err != nil {
-		return nil, fmt.Errorf("list the blocked tickets: %w", err)
-	}
-	out := make([]dependent, 0, len(rows))
-	for _, id := range rows {
-		in, err := urgencyInputs(ctx, w.Reader, t, id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, dependent{id: id, before: in})
-	}
-	return out, nil
-}
-
-// rederiveAll derives the dependents' urgency again after the change.
-func rederiveAll(ctx context.Context, w *store.Writer, t tenantScope, deps []dependent) error {
-	for _, d := range deps {
-		if err := rederive(ctx, w, t, d.id, d.before); err != nil {
-			return err
-		}
-	}
-	return nil
 }

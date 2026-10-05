@@ -278,7 +278,8 @@ func (s *Server) readTicket(ctx context.Context, t tenantScope, projectKey strin
 	return row, err
 }
 
-// CreateTicket files a ticket (docs/adr/0007, 0010, 0065 D2).
+// CreateTicket files a ticket (docs/adr/0007, 0010, 0065 D2), into its
+// horizon at its place (docs/adr/0010 D3, docs/adr/0014 D2).
 func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketRequestObject) (apigen.CreateTicketResponseObject, error) {
 	t := tenantFrom(ctx)
 	body := *req.Body
@@ -289,13 +290,17 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 	if perr := checkThreat(domain.SecurityClass(body.Security), body.Threat); perr != nil {
 		return nil, perr
 	}
+	f, perr := filingOf(body)
+	if perr != nil {
+		return nil, perr
+	}
 	var created store.TicketRow
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		p, err := fileableProject(ctx, w.Reader, t, req.Project)
+		p, err := fileableProject(ctx, w.Reader, t, req.Project, f.capabilities()...)
 		if err != nil {
 			return err
 		}
-		ins, err := s.newTicket(ctx, w, t, p, body)
+		ins, near, err := s.newTicket(ctx, w, t, p, body, f)
 		if err != nil {
 			return err
 		}
@@ -307,9 +312,13 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 			return err
 		}
 		key := domain.FullKey(t.Slug, p.Key, ins.Number)
-		w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key, Action: actionCreated,
-			After: map[string]any{fieldType: body.Type, "title": body.Title, "severity": body.Severity,
-				"security": body.Security, "effort": body.Effort, "urgency": ins.UrgencyDerived}})
+		after := map[string]any{fieldType: body.Type, "title": body.Title, "severity": body.Severity,
+			"security": body.Security, "effort": body.Effort, "urgency": f.horizon}
+		if near != nil {
+			after[f.place.side()] = ticketKey(t, *near)
+		}
+		w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key, Action: actionCreated, After: after,
+			Notices: told(store.NoticeAssigned, ins.AssigneeID)})
 		if ins.Confidential {
 			w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key,
 				Action: "confidential_set", Reason: "the security class is " + string(body.Security)})
@@ -341,9 +350,49 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		ETag: etag(created.Version), Location: &location}}, nil
 }
 
+// filing is what a filing decides beyond the ticket's fields: the horizon
+// it is filed into and the ticket it is placed next to, nil at the bottom.
+type filing struct {
+	horizon domain.Urgency
+	place   *rankTarget
+}
+
+// filingOf reads a filing's horizon, later when left out (docs/adr/0010 D3),
+// and its place, at most one neighbour (docs/adr/0014 D2).
+func filingOf(b apigen.TicketCreate) (filing, *problem.Error) {
+	f := filing{horizon: domain.UrgencyDefault}
+	if b.Urgency != nil {
+		f.horizon = domain.Urgency(*b.Urgency)
+	}
+	switch {
+	case b.After != nil && b.Before != nil:
+		return f, problem.Field("/before", "a filing names at most one neighbour")
+	case b.After != nil:
+		f.place = &rankTarget{after: true, number: *b.After}
+	case b.Before != nil:
+		f.place = &rankTarget{number: *b.Before}
+	}
+	return f, nil
+}
+
+// capabilities are what an agent's filing needs beyond the baseline:
+// override-urgency for a horizon other than later, rank for a place
+// (docs/adr/0043 D4).
+func (f filing) capabilities() []string {
+	var caps []string
+	if f.horizon != domain.UrgencyDefault {
+		caps = append(caps, auth.CapOverrideUrgency)
+	}
+	if f.place != nil {
+		caps = append(caps, auth.CapRank)
+	}
+	return caps
+}
+
 // fileableProject reads the project a ticket is filed in: visible, open,
-// and the caller a member there with write scope (docs/adr/0043 D2).
-func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key string) (project, error) {
+// and the caller a member there with write scope (docs/adr/0043 D2) and, for
+// an agent, every capability named.
+func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key string, capabilities ...string) (project, error) {
 	p, err := visibleProject(ctx, r, t, key)
 	if err != nil {
 		return p, err
@@ -355,6 +404,13 @@ func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key st
 	if perr := auth.Authorize(principal(ctx), role, work); perr != nil {
 		return p, perr
 	}
+	for _, c := range capabilities {
+		need := work
+		need.Capability = c
+		if perr := auth.Authorize(principal(ctx), role, need); perr != nil {
+			return p, perr
+		}
+	}
 	if p.ArchivedAt != nil {
 		return p, problem.New(problem.ProjectArchived, "the project is archived")
 	}
@@ -362,11 +418,12 @@ func fileableProject(ctx context.Context, r *store.Reader, t tenantScope, key st
 }
 
 // newTicket validates a new ticket's references and derives what is derived:
-// the number, the rank at the bottom of the project (docs/adr/0014 D2), the
-// urgency (docs/adr/0010 D3) and the confidential flag (docs/adr/0065 D2).
-// The number's counter row is the project's rank lock as well, taken before
-// any ticket row is written.
-func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, p project, body apigen.TicketCreate) (writeq.InsertTicketParams, error) {
+// the number, the rank at the filing's place or the bottom of the project
+// (docs/adr/0014 D2), the horizon (docs/adr/0010 D3) and the confidential
+// flag (docs/adr/0065 D2). It returns the ticket placed next to, nil at the
+// bottom. The number's counter row is the project's rank lock as well, taken
+// before any ticket row is written.
+func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, p project, body apigen.TicketCreate, f filing) (writeq.InsertTicketParams, *store.TicketRow, error) {
 	caller := principal(ctx)
 	ins := writeq.InsertTicketParams{
 		TenantID: t.ID, ProjectID: p.ID, Type: domain.TicketType(body.Type), Title: body.Title,
@@ -378,27 +435,36 @@ func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, 
 	if body.Body != nil {
 		ins.Body = *body.Body
 	}
-	ins.UrgencyDerived, ins.UrgencyRule = domain.DeriveUrgency(domain.UrgencyInputs{State: domain.StateFiled})
+	ins.UrgencyDerived, ins.UrgencyRule = domain.UrgencyDefault, domain.UrgencyRuleDefault
+	if f.horizon != domain.UrgencyDefault {
+		horizon := f.horizon
+		ins.UrgencyOverride, ins.UrgencyOverrideBy = &horizon, &caller.PersonID
+	}
 	if body.Parent != nil {
 		parent, perr := resolveParent(ctx, w.Reader, t, p, *body.Parent)
 		if perr != nil {
-			return ins, perr
+			return ins, nil, perr
 		}
 		ins.ParentID = &parent
 	}
 	if body.Assignee != nil {
 		if err := checkAssignee(ctx, w.Reader, t, p.ID, *body.Assignee); err != nil {
-			return ins, err
+			return ins, nil, err
 		}
 		ins.AssigneeID = body.Assignee
 	}
 	number, err := w.NextTicketNumber(ctx, writeq.NextTicketNumberParams{TenantID: t.ID, ProjectID: p.ID})
 	if err != nil {
-		return ins, fmt.Errorf("next ticket number: %w", err)
+		return ins, nil, fmt.Errorf("next ticket number: %w", err)
 	}
 	ins.Number = number
-	ins.Rank, err = rankAtBottom(ctx, w, t, p.ID)
-	return ins, err
+	if f.place == nil {
+		ins.Rank, err = rankAtBottom(ctx, w, t, p.ID)
+		return ins, nil, err
+	}
+	near, key, err := rankBeside(ctx, w, t, p.ID, *f.place, f.horizon)
+	ins.Rank = key
+	return ins, &near, err
 }
 
 // checkThreat holds threat to the security class (docs/adr/0010 D2).
@@ -496,14 +562,6 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 	if err != nil {
 		return store.TicketRow{}, err
 	}
-	// An open ticket turning into a decision, or out of one, is an input of
-	// the tickets it blocks (docs/adr/0010 D3).
-	var deps []dependent
-	if (tc.row.Type == domain.TypeDecision) != (ch.params.Type == domain.TypeDecision) && !tc.row.State.Terminal() {
-		if deps, err = dependentsOf(ctx, w, t, tc.row.ID); err != nil {
-			return store.TicketRow{}, err
-		}
-	}
 	if _, err := w.UpdateTicketFields(ctx, ch.params); errors.Is(err, pgx.ErrNoRows) {
 		return store.TicketRow{}, stale(tc.row.Version, pick(ch.before, ch.sent))
 	} else if err != nil {
@@ -518,9 +576,6 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 		if err := sm.write(ctx, w, t, tc, ch.params, body, explainedBy); err != nil {
 			return store.TicketRow{}, err
 		}
-	}
-	if err := rederiveAll(ctx, w, t, deps); err != nil {
-		return store.TicketRow{}, err
 	}
 	if sm != nil || changes(changedAfter, fieldParent, "effort", fieldProgress, fieldRefinement, fieldReview) {
 		if err := refreshProgress(ctx, w, t, tc.row.ParentID, ch.params.ParentID); err != nil {
@@ -590,7 +645,8 @@ func (m *stageMove) write(ctx context.Context, w *store.Writer, t tenantScope, t
 	}
 	w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 		Action: actionTransitioned, Before: map[string]any{fieldState: string(m.change.from)}, After: m.after,
-		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs})
+		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs,
+		Notices: stateNotices(m.change.to)})
 	return nil
 }
 
@@ -826,7 +882,9 @@ func recordTicketChange(w *store.Writer, t tenantScope, tc ticketCtx, before, af
 			Before: b, After: a, ExplainedBy: explainedBy}
 	}
 	if _, ok := after[fieldAssignee]; ok {
-		w.Record(ev("assigned", map[string]any{fieldAssignee: before[fieldAssignee]}, map[string]any{fieldAssignee: after[fieldAssignee]}))
+		e := ev("assigned", map[string]any{fieldAssignee: before[fieldAssignee]}, map[string]any{fieldAssignee: after[fieldAssignee]})
+		e.Notices = told(store.NoticeAssigned, ch.params.AssigneeID)
+		w.Record(e)
 		delete(before, fieldAssignee)
 		delete(after, fieldAssignee)
 	}
@@ -1053,4 +1111,13 @@ func notModified(ifNoneMatch *string, etag string) bool {
 		return false
 	}
 	return slices.Contains(strings.Split(strings.ReplaceAll(*ifNoneMatch, " ", ""), ","), etag)
+}
+
+// told is the notice of an act that names one person (docs/adr/0020 D2) — the
+// assignee, the person asked —, none where it names nobody.
+func told(reason string, person *uuid.UUID) []store.Notice {
+	if person == nil {
+		return nil
+	}
+	return []store.Notice{{Reason: reason, People: []uuid.UUID{*person}}}
 }

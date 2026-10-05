@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
@@ -19,6 +20,7 @@ const (
 	entityInterest = "interest"
 	actionInterest = "interest"
 	weightWatch    = "watch"
+	weightUrgent   = "urgent"
 )
 
 // ListInterest lists who holds a stake in a ticket (docs/adr/0013 D2).
@@ -110,6 +112,10 @@ func (s *Server) SetInterest(ctx context.Context, req apigen.SetInterestRequestO
 		}
 		if err != nil {
 			return fmt.Errorf("write the interest: %w", err)
+		}
+		if weight == weightUrgent && cur.Weight != weightUrgent && tc.row.AssigneeID != nil {
+			// An urgent stake registered on an assigned ticket (docs/adr/0020 D2).
+			ev.Notices = []store.Notice{{Reason: store.NoticeUrgent, People: []uuid.UUID{*tc.row.AssigneeID}}}
 		}
 		w.Record(ev)
 		out, err = w.GetInterest(ctx, key)

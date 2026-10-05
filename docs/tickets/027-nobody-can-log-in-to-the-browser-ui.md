@@ -21,7 +21,8 @@ the local administrator ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-loc
 local accounts ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)),
 CSRF ([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)),
 the creation of tenants and tokens, and the UI's login, password, tokens, accounts and first-tenant
-pages. Its end-to-end paths are T29's.
+pages. Its end-to-end paths run in the tier of T29 — the local form, a temporary password, *Sign
+in with Dex*, the cookie, a write past the CSRF check and the sign-out, in Chromium and WebKit.
 
 Built on this branch, both items of the work list:
 
@@ -55,5 +56,5 @@ merged.
   log in as `dev`, keep `__Host-cowork-session` (Secure, HttpOnly, Lax), open the live stream,
   write a comment through the session (the CSRF check passes from `https://localhost:4200`), sign
   out and are sent to the login again. Over plain `http://localhost` WebKit dropped the cookie,
-  which is why development serves HTTPS. Not repeated against this branch: the browser was not
-  run.
+  which is why development serves HTTPS. Not repeated for the work of this ticket: neither
+  `make dev` nor the end-to-end tier, which builds the images, was run for it.

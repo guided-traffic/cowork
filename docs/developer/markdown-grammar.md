@@ -46,7 +46,7 @@ left out.
 | `title` | the title |
 | `type`, `state`, `severity`, `security` | the vocabulary values |
 | `threat` | the threat; only when `security` is not `none` |
-| `urgency` | the urgency the ticket shows: the override when one stands, else the derived value |
+| `urgency` | the ticket's horizon: the one set on it, else `later` |
 | `effort` | the effort |
 | `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
 | `progress` | always present: the implementation stage, likewise |
@@ -128,7 +128,9 @@ charset=utf-8` without an `ETag`. In order:
 3. `## Links`: `- <name read from this ticket> <key> — <title> (<state>, <assignee>)`.
 4. `## Prerequisites`: `<open> of <all> open.`, then the tree of the tickets that block it, two
    spaces of indent per level, `- <key> — <title> (<state>, <assignee>, <implementation stage>%)`;
-   eight levels at most, stopping at a ticket the reader cannot see.
+   the tree of `…/prerequisites` ([domain.md](domain.md#the-prerequisite-tree)) — eight levels at
+   most, stopping at a ticket the reader cannot see — with each prerequisite once: under the first
+   ticket it blocks, not repeated under the others.
 5. `## Recent comments` — left out for `comments=0` —: the last ones, oldest of them first, each
    `**<author>** via <agent>, <time UTC>:` and its text as a block quote, or `[withdrawn]`.
 6. `## Attachments`: `- <name> — <type>, <size> — <URL>`.

@@ -13,6 +13,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
+	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
@@ -24,6 +25,11 @@ const opStreamEvents = "streamEvents"
 // defaultHeartbeat keeps proxies from closing an idle stream
 // (docs/adr/0054 D5).
 const defaultHeartbeat = 20 * time.Second
+
+// inboxDebounce gathers a burst of changes of the person's inbox — an agent
+// commenting in a loop, every notification marked read at once — into one
+// count.
+const inboxDebounce = 100 * time.Millisecond
 
 // serveEvents streams the tenant's events the caller may see
 // (docs/adr/0054). The pipeline has authenticated the caller and admitted
@@ -41,10 +47,18 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.NotReady, "this server streams no events; poll the lists"))
 		return
 	}
-	filter, err := h.streamFilter(ctx, t, p)
+	me := r.URL.Query().Get("me") == "true"
+	filter, err := h.streamFilter(ctx, t, p, me)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
+	}
+	unread := -1
+	if me {
+		if unread, err = h.personUnread(ctx); err != nil {
+			h.writeError(w, r, err)
+			return
+		}
 	}
 	var last *uuid.UUID
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
@@ -69,38 +83,62 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 	for _, e := range replay {
 		writeEvent(w, e)
 	}
+	if me {
+		writeInbox(w, unread)
+	}
 	flusher.Flush()
-	h.pump(ctx, w, flusher, stream, t, p, filter)
+	h.pump(ctx, w, flusher, stream, t, p, me, filter)
+}
+
+// personUnread is the unread count a person-level stream tells: the person's
+// in every tenant the request reaches (GET /api/v1/me/inbox).
+func (h *handler) personUnread(ctx context.Context) (int, error) {
+	tenants, err := h.personTenants(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	return h.unread(ctx, tenants)
+}
+
+// pumpState is what a stream's pump holds between two events: the filter it
+// computed last, how many of the stream's admission changes that filter
+// knows, and the wait of a burst of inbox changes.
+type pumpState struct {
+	filter     events.Filter
+	refiltered uint64
+	inbox      debounce
 }
 
 // pump writes the stream's events until it ends: the client leaves, the hub
 // ends it, or the heartbeat finds the token or the membership gone. An act
 // that changes what the stream may admit makes it compute its filter again
-// before the next event, and so does every heartbeat (docs/adr/0054 D3).
-func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, t tenantScope, p auth.Principal, filter events.Filter) {
+// before the next event, and so does every heartbeat (docs/adr/0054 D3). A
+// person-level stream tells the unread count once a burst of inbox changes is
+// over.
+func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, t tenantScope, p auth.Principal, me bool, filter events.Filter) {
 	beat := h.opts.Heartbeat
 	if beat <= 0 {
 		beat = defaultHeartbeat
 	}
 	ticker := time.NewTicker(beat)
 	defer ticker.Stop()
-	// refiltered is how many of the stream's admission changes the filter knows.
-	var refiltered uint64
+	st := pumpState{filter: filter}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case e := <-stream.C:
-			if e.Refilter > refiltered {
-				var ok bool
-				if filter, refiltered, ok = h.refilter(ctx, stream, t, p); !ok {
-					return
-				}
+			if !h.handOn(ctx, w, stream, &st, e, t, p, me) {
+				return
 			}
-			if e.Withheld || (e.Unjudged && !filter.Admits(e)) {
-				continue
+		case <-st.inbox.due:
+			st.inbox.due = nil
+			unread, err := h.personUnread(ctx)
+			if err != nil {
+				h.streamFailed(ctx, err)
+				return
 			}
-			writeEvent(w, e)
+			writeInbox(w, unread)
 		case <-stream.Done:
 			if stream.Reason != "" {
 				writeControl(w, stream.Reason)
@@ -113,16 +151,39 @@ func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.
 				return
 			}
 			seen := h.opts.Events.Changes(stream)
-			f, err := h.streamFilter(ctx, now, p)
+			f, err := h.streamFilter(ctx, now, p, me)
 			if err != nil {
 				return
 			}
 			h.opts.Events.Refilter(stream, f, seen)
-			filter, refiltered = f, max(refiltered, seen)
+			st.filter, st.refiltered = f, max(st.refiltered, seen)
 			_, _ = fmt.Fprint(w, ": heartbeat\n\n")
 		}
 		flusher.Flush()
 	}
+}
+
+// handOn handles one event the hub handed over: it computes the stream's
+// filter again first when the event changed what the stream may admit, starts
+// the wait of an inbox burst, drops what the hub withheld or what the filter
+// refuses of an event the hub could not judge, and writes the rest
+// (writeStreamed). It is false when the stream must end.
+func (h *handler) handOn(ctx context.Context, w http.ResponseWriter, stream *events.Stream, st *pumpState, e events.Event, t tenantScope, p auth.Principal, me bool) bool {
+	if e.Refilter > st.refiltered {
+		f, seen, ok := h.refilter(ctx, stream, t, p, me)
+		if !ok {
+			return false
+		}
+		st.filter, st.refiltered = f, seen
+	}
+	switch {
+	case e.Entity == store.EntityInbox:
+		st.inbox.start()
+		return true
+	case e.Withheld || (e.Unjudged && !st.filter.Admits(e)):
+		return true
+	}
+	return h.writeStreamed(ctx, w, e, t, p)
 }
 
 // refilter computes what the stream admits again after an act that changes
@@ -130,26 +191,77 @@ func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.
 // projects they see. A person the boundary no longer admits ends the stream,
 // as the heartbeat would. It answers the filter and how many admission
 // changes it knows.
-func (h *handler) refilter(ctx context.Context, stream *events.Stream, t tenantScope, p auth.Principal) (events.Filter, uint64, bool) {
+func (h *handler) refilter(ctx context.Context, stream *events.Stream, t tenantScope, p auth.Principal, me bool) (events.Filter, uint64, bool) {
 	seen := h.opts.Events.Changes(stream)
 	now, perr := h.boundary(ctx, t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
 	if perr != nil {
 		return events.Filter{}, 0, false
 	}
-	f, err := h.streamFilter(ctx, now, p)
+	f, err := h.streamFilter(ctx, now, p, me)
 	if err != nil {
+		h.streamFailed(ctx, err)
 		return events.Filter{}, 0, false
 	}
 	h.opts.Events.Refilter(stream, f, seen)
 	return f, seen, true
 }
 
+// debounce is the wait after the first inbox change of a burst
+// (inboxDebounce); due is nil while none is waiting.
+type debounce struct{ due <-chan time.Time }
+
+func (d *debounce) start() {
+	if d.due == nil {
+		d.due = time.After(inboxDebounce)
+	}
+}
+
+// writeStreamed writes an event the hub handed over: one of the stream's
+// tenant as it is, and a person-level one of another tenant — a question asked
+// of the person — only while the person belongs to that tenant and sees the
+// ticket, and a token restricted to a tenant never (docs/adr/0054 D1, D3,
+// docs/adr/0035 D3). That one carries no id: the stream's replay point stays
+// its tenant's (D5). It is false when the judgement failed.
+func (h *handler) writeStreamed(ctx context.Context, w http.ResponseWriter, e events.Event, t tenantScope, p auth.Principal) bool {
+	if e.Tenant == t.ID {
+		writeEvent(w, e)
+		return true
+	}
+	if restricted(p) && e.Tenant != p.RestrictedTenantID {
+		return true
+	}
+	var visible bool
+	err := h.opts.DB.InTenant(ctx, e.Tenant, func(r *store.Reader) error {
+		var err error
+		visible, err = r.SeesPublishedTicket(ctx, readq.SeesPublishedTicketParams{TenantID: e.Tenant, ProjectID: e.Project,
+			Confidential: e.Confidential, AssigneeID: e.Assignee, ReporterID: e.Reporter})
+		return err
+	})
+	if err != nil {
+		h.streamFailed(ctx, err)
+		return false
+	}
+	if visible {
+		writeAddressed(w, e)
+	}
+	return true
+}
+
+// streamFailed logs why a stream ended on a failure of its own; the client
+// reconnects.
+func (h *handler) streamFailed(ctx context.Context, err error) {
+	if ctx.Err() == nil {
+		h.logger.Error("event stream ended", "request_id", requestid.From(ctx), "error", err)
+	}
+}
+
 // streamFilter computes what the stream admits: the projects visible to the
 // caller now, which a project-restricted token narrows to its own, and the
-// confidential rule (docs/adr/0054 D3, docs/adr/0065 D5).
-func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Principal) (events.Filter, error) {
+// confidential rule (docs/adr/0054 D3, docs/adr/0065 D5); me marks a
+// person-level stream.
+func (h *handler) streamFilter(ctx context.Context, t tenantScope, p auth.Principal, me bool) (events.Filter, error) {
 	f := events.Filter{Person: p.PersonID, Admin: t.Role == domain.RoleAdmin, Projects: map[uuid.UUID]bool{},
-		RestrictedProject: p.RestrictedProjectID}
+		RestrictedProject: p.RestrictedProjectID, Me: me}
 	err := h.opts.DB.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		ids, err := r.ListVisibleProjectIDs(ctx, t.ID)
 		for _, id := range ids {
@@ -203,16 +315,35 @@ type membershipData struct {
 }
 
 func writeEvent(w http.ResponseWriter, e events.Event) {
-	data, _ := json.Marshal(eventData{Key: e.Key, Version: e.Version, Kind: e.Action})
+	// #nosec G705 -- text/event-stream of a uuid, a fixed event name and JSON the server encodes; no HTML
+	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Name(), dataOf(e))
+}
+
+// writeAddressed writes a person-level event of another tenant than the
+// stream's, without an id (writeStreamed).
+func writeAddressed(w http.ResponseWriter, e events.Event) {
+	// #nosec G705 -- text/event-stream of a fixed event name and JSON the server encodes; no HTML
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Name(), dataOf(e))
+}
+
+func dataOf(e events.Event) []byte {
 	if e.Entity == store.EntityMembership {
 		m := membershipData{PersonID: e.Person, MappingID: e.Mapping}
 		if e.Project != uuid.Nil {
 			m.ProjectID = &e.Project
 		}
-		data, _ = json.Marshal(m)
+		data, _ := json.Marshal(m)
+		return data
 	}
-	// #nosec G705 -- text/event-stream of a uuid, a fixed event name and JSON the server encodes; no HTML
-	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Name(), data)
+	data, _ := json.Marshal(eventData{Key: e.Key, Version: e.Version, Kind: e.Action})
+	return data
+}
+
+// writeInbox tells a person-level stream how many of the person's
+// notifications are unread (docs/adr/0054 D2): a state, not an act, so it
+// carries no id.
+func writeInbox(w http.ResponseWriter, unread int) {
+	_, _ = fmt.Fprintf(w, "event: inbox.changed\ndata: {\"unread\":%d}\n\n", unread)
 }
 
 func writeControl(w http.ResponseWriter, name string) {

@@ -15,7 +15,7 @@ import (
 )
 
 // The tool set of docs/adr/0042 D1 and D2: twelve workflow tools,
-// record_answer, create_project, set_urgency and the api escape hatch, each
+// record_answer, create_project, place_ticket and the api escape hatch, each
 // with a name a host accepts, a description, an object schema and the
 // operations it calls.
 func TestTheCatalogue(t *testing.T) {
@@ -32,7 +32,7 @@ func TestTheCatalogue(t *testing.T) {
 		assert.Equal(t, false, schema["additionalProperties"], "%s refuses arguments it does not know", tool.Name)
 	}
 	assert.ElementsMatch(t, []string{"session_start", "get_ticket", "search", "file_ticket", "record_state", "open_question",
-		"record_answer", "comment", "transition", "set_progress", "link", "watch", "set_urgency", "finish_work", "create_project",
+		"record_answer", "comment", "transition", "set_progress", "link", "watch", "place_ticket", "finish_work", "create_project",
 		"api"}, names)
 
 	anywhere := Catalogue(Anywhere)

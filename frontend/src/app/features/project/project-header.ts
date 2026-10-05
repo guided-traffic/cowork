@@ -17,8 +17,8 @@ import { NewTicketDialog } from '../ticket/new-ticket-dialog';
 
 /**
  * What both pages of a project show above their content (docs/adr/0018 D1): the key, the name and
- * the description, the settings, the button that files a ticket, and the two tabs, Backlog and
- * Board, which are links to `/t/:tenant/p/:project/backlog` and `…/board`. A ticket filed here is
+ * the description, the settings, the button that files a ticket, and the two tabs, Board and
+ * Backlog, which are links to `/t/:tenant/p/:project/board` and `…/backlog`. A ticket filed here is
  * thanked with a toast and handed on, so that the page that shows it can load its list at once.
  */
 @Component({

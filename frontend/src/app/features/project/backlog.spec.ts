@@ -341,9 +341,19 @@ describe('Backlog', () => {
           .injector.get(Tooltip)
           .content();
       expect(tooltip('now')).toBe(
-        'Now: a defect in unreleased work, or a statement measured false',
+        'Now: to be worked on now — maybe still to be refined, but it matters to the project now, or it is a low-hanging fruit',
       );
-      expect(tooltip('later')).toBe('A decided or cheap known fix');
+      expect(tooltip('later')).toBe(
+        'Later: worth less at the moment — maybe some day, maybe never; kept so it is not forgotten',
+      );
+    });
+
+    it('are named in the table as the horizons of the open tickets', async () => {
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="backlog-table"]')?.getAttribute('aria-label')).toBe(
+        'Open tickets, grouped by horizon',
+      );
     });
 
     it('count the children among the rows of the group', async () => {
@@ -1707,7 +1717,7 @@ describe('Backlog', () => {
       expect(toast).toHaveBeenCalledWith({
         severity: 'warn',
         summary: 'Changed meanwhile',
-        detail: 'COW-3 was changed by someone else: its urgency is next now.',
+        detail: 'COW-3 was changed by someone else: its horizon is next now.',
         life: 6000,
       });
       expect(rowsIn(page, 'now')).toEqual([1, 2]);
@@ -2051,7 +2061,7 @@ describe('Backlog', () => {
       expect(page.querySelector('[data-testid="zones"]')?.getAttribute('aria-hidden')).toBe('true');
       expect(text(page, '[data-testid="zone-release"] .group-name')).toBe('release');
       expect(text(page, '[data-testid="zone-release"] .muted')).toBe(
-        'Drop here to make a ticket release',
+        'Drop here to move a ticket to release',
       );
     });
 
@@ -2060,7 +2070,7 @@ describe('Backlog', () => {
 
       pickUp(fixture, 2);
 
-      expect(text(page, '[data-testid="empty-next"]')).toBe('Drop here to make a ticket next');
+      expect(text(page, '[data-testid="empty-next"]')).toBe('Drop here to move a ticket to next');
     });
 
     it('has the drop zones in the page when the CDK measures its lists, which is right after the announcement', async () => {

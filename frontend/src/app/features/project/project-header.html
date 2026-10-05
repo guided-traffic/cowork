@@ -32,18 +32,18 @@
   @if (session.tenant(); as tenant) {
     <nav class="tabs" aria-label="Views of the project">
       <a
-        [routerLink]="['/t', tenant, 'p', project(), 'backlog']"
-        routerLinkActive="active"
-        ariaCurrentWhenActive="page"
-        data-testid="tab-backlog"
-        >Backlog</a
-      >
-      <a
         [routerLink]="['/t', tenant, 'p', project(), 'board']"
         routerLinkActive="active"
         ariaCurrentWhenActive="page"
         data-testid="tab-board"
         >Board</a
+      >
+      <a
+        [routerLink]="['/t', tenant, 'p', project(), 'backlog']"
+        routerLinkActive="active"
+        ariaCurrentWhenActive="page"
+        data-testid="tab-backlog"
+        >Backlog</a
       >
     </nav>
   }

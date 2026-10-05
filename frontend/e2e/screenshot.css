@@ -1,0 +1,13 @@
+/*
+ * What the dark-mode comparison of visual.spec.ts leaves out: what differs by build, not by change.
+ */
+
+/* PrimeNG's notice in a build without the PrimeUI key (docs/adr/0052 D9): CI builds without it. */
+#p-license-host {
+  display: none !important;
+}
+
+/* The build's version and commit in the navigation. */
+[data-testid='version'] {
+  visibility: hidden !important;
+}

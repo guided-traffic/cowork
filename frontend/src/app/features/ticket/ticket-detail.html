@@ -3,7 +3,7 @@
 <section class="page">
   <nav class="crumbs muted">
     @if (at(); as a) {
-      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'backlog']">{{ a.project }}</a>
+      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'board']">{{ a.project }}</a>
       <span>/</span>
       <span class="tabular">{{ key() }}</span>
     }
@@ -27,7 +27,7 @@
         </div>
         <app-ticket-moves [ticket]="t" />
       </div>
-      <h1 data-testid="ticket-title">{{ t.title }}</h1>
+      <app-ticket-title [ticket]="t" />
       @if (t.block; as block) {
         <div class="block" data-testid="block">
           <i class="pi pi-ban"></i>
@@ -47,12 +47,11 @@
     <div class="layout">
       <div class="main">
         <section class="card">
-          <h2>Description</h2>
-          @if (t.body) {
-            <div class="body" data-testid="body">{{ t.body }}</div>
-          } @else {
-            <p class="muted">No description.</p>
-          }
+          <app-ticket-body [ticket]="t" />
+        </section>
+
+        <section class="card">
+          <app-prerequisite-tree />
         </section>
 
         <section class="card">
@@ -84,6 +83,7 @@
                 {{ question.asked_of ? '· of ' + question.asked_of.display_name : '' }} ·
                 {{ ago(question.created_at) }}
               </p>
+              <app-edit-question [ticketKey]="t.key" [question]="question" />
               <app-answer-question [ticketKey]="t.key" [question]="question" />
             </article>
           } @empty {
@@ -129,19 +129,13 @@
           } @else if (relations.comments.hasValue()) {
             @for (comment of relations.comments.value().items; track comment.id) {
               <article class="comment" [attr.data-testid]="'comment-' + comment.id">
-                <p class="meta muted">
-                  <strong>{{ comment.author.display_name }}</strong>
-                  @if (comment.agent || comment.token) {
-                    <app-agent-mark [mark]="comment.agent" [token]="comment.token" />
-                  }
-                  · {{ ago(comment.created_at) }}
-                  {{ comment.edited ? '· edited' : '' }}
-                </p>
-                @if (comment.withdrawn) {
-                  <p class="muted">withdrawn</p>
-                } @else {
-                  <p class="text">{{ comment.body }}</p>
-                }
+                <app-comment
+                  [ticketKey]="t.key"
+                  [comment]="comment"
+                  [files]="commentFiles().get(comment.id) ?? []"
+                  [me]="session.person()?.id"
+                  [administers]="administers()"
+                />
               </article>
             } @empty {
               <p class="muted">No comments yet.</p>

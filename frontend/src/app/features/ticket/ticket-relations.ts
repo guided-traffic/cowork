@@ -14,10 +14,12 @@ import {
   listAttachments,
   listComments,
   listInterest,
+  listPrerequisites,
   listQuestions,
   listTicketLinks,
   listTicketTime,
 } from '../../api/functions';
+import { PrerequisiteTree } from '../../api/models';
 import { ConditionalPages, PageFetcher } from '../../core/conditional';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { keepShown, refresh } from '../../core/refresh';
@@ -35,14 +37,20 @@ export function address(tenant: string | null, key: string): TicketAddress | und
   return tenant && match ? { tenant, project: match[1], number: Number(match[2]) } : undefined;
 }
 
+/** Which way the prerequisite tree is read: what blocks the ticket, or what it blocks. */
+export type TreeDirection = 'down' | 'up';
+
 /**
  * What surrounds a ticket on its detail page — comments, activity, questions, links, interest,
- * attachments, time — loaded through the API and reloaded when the event stream names the ticket
- * (docs/adr/0054 D2): an event says which part changed, and only that part and the activity are
- * fetched again; an upload is a `ticket.changed`. Time entries are not published (D4): the page
- * that books reloads them, and `resync` and `poll` do. A part that is loading when its event
- * arrives loads once more afterwards (`refresh`), and a part that loads again and fails keeps
- * what it shows ({@link keepShown}). Provided by the page, so it lives exactly as long as the page.
+ * attachments, time, the prerequisite tree — loaded through the API and reloaded when the event
+ * stream names the ticket (docs/adr/0054 D2): an event says which part changed, and only that part
+ * and the activity are fetched again; an upload is a `ticket.changed`. Time entries are not
+ * published (D4): the page that books reloads them, and `resync` and `poll` do. The tree loads again
+ * on a link of the ticket and on any change of a ticket it shows. A part that is loading when its
+ * event arrives loads once more afterwards (`refresh`), and a part that loads again and fails keeps
+ * what it shows ({@link keepShown}). Each part keeps the weak `ETag` of its last answer and is
+ * answered `304` while it is unchanged (docs/adr/0054 D7). Provided by the page, so it lives exactly
+ * as long as the page.
  */
 @Injectable()
 export class TicketRelations {
@@ -61,6 +69,19 @@ export class TicketRelations {
     page(listAttachments, { ...params, limit: 200 }),
   );
   readonly time = this.part((params, page) => page(listTicketTime, { ...params, limit: 200 }));
+  /** The prerequisites, or read upward the dependents (docs/adr/0012 D6). */
+  readonly direction = signal<TreeDirection>('down');
+  private readonly treePages = new ConditionalPages(this.api);
+  readonly tree: ResourceRef<PrerequisiteTree | undefined> = resource({
+    params: () => {
+      const at = this.at();
+      return at ? { ...at, direction: this.direction() } : undefined;
+    },
+    loader: ({ params }) =>
+      keepShown(this.tree, () =>
+        this.treePages.load((page) => page(listPrerequisites, { ...params, limit: 200 })),
+      ),
+  });
 
   constructor() {
     inject(EventStreamService)
@@ -81,16 +102,25 @@ export class TicketRelations {
         this.interest,
         this.attachments,
         this.time,
+        this.tree,
         this.activity,
       ]) {
         refresh(part, this.injector);
       }
       return;
     }
-    if (
-      event.name === 'membership.changed' ||
-      event.key !== `${at.tenant}/${at.project}-${at.number}`
-    ) {
+    if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
+      return;
+    }
+    if (event.key !== `${at.tenant}/${at.project}-${at.number}`) {
+      // A ticket of the tree moved, or was linked to another: the tree may show it otherwise.
+      if (
+        (event.name === 'ticket.changed' || event.name === 'link.changed') &&
+        this.tree.hasValue() &&
+        this.tree.value().items.some((node) => node.key === event.key)
+      ) {
+        refresh(this.tree, this.injector);
+      }
       return;
     }
     if (event.name === 'comment.changed') {
@@ -99,6 +129,7 @@ export class TicketRelations {
       refresh(this.questions, this.injector);
     } else if (event.name === 'link.changed') {
       refresh(this.links, this.injector);
+      refresh(this.tree, this.injector);
     } else if (event.name === 'interest.changed') {
       refresh(this.interest, this.injector);
     } else {

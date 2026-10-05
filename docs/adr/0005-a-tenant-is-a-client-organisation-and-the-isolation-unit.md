@@ -28,6 +28,11 @@ username, into a tenant
 the members of the provider's administrator group are global administrators beside the local
 administrator, the flag set by the provider's login and by no route.
 
+**Partly built** (phase 3, 2026-10-04): D3's person-level lists "assigned to me", "open decisions"
+and the inbox, each a union of per-tenant reads under that tenant's rules, a membership that ends
+taking its part out at once ([`api/inbox.go`](../../backend/internal/api/inbox.go)
+`personTenants`); "next for me" is not built.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) makes cowork a team product: several people per

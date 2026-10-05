@@ -1,7 +1,13 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import { bookTime, editTimeEntry, uploadAttachment, voidTimeEntry } from '../api/functions';
-import { Attachment, TimeEntry, TimeEntryPatch } from '../api/models';
+import {
+  bookTime,
+  editTimeEntry,
+  listTimeEntryRevisions,
+  uploadAttachment,
+  voidTimeEntry,
+} from '../api/functions';
+import { Attachment, TimeEntry, TimeEntryPatch, TimeEntryRevision } from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';
 
@@ -15,15 +21,16 @@ export class TicketRecords {
   private readonly api = inject(Api);
 
   /**
-   * Uploads a file. The idempotency key is the card's, one for each file it sends, so a retry of a
-   * lost answer is answered again instead of storing the file twice (docs/adr/0045 D3); so is the
-   * one of a booking, one for each content of the form.
+   * Uploads a file to the ticket, or to one of its comments, which only its author may
+   * (docs/adr/0016 D1). The idempotency key is the caller's, one for each file it sends, so a retry
+   * of a lost answer is answered again instead of storing the file twice (docs/adr/0045 D3); so is
+   * the one of a booking, one for each content of the form.
    */
-  attach(key: string, file: File, idempotencyKey: string): Promise<Attachment> {
+  attach(key: string, file: File, idempotencyKey: string, comment?: string): Promise<Attachment> {
     return this.api.invoke(uploadAttachment, {
       ...routeOf(key),
       'Idempotency-Key': idempotencyKey,
-      body: { file },
+      body: { file, ...(comment ? { comment_id: comment } : {}) },
     });
   }
 
@@ -49,6 +56,16 @@ export class TicketRecords {
       'If-Match': etagOf(entry.version),
       body: patch,
     });
+  }
+
+  /** An entry's previous values, oldest first (docs/adr/0017 D7). */
+  async revisions(key: string, entry: TimeEntry): Promise<TimeEntryRevision[]> {
+    const list = await this.api.invoke(listTimeEntryRevisions, {
+      ...routeOf(key),
+      entry: entry.id,
+      limit: 200,
+    });
+    return list.items;
   }
 
   void(key: string, entry: TimeEntry): Promise<TimeEntry> {

@@ -91,7 +91,7 @@ func (s *Server) MoveTicketRank(ctx context.Context, req apigen.MoveTicketRankRe
 		if perr := rankSelf(tc.row.Number, target); perr != nil {
 			return perr
 		}
-		other, err := rankNeighbour(ctx, w.Reader, t, tc, target)
+		other, err := rankNeighbour(ctx, w.Reader, t, tc.project.ID, target)
 		if err != nil {
 			return err
 		}
@@ -112,16 +112,16 @@ func rankSelf(moved int32, target rankTarget) *problem.Error {
 	return nil
 }
 
-// rankNeighbour reads the ticket a move names, in the moved ticket's project,
+// rankNeighbour reads the ticket a move or a filing names, in the project,
 // through the predicate: one the caller cannot see is answered like one that
 // does not exist, as a parent is (docs/adr/0065 D5).
-func rankNeighbour(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, target rankTarget) (store.TicketRow, error) {
+func rankNeighbour(ctx context.Context, r *store.Reader, t tenantScope, projectID uuid.UUID, target rankTarget) (store.TicketRow, error) {
 	const message = "no such ticket in the project"
 	n, perr := ticketNumber(target.number)
 	if perr != nil {
 		return store.TicketRow{}, problem.Field(target.pointer(), message)
 	}
-	row, err := r.GetTicketByNumber(ctx, readq.GetTicketByNumberParams{TenantID: t.ID, ProjectID: tc.project.ID, Number: n})
+	row, err := r.GetTicketByNumber(ctx, readq.GetTicketByNumberParams{TenantID: t.ID, ProjectID: projectID, Number: n})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.TicketRow{}, problem.Field(target.pointer(), message)
 	}
@@ -290,6 +290,61 @@ func rankUnranked(ctx context.Context, w *store.Writer, t tenantScope, projectID
 		}
 	}
 	return last, nil
+}
+
+// rankBeside is the key of a filing placed directly after or before an open
+// ticket of the project in the horizon it is filed into (docs/adr/0014 D2 as
+// amended 2026-10-04), under the rank lock: strictly between that ticket's key
+// and the next key on that side over every ticket, as a move's. It returns
+// the ticket named, for the act.
+func rankBeside(ctx context.Context, w *store.Writer, t tenantScope, projectID uuid.UUID, target rankTarget, horizon domain.Urgency) (store.TicketRow, string, error) {
+	if err := lockRank(ctx, w, t, projectID); err != nil {
+		return store.TicketRow{}, "", err
+	}
+	if _, err := rankUnranked(ctx, w, t, projectID); err != nil {
+		return store.TicketRow{}, "", err
+	}
+	other, err := rankNeighbour(ctx, w.Reader, t, projectID, target)
+	if err != nil {
+		return store.TicketRow{}, "", err
+	}
+	if perr := rankStates(domain.StateFiled, other.State, target); perr != nil {
+		return other, "", perr
+	}
+	if u := horizonOf(other); u != horizon {
+		return other, "", problem.Field(target.pointer(),
+			fmt.Sprintf("%s stands in the horizon %s, not in %s", ticketKey(t, other), u, horizon))
+	}
+	near, err := w.GetTicketRank(ctx, writeq.GetTicketRankParams{TenantID: t.ID, ID: other.ID})
+	if err != nil {
+		return other, "", fmt.Errorf("read the neighbour's rank: %w", err)
+	}
+	if near.Rank == nil {
+		return other, "", problem.New(problem.StateConflict, "the neighbour's state changed meanwhile; read it again")
+	}
+	_, far, err := beside(ctx, w, t, projectID, *near.Rank, target.after)
+	if err != nil {
+		return other, "", err
+	}
+	var key string
+	if target.after {
+		key, err = domain.RankBetween(*near.Rank, far)
+	} else {
+		key, err = domain.RankBetween(far, *near.Rank)
+	}
+	if err != nil {
+		return other, "", fmt.Errorf("place the rank: %w", err)
+	}
+	return other, key, nil
+}
+
+// horizonOf is the horizon a ticket stands in: the one set on it, else the
+// derived one (docs/adr/0010 D3).
+func horizonOf(r store.TicketRow) domain.Urgency {
+	if r.UrgencyOverride != nil {
+		return *r.UrgencyOverride
+	}
+	return r.UrgencyDerived
 }
 
 // rankAtBottom is the key of a ticket that joins its project's rank at the

@@ -14,8 +14,12 @@ import (
 // golang-migrate takes a single bigint key, so the two key spaces never meet.
 const jobLockNamespace int32 = 0x636f776b
 
-// actionExpired is the act of a cleanup job that removed rows.
-const actionExpired = "expired"
+// actionExpired is the act of a cleanup job that removed rows, fieldRemoved
+// the count it records.
+const (
+	actionExpired = "expired"
+	fieldRemoved  = "removed"
+)
 
 // The first keys of the locks that order concurrent writes: re-parentings
 // per project, "cowp", and blocks links per tenant, "cowb", which an
@@ -117,7 +121,7 @@ func (db *DB) ExpireIdempotencyKeys(ctx context.Context) (removed int64, err err
 		if n == 0 {
 			return nil
 		}
-		w.Record(Event{EntityType: "idempotency_keys", Action: actionExpired, After: map[string]int64{"removed": n}})
+		w.Record(Event{EntityType: "idempotency_keys", Action: actionExpired, After: map[string]int64{fieldRemoved: n}})
 		return nil
 	})
 	return removed, err

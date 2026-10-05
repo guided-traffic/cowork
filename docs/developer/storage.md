@@ -83,6 +83,11 @@ extension to a name that ends in none of the type's (`run.bat` stored as text be
 | no storage configured, or the object is missing | `404`; a missing object says so — a restore can bring the database back without its bytes ([ADR 0059] D4) |
 | otherwise | `200`, the bytes streamed, recorded as `downloaded` ([ADR 0026] D5) |
 
+The UI shows a raster attachment as a preview: an `<img>` of its `content_url`, which the
+browser loads with the session cookie, each load a `200` that is recorded
+([frontend.md](frontend.md#the-detail-page)). It uploads to a comment from the comment, whose
+author it must be (step 6 above).
+
 The headers make the browser treat the bytes as data (D5): `Content-Type` is the stored type;
 `Content-Disposition` is `inline` for the four raster types and `attachment` for everything else,
 with the file name encoded by `mime.FormatMediaType` (RFC 2231 for what is not ASCII);

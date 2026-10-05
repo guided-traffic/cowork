@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
 import { SelectButton } from 'primeng/selectbutton';
@@ -146,13 +154,19 @@ export class InterestControl {
   protected readonly mine = computed(() =>
     this.interests().find((interest) => interest.person.id === this.me()),
   );
-  /** The weight chosen and waiting for its reason. */
-  private readonly pending = signal<InterestWeight | null>(null);
+  /**
+   * The weight chosen and waiting for its reason. It belongs to the ticket it was chosen on: the
+   * page is reused when its path names another ticket, and the stake must not land there.
+   */
+  private readonly pending = linkedSignal<string, InterestWeight | null>({
+    source: this.ticketKey,
+    computation: () => null,
+  });
   protected readonly weight = computed(() => this.pending() ?? this.mine()?.weight ?? null);
   protected readonly needsReason = computed(
     () => this.pending() === 'need' || this.pending() === 'urgent',
   );
-  protected readonly note = signal('');
+  protected readonly note = linkedSignal({ source: this.ticketKey, computation: () => '' });
   protected readonly busy = signal(false);
 
   protected choose(weight: InterestWeight | null): void {
@@ -170,11 +184,10 @@ export class InterestControl {
 
   protected save(): void {
     const weight = this.pending();
+    const key = this.ticketKey();
     if (weight) {
-      void this.write(() =>
-        this.conversation.setInterest(this.ticketKey(), weight, this.note()),
-      ).then((ok) => {
-        if (ok) {
+      void this.write(() => this.conversation.setInterest(key, weight, this.note())).then((ok) => {
+        if (ok && this.ticketKey() === key) {
           this.pending.set(null);
         }
       });

@@ -76,6 +76,12 @@ type Event struct {
 	// tenant's streams admit its events before the next one is filtered, and
 	// sent to no client (docs/adr/0054 D3); uuid.Nil for every other act.
 	NewProject uuid.UUID
+	// Notices are whom the act tells in their inbox and why
+	// (docs/adr/0020 D2); none for an act that tells nobody.
+	Notices []Notice
+	// InboxOf is the person whose inbox the act changed without a notice —
+	// their own notifications marked read —, whose streams hear it.
+	InboxOf uuid.UUID
 }
 
 // Record adds an act to the mutation.
@@ -302,6 +308,9 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		}
 		if err := w.InsertAuditEvent(ctx, p); err != nil {
 			return fmt.Errorf("write audit row: %w", err)
+		}
+		if err := w.deliver(ctx, tenantID, id, caller, e); err != nil {
+			return err
 		}
 		if err := w.publish(ctx, tenantID, id, e); err != nil {
 			return err

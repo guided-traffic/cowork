@@ -172,7 +172,7 @@ func (f *DB) Ticket(ctx context.Context, tenantID, projectID, reporter uuid.UUID
 		            WHERE tenant_id = $1 AND project_id = $2 RETURNING last_number)
 		 INSERT INTO tickets (tenant_id, project_id, number, type, title, severity, security, urgency_derived,
 		                      urgency_rule, effort, reporter_id)
-		 SELECT $1, $2, n.last_number, 'task', $4, 'medium', 'none', 'later', 'v1:default', 'S', $3 FROM n
+		 SELECT $1, $2, n.last_number, 'task', $4, 'medium', 'none', 'later', 'v2:default', 'S', $3 FROM n
 		 RETURNING id, number`,
 		tenantID, projectID, reporter, title).Scan(&id, &number)
 	if err != nil {

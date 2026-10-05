@@ -338,4 +338,36 @@ describe('TicketRecords', () => {
       expect((error as HttpErrorResponse).status).toBe(409);
     });
   });
+
+  describe('attach to a comment (docs/adr/0016 D1)', () => {
+    it('names the comment the file belongs to beside the file', async () => {
+      const done = records.attach(
+        key,
+        new File(['hello'], 'shot.png', { type: 'image/png' }),
+        formKey,
+        '0199aaaa-0000-7000-8000-0000000000c1',
+      );
+
+      const sent = http.expectOne(`${base}/attachments`);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      const body = sent.request.body as FormData;
+      expect(body.get('comment_id')).toBe('0199aaaa-0000-7000-8000-0000000000c1');
+      expect((body.get('file') as File).name).toBe('shot.png');
+      sent.flush(attachment({ comment: '0199aaaa-0000-7000-8000-0000000000c1' }));
+
+      expect((await done).comment).toBe('0199aaaa-0000-7000-8000-0000000000c1');
+    });
+  });
+
+  describe('revisions (docs/adr/0017 D7)', () => {
+    it('reads the earlier values of an entry, oldest first, as the API orders them', async () => {
+      const done = records.revisions(key, entry());
+
+      http
+        .expectOne(`${base}/time-entries/0199aaaa-0000-7000-8000-0000000000e1/revisions?limit=200`)
+        .flush({ items: [{ minutes: 60 }, { minutes: 75 }], next_cursor: null });
+
+      expect((await done).map((revision) => revision.minutes)).toEqual([60, 75]);
+    });
+  });
 });

@@ -33,9 +33,14 @@ type Notification struct {
 	Reporter     uuid.UUID  `json:"reporter"`
 	// Person and Mapping are the keys of a membership act besides Project;
 	// Audience says who of the tenant may hear of it (MembershipChange).
+	// Person is also the person an inbox change is addressed to (EntityInbox).
 	Person   *uuid.UUID `json:"person,omitempty"`
 	Mapping  *uuid.UUID `json:"mapping,omitempty"`
 	Audience string     `json:"audience,omitempty"`
+	// AskedOf is the person a question's act is addressed to: its event
+	// reaches their person-level streams across their tenants
+	// (docs/adr/0054 D1); nil for every other act.
+	AskedOf *uuid.UUID `json:"asked_of,omitempty"`
 }
 
 // EntityMembership is the entity of every notification of a membership act:
@@ -90,10 +95,20 @@ func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) e
 	if err != nil {
 		return fmt.Errorf("read the published ticket: %w", err)
 	}
-	return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
+	n := Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
 		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
-		Assignee: facts.AssigneeID, Reporter: facts.ReporterID})
+		Assignee: facts.AssigneeID, Reporter: facts.ReporterID}
+	if e.EntityType == entityQuestion && e.EntityID != uuid.Nil {
+		if n.AskedOf, err = w.QuestionAskedOf(ctx, writeq.QuestionAskedOfParams{TenantID: tenantID, ID: e.EntityID}); err != nil {
+			return fmt.Errorf("read whom the published question is asked of: %w", err)
+		}
+	}
+	return w.notify(ctx, n)
 }
+
+// entityQuestion is the entity of a question's acts, whose events reach the
+// person asked across their tenants.
+const entityQuestion = "question"
 
 func membershipNotification(tenantID, id uuid.UUID, e Event) Notification {
 	m := e.Membership

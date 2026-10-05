@@ -753,6 +753,38 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('openTickets', () => {
+    const url = '/api/v1/tenants/acme/projects/VKO/tickets';
+
+    it('reads every page of the open tickets of a project, in the rank, into the cache', async () => {
+      const done = service.openTickets('acme', 'VKO');
+
+      const first = http.expectOne((request) => request.url === url);
+      expect(first.request.params.get('limit')).toBe('200');
+      expect(first.request.params.has('cursor')).toBe(false);
+      expect(first.request.params.has('include_terminal')).toBe(false);
+      first.flush({ ...listOf([ticket('acme/VKO-3', 2)]), next_cursor: 'more' });
+      await settle();
+      const second = http.expectOne((request) => request.url === url);
+      expect(second.request.params.get('cursor')).toBe('more');
+      second.flush(listOf([ticket('acme/VKO-1', 1)]));
+
+      expect((await done).map((each) => each.key)).toEqual(['acme/VKO-3', 'acme/VKO-1']);
+      expect(service.cache.value('acme/VKO-1')?.version).toBe(1);
+    });
+
+    it('is no open list: an event reloads nothing', async () => {
+      const done = service.openTickets('acme', 'VKO');
+      http.expectOne((request) => request.url === url).flush(listOf([]));
+      await done;
+
+      stream.next({ name: 'poll' });
+      await wait(200);
+
+      http.expectNone((request) => request.url === url);
+    });
+  });
+
   describe('ticket', () => {
     it('loads the ticket into the cache and hands out its key', async () => {
       const { ref } = await show('acme/VKO-12', 4);
@@ -831,28 +863,22 @@ describe('TicketsService', () => {
       http.expectNone(ticketUrl('acme/VKO-99'));
     });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'refetches a cached ticket on %s even at the version it holds, because its urgency is derived',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('refetches a cached ticket on link.changed even at the version it holds, because its open prerequisites change', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { urgency: 'now' }));
-        await settle();
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { open_prerequisites: 1 }));
+      await settle();
 
-        expect(service.cache.value(key)?.urgency).toBe('now');
-      },
-    );
+      expect(service.cache.value(key)?.open_prerequisites).toBe(1);
+    });
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'does not fetch a ticket that is not cached on %s',
-      (name) => {
-        stream.next(changed(name, 'acme/VKO-99', 1));
+    it('does not fetch a ticket that is not cached on link.changed', () => {
+      stream.next(changed('link.changed', 'acme/VKO-99', 1));
 
-        http.expectNone(ticketUrl('acme/VKO-99'));
-      },
-    );
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
 
-    it.each(['comment.changed', 'interest.changed'] as const)(
+    it.each(['question.changed', 'comment.changed', 'interest.changed'] as const)(
       'never refetches the ticket on %s, whatever version it names, because they change nothing it shows',
       async (name) => {
         stream.next(changed(name, key, 99));
@@ -897,17 +923,14 @@ describe('TicketsService', () => {
       },
     );
 
-    it.each(['question.changed', 'link.changed'] as const)(
-      'keeps the ticket as well when the refetch after a %s event fails with a 500',
-      async (name) => {
-        stream.next(changed(name, key, 5));
+    it('keeps the ticket as well when the refetch after a link.changed event fails with a 500', async () => {
+      stream.next(changed('link.changed', key, 5));
 
-        fail(http.expectOne(ticketUrl(key)), 500);
-        await settle();
+      fail(http.expectOne(ticketUrl(key)), 500);
+      await settle();
 
-        expect(service.cache.value(key)?.version).toBe(5);
-      },
-    );
+      expect(service.cache.value(key)?.version).toBe(5);
+    });
 
     it('keeps the entry when the refetch fails with something that is not an HTTP error', async () => {
       interceptorFailure = new Error('an interceptor broke');
@@ -971,6 +994,14 @@ describe('TicketsService', () => {
         expect(take(tenantUrl)).toHaveLength(1);
       },
     );
+
+    it("are not reloaded by an event of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next(changed('question.changed', 'globex/OPS-1', 1));
+      await wait(10 * listReloadDelay);
+
+      http.expectNone(projectUrl);
+      http.expectNone(tenantUrl);
+    });
 
     it('reload once for a whole burst, counted from its first event', async () => {
       stream.next(changed('ticket.changed', 'acme/VKO-1', 2));

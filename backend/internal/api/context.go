@@ -114,12 +114,18 @@ func contextLinks(ctx context.Context, r *store.Reader, t tenantScope, tc ticket
 	return err
 }
 
+// contextTree reads the prerequisite tree of the route (docs/adr/0012 D6) and
+// shows each prerequisite once: a ticket the tree repeats under a second
+// ticket it blocks is left out there.
 func contextTree(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, doc *markdown.Context) error {
-	rows, err := r.ContextPrerequisites(ctx, readq.ContextPrerequisitesParams{TenantID: t.ID, TicketID: tc.row.ID, PageSize: maxContextNodes})
+	rows, err := ticketTree(ctx, r, t.ID, tc.row.ID, false, nil, maxContextNodes)
 	for _, n := range rows {
-		doc.Prerequisites = append(doc.Prerequisites, markdown.Prerequisite{Depth: int(n.Depth),
-			Key: domain.FullKey(t.Slug, n.ProjectKey, n.Number), Title: n.Title, State: string(n.State),
-			Assignee: deref(n.AssigneeName), Progress: int(n.Progress)})
+		if n.Repeated {
+			continue
+		}
+		v := treeNodeView(t.Slug, n)
+		doc.Prerequisites = append(doc.Prerequisites, markdown.Prerequisite{Depth: v.Depth, Key: v.Key, Title: v.Title,
+			State: string(v.State), Assignee: deref(n.AssigneeName), Progress: v.Progress})
 	}
 	return err
 }

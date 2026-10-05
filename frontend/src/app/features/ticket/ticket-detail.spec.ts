@@ -1,6 +1,6 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal, Type, WritableSignal } from '@angular/core';
+import { computed, signal, Type, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
@@ -23,6 +23,7 @@ import {
   Me,
   Problem,
   Question,
+  PrerequisiteTree,
   QuestionList,
   Ticket,
   TimeEntryList,
@@ -36,7 +37,14 @@ import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { TicketsService } from '../../core/tickets.service';
 import { Clock } from '../../shared/time';
-import { AnswerQuestion, AskQuestion, CommentComposer, LinkAdder } from './conversation-forms';
+import { CommentItem } from './comment-item';
+import {
+  AnswerQuestion,
+  AskQuestion,
+  CommentComposer,
+  EditQuestion,
+  LinkAdder,
+} from './conversation-forms';
 import { InterestControl } from './interest-control';
 import { AttachmentsCard, TimeCard } from './records-cards';
 import { describe as describeActivity, TicketDetail } from './ticket-detail';
@@ -196,6 +204,8 @@ function list<T>(...items: T[]) {
   return { items, next_cursor: null };
 }
 
+const noTree: PrerequisiteTree = { items: [], next_cursor: null, open: 0 };
+
 describe('describe', () => {
   it('names the person who acted', () => {
     expect(describeActivity(activity({ actor: ada, action: 'transitioned' }))).toBe(
@@ -244,10 +254,12 @@ describe('TicketDetail', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
+    tree: `${base}/prerequisites?direction=down&limit=200`,
   };
 
   /** What the API answers for the parts around a ticket; a part left out stays unanswered. */
   interface Answers {
+    tree?: PrerequisiteTree;
     comments?: CommentList;
     activity?: ActivityList;
     questions?: QuestionList;
@@ -258,6 +270,7 @@ describe('TicketDetail', () => {
   }
 
   let tenant: WritableSignal<string | null>;
+  let role: WritableSignal<'admin' | 'member'>;
   let person: WritableSignal<Me | undefined>;
   let cache: EntityCache<Ticket>;
   let loadError: WritableSignal<unknown>;
@@ -268,6 +281,7 @@ describe('TicketDetail', () => {
 
   beforeEach(() => {
     tenant = signal<string | null>('acme');
+    role = signal<'admin' | 'member'>('member');
     person = signal<Me | undefined>({
       ...ada,
       memberships: [],
@@ -287,7 +301,10 @@ describe('TicketDetail', () => {
         provideHttpClientTesting(),
         provideApiConfiguration(''),
         MessageService,
-        { provide: SessionService, useValue: { tenant, person } },
+        {
+          provide: SessionService,
+          useValue: { tenant, person, membership: computed(() => ({ role: role() })) },
+        },
         { provide: Conversation, useValue: conversation },
         { provide: TicketActions, useValue: { update, transition: vi.fn() } },
         { provide: TicketRecords, useValue: {} },
@@ -383,6 +400,7 @@ describe('TicketDetail', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
 
@@ -410,13 +428,13 @@ describe('TicketDetail', () => {
   });
 
   describe('the header', () => {
-    it('links the project in the breadcrumbs and names the key', async () => {
+    it('links the project in the breadcrumbs to its board and names the key', async () => {
       show();
 
       const { page } = await render();
 
       const crumbs = page.querySelector('nav.crumbs');
-      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/backlog');
+      expect(crumbs?.querySelector('a')?.getAttribute('href')).toBe('/t/acme/p/COW/board');
       expect(crumbs?.querySelector('a')?.textContent).toBe('COW');
       expect(crumbs?.querySelector('.tabular')?.textContent).toBe('COW-12');
     });
@@ -782,7 +800,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the comments are loaded', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.textContent).not.toContain('No comments yet.');
 
@@ -871,7 +889,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the activity is loaded', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.querySelector('.activity')).toBeNull();
 
@@ -1222,7 +1240,7 @@ describe('TicketDetail', () => {
 
     it('shows neither the skeleton nor the list of a failed part', async () => {
       show();
-      const { fixture, page } = await render();
+      const { fixture, page } = await render('COW-12', { tree: noTree });
 
       await fail(fixture, 'comments', unready);
       await fail(fixture, 'activity', unready);
@@ -1369,6 +1387,116 @@ describe('TicketDetail', () => {
         await writeMine(fixture);
         expect(update).toHaveBeenCalledOnce();
       });
+    });
+  });
+
+  describe('the parts that edit (docs/adr/0018 D2)', () => {
+    it('gives the title, the body and the prerequisite tree a place, the title as the heading', async () => {
+      show();
+
+      const { page } = await render();
+
+      expect(page.querySelector('.head app-ticket-title h1')?.textContent).toBe(
+        'The board flickers',
+      );
+      expect(page.querySelector('app-ticket-body [data-testid="body"]')?.textContent).toBe(
+        'It flickers on every event.',
+      );
+      expect(page.querySelector('app-prerequisite-tree')).not.toBeNull();
+    });
+
+    it('offers each open question its editor, which decides whom it offers itself to', async () => {
+      show();
+
+      const { fixture } = await render('COW-12', {
+        questions: list(question(), question({ id: 'q-2', number: 2, status: 'withdrawn' })),
+      });
+
+      const editors = fixture.debugElement.queryAll(By.directive(EditQuestion));
+      expect(editors.map((each) => (each.componentInstance as EditQuestion).question().id)).toEqual(
+        ['q-1'],
+      );
+    });
+
+    it('hands each comment its own files, the person and whether they administer the tenant', async () => {
+      show();
+      role.set('admin');
+      const shot: AttachmentList['items'][number] = {
+        id: 'a-1',
+        comment: 'c-1',
+        file_name: 'shot.png',
+        content_type: 'image/png',
+        content_url: '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/a-1/content',
+        sha256: 'ab12',
+        size: 2048,
+        uploaded_by: ada,
+        agent: null,
+        token: null,
+        created_at: '2026-10-03T11:00:00Z',
+      };
+      const loose = { ...shot, id: 'a-2', comment: null };
+
+      const { fixture } = await render('COW-12', {
+        comments: list(comment(), comment({ id: 'c-2' })),
+        attachments: list(shot, loose),
+      });
+
+      const items = fixture.debugElement
+        .queryAll(By.directive(CommentItem))
+        .map((each) => each.componentInstance as CommentItem);
+      expect(items.map((item) => item.files().map((file) => file.id))).toEqual([['a-1'], []]);
+      expect(items.map((item) => [item.me(), item.administers()])).toEqual([
+        ['p1', true],
+        ['p1', true],
+      ]);
+    });
+
+    it('closes the title and the body editors when the path names another ticket', async () => {
+      show();
+      cache.put(
+        'acme/COW-13',
+        ticket({ id: 't-13', key: 'acme/COW-13', number: 13, title: 'Next' }),
+      );
+      const { fixture, page } = await render();
+      (page.querySelector('[data-testid="title-edit"]') as HTMLButtonElement).click();
+      (page.querySelector('[data-testid="body-edit"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(page.querySelector('[data-testid="title-input"]')).not.toBeNull();
+      expect(page.querySelector('[data-testid="body-input"]')).not.toBeNull();
+
+      fixture.componentRef.setInput('key', 'COW-13');
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="title-input"]')).toBeNull();
+      expect(page.querySelector('[data-testid="body-input"]')).toBeNull();
+      expect(page.querySelector('[data-testid="ticket-title"]')?.textContent).toBe('Next');
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('closes the editors of a comment and of a question with the ticket they belong to', async () => {
+      show();
+      cache.put('acme/COW-13', ticket({ id: 't-13', key: 'acme/COW-13', number: 13 }));
+      const { fixture, page } = await render('COW-12', {
+        comments: list(comment()),
+        questions: list(question()),
+      });
+      (page.querySelector('[data-testid="comment-edit-c-1"]') as HTMLButtonElement).click();
+      (page.querySelector('[data-testid="edit-question-1"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).not.toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).not.toBeNull();
+
+      fixture.componentRef.setInput('key', 'COW-13');
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="comment-input-c-1"]')).toBeNull();
+      expect(page.querySelector('[data-testid="edit-question-text-1"]')).toBeNull();
     });
   });
 

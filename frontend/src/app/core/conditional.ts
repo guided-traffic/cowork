@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Api, ApiFnRequired } from '../api/api';
+import { Api, ApiFnOptional, ApiFnRequired } from '../api/api';
 
 /** A page as the list's last load received it, with the weak `ETag` the server gave it. */
 interface HeldPage {
@@ -12,9 +12,12 @@ interface Conditional {
   'If-None-Match'?: string;
 }
 
-/** Asks for one page of a list; the request's parameters name the page. */
+/**
+ * Asks for one page of a list; the request's parameters name the page. A list whose parameters are
+ * all optional, such as the person's, has a function that takes none, which is the same call here.
+ */
 export type PageFetcher = <P extends Conditional, R>(
-  fn: ApiFnRequired<P, R>,
+  fn: ApiFnRequired<P, R> | ApiFnOptional<P, R>,
   params: P,
 ) => Promise<R>;
 
@@ -40,7 +43,7 @@ export class ConditionalPages {
   }
 
   private async page<P extends Conditional, R>(
-    fn: ApiFnRequired<P, R>,
+    fn: ApiFnRequired<P, R> | ApiFnOptional<P, R>,
     params: P,
     used: Map<string, HeldPage>,
   ): Promise<R> {
@@ -48,7 +51,7 @@ export class ConditionalPages {
     const known = this.held.get(key);
     try {
       const answer = await this.api.invoke$Response(
-        fn,
+        fn as ApiFnRequired<P, R>,
         known ? { ...params, 'If-None-Match': known.etag } : params,
       );
       const etag = answer.headers.get('ETag');

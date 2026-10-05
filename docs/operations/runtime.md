@@ -65,8 +65,10 @@ logs. The variables named here are explained one by one in
     address, the version and the commit.
 
 From then on each replica, at start and once an hour, removes the idempotency records older
-than a day, the sessions past their absolute or their idle limit, and the login's failed
-attempts and ended locks older than fifteen minutes; each job holds a transaction-level
+than a day, the sessions past their absolute or their idle limit, the login's failed
+attempts and ended locks older than fifteen minutes, and the notifications read more than ninety
+days ago — an unread one stays ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
+D6); each job holds a transaction-level
 advisory lock of its own that lets one replica at a time do it, and the log says
 `job removed expired rows` with the job and the count when there were any. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
@@ -369,6 +371,12 @@ A change of who belongs to the tenant or who sees a project is `membership.chang
 what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
+
+Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it also
+carries `inbox.changed` with `data: {"unread": n}`, the person's unread notifications in every
+tenant, when it opens and once a burst of changes of the inbox is over (a tenth of a second), and the
+`question.changed` of a question asked of the person in another of their tenants. Neither carries an
+`id:`, so neither is replayed; the browser reloads its person-level pages when the stream opens.
 
 How it behaves, as somebody running it sees it:
 

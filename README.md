@@ -48,7 +48,7 @@ flowchart LR
 ## ✨ Key features
 
 - 🧩 **Two containers, one origin** — the Go backend serves the JSON API, the nginx frontend serves the Angular bundle and nothing else, and the chart's Ingress routes `/api/` and `/auth/` to the backend and the rest to the frontend, so the browser sees one origin.
-- 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks`, open questions, comments with their history, interest, progress, time entries and attachments.
+- 🎫 **Tickets with stable keys** — `acme/COW-42`: five types, a state matrix that asks for reasons and a verification note, four link types with a cycle check on `blocks` and the prerequisite tree they make, open questions, comments with their history, interest, progress, time entries and attachments.
 - 🔑 **Tokens for people and agents** — personal access tokens with a scope and an optional tenant or project restriction, made by the person in a browser session and never by a token; an agent, marked by its token or by `X-Cowork-Agent`, is bound by capabilities and sends an `Idempotency-Key` with every creating `POST`.
 - 💬 **An assistant in the browser** — a chat panel whose model works on the same tools as the person's agent, with the capabilities the person chooses (by default not deciding, closing, dropping or recording answers); the providers are a list in the chart, the person picks one, and Stop ends a turn at once.
 - 🤖 **Claude Code as a co-worker** — `cowork-mcp`, one static binary per platform, serves fifteen workflow tools over the API with the person's token and runs Claude Code's hooks: a session starts with its project's state and is reminded at its end; a repository finds its project by its normalised git remote, and an unbound one gets a proposal the person confirms.
@@ -59,6 +59,7 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
+- 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
@@ -121,7 +122,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
 | Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
 | Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
-| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry` | `system:identity-provider` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
@@ -137,7 +138,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
 | Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; the control events `resync` and `unavailable` | — |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 
@@ -151,6 +152,8 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
 | All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
 | Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
+| End-to-end stack | the network `cowork-e2e` and the containers `cowork-e2e-postgres`, `-minio`, `-dex`, `-backend`, `-frontend`, `-ingress` (`E2E_NAME=` renames them); the UI on `https://localhost:18443` (`E2E_PORT`), Dex on `http://localhost:5557/dex` (`E2E_DEX_PORT`); the database `cowork_e2e`, the bucket `cowork-e2e` | `make e2e` makes and removes it, `make e2e-up` and `make e2e-down` keep it between runs; the local administrator `e2e-admin` with the password `e2e-only-cowork`, development values |
+| End-to-end data | the tenants `e2e` (a project per test, key `E` and seven random characters; the mapping `team-red` → `member`) and `e2e-visual` (the project `VIEW` of the dark-mode screenshot), the token `e2e-seed`, local accounts `e2e-<random>` | made by the suite through the API ([testing.md](docs/developer/testing.md#end-to-end-tests)) |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
 | Development stack | `make dev`: the backend on `localhost:8080`, the UI on `https://localhost:4200` (self-signed), the local administrator `dev` with the password `dev-only-cowork`, Dex as the identity provider (allowed `cowork-users`, administrator group `cowork-admins`, the button *Sign in with Dex*), the group mapping `team-red` → `member` in the tenant `dev`, the bucket `cowork-dev`, a second person `sam`, demo projects `COW`, `OPS`, `WEB` | two ways in: the form as `dev`, or *Sign in with Dex* as one of the four Dex users; state in `.dev/` (untracked): `token` (the demo data's), `session-key`, `backend.log`, the built `cowork`, and the PrimeUI key in `primeui-license`; `make dev-reset` empties the database |
 
@@ -181,7 +184,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | `/readyz` | readiness: a database ping, through the backend Service | the Ingress sends it here, and nginx answers it with the UI shell (`index.html`, `200`), which says nothing about the backend |
 | `/api/v1/…` | the JSON API, routed here by the Ingress; errors are RFC 9457 `application/problem+json` with a stable `code` | not routed here; a request that arrives all the same gets `404` with a problem naming the cause |
 | `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` | the browser's login flows, routed here like `/api/`, in the API document; `/auth/callback` is the redirect URI to register at the identity provider | the same `404` problem |
-| `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no` | — |
+| `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no`; `?me=true` makes it the person-level stream | — |
 | `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream with `X-Accel-Buffering: no` | — |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
@@ -301,6 +304,8 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 make test                       # backend unit + frontend unit
 make dev-up                     # the integration tier needs PostgreSQL, MinIO and Dex
 make test-integration           # a database and a bucket of its own per run
+make e2e-browsers               # once: Playwright's Chromium and WebKit
+make docker-build e2e           # the end-to-end tier: both images behind the Ingress stand-in, a stack of its own
 make lint frontend-lint helm-lint
 ```
 
@@ -612,11 +617,12 @@ A key is `tenant/PROJECT-n`, or `PROJECT-n` in a bound session.
 | `session_start` | — | the session block of `session-context`, again; the binding it finds is the session's | — |
 | `get_ticket` | `key`, `comments` (10), `activity` (10) | the ticket's context document and the commit strings for it; read only | — |
 | `search` | `query` (optional in one project: without it, the project's tickets in rank order), `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
-| `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]` | files a ticket in the bound or the named project, then its links | — |
+| `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]`, `horizon` (`later`), `after`, `before` | files a ticket in the bound or the named project into its horizon, directly after or before a ticket of that horizon or at its end, then its links | `override-urgency` for a horizon other than `later`, `rank` for a place |
 | `record_state` | `key`, `body`, `comment` | replaces the body as a whole with `If-Match` of the version it read | — |
 | `comment` | `key`, `text` | comments, in the person's name with the agent's mark | — |
 | `link` | `key`, `type`, `other_key` | links two tickets of a tenant; an existing link is success | — |
 | `watch` | `key` | sets the person's `watch` interest | — |
+| `place_ticket` | `key`, `horizon`, `after`, `before`, `reason` | moves a ticket to another horizon with a reason, to a place directly after or before a ticket of its horizon, or both; a horizon is a planning category, not a state | `override-urgency` for a horizon, `rank` for a place |
 | `open_question` | `key`, `question`, `options`, `recommendation`, `asked_of` | opens one question for a person (`me`, a username, a display name or an id; left out, the tenant) | — |
 | `record_answer` | `key`, `question`, `answer` | writes down the answer the person gave in chat, marked as recorded by the agent | `record-answer` |
 | `transition` | `key`, `to`, `reason_or_note`, `block_kind`, `blocked_by`, `comment` | moves the ticket from the state it read | `decide` to `decided`, `close` to `done`, `drop` to `dropped` |
@@ -684,12 +690,16 @@ full.
   the members, the person's tokens and the projects also take numbered pages, `page` and
   `per_page` (`25`, `50`, `100`; `50` without it, clamped like `limit`), answered with `total`,
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
-  the ticket lists, the projects, the members, the group mappings, a project's access list and
-  the lists of a ticket — comments, activity, questions, links, interest, attachments, time
-  entries — answer a weak `ETag`, the caller's page, and `304` without a body to it in
-  `If-None-Match`. A query
+  the ticket lists, the projects, the members, the group mappings, a project's access list, the
+  lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
+  the prerequisite tree — and the person's inbox, assigned tickets and decisions answer a weak
+  `ETag`, the caller's page, and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
-  `404`.
+  `404`. The person-level lists under `/api/v1/me/` — the inbox, the tickets assigned to the
+  person, the open decisions — span every tenant of the person, name the tenant on every item, take
+  `tenant=<slug>` to narrow to one (`404 not_found` for a slug that names none of theirs, as for an
+  unknown one) and carry cursors only; a token restricted to a tenant or a project reads that
+  tenant or that project alone.
 - **Every response** carries `Cache-Control: no-store` (the event stream `no-cache`) and
   `X-Request-Id`. An error is `application/problem+json`
   ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): `type`, `title`, `status`, `detail`,
@@ -720,6 +730,11 @@ full.
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
+| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent` —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
+| `PUT /api/v1/me/inbox/read` | `{"through": "<notification id>"}`: every unread notification of the person up to and including that one, read — one that arrived after it stays unread; `tenant` narrows; `write` scope; `200 {"unread"}`; one act `read` per tenant where something changed |
+| `PUT /api/v1/me/inbox/{notification}/read` | one notification read; `write` scope; `200 {"unread"}`; one already read records nothing; another person's, or one of a ticket the person no longer sees, `404 not_found` |
+| `GET /api/v1/me/assigned` | the open tickets — neither `done` nor `dropped` — assigned to the person across their tenants: `{"items": [{"tenant": {slug, name}, "ticket": {...}}], "next_cursor"}`, in the order of the tenant's slug, the project's key and the project's rank, until the score of ADR 0014 exists; `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/decisions` | the open questions asked of the person and those open in their tenants — asked of nobody —, on tickets they see: `{"items": [{"tenant", "ticket": {key, title, state}, "question": {...}}], "next_cursor"}`, in the order of the tenant's slug, the project's key, the ticket's place in the rank — `done` and `dropped` tickets after the ranked ones — and the question's number; `tenant`, `limit`, `cursor` |
 | `GET /api/v1/tenants` | a global administrator, session only: every tenant of the installation by slug, `{"slug","name","role"}` — `role` the caller's, the higher of mapping and grant, `null` where they hold none; `limit` and `cursor`. Anybody else `403 forbidden`; a token `403 session_required` |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
@@ -803,7 +818,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
 | `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; numbered pages with a total; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before — a CSV page carries no cursor, so a client reads several as numbered pages with `to` held at the moment it began |
-| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) |
+| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)); with `me=true` the person-level stream, which adds `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes — and the `question.changed` of a question asked of the person in another of their tenants, while they belong to it and see its ticket; neither carries an `id:` |
 | `GET …/projects` | the projects the caller can see, by key; `include_archived`; numbered pages with a total |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
 | `GET …/projects/{project}` | one project |
@@ -816,29 +831,30 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tickets — 20 routes</summary>
+<summary>Tickets — 21 routes</summary>
 
 | Method and path | Does |
 |---|---|
 | `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max` (the implementation stage), `opened_after`, `opened_before`, `updated_after`, `updated_before`, `done_after` (done after it — like the four timestamps before it, the bound itself excluded), `q`, `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
 | `GET …/projects/{project}/tickets` | the project's tickets in its rank: the ranked by their key, then the unranked — done and dropped, and open ones a release before the rank filed — by number ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md)); the same filters but `project`; a cursor from before the rank is `400 invalid_cursor` |
-| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next, its rank the bottom |
+| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next. `urgency` is its horizon, `later` when left out; `after` or `before` names an open ticket of that horizon it is placed directly next to, the bottom of the rank — the end of its horizon — when left out ([ADR 0010](docs/adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3, [ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D2); an agent needs `override-urgency` for a horizon other than `later` and `rank` for a place |
 | `GET …/{number}` | one ticket: its state — `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` — its three progress stages `progress_refinement`, `progress` (implementation) and `progress_review`, derived from its children while it has any, `done_from` and `done_by_hand` while it is done, and `open_prerequisites`, the open tickets that block it which the caller can see |
 | `PATCH …/{number}` | change its fields; `If-Match`. A stage takes 0–100 in steps of five in every state but `dropped`, never on a ticket with children. The change that brings the last of the three stages of a ticket without children to 100 is the done act: it needs `note`, the verification, and over open prerequisites it is `409 open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent needs `close` and a ticket in `in-progress` or `review`. The change that lowers a stage of a ticket done by its stages reopens it to `done_from` with a `reason`, ranked at the bottom; a ticket done by hand stays done while its stages change; an open ticket whose three stages are full already — a parent whose last child left — is closed by hand |
 | `PUT …/{number}/body` | replace its body as a whole; `If-Match` |
-| `PUT …/{number}/urgency-override` | override the derived urgency until the override is withdrawn or replaced — an input change derives the value again beside it; the reason is optional for a person and required of an agent, which needs `override-urgency`; `If-Match` |
-| `DELETE …/{number}/urgency-override` | withdraw the override; `If-Match` |
+| `PUT …/{number}/urgency-override` | set the ticket's horizon — `now`, `release`, `next`, `later` or `icebox`, a planning category independent of the state, which nothing derives: the derived value is `later` for every ticket — until it is withdrawn or replaced; the reason is optional for a person and required of an agent, which needs `override-urgency`; `If-Match` |
+| `DELETE …/{number}/urgency-override` | return the ticket to `later`, the derived horizon; `If-Match` |
 | `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason; `If-Match` |
 | `POST …/{number}/transitions` | move it to another state: forward one step to `review`, back with a reason, into `blocked` and out to where it came from, `dropped` with a reason and back to `filed`; `from` must be the current state, else `409 state_conflict`. To `done` is done by hand — from any open state for a person, from `in-progress` or `review` for an agent with `close` — with a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; done → `done_from` with a reason withdraws it, unless it has no children and its three stages are full, when the ticket stays done by them; a ticket done by its stages leaves done only by a lower stage. An agent needs `decide`, `close` or `drop` for those moves; done and dropped take the rank away, leaving them ranks the ticket at the bottom |
 | `PUT …/{number}/rank` | place it directly after or before another open ticket of the project, `{"after": n}` or `{"before": n}`: one key written between the neighbour's and the next one's on that side, those the caller cannot see counted, recorded as `ranked` with the neighbour, the version raised — the key itself is never shown, the list's order is the rank; a ticket already there among those the caller can see is `200` unchanged; no `If-Match` — the last move wins; an agent needs `rank`; a done or dropped ticket or neighbour is `409 state_conflict`, a neighbour the caller cannot see the `400` of one that does not exist |
 | `GET …/{number}/links` | its links in both directions |
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
+| `GET …/{number}/prerequisites` | its prerequisite tree ([ADR 0012](docs/adr/0012-four-typed-directed-links-within-a-tenant.md) D6): the tickets that block it, what blocks those, and so on, eight levels deep, depth first; `direction=up` reads it upward, its dependents. Each node with its key, title, state, `blocked_from`, assignee, the three progress stages, `depth`, `settled` (done or dropped) and `repeated` — a ticket the tree holds under two others stands in full under the first and as `repeated` under each other; `open` counts the open ones of the whole tree, each once, on every page. A ticket the caller cannot see is absent, and so is what lies only behind it |
 | `GET …/{number}/interest` | who holds a stake in it |
 | `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
 | `DELETE …/{number}/interest` | remove the caller's own stake |
 | `GET …/{number}/markdown` | its canonical Markdown, `text/markdown`; the `ETag` is its version; every call is recorded |
-| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent — or the token, `(through the token <name>)` —, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree, eight levels), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
+| `GET …/{number}/context` | the ticket for reading, `text/markdown`: one first line naming the ticket, the time, the person and the agent — or the token, `(through the token <name>)` —, the canonical Markdown, then `## Links`, `## Prerequisites` (the tree of `…/prerequisites`, each prerequisite once), `## Recent comments` (the last `comments`, default 10, up to 100; `0` leaves the section out), `## Attachments` and `## Recent activity` (the last `activity`, the same bounds); what the caller cannot see is absent; no `ETag`; every call is recorded. No import format ([grammar](docs/developer/markdown-grammar.md#the-context)) |
 | `GET …/{number}/activity` | every recorded act on it, from the audit record |
 
 </details>
@@ -1210,6 +1226,7 @@ make lint cyclo gosec vuln
 make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
+make docker-build e2e     # the end-to-end suite in Chromium and WebKit against both images (make e2e-browsers once)
 make build                # bin/cowork and frontend/dist/frontend/browser
 make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile
 make docker-build         # both images, from backend/Containerfile and frontend/Containerfile

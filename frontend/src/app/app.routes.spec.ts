@@ -14,6 +14,9 @@ import { ChangePassword } from './features/auth/change-password';
 import { Login } from './features/auth/login';
 import { Home } from './features/home/home';
 import { NotFound } from './features/home/not-found';
+import { Assigned } from './features/me/assigned';
+import { Decisions } from './features/me/decisions';
+import { Inbox } from './features/me/inbox';
 import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
@@ -48,6 +51,9 @@ const pages: [string, Type<unknown>][] = [
   ['password', ChangePassword],
   ['', Home],
   ['me/tokens', Tokens],
+  ['me/inbox', Inbox],
+  ['me/assigned', Assigned],
+  ['me/decisions', Decisions],
   ['t/:tenant', TenantOverview],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
@@ -93,7 +99,7 @@ describe('the routes', () => {
 
       expect(scope?.path).toBe('t/:tenant');
       expect(scope?.route.children?.length).toBeGreaterThan(0);
-      // Every child is a page that loads on demand, or the redirect of a project to its backlog.
+      // Every child is a page that loads on demand, or the redirect of a project to its board.
       expect(scope?.route.children?.every((child) => child.loadComponent || child.redirectTo)).toBe(
         true,
       );
@@ -154,7 +160,7 @@ describe('the routes', () => {
       named('/t/acme/tickets/COW-12', Shell, TenantScope, TicketDetail),
       named('/dev/design', Shell, DesignPreview),
       named('/t', Shell, NotFound),
-      named('/t/acme/p/COW', Shell, TenantScope, Backlog),
+      named('/t/acme/p/COW', Shell, TenantScope, Board),
       named('/t/acme/unknown', Shell, NotFound),
       named('/nothing/here', Shell, NotFound),
     ])('takes %s to %s', async (url, _, components) => {
@@ -164,10 +170,10 @@ describe('the routes', () => {
     });
 
     it.each([
-      ['/t/acme/p/COW', '/t/acme/p/COW/backlog'],
-      ['/t/acme/p/OPS', '/t/acme/p/OPS/backlog'],
-      ['/t/globex/p/COW?q=flicker', '/t/globex/p/COW/backlog?q=flicker'],
-    ])('sends the project without a view, %s, on to its backlog, %s', async (url, target) => {
+      ['/t/acme/p/COW', '/t/acme/p/COW/board'],
+      ['/t/acme/p/OPS', '/t/acme/p/OPS/board'],
+      ['/t/globex/p/COW?q=flicker', '/t/globex/p/COW/board?q=flicker'],
+    ])('sends the project without a view, %s, on to its board, %s', async (url, target) => {
       TestBed.configureTestingModule({
         providers: [provideRouter(routes, withComponentInputBinding()), provideLocationMocks()],
       });

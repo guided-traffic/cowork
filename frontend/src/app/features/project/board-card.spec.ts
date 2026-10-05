@@ -182,7 +182,7 @@ describe('BoardCard', () => {
       expect(text(three, '[data-testid="card-prerequisites"]')).toBe('3 open prerequisites');
     });
 
-    it('marks a ticket of urgency release, and explains it', async () => {
+    it('marks a ticket in the horizon release, and explains it', async () => {
       const release = await render(ticket({ urgency: 'release' }));
       expect(text(release, '[data-testid="card-release"]')).toBe('release');
       expect(
@@ -190,7 +190,7 @@ describe('BoardCard', () => {
           .query(By.css('[data-testid="card-release"]'))
           .injector.get(Tooltip)
           .content(),
-      ).toBe('Gates the release, or is gated on it');
+      ).toBe('Release: has to be in the next release');
 
       const now = await render(ticket());
       expect(el(now, '[data-testid="card-release"]')).toBeNull();
@@ -274,6 +274,12 @@ describe('BoardCard', () => {
       const button = el(fixture, '[data-testid="card-now-acme/COW-12"]');
       expect(button?.textContent?.trim()).toBe('Now');
       expect(button?.getAttribute('aria-label')).toBe('Make COW-12 now');
+      expect(
+        fixture.debugElement
+          .query(By.css('[data-testid="card-now-acme/COW-12"]'))
+          .injector.get(Tooltip)
+          .content(),
+      ).toBe('Move it to the horizon now; it moves to the column of its state');
       button?.click();
 
       expect(made).toBe(1);

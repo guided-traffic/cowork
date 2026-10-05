@@ -24,6 +24,17 @@ events:
       tenant's administrators and the person it names, one about a mapping the administrators,
       every other every member.
 
+      With `me=true` — the person-level pages, and the bell in the top bar — the stream also carries
+      the person's own events across every tenant they belong to (docs/adr/0054 D1):
+      `inbox.changed` with `data: {"unread": n}`, the person's unread notifications in every tenant
+      the request reaches (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and
+      whenever the inbox changes — a notification for them, or theirs marked read —; and
+      `question.changed` of a question asked of them in another tenant, which arrives only while
+      they are a member of that tenant and see its ticket, as the tenant's own stream would judge
+      it. Neither carries an `id:` or is replayed: the count says how things stand, and the client
+      reloads its person-level lists when the stream opens. A token restricted to a tenant hears
+      nothing of another (docs/adr/0035 D3).
+
       A reconnect with `Last-Event-ID` inside the replay window replays the gap;
       beyond it the stream starts with `event: resync`, and the client refetches its lists (D5).
       A comment every twenty seconds keeps proxies open and checks the token and the
@@ -34,6 +45,10 @@ events:
         in: header
         description: The id of the last event the client received
         schema: {type: string, format: uuid}
+      - name: me
+        in: query
+        description: Adds the person's own events across their tenants (docs/adr/0054 D1)
+        schema: {type: boolean, default: false}
     responses:
       '200':
         description: The stream

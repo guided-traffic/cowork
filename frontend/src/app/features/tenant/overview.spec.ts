@@ -415,13 +415,13 @@ describe('TenantOverview', () => {
       expect(ops?.querySelector('.description')).toBeNull();
     });
 
-    it('links each card to the backlog of its project', async () => {
+    it('links each card to the board of its project', async () => {
       projects.list.set([project('COW', 'Cowork')]);
 
       const { page } = await render();
 
       expect(page.querySelector('[data-testid="project-COW"]')?.getAttribute('href')).toBe(
-        '/t/acme/p/COW/backlog',
+        '/t/acme/p/COW/board',
       );
     });
 

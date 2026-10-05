@@ -15,8 +15,13 @@ not objected to.
 **Partly built** (phase 2, 2026-10-02): D1, D2, D4 and D5 — `ticket_interest` (migration 12),
 one stake per person and ticket set and removed by its person, visible with the ticket, `watch`
 for viewers and agents and `need` and `urgent` for an agent with `interest`, kept and shown as
-settled when the ticket is done or dropped, and the lists' `interest` filter. D3's score and
-D6's watcher set arrive with the score and the notifications.
+settled when the ticket is done or dropped, and the lists' `interest` filter. D3's score
+arrives with the score. *(2026-10-04:)* D6's watcher set, which the notifications of
+[ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2 address — the stakes, the
+assignee, the reporter and the askers and the persons asked of the open questions (`ListWatchers` in
+[`queries/write/notifications.sql`](../../backend/internal/store/queries/write/notifications.sql));
+the person a mention names is not among them, because no mention is built
+([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5).
 
 ## Context
 

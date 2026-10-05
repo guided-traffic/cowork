@@ -26,6 +26,19 @@ export const routes: Routes = [
         path: 'me/tokens',
         loadComponent: () => import('./features/me/tokens').then((m) => m.Tokens),
       },
+      // The person-level pages, across the person's tenants (docs/adr/0018 D3).
+      {
+        path: 'me/inbox',
+        loadComponent: () => import('./features/me/inbox').then((m) => m.Inbox),
+      },
+      {
+        path: 'me/assigned',
+        loadComponent: () => import('./features/me/assigned').then((m) => m.Assigned),
+      },
+      {
+        path: 'me/decisions',
+        loadComponent: () => import('./features/me/decisions').then((m) => m.Decisions),
+      },
       {
         path: 't/:tenant',
         component: TenantScope,
@@ -35,8 +48,8 @@ export const routes: Routes = [
             pathMatch: 'full',
             loadComponent: () => import('./features/tenant/overview').then((m) => m.TenantOverview),
           },
-          // A project's address without a view opens its backlog (docs/adr/0018 D1).
-          { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/backlog' },
+          // A project's address without a view opens its board (docs/adr/0018 D1).
+          { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/board' },
           {
             path: 'p/:project/backlog',
             loadComponent: () => import('./features/project/backlog').then((m) => m.Backlog),

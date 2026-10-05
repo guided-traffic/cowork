@@ -20,8 +20,13 @@ same day ([migration 27](../../backend/internal/store/migrations/000027_acts_thr
 (migration 11), the thread oldest first or reversed, edits with their history, withdrawal by the
 author, by the person for their agents' comments, by an agent for an agent's of the same person
 and by a tenant administrator with an `admin`-scope token (who never edits), the explaining comment on transitions, field
-changes and body changes, and the activity list over the audit record. D5's mentions arrive with
-the inbox.
+changes and body changes, and the activity list over the audit record. ~~D5's mentions arrive with
+the inbox.~~ *(2026-10-04: the inbox of [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
+is built, and a comment tells the ticket's watchers; the mention is not: D5 names `@person` without
+saying how a comment's text names a person — a username, which only a local account has, an e-mail
+address, which only administrators read, or an id the UI writes — and that is an open decision.)* *(2026-10-04.)* In the browser the author edits a comment over its
+version and reads its earlier texts, and the author or a tenant administrator withdraws it after a
+confirmation.
 
 ## Context
 

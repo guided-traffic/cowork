@@ -240,8 +240,8 @@ func TestAChatTurnFilesARankedTicket(t *testing.T) {
 		if key == nil {
 			return stubllm.Reply{Text: "I could not file it."}
 		}
-		return stubllm.Reply{Calls: []stubllm.Call{{ID: "call_rank", Name: "set_urgency",
-			Arguments: fmt.Sprintf(`{"key": %q, "urgency": "now", "reason": "the person asked to rank it to now"}`, key[1])}}}
+		return stubllm.Reply{Calls: []stubllm.Call{{ID: "call_rank", Name: "place_ticket",
+			Arguments: fmt.Sprintf(`{"key": %q, "horizon": "now", "reason": "the person asked to rank it to now"}`, key[1])}}}
 	})
 	e.stub.Reply(stubllm.Reply{Text: "Filed it and ranked it to now."})
 
@@ -284,7 +284,7 @@ func TestAChatTurnFilesARankedTicket(t *testing.T) {
 	assert.Contains(t, first.System, fmt.Sprintf(`the tenant "Tenant A" (%s)`, e.SlugA))
 	assert.Contains(t, first.System, "/t/"+e.SlugA+"/p/ALPHA/board")
 	assert.NotContains(t, first.Tools, "api")
-	assert.Contains(t, first.Tools, "set_urgency")
+	assert.Contains(t, first.Tools, "place_ticket")
 	assert.Contains(t, first.Tools, "open_board")
 	assert.Equal(t, "stub/model", first.Model)
 	assert.Contains(t, got[1].LastToolText(), "Filed "+key)

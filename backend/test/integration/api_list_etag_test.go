@@ -39,6 +39,10 @@ func TestThePolledListsAnswerNotModified(t *testing.T) {
 		"listInterest":      ticket + "/interest",
 		"listAttachments":   ticket + "/attachments",
 		"listTicketTime":    ticket + "/time-entries",
+		"listPrerequisites": ticket + "/prerequisites",
+		"listMyInbox":       "/api/v1/me/inbox",
+		"listMyAssigned":    "/api/v1/me/assigned",
+		"listMyDecisions":   "/api/v1/me/decisions",
 	}
 	for op, path := range lists {
 		t.Run(op, func(t *testing.T) {

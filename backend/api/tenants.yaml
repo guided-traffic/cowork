@@ -471,9 +471,14 @@ projectTickets:
     summary: File a ticket
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
-      the project's next and the rank its bottom (docs/adr/0014 D2); the urgency is derived
-      (docs/adr/0010 D3); a live or boundary security class makes the ticket confidential
-      (docs/adr/0065 D2). An archived project refuses.
+      the project's next. `urgency` is the ticket's horizon, a planning category independent of
+      the state, `later` when left out; another horizon is stored as the override, set by the
+      caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+      the end of its horizon, or directly `after` or `before` the open ticket of the project
+      named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+      `override-urgency` for a horizon other than `later` and `rank` for a place, else 403
+      `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+      confidential (docs/adr/0065 D2). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -603,12 +608,13 @@ ticketUrgencyOverride:
   put:
     operationId: overrideUrgency
     tags: [tickets]
-    summary: Override the derived urgency
+    summary: Set the horizon
     description: |
-      The override holds until a person or an agent withdraws it or sets another; when an input of
-      the derivation changes, the derived value and its rule change beside it and the override stays
-      (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose request
-      without one is 400 at `/reason`. An agent needs the override-urgency capability
+      Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+      category independent of the state, which holds until a person or an agent withdraws it or
+      sets another; nothing derives it, the derived value is `later` for every ticket
+      (docs/adr/0010 D3). The reason is optional for a person and required of an agent, whose
+      request without one is 400 at `/reason`. An agent needs the override-urgency capability
       (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
@@ -633,8 +639,8 @@ ticketUrgencyOverride:
   delete:
     operationId: withdrawUrgencyOverride
     tags: [tickets]
-    summary: Withdraw the urgency override
-    description: The derived urgency holds again. An agent needs the override-urgency capability (docs/adr/0043 D4).
+    summary: Return the ticket to the horizon later
+    description: Withdraws the horizon set on the ticket; the derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the override-urgency capability (docs/adr/0043 D4).
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     responses:

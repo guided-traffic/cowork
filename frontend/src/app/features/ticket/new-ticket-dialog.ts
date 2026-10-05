@@ -22,6 +22,7 @@ import { ProblemService } from '../../core/problem.service';
 import { TicketActions } from '../../core/ticket-actions.service';
 import { typeIcons } from '../../shared/badges';
 import { meanings } from '../../shared/vocabulary';
+import { ParentPicker } from './parent-picker';
 
 const types: TicketType[] = ['task', 'bug', 'feature', 'decision', 'question'];
 const severities: Severity[] = ['critical', 'high', 'medium', 'low', 'cosmetic'];
@@ -30,13 +31,23 @@ const efforts: Effort[] = ['XS', 'S', 'M', 'L'];
 
 /**
  * Files a ticket in a project (docs/adr/0018 D1, the API's `createTicket`): the frontmatter
- * fields, the threat when the security class is not `none`, an assignee and the Markdown body.
- * The server's field errors appear beside their fields (docs/adr/0047 D2).
+ * fields, the threat when the security class is not `none`, an assignee, a parent among the
+ * project's open tickets (docs/adr/0008 D2) and the Markdown body. The server's field errors
+ * appear beside their fields (docs/adr/0047 D2).
  */
 @Component({
   selector: 'app-new-ticket-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, Dialog, FormsModule, InputText, Select, SelectButton, Textarea],
+  imports: [
+    ButtonDirective,
+    Dialog,
+    FormsModule,
+    InputText,
+    ParentPicker,
+    Select,
+    SelectButton,
+    Textarea,
+  ],
   templateUrl: './new-ticket-dialog.html',
   styleUrl: './new-ticket-dialog.scss',
 })
@@ -72,6 +83,8 @@ export class NewTicketDialog {
   protected readonly threat = signal('');
   protected readonly effort = signal<Effort>('M');
   protected readonly assignee = signal<string | null>(null);
+  /** The parent's canonical key. */
+  protected readonly parent = signal<string | null>(null);
   protected readonly body = signal('');
 
   protected readonly saving = signal(false);
@@ -93,6 +106,7 @@ export class NewTicketDialog {
     this.threat();
     this.effort();
     this.assignee();
+    this.parent();
     this.body();
     return crypto.randomUUID();
   });
@@ -126,6 +140,7 @@ export class NewTicketDialog {
           effort: this.effort(),
           ...(this.needsThreat() ? { threat: this.threat().trim() } : {}),
           ...(this.assignee() ? { assignee: this.assignee() as string } : {}),
+          ...(this.parent() ? { parent: this.parent() as string } : {}),
           ...(this.body().trim() ? { body: this.body() } : {}),
         },
         this.key(),
@@ -153,6 +168,7 @@ export class NewTicketDialog {
     this.threat.set('');
     this.effort.set('M');
     this.assignee.set(null);
+    this.parent.set(null);
     this.body.set('');
     this.errors.set({});
   }

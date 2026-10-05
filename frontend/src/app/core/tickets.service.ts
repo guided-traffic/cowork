@@ -179,6 +179,27 @@ export class TicketsService {
     });
   }
 
+  /**
+   * Every open ticket of a project, in its rank, every page of it, into the cache — what a person
+   * picks a parent from (docs/adr/0008 D2). A one-off read, not an open list: nothing reloads it.
+   */
+  async openTickets(tenant: string, project: string): Promise<Ticket[]> {
+    const tickets: Ticket[] = [];
+    let cursor: string | undefined;
+    do {
+      const list = await this.api.invoke(listProjectTickets, {
+        tenant,
+        project,
+        cursor,
+        limit: pageSize,
+      });
+      this.keep(list);
+      tickets.push(...list.items);
+      cursor = list.next_cursor ?? undefined;
+    } while (cursor);
+    return tickets;
+  }
+
   /** Fetches one ticket by its canonical key into the cache. */
   async refresh(key: string): Promise<Ticket> {
     const ticket = await this.api.invoke(resolveTicket, splitKey(key));
@@ -242,18 +263,24 @@ export class TicketsService {
       this.reloadLists();
       return;
     }
-    if (event.name === 'membership.changed') {
+    // The person-level stream also names tickets of the person's other tenants (docs/adr/0054 D1);
+    // this service holds the tickets of the tenant the pages show.
+    if (
+      event.name === 'membership.changed' ||
+      event.name === 'inbox.changed' ||
+      splitKey(event.key).tenant !== this.session.tenant()
+    ) {
       return;
     }
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
-    // a question or a link re-derives its urgency without one; a comment or a stake changes
-    // nothing the ticket itself shows.
+    // a link changes its open prerequisites without one; a question, a comment or a stake
+    // changes nothing the ticket itself shows.
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
         ? held.version < event.version
-        : event.name === 'question.changed' || event.name === 'link.changed');
+        : event.name === 'link.changed');
     if (stale) {
       this.refetch(event.key);
     }

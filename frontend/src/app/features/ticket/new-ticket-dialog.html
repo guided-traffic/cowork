@@ -125,6 +125,20 @@
       />
     </div>
 
+    <div class="field">
+      <span id="new-parent-label">Parent</span>
+      <app-parent-picker
+        [tenant]="tenant()"
+        [project]="project()"
+        [value]="parent()"
+        labelledBy="new-parent-label"
+        (picked)="parent.set($event)"
+      />
+      @if (errors()['parent']; as error) {
+        <small class="error">{{ error }}</small>
+      }
+    </div>
+
     <label class="field">
       <span>Description <span class="muted">(Markdown)</span></span>
       <textarea

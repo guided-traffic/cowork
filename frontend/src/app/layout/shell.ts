@@ -26,6 +26,7 @@ import { AuthService } from '../core/auth.service';
 import { ChatService } from '../core/chat.service';
 import { EventStreamService } from '../core/event-stream.service';
 import { HARD_NAVIGATION } from '../core/hard-navigation';
+import { InboxService } from '../core/inbox.service';
 import { ProblemService } from '../core/problem.service';
 import { ProjectsService } from '../core/projects.service';
 import { TenantService } from '../core/tenant.service';
@@ -89,6 +90,7 @@ export class Shell {
   protected readonly theme = inject(ThemeService);
   protected readonly tenantInfo = inject(TenantService);
   protected readonly chat = inject(ChatService);
+  protected readonly inbox = inject(InboxService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
 
@@ -111,6 +113,15 @@ export class Shell {
     })),
   );
   protected readonly themeText = computed(() => themeTexts[this.theme.preference()]);
+  /** The bell's count as it is read: `99+` above ninety-nine. */
+  protected readonly unread = computed(() => {
+    const n = this.inbox.count();
+    return n > 99 ? '99+' : String(n);
+  });
+  protected readonly bellLabel = computed(() => {
+    const n = this.inbox.count();
+    return n === 0 ? 'Inbox' : `Inbox, ${n} unread`;
+  });
   protected readonly initials = computed(() => initials(this.session.person()?.display_name ?? ''));
 
   private readonly auth = inject(AuthService);
@@ -135,6 +146,10 @@ export class Shell {
   });
 
   constructor() {
+    // The person-level stream follows the tenant the pages show; on the person-level pages, and
+    // wherever no tenant is shown, it is held on the person's first tenant, so that the bell and the
+    // person-level lists are live everywhere (docs/adr/0054 D1).
+    effect(() => this.stream.personal(this.session.memberships()[0]?.tenant.slug ?? null));
     // A temporary password allows nothing but changing it (docs/adr/0033 D4): the shell does not
     // show pages the backend would refuse, it goes to the password page first.
     effect(() => {

@@ -41,7 +41,7 @@
   <div class="panel" [class.loading]="loading()" [attr.aria-busy]="loading()">
     <table
       class="tickets"
-      aria-label="Open tickets, grouped by urgency"
+      aria-label="Open tickets, grouped by horizon"
       data-testid="backlog-table"
     >
       <thead>
@@ -137,7 +137,7 @@
             <tr class="group-empty">
               <td colspan="10" [attr.data-testid]="'empty-' + group.urgency">
                 @if (dragging()) {
-                  Drop here to make a ticket {{ group.urgency }}
+                  Drop here to move a ticket to {{ group.urgency }}
                 } @else {
                   No tickets
                 }
@@ -253,7 +253,7 @@
           [attr.data-testid]="'zone-' + group.urgency"
         >
           <span class="group-name">{{ group.urgency }}</span>
-          <span class="muted">Drop here to make a ticket {{ group.urgency }}</span>
+          <span class="muted">Drop here to move a ticket to {{ group.urgency }}</span>
         </div>
       }
     </div>

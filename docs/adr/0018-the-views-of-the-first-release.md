@@ -6,7 +6,8 @@ Accepted, amended 2026-10-01 (D1, D2: the prerequisite count on cards and the pr
 tree on the detail page, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6)
 and 2026-10-03 (D1: the backlog grouped by urgency; the board's columns as a view over the
 states, its `next` column and the urgencies its other columns hold; D2: the three progress
-stages and done by hand).
+stages and done by hand) and 2026-10-04 (D1: a project opens on its board, the Board tab left of
+the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -31,7 +32,9 @@ D2. The rest of the amended D1 — the drags between the columns, a child's plac
 parent's group, the count that stands in for `done` — is this record's proposal and stays
 open to objection until the board is built.
 
-**Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-03 — the backlog as a table
+**Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-04 — the project opening on its
+board, whose tab stands left of the backlog's, and the backlog's groups named as horizons
+(2026-10-04); D1 as amended 2026-10-03 — the backlog as a table
 grouped by urgency in the project's rank ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)),
 loaded with the cursor, its rows dragged within and between the groups with the urgency override
 or its withdrawal and moved by a row menu from the keyboard, `release` and `icebox` offered as
@@ -46,9 +49,18 @@ block a card directly and that the caller can see (`open_prerequisites`,
 drags between the columns as transitions. D2's detail page with its fields to edit, the three stage sliders with
 the note when the last stage fills, the moves with done by hand and its withdrawal, questions
 with the answer form, links, interest, comments, activity, attachments and time (the body as
-text until it is rendered; the prerequisite tree missing); the time report; and as the tenant's
+text until it is rendered), and since 2026-10-04 the title and the body edited there, the parent
+and the horizon chosen there, the confidential flag for a tenant administrator, the prerequisite
+tree with its upward reading, comments edited, their earlier texts and their withdrawal, an open
+question's text edited, uploads to a comment, the preview of raster images and the correction of
+time; the time report; and as the tenant's
 front page, until D6's dashboard, each project's open tickets by state with the tickets updated
-last. Not built: the score's marker in the backlog, D3–D7.
+last. *(2026-10-04:)* D3's "assigned to me", "open decisions" and the inbox, each across every tenant
+of the person as a union of per-tenant reads with the tenant beside each key, in the navigation for
+every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
+"assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
+until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
+Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
 
 ## Context
 
@@ -81,6 +93,16 @@ urgency to the group's value: an override, or the override's withdrawal where th
 the derived value (ADR 0010 D3, whose reason a person may leave out). A child is indented
 under its parent where both sit in one group; in another group its row names the parent.
 Closed tickets are in no group; the table shows them on request, below the groups.
+
+*(Amended 2026-10-04.)* **A project opens on its board**, and the Board tab stands left of the
+Backlog tab: the board is where the current work is carried out and what a person looks at first.
+**The backlog's groups are the five horizons** of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)
+D3 as amended 2026-10-04 — planning categories, not states: a ticket stands in any of them in
+whatever state, a drag moves it freely within and between them, and the order within each is the
+person's, the project's rank. An agent re-sorts with the same two acts, and files a ticket into a
+horizon at a place in it; without a place it lands at the end of its horizon, without a horizon in
+`later` ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2 as amended 2026-10-04).
+The owner's words, 2026-10-04.
 
 *(Amended 2026-10-03.)* **The board shows the current work:** the open leaves of urgency
 `now` and `release` (the latter marked) in the columns **Refinement** (`filed` and
@@ -141,7 +163,8 @@ tenants beyond D3, Gantt or timeline views, a calendar.
   was adjusted in the same change.
 - D4's refusal to change project by drag keeps the board honest about what a drag means; a
   ticket that belongs elsewhere is moved in its detail, as a recorded act.
-- *(Added 2026-10-03.)* A new ticket derives `later` (ADR 0010 D3) and is not on the board
+- *(Added 2026-10-03.)* A new ticket ~~derives `later`~~ *(amended 2026-10-04: is `later`
+  unless it is filed into another horizon)* (ADR 0010 D3) and is not on the board
   until it is moved to `next` or `now` in the backlog: the backlog is where work is planned,
   the board where it is carried out. A `next` ticket that is already in progress stays in the
   `next` column, its state on the card.

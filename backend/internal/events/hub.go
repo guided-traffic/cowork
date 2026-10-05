@@ -64,12 +64,15 @@ func (e Event) Name() string {
 		return "interest.changed"
 	case store.EntityMembership:
 		return "membership.changed"
+	case store.EntityInbox:
+		return "inbox.changed"
 	}
 	return "ticket.changed"
 }
 
 // Filter is what one stream may see: the projects visible to its person,
-// computed at connect and again at every heartbeat, already narrowed by a
+// computed at connect, again on every act that changes what the stream may
+// admit (Event.Refilter) and at every heartbeat, already narrowed by a
 // project-restricted token, and the confidential rule (docs/adr/0054 D3,
 // docs/adr/0065 D5).
 type Filter struct {
@@ -79,6 +82,12 @@ type Filter struct {
 	// RestrictedProject is the project a project-restricted token's stream is
 	// bound to (docs/adr/0035 D3); uuid.Nil for every other stream.
 	RestrictedProject uuid.UUID
+	// Me marks a person-level stream (?me=true): it hears, besides its
+	// tenant's events, the person's own across their tenants — their inbox
+	// changing, and the acts of questions asked of them (docs/adr/0054 D1).
+	// The hub hands those of another tenant over unfiltered; the stream judges
+	// each against that tenant before it writes it.
+	Me bool
 }
 
 // Admits reports whether the stream's person may see the event. A
@@ -171,12 +180,23 @@ func New(window time.Duration, maxPerPerson int) *Hub {
 // resync and dropped, never waited for (docs/adr/0054 D4). An act that changes
 // what a stream may admit reaches every stream of the tenant, marked to
 // refilter, and until the stream has computed its filter after it the hub
-// hands on every later event unjudged, so that none is dropped by a filter
-// that does not know the act yet (D3).
+// hands on every later event of the tenant unjudged, so that none is dropped
+// by a filter that does not know the act yet (D3). A change of a person's
+// inbox goes to that person's person-level streams alone and is kept for no
+// replay — it says how things stand, and a stream that opens says it anew; a
+// question's act also goes to the person-level streams of the person asked in
+// their other tenants (Filter.Me), which judge it against that tenant
+// themselves.
 func (h *Hub) Publish(n store.Notification) {
 	e := Event{Notification: n, At: h.now()}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if n.Entity == store.EntityInbox {
+		if n.Person != nil {
+			h.toPerson(*n.Person, uuid.Nil, e)
+		}
+		return
+	}
 	ring := append(h.rings[n.Tenant], e)
 	cut := 0
 	for cut < len(ring) && e.At.Sub(ring[cut].At) > h.window {
@@ -195,14 +215,36 @@ func (h *Hub) Publish(n store.Notification) {
 			s.changes++
 			out.Refilter = s.changes
 		}
-		if out.Withheld && out.Refilter == 0 {
+		if !out.Withheld || out.Refilter > 0 {
+			send(s, out)
+		}
+	}
+	if n.AskedOf != nil {
+		h.toPerson(*n.AskedOf, n.Tenant, e)
+	}
+}
+
+// toPerson hands an event to the person's person-level streams on every
+// tenant but except; the hub's lock is held.
+func (h *Hub) toPerson(person, except uuid.UUID, e Event) {
+	for tenant, list := range h.streams {
+		if tenant == except {
 			continue
 		}
-		select {
-		case s.C <- out:
-		default:
-			s.end(Resync)
+		for _, s := range list {
+			if s.filter.Me && s.filter.Person == person {
+				send(s, e)
+			}
 		}
+	}
+}
+
+// send hands an event to a stream, or ends one whose buffer is full.
+func send(s *Stream, e Event) {
+	select {
+	case s.C <- e:
+	default:
+		s.end(Resync)
 	}
 }
 

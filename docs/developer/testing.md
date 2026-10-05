@@ -16,9 +16,10 @@ Read against the tree on 2026-10-04.
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
-| End-to-end | `make e2e` (planned) | — | the built images, PostgreSQL, MinIO, Dex, a browser | **Not built.** Decided in [ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md): Playwright in `frontend/e2e/`, two identities, both colour schemes |
+| End-to-end | `make e2e`, after `make docker-build` | — | Docker, the two images of one commit, Chromium and WebKit (`make e2e-browsers`), `curl`, `openssl` | The images together, read-only, behind the Ingress stand-in with TLS, against a PostgreSQL, a MinIO and a Dex of its own: the login in a browser — the local form, a temporary password, Dex —, the session cookie and the CSRF check, filing and moving a ticket, the board and its drag, the backlog's drag, in Chromium and WebKit and both colour schemes, and a coarse dark-mode screenshot ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md), [below](#end-to-end-tests)) |
 
-Per-tier timeouts: the integration target passes `-timeout=10m`; the others use the Go default.
+Per-tier timeouts: the integration target passes `-timeout=10m`; the end-to-end suite gives a
+test 30 seconds and an assertion 10, and its CI job has ten minutes; the others use the Go default.
 
 ## Backend unit tests
 
@@ -184,12 +185,14 @@ taken; `MINIO_PORT=` does the same for MinIO, and `DEX_PORT=` for Dex and its is
 | `recordingLogger` | `login_helpers_test.go` | A logger that collects every record at every level as text, for searching a run for a secret |
 | `simultaneously(sends…)`, `times(n, send)` | `api_helpers_test.go` | Starts requests at the same instant and collects their status codes, for the races a conditional write can lose: the request that comes second must answer as a later one would, never `500`. A send runs in its own goroutine, so it builds nothing with `require` |
 | `ticketEnv`, `newTicketEnv(t)`, `task(…)`, `file(…)` | [`api_tickets_test.go`](../../backend/test/integration/api_tickets_test.go) | A world with its tokens and a running API; a plain ticket body; filing as a caller, with a key for an agent |
-| `openStream`, `next` | [`api_events_test.go`](../../backend/test/integration/api_events_test.go) | An event stream read message by message |
+| `openStream`, `openStreamAt`, `next` | [`api_events_test.go`](../../backend/test/integration/api_events_test.go) | An event stream read message by message; `openStreamAt` takes the path with its query |
+| `fileIn`, `send`, `inbox`, `reasonsAbout`, `openMeStream`, `until`, `unreadOf`, `ticketPath` | [`api_inbox_test.go`](../../backend/test/integration/api_inbox_test.go) | Filing in either tenant, a write that must answer one status, a person's inbox and the reasons it holds for a ticket, a person-level stream read until a message matches — what came before it returned, for asserting what must not have — and an `inbox.changed`'s count |
+| `assigned`, `decisions`, `walk` | [`api_me_lists_test.go`](../../backend/test/integration/api_me_lists_test.go) | The person-level lists as keys, and a list walked one item per page by its cursor |
 | `adminWorld`, `newAdminWorld(t)`, `members`, `nextMembership` | [`api_members_test.go`](../../backend/test/integration/api_members_test.go) | A world whose persons have local accounts, tenant A's administrator in a session and an administrator's token beside it; the member list as a map; the next `membership.changed` of a stream |
 | `repoEnv`, `newRepoEnv(t)`, `bind`, `lookup` | [`api_repositories_test.go`](../../backend/test/integration/api_repositories_test.go) | A world with its tokens and a running API; a binding with a fresh key; a lookup's answer |
 | `contextOf` | [`api_context_test.go`](../../backend/test/integration/api_context_test.go) | A ticket's context document and its response |
 | `mcpEnv`, `newMCPEnv(t)`, `run`, `serve`, `callTool`, `mustCall` | [`api_paging_test.go`](../../backend/test/integration/api_paging_test.go) | The numbered pages of the tables ([ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D2): the projects, the audit view — its CSV too —, the members and the person's tokens answer a page with `total`, `page` and `per_page`, clamped like `limit`; the total counts what the caller sees and the filters select, a restricted token itself; a numbered page with a cursor or a limit, `per_page` alone and a page past row 10 000 refused (`TestTheTablesTakeNumberedPages`) |
-| [`api_list_etag_test.go`](../../backend/test/integration/api_list_etag_test.go) | Every list the client polls answers a weak `ETag` and `304` without a body to it, a change of the list a new tag, and another caller's tag is not this caller's page (`TestThePolledListsAnswerNotModified`, [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7) |
+| [`api_list_etag_test.go`](../../backend/test/integration/api_list_etag_test.go) | Every list the client polls — the person-level ones and the prerequisite tree among them — answers a weak `ETag` and `304` without a body to it, a change of the list a new tag, and another caller's tag is not this caller's page (`TestThePolledListsAnswerNotModified`, [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7) |
 | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) | A git repository on disk whose `origin` lies under tenant A's slug, the API, and `cowork-mcp`'s environment against both: a subcommand by its command line with its exit code and output, the MCP server on an in-memory transport with a client that names itself `claude-code`, a tool call's text |
 
 ### The identity provider in the tests
@@ -199,9 +202,11 @@ D3):
 
 - **Dex**, the reference: [`hack/dex/config.yaml`](../../hack/dex/config.yaml) in the container
   `cowork-dex` of `make dex-up`, at `COWORK_TEST_OIDC_ISSUER`. One static client, `cowork`
-  ([its secret](development-credentials.md#the-containers)), whose redirect URIs are `make dev`'s and the tests'
+  ([its secret](development-credentials.md#the-containers)), whose redirect URIs are `make dev`'s, the tests'
   `http://cowork.test/auth/callback` — a name that never has to resolve, because the test intercepts
-  the redirect and replays it against its own server. Four static users
+  the redirect and replays it against its own server — and the end-to-end tier's
+  `https://localhost:18443/auth/callback`, whose Dex is a container of its own made from the same
+  file ([below](#end-to-end-tests)). Four static users
   ([their password](development-credentials.md#signing-in-to-the-ui-under-make-dev)); under the gate of `make dev` and the tests (`cowork-users` allowed, `cowork-admins`
   the administrator group, the mapping `team-red` → `member` in the tenant `dev`):
 
@@ -291,7 +296,9 @@ generated types the server encodes, and `TestATurnIsHeldToTheDocument` in
 | [`api_chat_test.go`](../../backend/test/integration/api_chat_test.go) | The chat in the UI against the stub provider ([chat.md](chat.md#tests)): the availability with two providers; the person's pick and the default; a turn that files a ticket and ranks it to `now` with the chat's mark, the default set and a key on its acts; the person's capabilities over the Anthropic format — a close refused, chosen in a session only and recorded, then run at once; a token, a CSRF failure and an agent-marked session refused; a turn kept in its tenant; the turn's time, its comments and a failing provider; the agent header on a session; the turn limit and the shutdown; the stop that ends a slowly streaming turn within a second, its provider request cancelled, others untouched; a question asked of the person; the policies of `chat_capabilities` |
 | [`api_token_marks_test.go`](../../backend/test/integration/api_token_marks_test.go) | Every act through a token marked with it ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): a plain token, an agent token with its header and a browser session each file a ticket, comment and edit the comment, upload, ask and answer, set a stake, book and correct time (not the agent) and change a field; every answer, revision and act of the activity, the filing and the stake, and every row in the database, carries the token's id and name and the agent mark exactly as the credential was — none for the session; the context document names the token where it names an agent; the tenant's audit view names the token in JSON and CSV; after the plain token's revocation another member reads its name on its acts, and no answer holds a part of a token (`TestEveryActThroughATokenIsMarkedWithIt`) |
 | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) | `cowork-mcp` against the real API ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D6): the working day from the proposal through `create_project`, filing, deciding, working, asking, answering and `finish_work`, every act the agent's with the client's name and every creating `POST` keyed; an assisted token's limits in the descriptions and `finish_work` stopping at `review`; the subcommands — `session-context` unbound and bound, `lookup`, `session-end` with and without changed files, `token check` and a revoked token —; and the binary itself, built with `go build` and run by its command line with its environment, the memory file under a temporary `HOME` ([ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D6) |
-| `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_transitions_test.go`, `api_stages_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents; `api_stages_test.go` the state `review`, done by hand and its withdrawal, done by the stages and the reopen, their refusals for persons and agents, a parent's stages, an open ticket whose stages are full, what the release before the stages writes over this schema in a rollback (its statements verbatim), the override that holds, `done_after` and the `review` limit |
+| [`api_inbox_test.go`](../../backend/test/integration/api_inbox_test.go) | The inbox of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md): every event of D2 telling its recipient and the actor and the actor's agent nothing; the inbox across two tenants, newest first, narrowed, paged and not another person's, a tenant-restricted token's tenant only; a ticket made confidential, a project restricted away and a tenant left taking theirs out of the list and the count; marking one and every one read, as acts, refused to a read-scope token and to another person, and by a browser with and without the CSRF header; the ninety days of the job; the restrictive policy (`TestTheInboxPolicyHoldsAPersonToTheirOwn`); the person-level stream's count, a question of another tenant without an id, and what it never carries — another person's question, a hidden project's, a confidential ticket's, a left tenant's, and anything of another tenant on a tenant-restricted token |
+| [`api_me_lists_test.go`](../../backend/test/integration/api_me_lists_test.go) | "Assigned to me" and "open decisions" across two tenants and a restricted project: the order of the tenant, the project and the rank, done tickets and other people's questions absent, the cursor walking the same order, the narrowing and its `404`, the restricted tokens |
+| `api_projects_test.go`, `api_tickets_test.go`, `api_rank_test.go`, `api_links_test.go`, `api_prerequisites_test.go`, `api_transitions_test.go`, `api_stages_test.go`, `api_questions_test.go`, `api_comments_test.go`, `api_interest_test.go`, `api_progress_test.go`, `api_time_test.go`, `api_attachments_test.go`, `api_events_test.go`, `api_export_test.go` | The rules of [domain.md](domain.md), [storage.md](storage.md), [events.md](events.md) and [markdown-grammar.md](markdown-grammar.md), route by route, across tenants, restricted projects, confidential tickets, roles, scopes and agents; `api_stages_test.go` the state `review`, done by hand and its withdrawal, done by the stages and the reopen, their refusals for persons and agents, a parent's stages, an open ticket whose stages are full, what the release before the stages writes over this schema in a rollback (its statements verbatim), the override that holds, `done_after` and the `review` limit; `api_prerequisites_test.go` the tree and its upward reading, a ticket under two others, paging and its count, what lies behind a confidential ticket and a restricted project absent, and a graph of 5^8 paths answered at once |
 
 ## Frontend unit tests
 
@@ -308,12 +315,135 @@ reports under `frontend/coverage/frontend/`: `text-summary` on the console, `lco
 | `data-testid` attributes for assertions | [`layout/shell.html`](../../frontend/src/app/layout/shell.html) |
 | A service against the generated client: the real `Api`, `HttpTestingController` answering each URL the client calls | [`tickets.service.spec.ts`](../../frontend/src/app/core/tickets.service.spec.ts), [`auth.service.spec.ts`](../../frontend/src/app/core/auth.service.spec.ts) |
 | A component against mocked services: `{ provide: <Service>, useValue: {...} }` with signals and `vi.fn()` | [`ticket-detail.spec.ts`](../../frontend/src/app/features/ticket/ticket-detail.spec.ts) |
+| An editor that belongs to its ticket: open it, set the `ticket` (or `ticketKey`) input to another ticket, and assert that it is closed and that nothing was written; set a newer version of the same ticket, and assert that it stays open | [`ticket-fields.spec.ts`](../../frontend/src/app/features/ticket/ticket-fields.spec.ts), [`ticket-moves.spec.ts`](../../frontend/src/app/features/ticket/ticket-moves.spec.ts), [`ticket-body.spec.ts`](../../frontend/src/app/features/ticket/ticket-body.spec.ts) |
 | The event stream without a network: a fake `EventSource` through the `EVENT_SOURCE` token, its events pushed by the test | [`event-stream.service.spec.ts`](../../frontend/src/app/core/event-stream.service.spec.ts) |
 | A chat turn without a network: a fake `fetch` through the `CHAT_FETCH` token that answers a `Response` over a `ReadableStream` the test writes the turn's events into, piece by piece | [`chat.service.spec.ts`](../../frontend/src/app/core/chat.service.spec.ts) |
 | Time: `{ provide: Clock, useValue: { now } }` for what a page shows; `vi.useFakeTimers()` and `vi.advanceTimersByTimeAsync` for debounces, the polling fallback and retries | [`time-report.spec.ts`](../../frontend/src/app/features/time/time-report.spec.ts), [`tickets.service.spec.ts`](../../frontend/src/app/core/tickets.service.spec.ts) |
 | A PrimeNG overlay (a select's panel) asks `matchMedia`, which jsdom lacks: `vi.stubGlobal('matchMedia', …)` in the test that opens one | [`new-token-dialog.spec.ts`](../../frontend/src/app/features/me/new-token-dialog.spec.ts) |
 | A component that provides a service of its own (`TicketRelations`, `AccessList`): the real service over `HttpTestingController`, and `vi.spyOn` on its acts from `fixture.debugElement.injector` — not `TestBed.overrideComponent`, which compiles the component at test time and leaves its template out of the coverage | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
 | A request a test answers later: `fixture.whenStable()` waits for open requests in the zoneless test bed, so until the answer only change detection runs (`fixture.detectChanges()` after a macrotask) | [`project-access.spec.ts`](../../frontend/src/app/features/project/project-access.spec.ts) |
+
+## End-to-end tests
+
+Playwright Test in [`frontend/e2e/`](../../frontend/e2e/) against the two built images
+([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)).
+Nothing of the dev server is in it: the browser talks to the Ingress stand-in in front of the
+images, as it talks to the Ingress of an installation.
+
+```bash
+make e2e-browsers                 # once: Chromium and WebKit of the @playwright/test version
+make docker-build e2e             # both images of this commit, then the stack, the suite and its removal
+make e2e E2E_ARGS="--project=chromium-dark board.spec.ts"   # a part; E2E_ARGS reaches playwright test
+
+make e2e-up                       # the stack alone, kept, to write tests against it:
+cd frontend && npx playwright test -c e2e [--ui | --headed | file]
+make e2e-down
+```
+
+`make e2e` uses `BACKEND_IMG` and `FRONTEND_IMG` as `make docker-build` names them and refuses
+two images whose `org.opencontainers.image.revision` labels differ. A failed run leaves
+`frontend/e2e/test-results/` — per failed test its trace, video and screenshot
+(`npx playwright show-trace <trace.zip>`), and the containers' logs in `containers/` — and the HTML
+report in `frontend/e2e/playwright-report/`.
+
+### The stack
+
+[`hack/e2e.sh`](../../hack/e2e.sh) makes everything it runs on a Docker network of its own,
+`cowork-e2e` (`E2E_NAME=` renames all of it), and removes it afterwards — never a container of
+`make dev-up`, never the development database. Two ports are published, on `CONTAINER_BIND`:
+
+| Container | What it is |
+|---|---|
+| `cowork-e2e-postgres` | `POSTGRES_IMAGE`; the database `cowork_e2e`, owned by `cowork_owner`, served as `cowork_app`; no published port |
+| `cowork-e2e-minio` | `MINIO_IMAGE`; the bucket `cowork-e2e`, made through a port Docker chooses, since the server never makes its bucket |
+| `cowork-e2e-dex` | `DEX_IMAGE` with [`hack/dex/config.yaml`](../../hack/dex/config.yaml), its issuer moved to `http://localhost:5557/dex` (`E2E_DEX_PORT`); it holds the network namespace below and publishes both ports |
+| `cowork-e2e-backend` | `BACKEND_IMG`, read-only, migrating on start; the local administrator `e2e-admin`, Dex as identity provider with `make dev`'s gate, `COWORK_BASE_URL=https://localhost:18443` (`E2E_PORT`), a server key per run, and the per-address login throttle off (`COWORK_LOGIN_ADDRESS_LIMIT=0`): every browser reaches the backend through the one stand-in, so all of them are one address to it, as in the integration tier |
+| `cowork-e2e-frontend` | `FRONTEND_IMG`, read-only, as the chart runs it |
+| `cowork-e2e-ingress` | `INGRESS_IMAGE` with [`hack/ingress/default.conf`](../../hack/ingress/default.conf) as it is, but listening with TLS on `E2E_PORT`, and a certificate for `localhost` made with `openssl` for the run and never stored |
+
+**Why the backend and the stand-in share Dex's network namespace** (`--network container:`, as
+containers of one pod share `localhost`): an issuer is one URL for the browser and for the backend,
+and the backend takes plain `http` only on a loopback host
+([`config/oidc.go`](../../backend/internal/config/oidc.go) `checkIssuer`). Inside the namespace,
+`http://localhost:5557/dex` is Dex and `https://localhost:18443` the stand-in; outside, the
+browser reaches both through the published ports. **Why TLS**: WebKit stores no `Secure` cookie from
+`http://localhost`, and the session cookie is `Secure` everywhere
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2); the suite sets
+`ignoreHTTPSErrors` for the run's certificate.
+
+### The suite
+
+| File | What it walks |
+|---|---|
+| [`playwright.config.ts`](../../frontend/e2e/playwright.config.ts) | Four projects — `chromium-light`, `chromium-dark`, `webkit-light`, `webkit-dark`, by `colorScheme` —; WebKit runs the tests tagged `@smoke` (all of today's); `visual.spec.ts` runs in the dark projects only; no retries (D7); trace and video kept for a failed test; four workers, two under `CI` |
+| [`global-setup.ts`](../../frontend/e2e/global-setup.ts) | Once per run, through the API: the local administrator signs in, makes the tenant `e2e` (the installation's first, so that Dex's people may sign in), maps `team-red` to `member` in it, makes the token `e2e-seed` the workers seed with (`COWORK_E2E_TOKEN`), seeds the visual board, and keeps its session in `e2e/.auth/admin.json` (ignored) |
+| [`login.spec.ts`](../../frontend/e2e/login.spec.ts) | The local administrator through the form: the session cookie stored with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` and invisible to the page's script, kept across a reload, a write through it (filing a ticket), the same write without `X-Requested-With` refused `403 csrf`, the sign-out, the session gone; a local account the administrator makes signing in with its temporary password, sent to the password page, choosing its own, signing in again with it; `bob@example.com` through *Sign in with Dex*, Dex's form, back as a member of `e2e` by the mapping |
+| [`tickets.spec.ts`](../../frontend/e2e/tickets.spec.ts) | A ticket filed with the dialog of the project's header, in the horizon `later` of the backlog, moved `filed → analysed` on its page, the move in the API and back in the backlog |
+| [`board.spec.ts`](../../frontend/e2e/board.spec.ts) | A project's address opening its board, and the navigation's link too; a card dragged from Refinement to Ready — the transition `analysed → decided`, in the column, the count, the live region and the API, and after a reload |
+| [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts) | A row dragged by its handle to the top of `later` — the order in the page, the live region and the project's rank in the API —, and one dragged into the empty `next` — the horizon in the page and the API, and the reason field a person may leave with Escape |
+| [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) | The board of the tenant `e2e-visual` in the dark scheme against its picture ([below](#the-dark-mode-screenshot)) |
+| [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) | **Pending** (`test.fixme`, listed as skipped): the phase's path with two identities — filing, assigning to a second identity, which sees the ticket in "assigned to me" and its inbox, moves and closes it; written with those pages |
+
+Every path checks that the page shows the scheme its project emulates (`.app-dark` on `<html>`, or
+not).
+
+| Fixture | Where | What it gives you |
+|---|---|---|
+| `test`, `asAdmin` | [`support/fixtures.ts`](../../frontend/e2e/support/fixtures.ts) | A test without a session (the login's paths), and one that starts as the local administrator from `.auth/admin.json` |
+| `project` | `support/fixtures.ts` | A project of `e2e` with a key of its own (`E` and seven random characters), made per test, so tests run in parallel without a reset (D7) |
+| `seed` (per worker) | `support/fixtures.ts`, [`support/api.ts`](../../frontend/e2e/support/api.ts) `Seed` | The administrator's token: `project`, `file` (a ticket at the end of its horizon, `later` by default), `transition` (with a reason or a block), `ticket`, `horizon` (a horizon's open tickets in the rank) |
+| `Session`, `sessionContext`, `signIn` | `support/api.ts` | A request context that holds a session and writes with the origin and `X-Requested-With: cowork`, for what only a session does: a tenant, a mapping, a token, a local account |
+| `expectScheme(page)` | `support/fixtures.ts` | The page's scheme is the emulated one |
+| `drag(page, handle, target, at)` | `support/fixtures.ts` | A drag the Angular CDK takes: press, a few pixels past its threshold, twenty steps to the point `at` of the target, release |
+| identities | [`support/identities.ts`](../../frontend/e2e/support/identities.ts) | `COWORK_BASE_URL`, the administrator (`COWORK_E2E_ADMIN`, `COWORK_E2E_ADMIN_PASSWORD`), Dex's `bob`, `freshPassword()` |
+
+Selectors are `data-testid` (`getByTestId`) except where the page has none to give: a PrimeNG menu
+item, found by its role and name (*Sign out*), and Dex's own login form, by its inputs' names.
+
+### The dark-mode screenshot
+
+[`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) compares the board of the project `VIEW` in
+the tenant `e2e-visual` — a card in every column, seeded by the global setup
+([`support/visual.ts`](../../frontend/e2e/support/visual.ts)) so that the navigation lists the same
+one project in every run — with one picture per browser,
+[`screenshots/visual.spec.ts/board-<project>.png`](../../frontend/e2e/screenshots/visual.spec.ts/),
+at most 2 % of the pixels different (`maxDiffPixelRatio`), animations stopped.
+[`screenshot.css`](../../frontend/e2e/screenshot.css) takes out what differs by build, not by
+change: PrimeNG's license notice of a build without the PrimeUI key (CI builds without it) and the
+version line.
+
+One picture serves every platform, and the threshold is what that costs. Measured on 2026-10-04
+with Playwright 1.63: the renderings of macOS and of Linux (`mcr.microsoft.com/playwright:v1.63.0-noble`
+on arm64) differ in about 1.2 % of the pixels at Playwright's per-pixel threshold, before its
+anti-aliasing exclusion, and pass against each other's picture; a sidebar, the cards or the top bar
+turned light fail it (8 to 22 % of the pixels, both browsers); card titles turned dark on the dark
+cards **pass** — text is too small a share of the page for this comparison. The committed pictures
+are the Linux renderings, the platform CI runs on; amd64, the runners' architecture, has not been
+compared. After a deliberate change, make them again in that image, against the stack of
+`make e2e-up`, whose namespace it joins:
+
+```bash
+docker run --rm --network container:cowork-e2e-dex -v "$PWD/frontend:/work" -w /work \
+  mcr.microsoft.com/playwright:v1.63.0-noble \
+  npx playwright test -c e2e visual.spec.ts --update-snapshots=all
+```
+
+The image's tag is the version of `@playwright/test` in `frontend/package.json`, and moves with it.
+A picture made on macOS (`--update-snapshots=all` without the container) passes as well, by the
+measurement above, with the same margin the other way.
+
+### In CI
+
+The `e2e` job ([ci-and-release.md](ci-and-release.md)) loads the images the container scan built
+and scanned, installs the browsers with their system packages, and runs `make e2e` — the same
+script, on the job's Docker daemon. Its artefact `e2e-results`, kept for a failed or cancelled run,
+holds the traces, which record the run's requests with their cookies and the seed token: they belong
+to a stack that is gone when the job ends.
+
+The suite reads `COWORK_BASE_URL`, `COWORK_E2E_ADMIN` and `COWORK_E2E_ADMIN_PASSWORD`, so it can be
+pointed at another stack ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)
+D1 allows it for iteration, never as the gate). There it makes the tenants `e2e` and `e2e-visual`;
+**not tried**: against `make dev`, whose login throttle is on.
 
 ## Container check
 
@@ -322,7 +452,10 @@ Neither image has a unit test; what proves them is building and running them. CI
 image). Locally, `make docker-build` builds both, and
 [build-test-lint.md](build-test-lint.md#run-the-images-together) is the recipe for running them
 together read-only behind the Ingress stand-in; `make verify-phase-2` scripts the API half of that
-run by hand, and the nginx checks stay manual until the end-to-end tier exists.
+run by hand. The end-to-end tier runs both images behind the stand-in on every push and walks the
+UI through it ([above](#end-to-end-tests)); the nginx checks it does not make — the cache headers,
+the two body limits, the stream past the stand-in's read timeout, `SIGTERM` with a stream open —
+stay manual.
 
 ## Chart tests
 
@@ -341,7 +474,13 @@ which sets all three.
 | `COWORK_TEST_OIDC_ISSUER` | the integration tier | The issuer of Dex, `http://localhost:5556/dex` by `make`'s default; required, and its discovery must answer |
 | `DEX_PORT`, `DEX_IMAGE`, `DEX_CONTAINER` | `make dex-up`, `make test-integration` | Where and what to start locally; the issuer follows the port |
 | `CONTAINER_BIND` | `make postgres-up`, `make minio-up`, `make dex-up` | The address the containers publish their ports on, `127.0.0.1` by default |
-| `CI` | vitest through `ng test` | Non-interactive reporter and no watch |
+| `CI` | vitest through `ng test`; the end-to-end suite | Non-interactive reporter and no watch; in the suite two workers and `test.only` refused |
 | `POSTGRES_PORT`, `POSTGRES_IMAGE`, `POSTGRES_CONTAINER` | `make postgres-up` | Where and what to start locally |
 | `MINIO_PORT`, `MINIO_IMAGE`, `MINIO_CONTAINER`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | `make minio-up`, `make test-integration` | Where and what to start locally, and the keys the tests are given |
 | `COWORK_DEV_SEED_DATABASE_URL` | `test/devseed` | The administrative URL `make dev-seed` writes through |
+| `E2E_PORT`, `E2E_DEX_PORT`, `E2E_NAME` | `make e2e`, `make e2e-up`, `hack/e2e.sh` | The stand-in's HTTPS port (`18443` `# default`), Dex's (`5557` `# default`), and the prefix of the stack's containers and network (`cowork-e2e` `# default`); a moved port moves the issuer and the redirect URI in the copy of `hack/dex/config.yaml` |
+| `E2E_ARGS` | `make e2e` | Arguments of `playwright test`, e.g. `--project=webkit-dark login.spec.ts` |
+| `BACKEND_IMG`, `FRONTEND_IMG`, `INGRESS_IMAGE`, `POSTGRES_IMAGE`, `MINIO_IMAGE`, `DEX_IMAGE` | `make e2e`, `make e2e-up` | The images of the stack, the Makefile's |
+| `COWORK_BASE_URL`, `COWORK_E2E_ADMIN`, `COWORK_E2E_ADMIN_PASSWORD` | the end-to-end suite | The stand-in's origin (`https://localhost:18443` `# default`) and the local administrator's credentials (`e2e-admin` / `e2e-only-cowork` `# default`); `make e2e` sets all three |
+| `COWORK_E2E_TOKEN` | the end-to-end suite | Set by its global setup for the workers; never set by hand |
+| `PLAYWRIGHT_INSTALL_FLAGS` | `make e2e-browsers` | `--with-deps` installs the browsers' system packages as well (CI) |

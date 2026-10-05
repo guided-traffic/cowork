@@ -333,7 +333,7 @@ export class Board {
     this.refocus(pending.key);
   }
 
-  /** `→ Now` (docs/adr/0018 D1): the urgency `now`, without a reason (docs/adr/0010 D3). */
+  /** `→ Now` (docs/adr/0018 D1): the horizon `now`, without a reason (docs/adr/0010 D3). */
   protected async makeNow(ticket: Ticket): Promise<void> {
     const key = ticket.key;
     const column = columnOf(ticket.state);
@@ -396,7 +396,7 @@ export class Board {
       this.messages.add({
         severity: 'warn',
         summary: 'Changed meanwhile',
-        detail: `${this.shortKey(key)} was changed by someone else: its urgency is ${error.current.urgency} now.`,
+        detail: `${this.shortKey(key)} was changed by someone else: its horizon is ${error.current.urgency} now.`,
         life: 6000,
       });
     } else {

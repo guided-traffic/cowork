@@ -75,6 +75,8 @@ overrides:
         go_type: "string"
       - db_type: "interest_weight"
         go_type: "string"
+      - db_type: "notification_reason"
+        go_type: "string"
       - db_type: "link_type"
         go_type: "github.com/guided-traffic/cowork/backend/internal/domain.LinkType"
 sql:

@@ -26,7 +26,10 @@ within and between the groups, the latter with the urgency override or its withd
 versioned function, stored with its version, shown beside the rank — does not exist, so the
 backlog marks no disagreement. Nothing rebalances the keys: about 630 to 760 moves into one and
 the same gap, depending on the side they land on, exhaust it, and the next move there fails as an
-internal error.
+internal error. The backlog's drag has its end-to-end path in the tier of T29,
+[`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts): a row dragged to the top of its horizon
+moves first in the project's rank, and one dragged into another horizon takes that horizon, in
+Chromium and WebKit and both colour schemes.
 
 ## Required changes
 
@@ -35,4 +38,3 @@ internal error.
    (D2); the "sort by score" act; the backlog marks the score's disagreement.
 2. A rebalancing of a project's keys before a gap runs out (ADR 0014 Consequences), with its
    integration test.
-3. The e2e path of T29 drags in the backlog.

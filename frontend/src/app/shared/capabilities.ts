@@ -6,8 +6,9 @@ export const capabilityMeanings: Record<Capability, string> = {
   decide: 'Move a ticket from analysed to decided.',
   close: 'Move a ticket to done; the verification note stays mandatory.',
   drop: 'Move a ticket to dropped, with a reason.',
-  rank: 'Move the rank and adopt the score.',
-  'override-urgency': 'Override the urgency of a ticket, with a reason.',
+  rank: 'Move tickets in the order of the backlog, and adopt the score.',
+  'override-urgency':
+    'Set the horizon of a ticket — now, release, next, later or icebox —, with a reason.',
   interest: 'Register need and urgent interest, not only watch.',
   upload: 'Upload attachments.',
   'create-project': 'Create a project and bind a repository, where you may.',

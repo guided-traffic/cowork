@@ -44,15 +44,16 @@ The foundation is released (0.2.0 and later):
 Built on this branch, items 1, 2 and 4 of the work list:
 
 - **A poll asks whether a list changed.** Every list the client loads again — the ticket lists,
-  the projects, the members, the group mappings, an access list and the seven lists of a ticket —
+  the projects, the members, the group mappings, an access list, the lists of a ticket with its
+  prerequisite tree, and the person's inbox, assigned tickets and decisions —
   answers a weak `ETag` of the caller's page and `304` without a body to it in `If-None-Match`,
   in the API document first (`ListETag`, `NotModified`); the client sends the tag of every page it
   holds, cursor by cursor, and keeps the page on a `304`
   ([`conditional.ts`](../../frontend/src/app/core/conditional.ts);
   `TestThePolledListsAnswerNotModified`, `conditional.spec.ts` and a `304` test per list service).
-- **Six forms hold one `Idempotency-Key` per content** — a ticket, a comment, a question, a
-  project and a booking in a `linkedSignal` over their fields and their place, a file per ticket
-  and file until its upload went through — and the services take it from the form; a unit test per
+- **Six forms hold one `Idempotency-Key` per content** — a ticket (its parent included), a
+  comment, a question, a project and a booking in a `linkedSignal` over their fields and their
+  place, a file per ticket, or per comment, and file until its upload went through — and the services take it from the form; a unit test per
   form that a retry of the same content sends the same key and a changed content a new one.
 - **A stream recomputes what it admits on the acts that change it** — a project created, every
   membership act — before it filters the next event
@@ -60,7 +61,8 @@ Built on this branch, items 1, 2 and 4 of the work list:
   [`events.go`](../../backend/internal/api/events.go) `refilter`);
   `TestTheStreamAdmitsWhatAnActOpensAtOnce` files a ticket in a project created, opened and let
   into after the stream opened, each arriving within a second with an hour's heartbeat, and fails
-  without the change.
+  without the change; `TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents` holds the same for
+  the person-level stream, which goes on telling its count and another tenant's question.
 
 ADR 0054 (D3 amended, D7's client side built), ADR 0045's Status, the README reference,
 [api.md](../developer/api.md), [events.md](../developer/events.md),
