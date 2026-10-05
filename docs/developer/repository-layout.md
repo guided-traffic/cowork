@@ -37,6 +37,7 @@ cowork/
 │   │   ├── oidc/               # the OpenID Connect relying party: discovery, the code, the ID token, the refresh
 │   │   ├── problem/            # the problem code catalogue and the RFC 9457 body
 │   │   ├── requestid/          # the request id in the context
+│   │   ├── richtext/           # the Markdown people write rendered and sanitised for the browser
 │   │   ├── storage/            # the S3 client for the attachments
 │   │   ├── tools/              # the tool catalogue, transport-free; the session start and the binding
 │   │   └── store/              # transaction wrappers, roles check, list builder, locks, jobs, NOTIFY/LISTEN

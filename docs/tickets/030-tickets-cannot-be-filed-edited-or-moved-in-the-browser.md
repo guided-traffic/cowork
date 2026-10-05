@@ -28,7 +28,7 @@ its optional reason, and the confidential flag for a tenant administrator
 [`confidential-dialog.ts`](../../frontend/src/app/features/ticket/confidential-dialog.ts)). Every
 editor and dialog of the page, the moves' included, belongs to the ticket it was opened on and
 closes unwritten when the page turns to another; a unit test per editor holds that. The body is
-shown as text (T33). Missing:
+shown as the server rendered it (T33). Missing:
 
 - **The end-to-end path** that files a ticket, assigns it, moves it and closes it through the
   browser, with a second identity watching — the tier is T29.

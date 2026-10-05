@@ -20,8 +20,9 @@ into the file of its path family.
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
+| [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body, urgency override and confidential flag |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
 | [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
@@ -228,7 +229,7 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 ## The person-level routes
 
 The routes under `/api/v1/me/` that list what spans tenants — the inbox, the tickets assigned to the
-person, the open decisions ([ADR 0023] D2) — name no tenant in their path, so no boundary admits them
+person, the open decisions, the search ([ADR 0023] D2) — name no tenant in their path, so no boundary admits them
 to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
 memberships in an `Installation` transaction, keeps a token restricted to a tenant to that tenant
 (`restricted`), narrows to the `tenant` query parameter — a slug that names none of the person's is
@@ -236,7 +237,8 @@ the boundary's `404 not_found`, whether or not it exists — and sorts them by s
 read in a transaction of its own (`InTenant`, [ADR 0021] D5), under the visibility predicates as the
 tenant's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
 project of another tenant invisible — and the parts are merged in Go
-([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go)).
+([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go),
+[`search.go`](../../backend/internal/api/search.go)).
 A global administrator without a role in a tenant holds no membership there, and these lists leave it
 out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
@@ -253,7 +255,7 @@ exists ([ADR 0047] D5):
 - an unknown slug, or a person without a membership;
 - a token restricted to another tenant;
 - a token restricted to a project, on a path without `{project}` — except `listProjects`,
-  `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
+  `listTenantTickets`, `searchTenant`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
 
 **A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
@@ -429,7 +431,9 @@ list answers that `invalid_cursor`.
   person and the open decisions by the tenant's slug, the project's key and the project's rank — the
   decisions by the ticket's place, `done` and `dropped` after the ranked ones, then the question's
   number — until the score exists ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
-  D5); the other lists by id.
+  D5); a search's hits by their rank, then the ticket's id, both descending — a search's position is
+  `<rank>/<id>`, bound to a hash of its query as well ([search.md](search.md#the-cursor)); the other
+  lists by id.
 - A person-level list's cursor is bound to the person and the `tenant` it was narrowed to. Its position
   is the notification's id, or for the two ordered lists `<slug>/<PROJECT>/<sealed>[/<question>]`
   (`listPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)): the rank's place
@@ -447,7 +451,9 @@ enums (`apigen.TicketState(v).Valid()` …); `assignee` and `reporter` take a pe
 `assignee` also `none`; `parent` takes a ticket key or `none`, resolved under the predicate —
 a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `blocked`,
 `has_open_questions` and `include_terminal` are booleans; `q` is capped at
-`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`.
+`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
+the title and body hold every word, the list keeps its order —; the ranked search with snippets over
+comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
 
 ## Media types beside JSON
 

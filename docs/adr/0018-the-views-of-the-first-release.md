@@ -60,7 +60,13 @@ of the person as a union of per-tenant reads with the tenant beside each key, in
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
 "assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
+Status. Not built: the score's marker in the backlog, D3's "next for me", ~~D4–D7~~ D4–D6.
+*(2026-10-05:)* D7's search — a search box in the top bar that searches, inside a tenant, that tenant
+first and offers every tenant of the person, anywhere else every tenant, and a page of results with
+where each hit was found and its snippet, linked to the comment or question it is in
+([`features/search/`](../../frontend/src/app/features/search/), [ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md));
+and D2's body, comments, options and answers shown as the server rendered them
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6).
 
 ## Context
 

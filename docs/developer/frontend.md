@@ -1,9 +1,9 @@
 # The frontend
 
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
-how a change reaches the screen, the person-level pages and the inbox, the assistant, the generated
-client, and the development loop.
-Read against the tree on 2026-10-04. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+how a change reaches the screen, the person-level pages and the inbox, the search, the assistant, the
+generated client, and the development loop.
+Read against the tree on 2026-10-04, the search and the rendered texts on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -14,8 +14,8 @@ frontend/src/app/
 ├── theme/        # the PrimeNG preset over Aura, the theme service, providePrimeNG
 ├── core/         # services: session, projects, tickets, event stream, inbox, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar with the bell, navigation), the assistant's panel, the tenant scope, the live indicator
-├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), tenant, project, ticket, time
-├── shared/       # badges, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
+├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), search, tenant, project, ticket, time
+├── shared/       # badges, rendered Markdown, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -276,6 +276,15 @@ in that tenant answered by somebody else — shows at the next reload: the perso
 the person's own events across their tenants and the events of one tenant
 ([events.md](events.md#the-person-level-stream)); `/` still lists the tenants.
 
+## The search
+
+The top bar's search box opens the results of the tenant the pages show — that tenant first — or,
+outside a tenant and in one a global administrator only oversees, of every tenant of the person;
+[`SearchResults`](../../frontend/src/app/features/search/search.ts) (`/t/:tenant/search?q=`,
+`/me/search?q=`) lists the hits fifty at a time, each with where it was found and its snippet as text,
+the found words in `<mark>`, linked to the ticket and the part it was found in. The whole of it is
+[search.md](search.md#in-the-browser).
+
 ## The backlog
 
 A project has two views under one header, [`ProjectHeader`](../../frontend/src/app/features/project/project-header.ts):
@@ -486,8 +495,14 @@ The ticket's page ([`ticket-detail.ts`](../../frontend/src/app/features/ticket/t
 [ADR 0018] D2) shows the title as its heading, the body, the prerequisite tree, the questions, the
 comments and the activity, and beside them the fields, the stake, the links, the files and the time.
 Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
-which the page provides; everything else reads the ticket through the cache. The body is shown as
-text; Markdown is not rendered.
+which the page provides; everything else reads the ticket through the cache. The body, a comment, a
+question's options and its answer show as the server rendered them, through
+[`RenderedText`](../../frontend/src/app/shared/rendered-text.ts) and Angular's sanitiser; the body's
+rendering is a part of `TicketRelations` of its own, loaded for the ticket's version and again on an
+upload, and shown only while it is the rendering of the body the cache holds — the text as text
+until then ([rendered-markdown.md](rendered-markdown.md#in-the-browser)). The comments and the
+questions carry `id`s, `comment-<id>` and `question-<n>`, and a link with one of them as its fragment —
+a search hit's — scrolls the page to that part once it has loaded.
 
 | Part | Writes | A change made meanwhile |
 |---|---|---|

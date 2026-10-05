@@ -31,7 +31,9 @@ notifications' ids, the other two in the interim order of
 [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s Status rather than D1's
 `(score, id)`, their position the tenant's slug, the project's key and the rank's place sealed as a
 project's list seals it; a cursor names its person and its narrowing, and the `cursor` parameter
-takes up to 1024 characters for these positions.
+takes up to 1024 characters for these positions. *(2026-10-05:)* D3's search, cursor only, its
+position D1's `(rank, id)` — the rank written exactly, unsealed, since the reader sees every text it
+was computed over — and its cursor bound to a hash of its query as well.
 
 ## Context
 

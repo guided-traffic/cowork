@@ -3,7 +3,7 @@
 How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
 role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
 ticket, act, event, notification and time entry, and what the person-level lists and stream gather
-across a person's tenants, as built on 2026-10-04. What a token or an agent may do with
+across a person's tenants, as built on 2026-10-04 — and what a search finds, as built on 2026-10-05. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -599,6 +599,33 @@ reading and marking to `user_id = app_user_id()`, and deleting to the retention 
 tenant, so its administrators read in the audit view when a person marked their notifications read —
 the cost of ADR 0026 D1's rule that every write is an act.
 
+## Search finds only what its reader sees
+
+The search — `GET …/search` in a tenant, `GET /api/v1/me/search` across the person's tenants
+([ADR 0025](../adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)) —
+runs in PostgreSQL in the reader's transaction, bound to one tenant, like every other read: no
+external index holds any tenant's text, and isolation is the engine's
+([`queries/read/search.sql`](../../backend/internal/store/queries/read/search.sql) `SearchTickets`).
+Every text it reads — the ticket's title and body, its comments, its questions, its attachments'
+file names, the key built of the project's key and the number, the title by trigram — is read with
+`app_ticket_visible` on the ticket it belongs to, and the hit and its snippet are read through it
+once more, so a restricted project the reader is not on, a confidential ticket of which they are
+neither a tenant administrator, the assignee nor the reporter, and a project-restricted token's other
+projects find nothing, by any word of any of their texts; the lint of the query files holds the
+query to a predicate per read of `tickets`. A withdrawn comment is not searched, as its text is
+hidden from every route. The snippet is the matched text of the hit itself — the body, the comment,
+the question, the file name — never another ticket's, and it is answered as text in parts, never as
+markup. The person-level search is a union like the lists above: the person's memberships, a
+restricted token's own tenant, each tenant read in a transaction of its own, the parts merged by rank
+in the application, a narrowing `tenant` that names none of theirs answered like an unknown one; a
+global administrator without a role in a tenant searches nothing of it. A cursor is bound to its
+reader, its narrowing and a hash of its query; it carries the rank of the last hit, which the reader's
+own visible text gave it. `TestSearchNeverShowsWhatTheCallerCannotSee` holds hits and snippets to the
+tenant, the restriction, the confidential rule — in the title, the body, a comment, a question, the
+options, a file name, the key and by trigram — and the restricted tokens to their tenant and project;
+`TestSearchFindsAndRanksWithSnippets` holds a withdrawn comment out. What the query words leave in
+a log is [trust-boundaries.md](trust-boundaries.md#h-14) H-14; what its timing may say is H-53 below.
+
 ## The person-level stream
 
 `GET …/events?me=true` is a tenant's stream that also carries the person's own events across their
@@ -743,6 +770,18 @@ tenants. A group mapping, which brings everyone in its group into the tenant at 
 gap's: only a global administrator who administers the tenant makes one or changes its role
 ([above](#members-grants-and-group-mappings)). Mitigation: tenants whose administrators must not
 learn about each other's people belong in installations of their own.
+
+<a id="h-53"></a>
+### H-53 — A search's duration depends on matches the reader cannot see
+
+Dormant as far as measured — it was not measured. The search's indexes find every ticket, comment,
+question and file name of the tenant that holds the words, hidden ones included, and the visibility
+predicate drops the hidden ones afterwards, in the same query; the work, and with it the time to the
+answer, grows with the hidden matches as well. A member who times many searches for a word could in
+principle tell whether hidden texts of the tenant hold it — never which ticket, nor anything of its
+text, and only inside a tenant they belong to. The answer itself is the same with and without the
+hidden matches. Mitigation: none in cowork; a tenant whose members must not learn even that much
+keeps such work in an installation of its own.
 
 ### The owner credential in the serving process
 
