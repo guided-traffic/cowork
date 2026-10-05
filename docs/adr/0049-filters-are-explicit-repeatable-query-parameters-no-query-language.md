@@ -10,7 +10,9 @@ question and not objected to.
 Amended 2026-10-02 (D1: what `blocked` means beside `state=blocked`, and which values `!`
 negates) and 2026-10-03 (D1: `done_after`, for the board's count of the tickets done in the
 last fourteen days, [ADR 0018](0018-the-views-of-the-first-release.md) D1 as amended that
-day). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
+day) and 2026-10-05 (D1: `horizon` in place of `urgency`, which stays, deprecated, until a later
+release, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 as amended
+that day; built the same day, a saved filter stored with `urgency` read back as `horizon`). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
 that adds something is the prerequisite one of [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
 D1.
 
@@ -50,7 +52,7 @@ OR-ed, parameters are AND-ed.** The parameters on ticket lists:
 |---|---|
 | `state` | the states of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) |
 | `type` | the types of [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) |
-| `severity`, `security`, `urgency`, `effort` | the vocabularies of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) |
+| `severity`, `security`, ~~`urgency`~~ `horizon` *(amended 2026-10-05: the word ADR 0010 D1 gives the API; `urgency`, its name before, is taken as `horizon` until a later release removes it, and a request or a saved filter that names both is refused at `query:urgency`, `/parameters/urgency` — one field under two names, which an AND would only narrow to what nobody meant)*, `effort` | the vocabularies of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) |
 | `assignee`, `reporter` | a person id, or `me`; `none` for unassigned |
 | `interest` | `me` (the caller has any interest), `any` (anyone has) |
 | `blocked` | `true`, `false` — *(made concrete 2026-10-02)* whether an open ticket the caller can see is a direct `blocks` source of the ticket |

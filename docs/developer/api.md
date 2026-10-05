@@ -3,9 +3,10 @@
 How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
 the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
-paging, filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
-(errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
-(versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
+paging, filters, the deprecated names a rename keeps for a release, and the media types beside
+JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045] (idempotency),
+[ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions), [ADR 0028] (expand before
+contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
 against the tree on 2026-10-05.
 
@@ -22,7 +23,7 @@ into the file of its path family.
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
 | [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`, and the deprecated `…/urgency-override` beside it, [deprecated names](#deprecated-names)) and confidential flag, and the bin of deleted tickets with its restoration and purge |
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
@@ -349,7 +350,7 @@ another token and marking notifications read (`write` scope,
 | `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) |
 | `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
 | `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden` |
-| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
+| `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, a horizon set `set-horizon` and of an agent a reason — on `setHorizon` for `later` too —, a filing into a horizon other than `later` `set-horizon` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go): a move; the sort by the score in [`score.go`](../../backend/internal/api/score.go) |
 | `booking` | member, `write` | hard-off `booking time` | [`time.go`](../../backend/internal/api/time.go) |
@@ -437,7 +438,7 @@ and records no act. A `PATCH` whose progress stages close or reopen the ticket r
 once: the state is written with `bump` false after the fields.
 
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
-`replaceTicketBody`, `overrideUrgency`, `withdrawUrgencyOverride`, `setConfidential`,
+`replaceTicketBody`, `setHorizon` (and the deprecated `overrideUrgency` and `withdrawUrgencyOverride`), `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
 `editTimeEntry`, `updateGroupMapping`, `updateSavedFilter` and `setProjectRestriction` (the project's version). A deletion, a restoration and a purge of a ticket take none: they overwrite no field, and the deletion and the restoration raise the version. A grant
 and an access entry are addressed by their person and written without it, like a link. Links, interest and attachments are written without it and carry no version
@@ -522,14 +523,17 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 `COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
 the title and body hold every word, the list keeps its order —; the ranked search with snippets over
 comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
-The checks of the filters themselves are `parseFilters`, which the saved filters share.
+The checks of the filters themselves are `parseFilters`, which the saved filters share. `horizon`
+and its deprecated name `urgency` are one filter (`ticketQuery.horizons`): either is taken, and a
+request that names both is `400` at `query:urgency` — an AND of one field under two names would only
+narrow the list to what nobody meant.
 
 **Saved filters** ([`filters.go`](../../backend/internal/api/filters.go), [ADR 0018] D5, [ADR 0049]
 D6, D7) store a filter's parameters as the JSON object `SavedFilterParameters` — the query's names,
 each repeatable one an array —, whose schema refuses an unknown name (`additionalProperties:
 false`, D4). Written, the parameters go through `parseFilters` and every refused value is `400` at
 `/parameters/<name>` (`checkFilter`); `me` is stored as `me`. Read, they go through it again
-(`filterView`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
+(`filterView`), a filter stored with `urgency` answered under `horizon` (`horizonNamed`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
 project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
 another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
 withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change
@@ -537,6 +541,35 @@ withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the own
 ([data-access.md](data-access.md#the-settings-the-policies-read)). Saved filters are not published
 on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads
 again on a poll ([above](#versions-etag-if-match)).
+
+## Deprecated names
+
+`/api/v1` keeps what the clients of the release before read ([ADR 0046] D7), so a rename is an
+expand and a later contract ([ADR 0028] D3). The horizon is the case today ([ADR 0010] D1 as
+amended 2026-10-05):
+
+- **In the document** the old names stay with `deprecated: true` and a description that names what
+  replaces them: the `Urgency`, `UrgencyOverride` and `UrgencyOverrideSet` schemas, the ticket's
+  `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override`, a filing's `urgency`, the
+  lists' and a saved filter's `urgency`, and `overrideUrgency` and `withdrawUrgencyOverride`. A
+  property that is a `$ref` carries `deprecated` through an `allOf` of one: the bundler writes a
+  `$ref` alone and would drop the keyword beside it.
+- **In the generated Go** they carry `Deprecated:`, which staticcheck reports wherever the code uses
+  them; each use is a function or a line with `//nolint:staticcheck` and why — `urgencyFields`,
+  which answers them from the columns, `filedHorizon`, `horizonNamed`, `horizonOfStored`, the
+  lists' query — and a test that proves the old surface still works says so the same way.
+- **On the way in** an old name is the new one: a filing's `urgency` is its `horizon`, a list's or a
+  saved filter's `urgency` its `horizon` (both together refused, [filters](#filters)), and a
+  capability set's `override-urgency` is `set-horizon` (`auth.Canonical`, wherever a set comes in).
+  **On the way out** every answer names the new one beside the deprecated fields, with one
+  exception: `GET /me/token` answers `override-urgency` after `set-horizon` in `request.capabilities`,
+  the list the `cowork-mcp` of the release before reads to describe its tools
+  (`requestCapabilities` in [`token.go`](../../backend/internal/api/token.go)).
+- **A replayed answer** a release before stored lacks the new fields; `horizonOfStored` fills them
+  from the old ones ([idempotency](#idempotency)).
+
+The contract — the old names out of the document, the code and the stored capability sets — is a
+later release's, once no supported client reads them.
 
 ## Media types beside JSON
 
@@ -564,11 +597,13 @@ again on a poll ([above](#versions-etag-if-match)).
   after the stream began is its `error` event, a problem body from `problem.BodyOf`
   ([chat.md](chat.md#a-turn)).
 
+[ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
+[ADR 0028]: ../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md

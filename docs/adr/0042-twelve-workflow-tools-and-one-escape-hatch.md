@@ -30,6 +30,10 @@ Amended 2026-10-04 (D1: `place_ticket` in place of `set_urgency`, and `file_tick
 horizon at a place — the owner's answer recorded in [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)
 D3), and built the same day: `place_ticket` and the horizon of `file_ticket` in
 [`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go), in `cowork-mcp` and in the chat.
+Amended 2026-10-05 (D1: `place_ticket` sets the horizon through `PUT …/horizon` and both tools name
+the capability `set-horizon`, the API following the word as ADR 0010 D1 records it), and built the
+same day: `file_ticket` sends `horizon`, `place_ticket` calls `setHorizon`, their answers and the
+session start read `horizon`, and an act on the horizon reads as setting it.
 Amended 2026-10-04 (D1: `set_urgency`, and the preconditions `from` and `version` a caller may pin),
 with the chat in the UI provisionally
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
@@ -115,8 +119,10 @@ preconditions stay any caller's)*; left out, the state or version read at the ca
 ADR 0010 D3 as amended that day:)* ~~`set_urgency(key, urgency?, reason?, withdraw?)`~~
 `place_ticket(key, horizon?, after?, before?, reason?)` — the horizon of a ticket, its place
 directly after or before another ticket of that horizon, or both in one call: the horizon through
-the override routes (`later`, the derived value of every ticket, withdraws), the place through
-`PUT …/tickets/{number}/rank`; a horizon needs `override-urgency` and a reason, a place `rank`.
+~~the override routes (`later`, the derived value of every ticket, withdraws)~~ *(amended
+2026-10-05, ADR 0010 D1:)* `PUT …/tickets/{number}/horizon`, `later` clearing the horizon set,
+the place through
+`PUT …/tickets/{number}/rank`; a horizon needs ~~`override-urgency`~~ `set-horizon` and a reason, a place `rank`.
 `file_ticket(…, horizon?, after?, before?)` files into a horizon at a place in one request,
 `later` at the end without them. Both descriptions say what a horizon means and that it is not a
 state: asked to file a ticket into `next`, an agent of the earlier catalogue sent the person to

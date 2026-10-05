@@ -26,7 +26,7 @@ cowork/
 │   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
 │   │   ├── chat/               # the chat in the UI: a turn's loop, the tools it offers, the loopback, the page tools
 │   │   ├── config/             # COWORK_* environment variables → Config
-│   │   ├── domain/             # vocabularies, keys, urgency, transitions, attachment types
+│   │   ├── domain/             # vocabularies, keys, the horizon's default, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
 │   │   ├── httpserver/         # health, request id, request log, recovery, server lifecycle
 │   │   ├── llm/                # the chat's gateway: OpenAI Chat Completions and Anthropic Messages, streaming
