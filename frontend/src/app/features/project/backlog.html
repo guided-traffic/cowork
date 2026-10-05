@@ -27,6 +27,27 @@
       data-testid="state-filter"
     />
     <span class="spacer"></span>
+    @if (mayRank()) {
+      <button
+        pButton
+        type="button"
+        severity="secondary"
+        [text]="true"
+        size="small"
+        [disabled]="sorting() || dragging()"
+        (click)="askSort()"
+        pTooltip="Reorder the open tickets by their score, once, as one recorded act"
+        [showDelay]="400"
+        data-testid="sort-by-score"
+      >
+        @if (sorting()) {
+          <i class="pi pi-spin pi-spinner"></i>
+        } @else {
+          <i class="pi pi-sort-amount-down"></i>
+        }
+        Sort by score
+      </button>
+    }
     <span class="muted tabular" data-testid="total">{{ summary() }}</span>
     <label class="closed-toggle">
       <p-toggleswitch
@@ -260,6 +281,7 @@
   }
 
   <p-menu #rowMenu [model]="menuItems()" [popup]="true" appendTo="body" />
+  <app-confirm-dialog />
   <p class="sr-only" role="status" aria-live="polite" data-testid="status">{{ status() }}</p>
 </section>
 
@@ -278,6 +300,25 @@
       <app-type [value]="row.ticket.type" />
       <span class="text">{{ row.ticket.title }}</span>
       <app-security [value]="row.ticket.security" />
+      @if (marks().get(row.ticket.key); as mark) {
+        <span
+          class="score-mark"
+          [class.higher]="mark === 'higher'"
+          tabindex="0"
+          [pTooltip]="markText(mark, row.ticket)"
+          tooltipEvent="both"
+          [showDelay]="200"
+          [attr.data-testid]="'score-mark-' + row.ticket.key"
+          [attr.data-mark]="mark"
+          ><i
+            class="pi"
+            [class.pi-arrow-up]="mark === 'higher'"
+            [class.pi-arrow-down]="mark === 'lower'"
+            aria-hidden="true"
+          ></i
+          >score<span class="sr-only">: {{ markText(mark, row.ticket) }}</span></span
+        >
+      }
       @if (row.elsewhere; as parent) {
         <a
           class="chip"

@@ -61,6 +61,8 @@ function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 1,
     ...overrides,
   } as Ticket;
@@ -125,6 +127,8 @@ describe('Backlog', () => {
   let rank: Mock<TicketActions['rank']>;
   let overrideUrgency: Mock<TicketActions['overrideUrgency']>;
   let withdrawUrgency: Mock<TicketActions['withdrawUrgency']>;
+  let sortByScore: Mock<TicketActions['sortByScore']>;
+  let membership: WritableSignal<{ role: string } | undefined>;
   let navigate: MockInstance<Router['navigate']>;
   let navigateByUrl: MockInstance<Router['navigateByUrl']>;
   let toast: MockInstance<MessageService['add']>;
@@ -137,6 +141,8 @@ describe('Backlog', () => {
     warn = vi.spyOn(console, 'warn');
     tenant = signal<string | null>('acme');
     projects = signal<Project[]>([cowork]);
+    membership = signal<{ role: string } | undefined>({ role: 'member' });
+    sortByScore = vi.fn<TicketActions['sortByScore']>(async () => 2);
     cache = new EntityCache<Ticket>();
     open = fakeList();
     closed = fakeList();
@@ -175,10 +181,10 @@ describe('Backlog', () => {
         MessageService,
         {
           provide: TicketActions,
-          useValue: { create: vi.fn(), rank, overrideUrgency, withdrawUrgency },
+          useValue: { create: vi.fn(), rank, overrideUrgency, withdrawUrgency, sortByScore },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
-        { provide: SessionService, useValue: { tenant } },
+        { provide: SessionService, useValue: { tenant, membership } },
         {
           provide: ProjectsService,
           useValue: { byKey: (key: string) => projects().find((p) => p.key === key) },
@@ -2455,6 +2461,101 @@ describe('Backlog', () => {
       await settle(fixture);
 
       expect(rank).not.toHaveBeenCalled();
+    });
+  });
+
+  // docs/adr/0014 D3: the score is a marker beside the rank, and the rank can adopt it in one act.
+  describe('the score', () => {
+    const dialog = () => document.body.querySelector('.p-confirmdialog');
+    const press = (label: string) =>
+      [...(dialog()?.querySelectorAll('button') ?? [])]
+        .find((button) => button.textContent?.trim() === label)
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const mark = (page: HTMLElement, number: number) =>
+      page.querySelector(`[data-testid="score-mark-acme/COW-${number}"]`);
+
+    it('marks the ticket the score would lift, and only that one, as a marker, not a figure', async () => {
+      load([ticket(1, { score: 2 }), ticket(2, { score: 9.4 }), ticket(3, { score: 1 })]);
+
+      const { page } = await render();
+
+      expect(mark(page, 1)).toBeNull();
+      expect(mark(page, 3)).toBeNull();
+      expect(mark(page, 2)?.getAttribute('data-mark')).toBe('higher');
+      expect(mark(page, 2)?.textContent).toContain('score');
+      expect(mark(page, 2)?.querySelector('.sr-only')?.textContent).toContain(
+        'The score, 9.4, says higher than the rank puts it',
+      );
+    });
+
+    it('marks the ticket the score would lower, and nothing where the rank follows the score', async () => {
+      load([ticket(1, { score: 1 }), ticket(2, { score: 6 }), ticket(3, { score: 5 })]);
+      const first = await render();
+      expect(mark(first.page, 1)?.getAttribute('data-mark')).toBe('lower');
+      first.fixture.destroy();
+
+      load([ticket(1, { score: 9 }), ticket(2, { score: 5 }), ticket(3, { score: null })]);
+      const second = await render();
+      expect(second.page.querySelector('.score-mark')).toBeNull();
+    });
+
+    it('sorts the backlog by the score once the person confirms, and says how many moved', async () => {
+      load([ticket(1, { score: 2 }), ticket(2, { score: 9 })]);
+      const { fixture, page } = await render();
+
+      page.querySelector<HTMLButtonElement>('[data-testid="sort-by-score"]')?.click();
+      await settle(fixture);
+      expect(dialog()?.textContent).toContain('Sort COW by score?');
+      expect(sortByScore).not.toHaveBeenCalled();
+      press('Sort by score');
+      await settle(fixture);
+
+      expect(sortByScore).toHaveBeenCalledExactlyOnceWith('acme', 'COW');
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'success',
+          summary: 'Sorted by score: 2 tickets moved',
+        }),
+      );
+    });
+
+    it('sorts nothing when the person keeps the order', async () => {
+      load([ticket(1, { score: 2 }), ticket(2, { score: 9 })]);
+      const { fixture, page } = await render();
+
+      page.querySelector<HTMLButtonElement>('[data-testid="sort-by-score"]')?.click();
+      await settle(fixture);
+      press('Keep the order');
+      await settle(fixture);
+
+      expect(sortByScore).not.toHaveBeenCalled();
+    });
+
+    it('says so when the backlog follows the score already', async () => {
+      sortByScore.mockResolvedValue(0);
+      load([ticket(1, { score: 9 })]);
+      const { fixture, page } = await render();
+
+      page.querySelector<HTMLButtonElement>('[data-testid="sort-by-score"]')?.click();
+      await settle(fixture);
+      press('Sort by score');
+      await settle(fixture);
+
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'info',
+          summary: 'The backlog follows the score already',
+        }),
+      );
+    });
+
+    it('offers a viewer no sort', async () => {
+      membership.set({ role: 'viewer' });
+      load([ticket(1, { score: 2 })]);
+
+      const { page } = await render();
+
+      expect(page.querySelector('[data-testid="sort-by-score"]')).toBeNull();
     });
   });
 

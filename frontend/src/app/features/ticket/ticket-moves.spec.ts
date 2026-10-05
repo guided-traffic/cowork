@@ -19,6 +19,8 @@ function ticket(state: TicketState, fields: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     ...fields,
   } as Ticket;
 }

@@ -62,6 +62,8 @@ function ticket(number: number, fields: Partial<Ticket> = {}): Ticket {
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 1,
     ...fields,
   } as Ticket;

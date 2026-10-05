@@ -4,6 +4,13 @@
 import { TenantRef } from '../models/tenant-ref';
 import { Ticket } from '../models/ticket';
 export interface MyTicket {
+
+  /**
+   * The ticket's place in its project's rank among the open tickets of its horizon the caller can
+   * see, 1 for the first — where the backlog's group shows it: the secondary indicator beside the
+   * score's order (docs/adr/0014 D5)
+   */
+  place: number;
   tenant: TenantRef;
   ticket: Ticket;
 }

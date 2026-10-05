@@ -23,6 +23,8 @@ function ticket(fields: Partial<Ticket> = {}): Ticket {
     assignee: sam,
     block: null,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     progress_derived: false,
     progress_refinement: 100,
     progress: 40,

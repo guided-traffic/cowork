@@ -112,6 +112,14 @@ export class Shell {
       name: role ? name : `${name} (no role)`,
     })),
   );
+  /**
+   * The only tenant of a person who has one, with its name: no switcher offers it, so on the
+   * person-level pages — "next for me" is the start page — its name leads to it (docs/adr/0023 D4).
+   */
+  protected readonly soleTenant = computed(() => {
+    const sole = this.session.soleTenant();
+    return this.session.tenants().find((tenant) => tenant.slug === sole);
+  });
   protected readonly themeText = computed(() => themeTexts[this.theme.preference()]);
   /** The bell's count as it is read: `99+` above ninety-nine. */
   protected readonly unread = computed(() => {

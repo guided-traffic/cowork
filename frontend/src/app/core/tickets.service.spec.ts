@@ -71,6 +71,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version,
     ...overrides,
   };
@@ -810,7 +812,7 @@ describe('TicketsService', () => {
       http.expectNone(ticketUrl('acme/VKO-99'));
     });
 
-    it.each(['question.changed', 'comment.changed', 'interest.changed'] as const)(
+    it.each(['question.changed', 'comment.changed'] as const)(
       'never refetches the ticket on %s, whatever version it names, because they change nothing it shows',
       async (name) => {
         stream.next(changed(name, key, 99));
@@ -820,6 +822,22 @@ describe('TicketsService', () => {
         expect(service.cache.value(key)?.version).toBe(5);
       },
     );
+
+    // docs/adr/0013 D3, docs/adr/0014 D4: a stake moves the ticket's score, not its version.
+    it('refetches a cached ticket on interest.changed at the version it holds, because its score changes', async () => {
+      stream.next(changed('interest.changed', key, 5));
+
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { score: 7.5, score_version: 1 }));
+      await settle();
+
+      expect(service.cache.value(key)?.score).toBe(7.5);
+    });
+
+    it('does not fetch a ticket that is not cached on interest.changed', () => {
+      stream.next(changed('interest.changed', 'acme/VKO-99', 1));
+
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
 
     it.each([
       [404, 'the ticket is not there'],
@@ -985,6 +1003,19 @@ describe('TicketsService', () => {
         http.expectNone(tenantUrl);
       },
     );
+
+    // docs/adr/0014 D3: the sort by the score moves no ticket's version; the lists hold the order.
+    it("reload on project.changed of the tenant the pages show, and on no other tenant's", async () => {
+      stream.next({ name: 'project.changed', id: 'e1', key: 'globex/VKO', kind: 'ranked' });
+      await wait(10 * listReloadDelay);
+      http.expectNone(projectUrl);
+
+      stream.next({ name: 'project.changed', id: 'e2', key: 'acme/VKO', kind: 'ranked' });
+      await wait(listReloadDelay);
+
+      expect(take(projectUrl)).toHaveLength(1);
+      expect(take(tenantUrl)).toHaveLength(1);
+    });
 
     describe('when the event comes during their own load', () => {
       /** A list that is loading, in a view of its own. */

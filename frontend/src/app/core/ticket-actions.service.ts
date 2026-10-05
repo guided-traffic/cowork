@@ -7,6 +7,7 @@ import {
   overrideUrgency,
   replaceTicketBody,
   setConfidential,
+  sortProjectRank,
   transitionTicket,
   updateTicket,
   withdrawUrgencyOverride,
@@ -143,6 +144,21 @@ export class TicketActions {
     const ticket = await this.api.invoke(moveTicketRank, { ...routeOf(key), body: placement });
     this.tickets.cache.put(ticket.key, ticket);
     return ticket;
+  }
+
+  /**
+   * Sorts the project's open tickets by their score, in one act of the project (docs/adr/0014
+   * D3): the tickets keep their versions, so the open lists load again, which hold the order. It
+   * answers how many changed their place, 0 when the rank followed the score already.
+   */
+  async sortByScore(tenant: string, project: string): Promise<number> {
+    const sorted = await this.api.invoke(sortProjectRank, {
+      tenant,
+      project,
+      body: { by: 'score' },
+    });
+    this.tickets.reloadLists();
+    return sorted.moved;
   }
 
   /**

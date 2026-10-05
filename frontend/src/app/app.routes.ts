@@ -28,12 +28,18 @@ export const routes: Routes = [
       },
       // The person-level pages, across the person's tenants (docs/adr/0018 D3).
       {
+        path: 'me/next',
+        loadComponent: () => import('./features/me/my-tickets').then((m) => m.MyTickets),
+        data: { list: 'next' },
+      },
+      {
         path: 'me/inbox',
         loadComponent: () => import('./features/me/inbox').then((m) => m.Inbox),
       },
       {
         path: 'me/assigned',
-        loadComponent: () => import('./features/me/assigned').then((m) => m.Assigned),
+        loadComponent: () => import('./features/me/my-tickets').then((m) => m.MyTickets),
+        data: { list: 'assigned' },
       },
       {
         path: 'me/decisions',

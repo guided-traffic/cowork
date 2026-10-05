@@ -51,6 +51,8 @@ function ticket(project: string, number: number, overrides: Partial<Ticket> = {}
     done_from: null,
     done_by_hand: false,
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     version: 1,
     ...overrides,
   };

@@ -17,6 +17,8 @@ function ticket(fields: Partial<Ticket> = {}): Ticket {
     number: 12,
     state: 'in-progress',
     open_prerequisites: 0,
+    score: null,
+    score_version: null,
     progress_derived: false,
     progress_refinement: 100,
     progress: 60,

@@ -12,6 +12,7 @@ import {
   Move,
   rankBody,
   Row,
+  scoreMarks,
   unanswered,
   urgencies,
   withMoves,
@@ -565,5 +566,43 @@ describe('the moves the list does not show yet', () => {
 
       expect(given).toEqual(order);
     });
+  });
+});
+
+// docs/adr/0014 D3: the backlog marks where the score's order and the rank's disagree.
+describe('scoreMarks', () => {
+  /** The marks of the tickets, which arrive in the rank's order, as `number: mark`. */
+  const marksOf = (...tickets: Ticket[]) =>
+    Object.fromEntries(
+      [...scoreMarks(arrange(tickets))].map(([key, mark]) => [key.split('-')[1], mark]),
+    );
+  const s = (number: number, score: number | null, overrides: Partial<Ticket> = {}) =>
+    t(number, { score, ...overrides });
+
+  it('marks nothing where the rank follows the score, equal scores included', () => {
+    expect(marksOf(s(1, 9), s(2, 5), s(3, 5), s(4, 2))).toEqual({});
+  });
+
+  it('marks the one ticket out of its place, not every ticket it pushed aside', () => {
+    expect(marksOf(s(1, 2), s(2, 9), s(3, 5), s(4, 4))).toEqual({ '1': 'lower' });
+    expect(marksOf(s(1, 9), s(2, 5), s(3, 4), s(4, 8))).toEqual({ '4': 'higher' });
+  });
+
+  it('says higher where the score would lift a ticket above one the run keeps', () => {
+    expect(marksOf(s(1, 5), s(2, 9), s(3, 3))).toEqual({ '2': 'higher' });
+  });
+
+  it('compares within a horizon, and among the children of one parent', () => {
+    expect(
+      marksOf(s(1, 9, { urgency: 'now' }), s(2, 2), s(3, 9, { urgency: 'now' }), s(4, 1)),
+    ).toEqual({});
+    expect(
+      marksOf(s(1, 1), s(2, 2, { parent: under(1) }), s(3, 7, { parent: under(1) }), s(4, 0.5)),
+    ).toEqual({ '3': 'higher' });
+  });
+
+  it('leaves a ticket without a score out', () => {
+    expect(marksOf(s(1, null), s(2, 3), s(3, 4))).toEqual({ '3': 'higher' });
+    expect(marksOf(s(1, null))).toEqual({});
   });
 });

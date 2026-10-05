@@ -17,6 +17,8 @@ export type { MarkMyInboxRead$Params as MarkMyInboxRead$Params } from './fn/me/m
 export { markMyInboxRead as markMyInboxRead } from './fn/me/mark-my-inbox-read';
 export type { MarkNotificationRead$Params as MarkNotificationRead$Params } from './fn/me/mark-notification-read';
 export { markNotificationRead as markNotificationRead } from './fn/me/mark-notification-read';
+export type { ListMyNext$Params as ListMyNext$Params } from './fn/me/list-my-next';
+export { listMyNext as listMyNext } from './fn/me/list-my-next';
 export type { ChangeMyPassword$Params as ChangeMyPassword$Params } from './fn/me/change-my-password';
 export { changeMyPassword as changeMyPassword } from './fn/me/change-my-password';
 export type { GetMyToken$Params as GetMyToken$Params } from './fn/me/get-my-token';
@@ -107,6 +109,8 @@ export type { ArchiveProject$Params as ArchiveProject$Params } from './fn/projec
 export { archiveProject as archiveProject } from './fn/projects/archive-project';
 export type { SetProjectRestriction$Params as SetProjectRestriction$Params } from './fn/projects/set-project-restriction';
 export { setProjectRestriction as setProjectRestriction } from './fn/projects/set-project-restriction';
+export type { SortProjectRank$Params as SortProjectRank$Params } from './fn/tickets/sort-project-rank';
+export { sortProjectRank as sortProjectRank } from './fn/tickets/sort-project-rank';
 export type { ListProjectTickets$Params as ListProjectTickets$Params } from './fn/tickets/list-project-tickets';
 export { listProjectTickets as listProjectTickets } from './fn/tickets/list-project-tickets';
 export type { CreateTicket$Params as CreateTicket$Params } from './fn/tickets/create-ticket';
