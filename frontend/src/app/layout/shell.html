@@ -153,6 +153,15 @@
             data-testid="nav-board"
             ><i class="pi pi-objects-column"></i>Board</a
           >
+          <!-- The list itself, whatever it is filtered by; a ticket's own page is not part of it. -->
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'tickets']"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="listOnly"
+            data-testid="nav-tickets"
+            ><i class="pi pi-ticket"></i>Tickets</a
+          >
         }
         <a
           class="item"

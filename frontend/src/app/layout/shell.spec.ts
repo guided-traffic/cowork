@@ -886,18 +886,24 @@ describe('Shell', () => {
   });
 
   describe('the navigation', () => {
-    it('links the overview, the board, the members, the time and the settings of the tenant', async () => {
+    it('links the overview, the board, the tickets, the members, the time and the settings of the tenant', async () => {
       const { page } = await render();
 
-      const links = ['nav-overview', 'nav-board', 'nav-members', 'nav-time', 'nav-settings'].map(
-        (testId) => [
-          page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
-          page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
-        ],
-      );
+      const links = [
+        'nav-overview',
+        'nav-board',
+        'nav-tickets',
+        'nav-members',
+        'nav-time',
+        'nav-settings',
+      ].map((testId) => [
+        page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
+        page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
+      ]);
       expect(links).toEqual([
         ['/t/acme', 'Overview'],
         ['/t/acme/board', 'Board'],
+        ['/t/acme/tickets', 'Tickets'],
         ['/t/acme/members', 'Members'],
         ['/t/acme/time', 'Time'],
         ['/t/acme/settings', 'Settings'],
@@ -913,6 +919,17 @@ describe('Shell', () => {
           .querySelector('[data-testid="nav-board"]')
           ?.previousElementSibling?.getAttribute('data-testid'),
       ).toBe('nav-overview');
+    });
+
+    // docs/adr/0018 D5, docs/adr/0023 D4: the list of the tenant's tickets, beside its board.
+    it('links the tickets of the tenant right after its board', async () => {
+      const { page } = await render();
+
+      expect(
+        page
+          .querySelector('[data-testid="nav-tickets"]')
+          ?.previousElementSibling?.getAttribute('data-testid'),
+      ).toBe('nav-board');
     });
 
     it('lists the projects of the tenant, each linked to its board', async () => {
@@ -1036,6 +1053,7 @@ describe('Shell', () => {
       expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-board"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-tickets"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
@@ -1067,6 +1085,19 @@ describe('Shell', () => {
       await TestBed.inject(Router).navigateByUrl('/t/acme/board?project=COW');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-board']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-tickets']);
+
+      // The list stays active whatever it is filtered by; a ticket's own page is not the list.
+      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets?state=filed&project=COW');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-tickets']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets/COW-12');
+      await fixture.whenStable();
+      expect(active()).toEqual([]);
 
       await TestBed.inject(Router).navigateByUrl('/t/acme/members');
       await fixture.whenStable();

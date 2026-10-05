@@ -1,0 +1,173 @@
+<section class="page">
+  <header class="head">
+    <div>
+      <h1>Tickets</h1>
+      <p class="muted">Every project's tickets, newest first</p>
+    </div>
+    <span class="spacer"></span>
+    @if (!session.oversight() && summary(); as text) {
+      <span class="muted tabular" data-testid="tickets-total">{{ text }}</span>
+    }
+  </header>
+
+  @if (!session.oversight()) {
+    <div class="filters" role="group" aria-label="Filters" data-testid="tickets-filters">
+      <div class="field">
+        <label for="tickets-text">Text</label>
+        <p-iconfield>
+          <p-inputicon class="pi pi-search" />
+          <input
+            pInputText
+            id="tickets-text"
+            type="search"
+            pSize="small"
+            maxlength="256"
+            autocomplete="off"
+            placeholder="Title and body"
+            [ngModel]="text()"
+            (ngModelChange)="text.set($event)"
+            data-testid="tickets-text"
+          />
+        </p-iconfield>
+      </div>
+      @for (field of fields; track field.name) {
+        <div class="field">
+          <span [id]="'tickets-' + field.name + '-label'">{{ field.label }}</span>
+          <p-select
+            [options]="field.options()"
+            optionLabel="label"
+            optionValue="value"
+            [multiple]="true"
+            [ngModel]="field.chosen()"
+            (ngModelChange)="choose(field.name, $event)"
+            [placeholder]="field.placeholder"
+            [showClear]="true"
+            [filter]="field.options().length > 8"
+            filterBy="label"
+            size="small"
+            [ariaLabelledBy]="'tickets-' + field.name + '-label'"
+            [attr.data-testid]="'filter-' + field.name"
+          />
+        </div>
+      }
+    </div>
+
+    <div class="bar">
+      <app-saved-filters [current]="filter()" [applied]="applied()" (chosen)="applySaved($event)" />
+      <span class="spacer"></span>
+      @if (filtered()) {
+        <button
+          pButton
+          type="button"
+          size="small"
+          [text]="true"
+          severity="secondary"
+          (click)="clear()"
+          data-testid="tickets-clear"
+        >
+          Clear filters
+        </button>
+      }
+    </div>
+    @if (beyond(); as rest) {
+      <p class="beyond muted" data-testid="tickets-beyond">Also filtered by {{ rest }}</p>
+    }
+
+    @if (failure(); as message) {
+      <p class="failure" role="alert" data-testid="tickets-failure">{{ message }}</p>
+    }
+
+    <div class="panel" [class.loading]="list.isLoading()" [attr.aria-busy]="list.isLoading()">
+      <table class="tickets" data-testid="tickets-table">
+        <caption class="sr-only">
+          The tenant's tickets, newest first
+        </caption>
+        <thead>
+          <tr>
+            <th class="col-key">Key</th>
+            <th class="col-project">Project</th>
+            <th>Title</th>
+            <th class="col-horizon">Horizon</th>
+            <th class="col-state">State</th>
+            <th class="col-severity">Severity</th>
+            <th class="col-size">Effort</th>
+            <th class="col-assignee">Assignee</th>
+            <th class="col-when">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (ticket of rows(); track ticket.key) {
+            <tr class="row" (click)="open(ticket)" [attr.data-testid]="'row-' + ticket.key">
+              <td class="col-key">
+                <a
+                  class="tabular"
+                  [routerLink]="['/t', session.tenant(), 'tickets', shortKey(ticket.key)]"
+                  (click)="$event.stopPropagation()"
+                  data-testid="row-key"
+                  >{{ shortKey(ticket.key) }}</a
+                >
+              </td>
+              <td class="col-project">
+                <a
+                  [routerLink]="['/t', session.tenant(), 'p', ticket.project, 'board']"
+                  (click)="$event.stopPropagation()"
+                  data-testid="row-project"
+                  >{{ projectName(ticket.project) }}</a
+                >
+              </td>
+              <td>
+                <div class="cell-title">
+                  <app-type [value]="ticket.type" />
+                  <span class="text" data-testid="row-title">{{ ticket.title }}</span>
+                  <app-security [value]="ticket.security" />
+                </div>
+              </td>
+              <td class="col-horizon">
+                <span
+                  [pTooltip]="meanings.urgency[ticket.urgency]"
+                  [showDelay]="400"
+                  data-testid="row-horizon"
+                  >{{ ticket.urgency }}</span
+                >
+              </td>
+              <td class="col-state"><app-state [value]="ticket.state" /></td>
+              <td class="col-severity"><app-severity [value]="ticket.severity" /></td>
+              <td class="col-size"><app-size [value]="ticket.effort" /></td>
+              <td class="col-assignee">
+                @if (ticket.assignee; as assignee) {
+                  {{ assignee.display_name }}
+                } @else {
+                  <span class="muted">—</span>
+                }
+              </td>
+              <td class="col-when muted">{{ ago(ticket.updated_at) }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="9" class="empty muted" data-testid="tickets-empty">
+                @if (list.isLoading()) {
+                  <p-skeleton width="16rem" height="1rem" />
+                } @else if (!failure()) {
+                  {{ filtered() ? 'No ticket matches the filters.' : 'No open tickets.' }}
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (total() > 0 && !failure()) {
+      <p-paginator
+        [first]="(page() - 1) * perPage()"
+        [rows]="perPage()"
+        [totalRecords]="total()"
+        [rowsPerPageOptions]="perPageOptions"
+        [showCurrentPageReport]="true"
+        currentPageReportTemplate="{first}–{last} of {totalRecords}"
+        (onPageChange)="turn($event)"
+        data-testid="tickets-pages"
+      />
+    }
+  }
+</section>

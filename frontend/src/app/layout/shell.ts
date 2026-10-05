@@ -13,7 +13,14 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  IsActiveMatchOptions,
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { Avatar } from 'primeng/avatar';
 import { ButtonDirective } from 'primeng/button';
@@ -109,6 +116,13 @@ export class Shell {
   protected readonly inbox = inject(InboxService);
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
+  /** A link active on its own path, whatever the query; not on the paths below it. */
+  protected readonly listOnly: IsActiveMatchOptions = {
+    paths: 'exact',
+    queryParams: 'ignored',
+    matrixParams: 'ignored',
+    fragment: 'ignored',
+  };
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(
