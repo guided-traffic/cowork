@@ -62,6 +62,13 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./features/tenant/tenant-board').then((m) => m.TenantBoard),
           },
+          // The tenant's tickets across its projects, mirroring GET …/tickets (docs/adr/0023 D4,
+          // docs/adr/0018 D5); a ticket of it is tickets/:key below.
+          {
+            path: 'tickets',
+            loadComponent: () =>
+              import('./features/tenant/tenant-tickets').then((m) => m.TenantTickets),
+          },
           // A project's address without a view opens its board (docs/adr/0018 D1).
           { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/board' },
           {

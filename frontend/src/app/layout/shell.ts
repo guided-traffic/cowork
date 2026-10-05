@@ -129,6 +129,13 @@ export class Shell {
   protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
   protected readonly frontPageActive = frontPageActive;
+  /** A link active on its own path, whatever the query; not on the paths below it. */
+  protected readonly listOnly: IsActiveMatchOptions = {
+    paths: 'exact',
+    queryParams: 'ignored',
+    matrixParams: 'ignored',
+    fragment: 'ignored',
+  };
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(

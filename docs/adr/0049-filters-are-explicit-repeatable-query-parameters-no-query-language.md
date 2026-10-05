@@ -21,8 +21,11 @@ saved filters and D7 arrive with their views~~. *(2026-10-05:)* D6's saved filte
 filter's parameters are a JSON object of the same names, refused as the lists refuse them
 (`parseFilters`, the pointer `/parameters/<name>`), and checked again whenever the filter is read, a
 value that no longer holds a warning beside it ([`api/filters.go`](../../backend/internal/api/filters.go)).
-The backlog applies them; the board, the tenant-wide list in the browser and the dashboard do not
-yet. *(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
+The backlog applies them, and *(2026-10-05)* so does the tenant-wide list in the browser,
+`/t/{slug}/tickets`, whose address carries every parameter of D1 — D6's one set, `project`
+included —, so that a saved filter applied there is a link
+([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts));
+the board does not yet. *(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
 D6 — `project` as the ticket lists take it, and as its period parameters the time lists' `from` and
 `to`, days ([`dashboard.go`](../../backend/internal/api/dashboard.go) `parseDashboardQuery`).
 

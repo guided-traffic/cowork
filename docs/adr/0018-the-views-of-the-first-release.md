@@ -96,8 +96,14 @@ body, comments, options and answers shown as the server rendered them
 person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
 from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
 [`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
-Not built: the score's marker in the backlog, D3's "next for me", D5 on the tenant list view — no
-page lists a tenant's tickets — and on the tenant board.
+*(2026-10-05:)* D5 on the tenant list view, built on the recommendation, the owner reviewing the
+result: the tenant's tickets across its projects at `/t/{slug}/tickets`, in the navigation beside
+the tenant board — a table over `GET …/tickets`, newest first, the project beside each key, in
+numbered pages ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D2) —,
+whose address carries every filter of ADR 0049 D1, the backlog's filters and the project as the
+selects of its bar, and to which saved filters apply as to the backlog, `project` included, through
+the same filter bar ([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
+Not built: the score's marker in the backlog, D3's "next for me", and D5 on the tenant board.
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),

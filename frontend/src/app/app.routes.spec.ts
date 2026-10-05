@@ -30,6 +30,7 @@ import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
 import { TenantBoard } from './features/tenant/tenant-board';
 import { TenantSettings } from './features/tenant/tenant-settings';
+import { TenantTickets } from './features/tenant/tenant-tickets';
 import { TicketDetail } from './features/ticket/ticket-detail';
 import { TimeReport } from './features/time/time-report';
 import { Shell } from './layout/shell';
@@ -60,6 +61,7 @@ const pages: [string, Type<unknown>][] = [
   ['me/search', SearchResults],
   ['t/:tenant', TenantDashboard],
   ['t/:tenant/board', TenantBoard],
+  ['t/:tenant/tickets', TenantTickets],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
   ['t/:tenant/p/:project/settings', ProjectSettings],
@@ -159,6 +161,8 @@ describe('the routes', () => {
       named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
       named('/t/acme', Shell, TenantScope, TenantDashboard),
       named('/t/acme/board', Shell, TenantScope, TenantBoard),
+      named('/t/acme/tickets', Shell, TenantScope, TenantTickets),
+      named('/t/acme/tickets?project=COW&state=filed&q=crash', Shell, TenantScope, TenantTickets),
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),
       named('/t/acme/group-mappings', Shell, TenantScope, GroupMappings),
@@ -262,6 +266,8 @@ describe('the routes', () => {
       ['/t/acme/tickets/COW-12', '/t/acme/tickets/COW-13'],
       ['/t/acme/board', '/t/globex/board'],
       ['/t/acme/board', '/t/acme/board?project=COW'],
+      ['/t/acme/tickets', '/t/globex/tickets'],
+      ['/t/acme/tickets', '/t/acme/tickets?state=filed&severity=high'],
       ['/t/acme/members', '/t/globex/members'],
       ['/t/acme/accounts', '/t/globex/accounts'],
       ['/t/acme/group-mappings', '/t/globex/group-mappings'],

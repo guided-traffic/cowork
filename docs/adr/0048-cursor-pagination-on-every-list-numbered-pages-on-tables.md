@@ -28,7 +28,9 @@ members, tokens and projects carry the cursor only so far~~ *(built 2026-10-04: 
 the members, the person's tokens and the projects take them as well,
 [`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`; the tenant's audit page in
 the browser reads them with page numbers and a choice of 25, 50 or 100, as D4 has tables do)*; D4's
-markings and client helpers arrive with the generated frontend client. *(2026-10-04:)* D3's inbox,
+markings and client helpers arrive with the generated frontend client. *(2026-10-05:)* the tenant's
+ticket list in the browser, `/t/{slug}/tickets`, reads `listTenantTickets` in numbered pages as
+the audit page does, fifty a page to begin with — the API's default. *(2026-10-04:)* D3's inbox,
 `/me/assigned` and `/me/decisions`, cursor only and merged across the person's tenants — the inbox by
 the notifications' ids, the other two in the interim order of
 [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s Status rather than D1's

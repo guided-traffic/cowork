@@ -22,6 +22,7 @@ import { Clock, dateTime } from '../../shared/time';
 import { Backlog } from './backlog';
 import { Group } from './backlog-model';
 import { ProjectHeader } from './project-header';
+import { backlogLeftOut } from './saved-filter-model';
 import { SavedFilters } from './saved-filters';
 
 const now = Date.parse('2026-10-03T12:00:00Z');
@@ -812,6 +813,17 @@ describe('Backlog', () => {
 
         expect(openParams()).toEqual({ tenant: 'acme', project: 'COW', pages: 1 });
         expect(bar(fixture).applied()).toBeNull();
+      });
+
+      it('says under the bar that a backlog leaves the filter’s project out', async () => {
+        const { fixture, page } = await render();
+
+        await apply(fixture, saved({ project: ['OPS'], severity: ['high'] }));
+
+        expect(bar(fixture).leftOut()).toEqual(backlogLeftOut);
+        expect(page.querySelector('[data-testid="filter-notes"]')?.textContent).toBe(
+          'project: a backlog is one project; the tenant’s ticket list applies this condition',
+        );
       });
     });
 

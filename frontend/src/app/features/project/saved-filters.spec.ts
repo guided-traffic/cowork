@@ -7,6 +7,7 @@ import type { MockInstance } from 'vitest';
 import { SavedFilter, SavedFilterParameters } from '../../api/models';
 import { SavedFiltersService } from '../../core/saved-filters.service';
 import { SessionService } from '../../core/session.service';
+import { backlogLeftOut, LeftOut } from './saved-filter-model';
 import { SavedFilters } from './saved-filters';
 
 const filter = (id: string, overrides: Partial<SavedFilter> = {}): SavedFilter => ({
@@ -28,12 +29,14 @@ const filter = (id: string, overrides: Partial<SavedFilter> = {}): SavedFilter =
   template: `<app-saved-filters
     [current]="current()"
     [applied]="applied()"
+    [leftOut]="leftOut()"
     (chosen)="chosen.push($event)"
   />`,
 })
 class Host {
   readonly current = signal<SavedFilterParameters>({ state: ['blocked'], q: 'crash' });
   readonly applied = signal<SavedFilter | null>(null);
+  readonly leftOut = signal<LeftOut>({});
   readonly chosen: (SavedFilter | null)[] = [];
 }
 
@@ -207,6 +210,21 @@ describe('SavedFilters', () => {
 
     const [first, second] = create.mock.calls.map((call) => call[3]);
     expect(second).toBe(first);
+  });
+
+  // The backlog leaves a filter's project out; the tenant's ticket list applies it (docs/adr/0018 D5).
+  it('names a condition its list leaves out, with why, and none for a list that applies every one', async () => {
+    const fixture = await render();
+    fixture.componentInstance.applied.set(filter('across', { parameters: { project: ['OPS'] } }));
+    await settle(fixture);
+    expect(el(fixture, 'filter-notes')).toBeNull();
+
+    fixture.componentInstance.leftOut.set(backlogLeftOut);
+    await settle(fixture);
+
+    expect(el(fixture, 'filter-notes')?.textContent).toBe(
+      'project: a backlog is one project; the tenant’s ticket list applies this condition',
+    );
   });
 
   it('shows the warnings of the applied filter', async () => {
