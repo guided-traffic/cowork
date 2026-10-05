@@ -183,7 +183,11 @@ dashboard exists; a new tile is an amendment of this record.
 
 **D7 — Search.** Full-text over title, body, comments and question texts within a tenant,
 from the tenant's pages; the person-level pages search across the person's tenants as a
-union.
+union. *(Made concrete 2026-10-05, built on the recommendation, the owner reviewing the result:)*
+inside a tenant the search box opens that tenant's results, one list in one order with one cursor,
+and every tenant of the person is one link away; the alternative — one page with the tenant's hits
+on top and the other tenants' under them — was not built, since it shows another client's tenant
+before the person asks for it.
 
 **D8 — Not in the first release, by this record:** custom dashboards, a portfolio view across
 tenants beyond D3, Gantt or timeline views, a calendar.
