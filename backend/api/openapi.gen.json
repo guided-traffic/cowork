@@ -441,7 +441,7 @@
         }
       },
       "Query": {
-        "description": "Full text over title and body (docs/adr/0025); its length is capped by the server",
+        "description": "A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold\nevery word, in the list's own order, without a rank or a snippet — the ranked search over\ncomments, questions, file names and keys as well is `GET …/search`. Its length is capped by\nthe server\n",
         "in": "query",
         "name": "q",
         "schema": {
@@ -468,6 +468,17 @@
         "required": true,
         "schema": {
           "format": "uuid",
+          "type": "string"
+        }
+      },
+      "SearchQuery": {
+        "description": "The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length\nis capped by the server, and a query of white space alone is `validation_failed`\n",
+        "in": "query",
+        "name": "q",
+        "required": true,
+        "schema": {
+          "maxLength": 4096,
+          "minLength": 1,
           "type": "string"
         }
       },
@@ -1624,6 +1635,13 @@
               "null"
             ]
           },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside\nthe Markdown; null once withdrawn\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -1678,6 +1696,7 @@
           "agent",
           "token",
           "body",
+          "body_html",
           "withdrawn",
           "withdrawn_at",
           "edited",
@@ -3071,6 +3090,13 @@
               "null"
             ]
           },
+          "answer_html": {
+            "description": "The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "answered_at": {
             "format": "date-time",
             "type": [
@@ -3148,6 +3174,10 @@
             "description": "Markdown: the context and the options",
             "type": "string"
           },
+          "options_html": {
+            "description": "The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options",
+            "type": "string"
+          },
           "question": {
             "type": "string"
           },
@@ -3181,8 +3211,10 @@
           "number",
           "question",
           "options",
+          "options_html",
           "recommendation",
           "answer",
+          "answer_html",
           "status",
           "asked_by",
           "asked_by_agent",
@@ -3539,6 +3571,95 @@
         ],
         "type": "string"
       },
+      "SearchFoundIn": {
+        "description": "Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and\nthe body; one of its comments; one of its questions; an attachment's file name\n",
+        "enum": [
+          "key",
+          "ticket",
+          "comment",
+          "question",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "SearchHit": {
+        "properties": {
+          "comment": {
+            "description": "The comment the hit is in",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found_in": {
+            "$ref": "#/components/schemas/SearchFoundIn"
+          },
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e (docs/adr/0007 D2)",
+            "type": "string"
+          },
+          "question": {
+            "description": "The number of the question the hit is in",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snippet": {
+            "description": "The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):\nthe body for a hit in the ticket's own text or its key, the comment, the question with its\noptions, recommendation and answer, the file name. Text, never HTML; empty where that text is\n",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "tenant",
+          "key",
+          "title",
+          "type",
+          "state",
+          "found_in",
+          "comment",
+          "question",
+          "snippet"
+        ],
+        "type": "object"
+      },
+      "SearchHitList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "SecurityClass": {
         "enum": [
           "live",
@@ -3557,6 +3678,23 @@
           "cosmetic"
         ],
         "type": "string"
+      },
+      "SnippetPart": {
+        "properties": {
+          "match": {
+            "description": "The piece is a word the query found",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "A piece of the matched text, as text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "type": "object"
       },
       "Tenant": {
         "properties": {
@@ -3939,6 +4077,28 @@
           "version",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketBody": {
+        "properties": {
+          "body": {
+            "description": "Markdown, as written (docs/adr/0011 D1)",
+            "type": "string"
+          },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body\n",
+            "type": "string"
+          },
+          "version": {
+            "description": "The ticket's version the body belongs to",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body",
+          "body_html",
+          "version"
         ],
         "type": "object"
       },
@@ -5257,6 +5417,45 @@
         "summary": "The project a repository is bound to, across the person's tenants",
         "tags": [
           "repositories"
+        ]
+      }
+    },
+    "/api/v1/me/search": {
+      "get": {
+        "description": "The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —\none read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit\nnames its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that\ntenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator\nwithout a role in a tenant searches nothing of it (docs/adr/0034 D2).\n",
+        "operationId": "searchMyTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tickets of every tenant of the person",
+        "tags": [
+          "search"
         ]
       }
     },
@@ -7512,6 +7711,39 @@
       ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body": {
+      "get": {
+        "description": "The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its\nown: the ticket lists carry the Markdown of every row, and rendering every body of a page\nis work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown\nas text; a link keeps only an `http`, `https` or `mailto` address or one relative to the\ninstallation, opens in a new tab and carries `rel=\"noopener noreferrer nofollow\"`; an\nimage shows only when it names a raster attachment of this ticket, from that attachment's\nown path (docs/adr/0016 D7), and any other image is a link to its address. Shown through\nAngular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a\nreplacement of the body names in `If-Match`; the HTML changes with the ticket's\nattachments as well, which raise no version.\n",
+        "operationId": "getTicketBody",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "body": "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7).",
+                  "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eThe gate fails on \u003ccode\u003ereadyReplicas\u003c/code\u003e — see \u003ca href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\"\u003ethe run\u003c/a\u003e.\u003c/p\u003e",
+                  "version": 4
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/TicketBody"
+                }
+              }
+            },
+            "description": "The body",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's body, as Markdown and rendered",
+        "tags": [
+          "tickets"
+        ]
+      },
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
@@ -9034,6 +9266,79 @@
         ]
       }
     },
+    "/api/v1/tenants/{tenant}/search": {
+      "get": {
+        "description": "Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —\nover a ticket's title and body, its comments but a withdrawn one, its questions (the question,\nthe options, the recommendation and the answer) and its attachments' file names; a text\nmatches when it holds every word of `q`. A ticket's key matches by its beginning as well —\n`COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram\nsimilarity, so a word half typed or misspelt still finds it (D3).\n\nOne hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the\ntitle above the body above comments, questions and file names, a title found by trigram\nbelow them (D4). A hit names the ticket — its key, title, type and state —, where it matched\n(`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an\nattachment's name) and a snippet of that text with the matched words marked (`ts_headline`,\nD5). The snippet is text in parts, never HTML: a client shows every part as text.\n\nOnly what the caller can see is searched, snippets included: a restricted project they are\nnot on, a confidential ticket of which they are neither a tenant administrator, the assignee\nnor the reporter, and a project-restricted token's other projects find nothing\n(docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a\ncursor belongs to its query.\n\nThe `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose\ntitle and body hold every word, in the list's own order, with no rank and no snippet.\n",
+        "operationId": "searchTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "comment": "0199a3c2-1d2e-7f00-8000-0000000000c1",
+                      "found_in": "comment",
+                      "key": "acme/COW-12",
+                      "question": null,
+                      "snippet": [
+                        {
+                          "match": false,
+                          "text": "the "
+                        },
+                        {
+                          "match": true,
+                          "text": "readyReplicas"
+                        },
+                        {
+                          "match": false,
+                          "text": " count is 0 after the rollout"
+                        }
+                      ],
+                      "state": "in-progress",
+                      "tenant": {
+                        "name": "Acme",
+                        "slug": "acme"
+                      },
+                      "title": "The gate fails on a fresh cluster",
+                      "type": "bug"
+                    }
+                  ],
+                  "next_cursor": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tenant's tickets",
+        "tags": [
+          "search"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
         "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time.\n",
@@ -9635,6 +9940,9 @@
     },
     {
       "name": "tickets"
+    },
+    {
+      "name": "search"
     },
     {
       "name": "questions"

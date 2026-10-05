@@ -14,6 +14,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
@@ -28,14 +29,15 @@ const (
 // comment is the columns every comment query returns.
 type comment = readq.GetCommentRow
 
-// commentView renders a comment; a withdrawn comment's text never leaves
-// (docs/adr/0015 D3).
+// commentView renders a comment without its HTML, which renderedComment adds;
+// a withdrawn comment's text never leaves (docs/adr/0015 D3).
 func commentView(c comment) apigen.Comment {
 	v := apigen.Comment{
 		Id: c.ID, Author: personView(c.AuthorID, c.AuthorUsername, c.AuthorName), Agent: nullableOf(c.Agent),
-		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), Withdrawn: c.WithdrawnAt != nil,
-		WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited, Explains: make([]apigen.AuditAction, 0, len(c.Explains)),
-		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Token: tokenMarkView(c.TokenID, c.TokenName), Body: nullableOf(&c.Body), BodyHtml: nullableString(nil),
+		Withdrawn: c.WithdrawnAt != nil, WithdrawnAt: nullableOf(c.WithdrawnAt), Edited: c.Edited,
+		Explains: make([]apigen.AuditAction, 0, len(c.Explains)), Version: int(c.Version), CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 	if v.Withdrawn {
 		v.Body = nullableString(nil)
@@ -59,7 +61,10 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 	const op = "listComments"
 	scope := fmt.Sprintf("%s/%s/%d/%t", t.ID, req.Project, req.Number, desc)
 	size := s.h.pageSize(req.Params.Limit)
-	var rows []readq.ListCommentsRow
+	var (
+		rows   []readq.ListCommentsRow
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		tc, err := visibleTicket(ctx, r, t, req.Project, req.Number)
 		if err != nil {
@@ -71,6 +76,10 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 		}
 		rows, err = r.ListComments(ctx, readq.ListCommentsParams{TenantID: t.ID, TicketID: tc.row.ID, After: after,
 			Descending: desc, PageSize: limitArg(size)})
+		if err != nil {
+			return err
+		}
+		images, err = ticketImages(ctx, r, t, tc)
 		return err
 	})
 	if err != nil {
@@ -79,7 +88,7 @@ func (s *Server) ListComments(ctx context.Context, req apigen.ListCommentsReques
 	rows, next := page(s.h, rows, size, op, scope, func(c readq.ListCommentsRow) string { return c.ID.String() })
 	out := apigen.ListComments200JSONResponse{Items: make([]apigen.Comment, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, c := range rows {
-		out.Items = append(out.Items, commentView(comment(c)))
+		out.Items = append(out.Items, renderedComment(comment(c), images))
 	}
 	return out, nil
 }
@@ -101,16 +110,16 @@ func (s *Server) uuidAfter(op, scope string, cursor *string) (*uuid.UUID, error)
 }
 
 // visibleComment reads a comment through its ticket's predicate.
-func visibleComment(ctx context.Context, r *store.Reader, t tenantScope, project string, number int, id uuid.UUID) (comment, error) {
+func visibleComment(ctx context.Context, r *store.Reader, t tenantScope, project string, number int, id uuid.UUID) (ticketCtx, comment, error) {
 	tc, err := visibleTicket(ctx, r, t, project, number)
 	if err != nil {
-		return comment{}, err
+		return tc, comment{}, err
 	}
 	c, err := r.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return c, problem.New(problem.NotFound, "no such comment")
+		return tc, c, problem.New(problem.NotFound, "no such comment")
 	}
-	return c, err
+	return tc, c, err
 }
 
 // GetComment answers one comment.
@@ -119,16 +128,23 @@ func (s *Server) GetComment(ctx context.Context, req apigen.GetCommentRequestObj
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
 	}
-	var c comment
+	var (
+		c      comment
+		images richtext.Images
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		var err error
-		c, err = visibleComment(ctx, r, t, req.Project, req.Number, req.Comment)
+		tc, found, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment)
+		if err != nil {
+			return err
+		}
+		c = found
+		images, err = ticketImages(ctx, r, t, tc)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetComment200JSONResponse{Body: commentView(c), Headers: apigen.GetComment200ResponseHeaders{ETag: etag(c.Version)}}, nil
+	return apigen.GetComment200JSONResponse{Body: renderedComment(c, images), Headers: apigen.GetComment200ResponseHeaders{ETag: etag(c.Version)}}, nil
 }
 
 // writeComment adds a comment as the caller, with its act; an agent writes
@@ -168,8 +184,11 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 	if perr != nil {
 		return nil, perr
 	}
-	var added comment
-	var location string
+	var (
+		added    comment
+		images   richtext.Images
+		location string
+	)
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -185,8 +204,11 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		if added, err = w.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id}); err != nil {
 			return err
 		}
+		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
+			return err
+		}
 		location = ticketURL(t, tc.project.Key, tc.row.Number) + "/comments/" + id.String()
-		res, err := stored(commentView(added), map[string]string{headerETag: *etag(added.Version), headerLocation: location})
+		res, err := stored(renderedComment(added, images), map[string]string{headerETag: *etag(added.Version), headerLocation: location})
 		if err != nil {
 			return err
 		}
@@ -204,7 +226,7 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		return apigen.AddComment201JSONResponse{Body: body, Headers: apigen.AddComment201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
-	return apigen.AddComment201JSONResponse{Body: commentView(added), Headers: apigen.AddComment201ResponseHeaders{
+	return apigen.AddComment201JSONResponse{Body: renderedComment(added, images), Headers: apigen.AddComment201ResponseHeaders{
 		ETag: etag(added.Version), Location: &location}}, nil
 }
 
@@ -249,7 +271,10 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 	if perr != nil {
 		return nil, perr
 	}
-	var out comment
+	var (
+		out    comment
+		images richtext.Images
+	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -262,6 +287,9 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 		p := principal(ctx)
 		if perr := mayChangeComment(p, tc, c, false); perr != nil {
 			return perr
+		}
+		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
+			return err
 		}
 		if c.WithdrawnAt != nil {
 			return problem.New(problem.StateConflict, "the comment is withdrawn")
@@ -296,7 +324,7 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.EditComment200JSONResponse{Body: commentView(out), Headers: apigen.EditComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.EditComment200JSONResponse{Body: renderedComment(out, images), Headers: apigen.EditComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // WithdrawComment hides a comment's text and keeps the entry
@@ -332,7 +360,8 @@ func (s *Server) WithdrawComment(ctx context.Context, req apigen.WithdrawComment
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.WithdrawComment200JSONResponse{Body: commentView(out), Headers: apigen.WithdrawComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	// A withdrawn comment has no text to render.
+	return apigen.WithdrawComment200JSONResponse{Body: renderedComment(out, nil), Headers: apigen.WithdrawComment200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 // ListCommentRevisions lists a comment's previous texts; none once it is
@@ -347,7 +376,7 @@ func (s *Server) ListCommentRevisions(ctx context.Context, req apigen.ListCommen
 	size := s.h.pageSize(req.Params.Limit)
 	var rows []readq.ListCommentRevisionsRow
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		if _, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment); err != nil {
+		if _, _, err := visibleComment(ctx, r, t, req.Project, req.Number, req.Comment); err != nil {
 			return err
 		}
 		after, err := s.uuidAfter(op, scope, req.Params.Cursor)

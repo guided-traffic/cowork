@@ -130,7 +130,7 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.rank AS ticket_rank
+       t.rank AS ticket_rank, q.ticket_id
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
@@ -199,6 +199,7 @@ type ListOpenDecisionsRow struct {
 	TicketTitle         string
 	TicketState         domain.TicketState
 	TicketRank          *string
+	TicketID            uuid.UUID
 }
 
 // The open decisions of a person in the tenant (docs/adr/0018 D3): the open
@@ -258,6 +259,7 @@ func (q *Queries) ListOpenDecisions(ctx context.Context, arg ListOpenDecisionsPa
 			&i.TicketTitle,
 			&i.TicketState,
 			&i.TicketRank,
+			&i.TicketID,
 		); err != nil {
 			return nil, err
 		}

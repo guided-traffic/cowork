@@ -221,15 +221,17 @@ func renderRawBlock(w util.BufWriter, source []byte, n ast.Node, entering bool) 
 		return ast.WalkContinue, nil
 	}
 	block := n.(*ast.HTMLBlock)
-	_, _ = w.WriteString("<p>")
+	var raw []byte
 	lines := block.Lines()
 	for i := range lines.Len() {
 		line := lines.At(i)
-		_, _ = w.Write(util.EscapeHTML(line.Value(source)))
+		raw = append(raw, line.Value(source)...)
 	}
 	if block.HasClosure() {
-		_, _ = w.Write(util.EscapeHTML(block.ClosureLine.Value(source)))
+		raw = append(raw, block.ClosureLine.Value(source)...)
 	}
+	_, _ = w.WriteString("<p>")
+	_, _ = w.Write(util.EscapeHTML(bytes.TrimRight(raw, "\r\n")))
 	_, _ = w.WriteString("</p>\n")
 	return ast.WalkSkipChildren, nil
 }
