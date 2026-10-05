@@ -101,6 +101,9 @@ UNION
 SELECT q.asked_of FROM questions q
 WHERE q.tenant_id = $1 AND q.ticket_id = $2 AND q.status = 'open'
   AND q.asked_of IS NOT NULL
+UNION
+SELECT m.person FROM comments c, unnest(c.mentions) AS m (person)
+WHERE c.tenant_id = $1 AND c.ticket_id = $2 AND c.withdrawn_at IS NULL
 `
 
 type ListWatchersParams struct {
@@ -112,9 +115,10 @@ type ListWatchersParams struct {
 // The recipients are read inside the act's transaction, past the writer's own
 // predicate: whom an act tells is decided by each recipient's sight of the
 // ticket, never by the writer's.
-// The watchers of a ticket (docs/adr/0013 D6): every person with a stake of
-// any weight, the assignee, the reporter, and whoever asked or was asked an
-// open question on it.
+// The watchers of a ticket (docs/adr/0013 D6 as amended 2026-10-05): every
+// person with a stake of any weight, the assignee, the reporter, whoever asked
+// or was asked an open question on it, and whoever a comment on it that is not
+// withdrawn mentions (docs/adr/0015 D5).
 // visibility: exempt (whom an act tells; NoticeRecipients holds each to their own sight of the ticket)
 func (q *Queries) ListWatchers(ctx context.Context, arg ListWatchersParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listWatchers, arg.TenantID, arg.TicketID)

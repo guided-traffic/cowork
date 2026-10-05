@@ -168,7 +168,8 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 		"recommendation": "retry", "asked_of": "me"})
 	assert.Contains(t, asked, "Asked Q1 on "+key)
 	assert.Contains(t, mustCall(t, cs, "record_answer", map[string]any{"key": "VO-1", "question": 1, "answer": "retry"}), "marked as recorded by the agent")
-	mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now."})
+	commented := mustCall(t, cs, "comment", map[string]any{"key": "VO-1", "text": "Retrying now, @admin-a.", "mentions": []any{"admin-a"}})
+	assert.Contains(t, commented, "mentioning admin-a", "a display name resolves through the member list")
 	mustCall(t, cs, "set_progress", map[string]any{"key": "VO-1", "percent": 50})
 	mustCall(t, cs, "watch", map[string]any{"key": key})
 	ranked := mustCall(t, cs, "place_ticket", map[string]any{"key": "VO-1", "horizon": "now", "reason": "the failover gates the release"})
@@ -188,7 +189,7 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 
 	ticket := mustCall(t, cs, "get_ticket", map[string]any{"key": key})
 	assert.Contains(t, ticket, "## Links\n\n- relates to "+e.SlugA+"/VO-2")
-	assert.Contains(t, ticket, "> Retrying now.")
+	assert.Contains(t, ticket, "> Retrying now, @admin-a.")
 	assert.Contains(t, mustCall(t, cs, "api", map[string]any{"method": "GET", "path": "/api/v1/me"}), "200 OK")
 
 	finished := mustCall(t, cs, "finish_work", map[string]any{"key": "VO-1", "verification_note": "go test ./... passed against the fixture"})

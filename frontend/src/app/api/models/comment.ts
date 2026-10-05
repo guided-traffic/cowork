@@ -30,6 +30,12 @@ export interface Comment {
   id: string;
 
   /**
+   * The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+   * ticket while the comment stands; empty once it is withdrawn
+   */
+  mentions: Array<string>;
+
+  /**
    * The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
    */
   token: (TokenMark | null);

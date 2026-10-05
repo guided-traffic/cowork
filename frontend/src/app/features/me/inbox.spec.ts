@@ -100,6 +100,7 @@ describe('happening', () => {
     [{ reason: 'asked' }, 'asked you a question'],
     [{ reason: 'answered' }, 'answered your question'],
     [{ reason: 'commented' }, 'commented'],
+    [{ reason: 'mentioned' }, 'mentioned you in a comment'],
     [{ reason: 'urgent' }, 'registered an urgent need'],
     [{ reason: 'state_changed', act: act({ after: { state: 'review' } }) }, 'moved it to review'],
     [{ reason: 'state_changed', act: act({ redacted: true, after: null }) }, 'changed its state'],

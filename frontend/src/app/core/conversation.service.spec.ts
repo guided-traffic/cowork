@@ -68,6 +68,15 @@ describe('Conversation', () => {
       expect(await done).toMatchObject({ id: 'c1' });
     });
 
+    it('sends the ids of the persons it mentions beside the text (docs/adr/0015 D5)', async () => {
+      const done = conversation.comment(key, '@Sam Rivera, look', formKey, ['p2']);
+
+      const sent = http.expectOne(`${base}/comments`);
+      expect(sent.request.body).toEqual({ body: '@Sam Rivera, look', mentions: ['p2'] });
+      sent.flush({ id: 'c1' });
+      await done;
+    });
+
     it('rejects with the HTTP error', async () => {
       const outcome = conversation.comment(key, 'x', formKey).then(
         () => null,
@@ -283,6 +292,15 @@ describe('Conversation', () => {
       sent.flush({ ...comment, version: 3, body: 'After' });
 
       expect((await done).version).toBe(3);
+    });
+
+    it('replaces the mentions of a comment with the list an edit sends', async () => {
+      const done = conversation.editComment(key, comment, 'After, @Sam Rivera', ['p2']);
+
+      const sent = http.expectOne(at);
+      expect(sent.request.body).toEqual({ body: 'After, @Sam Rivera', mentions: ['p2'] });
+      sent.flush({ ...comment, version: 3 });
+      await done;
     });
 
     it('reads the earlier texts of a comment, oldest first, as the API orders them', async () => {

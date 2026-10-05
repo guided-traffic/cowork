@@ -598,7 +598,14 @@ restricted tokens.
 tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an
 active member of the tenant who sees, by `person_sees_ticket`, both the ticket it is about and the
 ticket the act is on — never the actor
-([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). Reading it holds again: a
+([`store/inbox.go`](../../backend/internal/store/inbox.go) `deliver`). A comment's mention is held to
+the same sight before it is written: each person the comment's `mentions` names must be a member who
+sees the ticket, or the comment is refused at `/mentions/<i>` and tells nobody
+([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5;
+`TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`). That refusal tells the writer — who sees the
+ticket — whether a person sees it, as a question's `asked_of` does: of a restricted project, whether a
+member is on its access list, which only the tenant's administrators read otherwise ([H-52](#h-52)).
+Reading it holds again: a
 notification is listed and counted only while its person sees both tickets, so one whose ticket turned
 confidential, whose project was restricted away, or whose tenant the person left is absent and counts
 nowhere (`TestTheInboxIsThePersonsAcrossTheirTenants`); its act is shown as the ticket's activity shows
@@ -755,6 +762,22 @@ tenants. A group mapping, which brings everyone in its group into the tenant at 
 gap's: only a global administrator who administers the tenant makes one or changes its role
 ([above](#members-grants-and-group-mappings)). Mitigation: tenants whose administrators must not
 learn about each other's people belong in installations of their own.
+
+<a id="h-52"></a>
+### H-52 — A question's person asked and a comment's mention tell the writer who sees a ticket
+
+Live today, in every tenant with a confidential ticket or a restricted project. Asking a question of
+a person (`asked_of`) and mentioning a person in a comment (`mentions`) are refused at the field when
+the person does not see the ticket ([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md)
+D5, `checkAskedOf`, `checkMentions`). The writer sees the ticket, and the refusal tells them one fact
+more than the ticket shows: whether that member sees it — for a restricted project, whether the
+member is on its access list, which only the tenant's administrators read otherwise; for a
+confidential ticket, nothing the ticket does not show already, since it names its assignee and
+reporter and the member list names the administrators. A writer can ask it member by member, and
+nothing records a refused attempt. It tells nothing of the ticket's content or of another ticket.
+Mitigation: none in cowork; the access list of a restricted project is a matter of the tenant's own
+members, and an administrator who must keep it from them keeps the project's work in a tenant of
+its own.
 
 ### The owner credential in the serving process
 

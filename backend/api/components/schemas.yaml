@@ -1116,7 +1116,8 @@ BlockSet:
     external_ref: {type: string, minLength: 1, maxLength: 500}
 Comment:
   type: object
-  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, mentions, version, created_at,
+    updated_at]
   properties:
     id: {type: string, format: uuid}
     author:
@@ -1136,6 +1137,12 @@ Comment:
       description: The acts this comment explains (docs/adr/0015 D2)
       items:
         $ref: '#/AuditAction'
+    mentions:
+      type: array
+      description: |
+        The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+        ticket while the comment stands; empty once it is withdrawn
+      items: {type: string, format: uuid}
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
@@ -1145,6 +1152,19 @@ CommentWrite:
   required: [body]
   properties:
     body: {type: string, minLength: 1, maxLength: 100000}
+    mentions:
+      type: array
+      uniqueItems: true
+      maxItems: 50
+      items: {type: string, format: uuid}
+      description: |
+        The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
+        a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+        Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
+        text names them as the writer likes — the API reads no text, so a name typed without the list
+        tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the
+        mentions stay as they are, and a list given replaces them — a person it adds is told, a person
+        it drops is no longer a watcher by it.
 CommentList:
   type: object
   required: [items, next_cursor]
@@ -1956,11 +1976,12 @@ ChatCapabilitiesUpdate:
         $ref: '#/Capability'
 InboxReason:
   type: string
-  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent]
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned]
   description: |
     Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
     question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+    comment that mentions them (docs/adr/0015 D5)
 InboxEntry:
   type: object
   required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]

@@ -1703,6 +1703,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the\nticket while the comment stands; empty once it is withdrawn\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "token": {
             "description": "The token the act came through; null for a person's own browser session (docs/adr/0036 D6)",
             "oneOf": [
@@ -1742,6 +1750,7 @@
           "withdrawn_at",
           "edited",
           "explains",
+          "mentions",
           "version",
           "created_at",
           "updated_at"
@@ -1838,6 +1847,16 @@
             "maxLength": 100000,
             "minLength": 1,
             "type": "string"
+          },
+          "mentions": {
+            "description": "The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be\na member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/\u003ci\u003e`.\nEach is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The\ntext names them as the writer likes — the API reads no text, so a name typed without the list\ntells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the\nmentions stay as they are, and a list given replaces them — a person it adds is told, a person\nit drops is no longer a watcher by it.\n",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -2148,7 +2167,7 @@
         "type": "object"
       },
       "InboxReason": {
-        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them\n",
+        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a\ncomment that mentions them (docs/adr/0015 D5)\n",
         "enum": [
           "assigned",
           "asked",
@@ -2156,7 +2175,8 @@
           "state_changed",
           "blocker_closed",
           "commented",
-          "urgent"
+          "urgent",
+          "mentioned"
         ],
         "type": "string"
       },
@@ -7995,7 +8015,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the\nticket's watchers, and the persons `mentions` names — each a member who sees the ticket —\nthat they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).\n",
         "operationId": "addComment",
         "parameters": [
           {
@@ -8084,7 +8104,7 @@
         }
       ],
       "patch": {
-        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.\n",
+        "description": "A person edits their own comments and those their agents wrote; an agent only those an\nagent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`\nleft out keeps the comment's mentions; a list replaces them, and tells the persons it adds\n(D5).\n",
         "operationId": "editComment",
         "parameters": [
           {

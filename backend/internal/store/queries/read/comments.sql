@@ -8,7 +8,7 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
@@ -27,7 +27,7 @@ SELECT c.id, c.author_id, u.username AS author_username, u.display_name AS autho
        EXISTS (SELECT 1 FROM comment_revisions r WHERE r.tenant_id = c.tenant_id AND r.comment_id = c.id) AS edited,
        ARRAY(SELECT a.action::text FROM audit_events a
              WHERE a.tenant_id = c.tenant_id AND a.explained_by_comment_id = c.id ORDER BY a.id)::text[] AS explains,
-       c.version, c.created_at, c.updated_at
+       c.mentions, c.version, c.created_at, c.updated_at
 FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
@@ -50,7 +50,7 @@ LIMIT sqlc.arg(page_size);
 
 -- name: GetCommentForWrite :one
 -- The comment with its text, for the writer who has read its ticket.
-SELECT c.id, c.author_id, c.agent, c.body, c.withdrawn_at, c.version
+SELECT c.id, c.author_id, c.agent, c.body, c.mentions, c.withdrawn_at, c.version
 FROM comments c
 WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.ticket_id = sqlc.arg(ticket_id) AND c.id = sqlc.arg(id);
 

@@ -23,6 +23,7 @@ const (
 	NoticeBlockerClosed = "blocker_closed"
 	NoticeCommented     = "commented"
 	NoticeUrgent        = "urgent"
+	NoticeMentioned     = "mentioned"
 )
 
 // EntityInbox is the entity of a published change of a person's inbox: a
@@ -43,7 +44,7 @@ const ReadRetention = 90 * 24 * time.Hour
 type Notice struct {
 	Reason string
 	// People are the persons the act names: the assignee, the person asked,
-	// the asker.
+	// the asker, the persons a comment mentions.
 	People []uuid.UUID
 	// Watchers adds the watchers of the act's ticket (docs/adr/0013 D6).
 	Watchers bool
@@ -55,12 +56,15 @@ type Notice struct {
 // deliver writes the notifications of an act in its transaction, referencing
 // its audit row (docs/adr/0020 D3), and tells every person whose inbox
 // changed — those it notified, and the person of InboxOf — on their
-// person-level streams.
+// person-level streams. One act tells a person once about a ticket: the first
+// of its notices that names them wins, so a comment that mentions a watcher
+// tells them they are mentioned, not also that it was written.
 func (w *Writer) deliver(ctx context.Context, tenantID, auditID uuid.UUID, caller Caller, e Event) error {
 	if tenantID == uuid.Nil {
 		return nil
 	}
 	changed := map[uuid.UUID]bool{}
+	told := map[uuid.UUID]map[uuid.UUID]bool{}
 	if e.InboxOf != uuid.Nil {
 		changed[e.InboxOf] = true
 	}
@@ -76,12 +80,16 @@ func (w *Writer) deliver(ctx context.Context, tenantID, auditID uuid.UUID, calle
 			}
 		}
 		for _, ticket := range about {
-			told, err := w.tell(ctx, tenantID, auditID, caller, e.TicketID, ticket, n)
+			if told[ticket] == nil {
+				told[ticket] = map[uuid.UUID]bool{}
+			}
+			recipients, err := w.tell(ctx, tenantID, auditID, caller, e.TicketID, ticket, n, told[ticket])
 			if err != nil {
 				return err
 			}
-			for _, person := range told {
+			for _, person := range recipients {
 				changed[person] = true
+				told[ticket][person] = true
 			}
 		}
 	}
@@ -94,8 +102,9 @@ func (w *Writer) deliver(ctx context.Context, tenantID, auditID uuid.UUID, calle
 }
 
 // tell writes one notice's notifications about one ticket and returns whom it
-// told.
-func (w *Writer) tell(ctx context.Context, tenantID, auditID uuid.UUID, caller Caller, actTicket, ticket uuid.UUID, n Notice) ([]uuid.UUID, error) {
+// told; a person the act has told about the ticket already is left out.
+func (w *Writer) tell(ctx context.Context, tenantID, auditID uuid.UUID, caller Caller, actTicket, ticket uuid.UUID, n Notice,
+	already map[uuid.UUID]bool) ([]uuid.UUID, error) {
 	people := slices.Clone(n.People)
 	if n.Watchers || n.Blocked {
 		watchers, err := w.ListWatchers(ctx, writeq.ListWatchersParams{TenantID: tenantID, TicketID: ticket})
@@ -104,6 +113,7 @@ func (w *Writer) tell(ctx context.Context, tenantID, auditID uuid.UUID, caller C
 		}
 		people = append(people, watchers...)
 	}
+	people = slices.DeleteFunc(people, func(p uuid.UUID) bool { return already[p] })
 	if len(people) == 0 {
 		return nil, nil
 	}

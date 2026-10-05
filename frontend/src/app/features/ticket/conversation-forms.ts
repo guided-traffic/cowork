@@ -13,12 +13,14 @@ import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { Textarea } from 'primeng/textarea';
-import { LinkType, Question, QuestionPatch } from '../../api/models';
+import { LinkType, Question, QuestionPatch, Ticket } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { ConflictNote } from '../../shared/conflict-note';
+import { MentionList } from '../../shared/mention-list';
+import { Mentionable, mentionCandidates, mentionsIn } from '../../shared/mentions';
 
 /**
  * A field of a form that belongs to its ticket: the page is reused when its path names another
@@ -49,24 +51,33 @@ async function guarded(
 
 /**
  * Writes a comment on the ticket (docs/adr/0015); the thread reloads through the event stream. The
- * text belongs to the ticket it was typed on.
+ * text belongs to the ticket it was typed on. An `@` opens the members who see the ticket
+ * ({@link MentionList}); a person picked there is written into the text and mentioned — told in
+ * their inbox, a watcher of the ticket (D5) — as long as the text still holds their `@<name>`.
  */
 @Component({
   selector: 'app-comment-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, Textarea],
+  imports: [ButtonDirective, FormsModule, MentionList, Textarea],
   template: `
     <form class="composer" (ngSubmit)="send()">
       <textarea
+        #box
         pTextarea
         name="comment"
         rows="3"
-        placeholder="Write a comment (Markdown)"
+        placeholder="Write a comment (Markdown); @ mentions a person"
         [ngModel]="text()"
         (ngModelChange)="text.set($event)"
         aria-label="Comment"
         data-testid="comment-text"
       ></textarea>
+      <app-mention-list
+        class="mention-list"
+        [for]="box"
+        [candidates]="candidates()"
+        (picked)="pick($event)"
+      />
       <button
         pButton
         type="submit"
@@ -91,39 +102,61 @@ async function guarded(
       textarea {
         width: 100%;
       }
+      .mention-list {
+        align-self: stretch;
+        margin-top: -0.5rem;
+      }
     }
   `,
 })
 export class CommentComposer {
   readonly ticketKey = input.required<string>();
+  /** The ticket, which decides who can be mentioned: who sees it. */
+  readonly ticket = input<Ticket | undefined>();
   private readonly conversation = inject(Conversation);
   private readonly problems = inject(ProblemService);
+  private readonly members = inject(MembersService);
+  private readonly session = inject(SessionService);
   protected readonly text = draft(this.ticketKey, () => '');
+  /** The persons picked for the text being typed; those whose name it still holds are mentioned. */
+  protected readonly picked = draft<Mentionable[]>(this.ticketKey, () => []);
   protected readonly busy = signal(false);
+  protected readonly candidates = computed(() =>
+    mentionCandidates(this.members.list(), this.ticket(), this.session.person()?.id),
+  );
 
   /**
-   * The Idempotency-Key of the comment this form is writing: one for each text and ticket, so a
-   * retry of a lost answer is answered again instead of commenting twice; any change, and a comment
-   * written, make a new one (docs/adr/0045 D3).
+   * The Idempotency-Key of the comment this form is writing: one for each text, its mentions and
+   * ticket, so a retry of a lost answer is answered again instead of commenting twice; any change,
+   * and a comment written, make a new one (docs/adr/0045 D3).
    */
   private readonly idempotencyKey = linkedSignal(() => {
     this.ticketKey();
     this.text();
+    this.picked();
     return crypto.randomUUID();
   });
+
+  protected pick(person: Mentionable): void {
+    if (!this.picked().some((each) => each.id === person.id)) {
+      this.picked.update((held) => [...held, person]);
+    }
+  }
 
   protected async send(): Promise<void> {
     const text = this.text().trim();
     const key = this.ticketKey();
     const idempotencyKey = this.idempotencyKey();
+    const mentions = mentionsIn(text, this.picked());
     if (
       text &&
       (await guarded(this.busy, this.problems, () =>
-        this.conversation.comment(key, text, idempotencyKey),
+        this.conversation.comment(key, text, idempotencyKey, mentions),
       )) &&
       this.ticketKey() === key
     ) {
       this.text.set('');
+      this.picked.set([]);
     }
   }
 }

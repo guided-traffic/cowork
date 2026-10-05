@@ -288,7 +288,7 @@ person's id as a primitive in its `params`, so that `me` loaded again leaves the
 
 | Page | Shows | Loads again on |
 |---|---|---|
-| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, `resync`, `poll` |
+| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need, mentioned you in a comment), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, `resync`, `poll` |
 | Assigned to me | the person's open tickets: the tenant, the type, the key and title, the severity, the state, the last change | `inbox.changed` — an assignment tells the assignee —, `ticket.changed` of the stream's tenant, `resync`, `poll` |
 | Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` — of any of the person's tenants for a question asked of them —, `inbox.changed`, `resync`, `poll` |
 
@@ -574,9 +574,22 @@ text; Markdown is not rendered.
 | [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
 | [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — the override, or its withdrawal where the choice is `later` and an override stands — and then a field for the reason a person may add (Enter sends the override again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
 | [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisites`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`) | — |
-| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
+| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
+
+**Mentions** ([ADR 0015] D5): in the comment box ([`CommentComposer`](../../frontend/src/app/features/ticket/conversation-forms.ts))
+and a comment's editor, an `@` at the start of a word opens [`MentionList`](../../frontend/src/app/shared/mention-list.ts)
+under the textarea: the members who see the ticket and are not the writer
+([`mentions.ts`](../../frontend/src/app/shared/mentions.ts) `mentionCandidates` — of a confidential
+ticket only the administrators, the assignee and the reporter; of a restricted project every
+member, because a member who is no administrator cannot read the access list, and the server
+refuses one who cannot see the ticket at `/mentions/<i>`), filtered by the start of a word of the
+name or of the username as typed. ArrowUp and ArrowDown move, Enter, Tab or a click pick, Escape
+closes; the textarea keeps the keyboard and names the list and its active option
+(`aria-controls`, `aria-activedescendant`). A pick writes `@<name> ` into the text and keeps the
+person; the comment mentions the persons picked whose `@<name>` the text still holds (`mentionsIn`)
+and sends their ids in `mentions`. A name typed without the picker mentions nobody.
 
 **The parent** is chosen among the open tickets of the project, every page of them, read the first
 time the picker opens (`TicketsService.openTickets`) and filtered by short key and title as the

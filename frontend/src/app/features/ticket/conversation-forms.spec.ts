@@ -7,7 +7,7 @@ import { MessageService } from 'primeng/api';
 import { Select } from 'primeng/select';
 import type { MockInstance } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
-import { Comment, Member, Problem, Question } from '../../api/models';
+import { Comment, Member, Problem, Question, Ticket } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
@@ -160,6 +160,122 @@ describe('conversation forms', () => {
   describe('CommentComposer', () => {
     const compose = () => render(CommentComposer, { ticketKey: key });
 
+    describe('mentions (docs/adr/0015 D5)', () => {
+      const cyd: Member = {
+        role: 'admin',
+        person: { id: 'p3', display_name: 'Cyd Charisse', username: null },
+        origins: [{ source: 'grant', role: 'admin' }],
+        local: false,
+        email: null,
+      };
+      const ticket = (overrides: Partial<Ticket> = {}) =>
+        ({
+          key,
+          confidential: false,
+          assignee: null,
+          reporter: ada.person,
+          ...overrides,
+        }) as Ticket;
+
+      /** Types into the comment with the caret at the end, as a person does. */
+      function typeAtEnd(fixture: ComponentFixture<unknown>, value: string) {
+        const box = el(fixture, byTestId('comment-text')) as HTMLTextAreaElement;
+        box.value = value;
+        box.setSelectionRange(value.length, value.length);
+        box.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        return box;
+      }
+      const options = (fixture: ComponentFixture<unknown>) =>
+        [...host(fixture).querySelectorAll('[role="option"]')].map((o) => o.textContent?.trim());
+
+      it('opens the members who see the ticket on an @, never the writer, and filters them as typed', async () => {
+        people.set([ada, sam, cyd]);
+        const fixture = await render(CommentComposer, { ticketKey: key, ticket: ticket() });
+
+        const box = typeAtEnd(fixture, 'Look @');
+        expect(options(fixture)).toEqual(['Sam Rivera local:sam', 'Cyd Charisse']);
+        expect(box.getAttribute('aria-controls')).toBe(
+          el(fixture, byTestId('mention-list'))?.getAttribute('id'),
+        );
+        typeAtEnd(fixture, 'Look @ri');
+        expect(options(fixture)).toEqual(['Sam Rivera local:sam']);
+        typeAtEnd(fixture, 'mail@example');
+        expect(el(fixture, byTestId('mention-list'))).toBeNull();
+      });
+
+      it('writes the name picked into the text and mentions the person by id', async () => {
+        const fixture = await render(CommentComposer, { ticketKey: key, ticket: ticket() });
+        const box = typeAtEnd(fixture, 'Look @sa');
+
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+        fixture.detectChanges();
+        expect(box.value).toBe('Look @Sam Rivera ');
+        expect(el(fixture, byTestId('mention-list'))).toBeNull();
+        typeAtEnd(fixture, 'Look @Sam Rivera, please check.');
+        submit(fixture);
+        await settle(fixture);
+
+        expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(
+          key,
+          'Look @Sam Rivera, please check.',
+          formKey,
+          ['p2'],
+        );
+      });
+
+      it('picks with a click as well, and moves through the list with the arrows', async () => {
+        people.set([ada, sam, cyd]);
+        const fixture = await render(CommentComposer, { ticketKey: key, ticket: ticket() });
+        const box = typeAtEnd(fixture, '@');
+
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+        fixture.detectChanges();
+        expect(box.getAttribute('aria-activedescendant')).toMatch(/-1$/);
+        el(fixture, byTestId('mention-option-p2'))?.dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+        );
+        fixture.detectChanges();
+
+        expect(box.value).toBe('@Sam Rivera ');
+      });
+
+      it('mentions nobody whose name the text no longer holds, and closes on Escape', async () => {
+        const fixture = await render(CommentComposer, { ticketKey: key, ticket: ticket() });
+        const box = typeAtEnd(fixture, '@sa');
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+        typeAtEnd(fixture, 'Never mind @');
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+        fixture.detectChanges();
+        expect(el(fixture, byTestId('mention-list'))).toBeNull();
+
+        submit(fixture);
+        await settle(fixture);
+
+        expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(
+          key,
+          'Never mind @',
+          formKey,
+          [],
+        );
+      });
+
+      it('offers of a confidential ticket only the administrators, the assignee and the reporter', async () => {
+        people.set([ada, sam, cyd]);
+        const fixture = await render(CommentComposer, {
+          ticketKey: key,
+          ticket: ticket({ confidential: true, reporter: sam.person }),
+        });
+
+        typeAtEnd(fixture, '@');
+        expect(options(fixture)).toEqual(['Sam Rivera local:sam', 'Cyd Charisse']);
+        typeAtEnd(fixture, '@zz');
+        expect(el(fixture, byTestId('mention-none'))?.textContent?.trim()).toBe(
+          'Nobody who sees the ticket by that name.',
+        );
+      });
+    });
+
     it('cannot send nothing, or spaces only', async () => {
       const fixture = await compose();
       expect(button(fixture, byTestId('comment-send'))?.disabled).toBe(true);
@@ -184,6 +300,7 @@ describe('conversation forms', () => {
         key,
         'Reproduced on the second board.',
         formKey,
+        [],
       );
       expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe('');
       expect(button(fixture, byTestId('comment-send'))?.disabled).toBe(true);
@@ -956,7 +1073,7 @@ describe('conversation forms', () => {
       write.resolve({} as Comment);
       await settle(fixture);
 
-      expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(key, 'For COW-12', formKey);
+      expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(key, 'For COW-12', formKey, []);
       expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe(
         'For COW-13',
       );

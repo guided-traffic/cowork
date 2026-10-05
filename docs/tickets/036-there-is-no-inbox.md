@@ -5,80 +5,77 @@ state: in-progress
 severity: medium
 security: none
 threat:
-urgency: next         # rule 3: severity medium, live — a person named in a comment is not told
+urgency: later        # rule 4: decided and built; the e2e path waits for its first run, the owner reviews the result
 effort: M
-blocked-by: decision
+blocked-by: human
 filed-from: T26
 opened: 2026-10-03
-decided: 2026-10-03
+decided: 2026-10-05
 done:
 ---
 
 ## Current state
 
-The inbox of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) exists: the
-notifications written with the act for every event of D2 but one, read and unread, the retention job,
-`GET /api/v1/me/inbox` with the marking read, the person-level stream with `inbox.changed`, the bell
-and the page `/me/inbox` ([data-access.md](../developer/data-access.md#notifications),
+The inbox of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) exists for every
+event of D2, the mention included since this branch
+([data-access.md](../developer/data-access.md#notifications),
 [events.md](../developer/events.md#the-person-level-stream),
 [frontend.md](../developer/frontend.md#the-person-level-pages)).
 
-What is missing:
+The mention, Q1 answered (c) on the recommendation, the owner reviewing the result
+([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5,
+[ADR 0013](../adr/0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D6 and ADR 0020,
+amended 2026-10-05):
 
-- **"I am mentioned in a comment"** (ADR 0020 D2) tells nobody, and the mentioned person does not
-  join the watchers ([ADR 0015](../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md)
-  D5). D5 writes `@person` and says mentions resolve inside the tenant, but not how a comment's
-  text names a person: a username exists only for a local account — a person of the identity
-  provider has none ([migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)) —,
-  an e-mail address is read only by the tenant's administrators, and a display name is not unique.
-- **The e2e path** — the second identity sees the assignment in its inbox within the stream's
-  latency — belongs to the end-to-end tier (T29), which does not exist.
+- A comment carries `mentions`, a list of person ids beside its text, on its creation and on an
+  edit (without the list an edit keeps it); each id is checked like `asked_of` — a member who sees
+  the ticket — else `400` at `/mentions/<i>`, and nothing is told
+  ([`comments.go`](../../backend/internal/api/comments.go) `checkMentions`;
+  [migration 40](../../backend/internal/store/migrations/000040_comment_mentions.up.sql): the column
+  and the reason `mentioned`).
+- A mentioned person is told `mentioned`, and one act tells a person once (`deliver`), so a watcher
+  the comment mentions is told that, not also `commented`; an edit tells only the persons it adds.
+- "Makes them a watcher" is built as the watcher set of ADR 0013 D6 — the persons a comment that is
+  not withdrawn mentions are among `ListWatchers` while it mentions them — and not as a `watch`
+  stake in their name: a stake is the person's own (ADR 0013 D1, D2, D4). This is a reading of the
+  records the owner may want to revisit.
+- The UI: `@` in the comment box and in a comment's editor opens the members who see the ticket
+  ([`mention-list.ts`](../../frontend/src/app/shared/mention-list.ts),
+  [`mentions.ts`](../../frontend/src/app/shared/mentions.ts)); a pick writes `@<name> ` and mentions
+  the person while the text holds the name. Of a restricted project the picker offers every member
+  — a member cannot read the access list — and the server refuses one who cannot see the ticket.
+  The inbox says "mentioned you in a comment".
+- The MCP tool `comment` (and with it the chat) takes `mentions` as `me`, usernames, display names
+  or ids, resolved through the member list as `open_question`'s `asked_of`.
+- Tests: `TestAMentionTellsThePersonAndMakesThemAWatcher`,
+  `TestAMentionOfAPersonWhoCannotSeeTheTicketIsRefused`, the MCP step of
+  `TestTheMCPServerRunsTheWorkingDay`, `TestCommentMentions`, the replay of a stored comment without
+  `mentions` (`server_test.go`), and the frontend's `mentions.spec.ts`, `mention-list.spec.ts`,
+  `conversation-forms.spec.ts`, `comment-item.spec.ts`, `conversation.service.spec.ts`,
+  `inbox.spec.ts`.
+
+The README reference, [domain.md](../developer/domain.md#comments-and-the-activity-list),
+[data-access.md](../developer/data-access.md#notifications),
+[frontend.md](../developer/frontend.md#the-detail-page), [mcp.md](../developer/mcp.md) and
+[tenancy.md](../security/tenancy.md) (H-52: the refusal tells the writer whether a member sees the
+ticket, as `asked_of` does) carry it.
+
+The e2e path of the inbox — the second identity's bell counting the assignment and its `/me/inbox`
+showing it within the stream's latency — is part of T29's `assigned.spec.ts`, written on this branch
+and not run yet.
 
 ## Required changes
 
-### Independent of the open questions
+1. The owner's review of the built result: the watcher reading above, and the picker in a browser
+   (`make dev`).
+2. The first run of the e2e path (T29).
 
-1. The e2e path of the inbox in T29's suite: the owner assigns a ticket to the second identity, whose
-   bell counts it and whose `/me/inbox` shows it within the stream's latency.
+## Not verified
 
-### Depends on the answers
-
-2. A comment's mentions as Q1 decides: written and checked with the comment (each a member who sees
-   the ticket, else `400`), a notification `mentioned` for each (a value added to
-   `notification_reason` in a migration of its own, the reason in the API document and the UI's
-   `happening`), the mentioned persons among the watchers of `ListWatchers` while the comment stands,
-   an edit that adds a mention telling the new person; the MCP tool `comment` and the chat able to
-   mention; ADR 0015 D5 and ADR 0020 Status updated; integration tests that a mention of a person who
-   cannot see the ticket is refused and tells nobody.
-
-## Open questions
-
-### Q1: How does a comment name the person it mentions?
-
-ADR 0015 D5 writes `@person`; change 2 cannot be built without knowing what the API reads as a
-mention, and an agent writing through `cowork-mcp` must be able to mention as well.
-
-- **(a) `@<username>` in the text.** Readable as typed; only a person with a local account has a
-  username, so a person of the identity provider cannot be mentioned at all.
-- **(b) A Markdown link the UI writes into the text, `[@Sam Rivera](person:<id>)`.** One source:
-  the text carries the mention, every person can be mentioned, an edit's mentions are the new
-  text's; it needs a parser on the comment's path and a form the Markdown export and the rendering
-  of T33 must keep, and a link a person types by hand is a mention as well.
-- **(c) A list of person ids beside the text, `{"body", "mentions": [...]}`.** The API reads no text:
-  each id is checked like `asked_of` (a member who sees the ticket), every person can be mentioned,
-  the UI's picker writes the name into the text and the id into the list, and the MCP tool takes the
-  ids from the member list; the text and the list can disagree — a name typed without the picker
-  tells nobody.
-
-Recommended: **(c)** — it is exact and checkable the way `asked_of` already is, needs no grammar in
-the comment's text and no change to the Markdown export, and works for every person whatever their
-login; (a) leaves out the persons of the identity provider, the people the owner's clients will be,
-and (b) puts a parser and a link scheme on the path of every comment for the same result.
-
-**Answer:** _open_
+The picker has not been used in a browser — `make dev` was not run for this work; its keyboard and
+the screen reader's reading of `aria-activedescendant` are verified in jsdom only.
 
 ## Related
 
-- T35 — the person-level pages that reload on the inbox's count
-- T29 — the end-to-end tier change 1 belongs to
-- T33 — the rendered Markdown a mention would show in
+- T29 — the end-to-end tier the inbox's path belongs to
+- T33 — the rendered Markdown a mention shows in

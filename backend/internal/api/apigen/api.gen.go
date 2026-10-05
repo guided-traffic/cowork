@@ -375,6 +375,7 @@ const (
 	InboxReasonAssigned      InboxReason = "assigned"
 	InboxReasonBlockerClosed InboxReason = "blocker_closed"
 	InboxReasonCommented     InboxReason = "commented"
+	InboxReasonMentioned     InboxReason = "mentioned"
 	InboxReasonStateChanged  InboxReason = "state_changed"
 	InboxReasonUrgent        InboxReason = "urgent"
 )
@@ -391,6 +392,8 @@ func (e InboxReason) Valid() bool {
 	case InboxReasonBlockerClosed:
 		return true
 	case InboxReasonCommented:
+		return true
+	case InboxReasonMentioned:
 		return true
 	case InboxReasonStateChanged:
 		return true
@@ -1677,6 +1680,10 @@ type Comment struct {
 	Explains []AuditAction      `json:"explains"`
 	Id       openapi_types.UUID `json:"id"`
 
+	// Mentions The persons the comment mentions, by id (docs/adr/0015 D5): each was told, and watches the
+	// ticket while the comment stands; empty once it is withdrawn
+	Mentions []openapi_types.UUID `json:"mentions"`
+
 	// Token The token the act came through; null for a person's own browser session (docs/adr/0036 D6)
 	Token       nullable.Nullable[TokenMark] `json:"token"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
@@ -1714,6 +1721,15 @@ type CommentRevisionList struct {
 // CommentWrite defines model for CommentWrite.
 type CommentWrite struct {
 	Body string `json:"body"`
+
+	// Mentions The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
+	// a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+	// Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
+	// text names them as the writer likes — the API reads no text, so a name typed without the list
+	// tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the
+	// mentions stay as they are, and a list given replaces them — a person it adds is told, a person
+	// it drops is no longer a watcher by it.
+	Mentions *[]openapi_types.UUID `json:"mentions,omitempty"`
 }
 
 // ConfidentialSet defines model for ConfidentialSet.
@@ -1834,7 +1850,8 @@ type InboxEntry struct {
 
 	// Reason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 	// question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-	// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+	// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+	// comment that mentions them (docs/adr/0015 D5)
 	Reason InboxReason `json:"reason"`
 	Tenant TenantRef   `json:"tenant"`
 	Ticket TicketRef   `json:"ticket"`
@@ -1860,7 +1877,8 @@ type InboxReadThrough struct {
 
 // InboxReason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 // question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them
+// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
+// comment that mentions them (docs/adr/0015 D5)
 type InboxReason string
 
 // InboxState defines model for InboxState.
@@ -5145,7 +5163,9 @@ type ClientInterface interface {
 
 	// AddCommentWithBody Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5154,7 +5174,9 @@ type ClientInterface interface {
 
 	// AddComment Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5169,7 +5191,9 @@ type ClientInterface interface {
 	// EditCommentWithBody Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5179,7 +5203,9 @@ type ClientInterface interface {
 	// EditComment Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7708,7 +7734,9 @@ func (c *Client) ListComments(ctx context.Context, tenant TenantSlug, project Pr
 
 // AddCommentWithBody Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes any type of body and a specified content type.
 //
@@ -7727,7 +7755,9 @@ func (c *Client) AddCommentWithBody(ctx context.Context, tenant TenantSlug, proj
 
 // AddComment Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7762,7 +7792,9 @@ func (c *Client) GetComment(ctx context.Context, tenant TenantSlug, project Proj
 // EditCommentWithBody Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes any type of body and a specified content type.
 //
@@ -7782,7 +7814,9 @@ func (c *Client) EditCommentWithBody(ctx context.Context, tenant TenantSlug, pro
 // EditComment Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -17698,7 +17732,9 @@ type ClientWithResponsesInterface interface {
 
 	// AddCommentWithBodyWithResponse Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -17707,7 +17743,9 @@ type ClientWithResponsesInterface interface {
 
 	// AddCommentWithResponse Comment on the ticket
 	//
-	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+	// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+	// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -17724,7 +17762,9 @@ type ClientWithResponsesInterface interface {
 	// EditCommentWithBodyWithResponse Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -17734,7 +17774,9 @@ type ClientWithResponsesInterface interface {
 	// EditCommentWithResponse Edit a comment
 	//
 	// A person edits their own comments and those their agents wrote; an agent only those an
-	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+	// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+	// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+	// (D5).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -26258,7 +26300,9 @@ func (c *ClientWithResponses) ListCommentsWithResponse(ctx context.Context, tena
 
 // AddCommentWithBodyWithResponse Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -26273,7 +26317,9 @@ func (c *ClientWithResponses) AddCommentWithBodyWithResponse(ctx context.Context
 
 // AddCommentWithResponse Comment on the ticket
 //
-// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2).
+// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). It tells the
+// ticket's watchers, and the persons `mentions` names — each a member who sees the ticket —
+// that they are mentioned, once each (docs/adr/0020 D2, docs/adr/0015 D5).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -26302,7 +26348,9 @@ func (c *ClientWithResponses) GetCommentWithResponse(ctx context.Context, tenant
 // EditCommentWithBodyWithResponse Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -26318,7 +26366,9 @@ func (c *ClientWithResponses) EditCommentWithBodyWithResponse(ctx context.Contex
 // EditCommentWithResponse Edit a comment
 //
 // A person edits their own comments and those their agents wrote; an agent only those an
-// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept.
+// agent of the same person wrote (docs/adr/0015 D3, D4). The previous text is kept. `mentions`
+// left out keeps the comment's mentions; a list replaces them, and tells the persons it adds
+// (D5).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

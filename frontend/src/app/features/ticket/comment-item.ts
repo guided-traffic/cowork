@@ -5,12 +5,15 @@ import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Textarea } from 'primeng/textarea';
 import { Tooltip } from 'primeng/tooltip';
-import { Attachment, Comment, CommentRevision } from '../../api/models';
+import { Attachment, Comment, CommentRevision, Ticket } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
+import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { ConflictNote } from '../../shared/conflict-note';
+import { MentionList } from '../../shared/mention-list';
+import { Mentionable, mentionCandidates, mentionsIn } from '../../shared/mentions';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { FilePreview } from './file-preview';
 import { fileIcon } from './records-cards';
@@ -28,7 +31,16 @@ import { UploadKey } from '../../shared/upload-key';
 @Component({
   selector: 'app-comment',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AgentMark, ButtonDirective, ConflictNote, FilePreview, FormsModule, Textarea, Tooltip],
+  imports: [
+    AgentMark,
+    ButtonDirective,
+    ConflictNote,
+    FilePreview,
+    FormsModule,
+    MentionList,
+    Textarea,
+    Tooltip,
+  ],
   template: `
     <p class="meta muted">
       <strong>{{ comment().author.display_name }}</strong>
@@ -54,6 +66,7 @@ import { UploadKey } from '../../shared/upload-key';
     } @else if (since()) {
       <form class="edit" ngNoForm novalidate (submit)="$event.preventDefault(); save()">
         <textarea
+          #box
           pTextarea
           name="comment"
           rows="4"
@@ -63,6 +76,7 @@ import { UploadKey } from '../../shared/upload-key';
           [ngModel]="draft()"
           (ngModelChange)="draft.set($event)"
         ></textarea>
+        <app-mention-list [for]="box" [candidates]="candidates()" (picked)="pick($event)" />
         @if (conflict()) {
           <app-conflict-note
             what="The comment"
@@ -255,6 +269,8 @@ export class CommentItem {
   readonly me = input<string | undefined>();
   /** The person is an administrator of the tenant, who withdraws any comment. */
   readonly administers = input(false);
+  /** The ticket, which decides who can be mentioned: who sees it. */
+  readonly ticket = input<Ticket | undefined>();
 
   private readonly conversation = inject(Conversation);
   private readonly records = inject(TicketRecords);
@@ -263,6 +279,7 @@ export class CommentItem {
   private readonly uploadKey = new UploadKey();
   private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
+  private readonly members = inject(MembersService);
 
   protected readonly mine = computed(() => this.comment().author.id === this.me());
   /** The comment as the editing began; null while it is not edited. */
@@ -272,6 +289,11 @@ export class CommentItem {
   protected readonly busy = signal(false);
   /** The earlier texts while they are shown; null while they are not. */
   protected readonly revisions = signal<CommentRevision[] | null>(null);
+  /** The persons the edit picked to mention, beside those the comment mentions already. */
+  protected readonly picked = signal<Mentionable[]>([]);
+  protected readonly candidates = computed(() =>
+    mentionCandidates(this.members.list(), this.ticket(), this.me()),
+  );
 
   protected ago(iso: string): string {
     return ago(iso, this.clock.now());
@@ -288,7 +310,29 @@ export class CommentItem {
   protected edit(): void {
     this.draft.set(this.comment().body ?? '');
     this.conflict.set(false);
+    this.picked.set([]);
     this.since.set(this.comment());
+  }
+
+  protected pick(person: Mentionable): void {
+    if (!this.picked().some((each) => each.id === person.id)) {
+      this.picked.update((held) => [...held, person]);
+    }
+  }
+
+  /**
+   * The mentions the edit sends (docs/adr/0015 D5): those the comment holds, but one whose `@<name>`
+   * the text held and the edit took out, and the persons picked whose name the text holds. A
+   * mention the text never named by the member's name — one an agent wrote — stays.
+   */
+  private mentionsAfter(since: Comment, body: string): string[] {
+    const before = since.body ?? '';
+    const names = new Map(this.members.list().map((m) => [m.person.id, m.person.display_name]));
+    const kept = (since.mentions ?? []).filter((id) => {
+      const name = names.get(id);
+      return !name || !before.includes(`@${name}`) || body.includes(`@${name}`);
+    });
+    return [...new Set([...kept, ...mentionsIn(body, this.picked())])];
   }
 
   protected async save(): Promise<void> {
@@ -303,7 +347,12 @@ export class CommentItem {
     }
     this.busy.set(true);
     try {
-      await this.conversation.editComment(this.ticketKey(), since, body);
+      await this.conversation.editComment(
+        this.ticketKey(),
+        since,
+        body,
+        this.mentionsAfter(since, body),
+      );
       if (this.since() === since) {
         this.since.set(null);
         this.revisions.set(null);

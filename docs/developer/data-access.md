@@ -422,10 +422,14 @@ row, writes them:
 | `transitioned` — a transition, the done act and the reopen of the stages | `state_changed` | the watchers of the ticket |
 | `transitioned` to `done` or `dropped` | `blocker_closed`, about each ticket it blocks | the watchers of that ticket |
 | `commented`, the explaining comment of a write included | `commented` | the watchers of the ticket |
+| `commented` with `mentions`; `edited` that adds a person to them | `mentioned`, before `commented` | the persons it mentions, or the persons the edit adds |
 | `interest` that makes a stake `urgent` | `urgent` | the assignee |
 
-The watchers (`ListWatchers`, [ADR 0013] D6) are everyone with a stake, the assignee, the reporter
-and whoever asked or was asked an open question on the ticket. `NoticeRecipients` keeps of the
+The watchers (`ListWatchers`, [ADR 0013] D6) are everyone with a stake, the assignee, the reporter,
+whoever asked or was asked an open question on the ticket, and whoever a comment on it that is not
+withdrawn mentions (`comments.mentions`, migration 40). One act tells a person once about a ticket:
+`deliver` keeps whom it told per ticket and leaves them out of the act's later notices, so a watcher
+a comment mentions is told `mentioned`, not also `commented`. `NoticeRecipients` keeps of the
 persons named those who are not deactivated, are not the actor — whose own act, and whose agent's,
 tells them nothing — and see, by `person_sees_ticket`, both the ticket the notification is about and
 the ticket the act is on (for `blocker_closed` the blocker). `InsertNotifications` writes one row per

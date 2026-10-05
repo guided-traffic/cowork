@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 )
@@ -18,6 +20,8 @@ const (
 	stateInProgress = string(apigen.TicketStateInProgress)
 	stateReview     = string(apigen.TicketStateReview)
 	opGetTicket     = "getTicket"
+	opGetMe         = "getMe"
+	opListMembers   = "listMembers"
 	// scopeProject is the search scope of one project, the one a search
 	// without words lists.
 	scopeProject = "project"
@@ -97,7 +101,7 @@ func searchTool() Tool {
 			"get_ticket reads one. Without a query, lists a project's tickets in rank order. Done and dropped tickets only with " +
 			"include_terminal.",
 		ReadOnly:   true,
-		Operations: []string{"listProjectTickets", "listTenantTickets", "getMe"},
+		Operations: []string{"listProjectTickets", "listTenantTickets", opGetMe},
 	}, func(s *jsonschema.Schema) {
 		enum(s, "scope", scopeProject, "tenant", "all")
 		enum(s, "state", ticketStates...)
@@ -364,8 +368,9 @@ func recordStateTool() Tool {
 }
 
 type commentInput struct {
-	Key  string `json:"key"`
-	Text string `json:"text" jsonschema:"Markdown"`
+	Key      string   `json:"key"`
+	Text     string   `json:"text" jsonschema:"Markdown"`
+	Mentions []string `json:"mentions,omitempty" jsonschema:"the persons the comment mentions, each told in their inbox and a watcher of the ticket: me, a username, a display name of a member of the tenant, or a person id; name them in the text as well"`
 }
 
 func commentTool() Tool {
@@ -373,28 +378,53 @@ func commentTool() Tool {
 		Name: "comment",
 		Description: "Comment on a ticket, in the person's name with the agent's mark. To explain an act of your own, " +
 			"pass the explanation as the comment argument of record_state, transition or set_progress instead: it is " +
-			"then written with the act and points at it.",
-		Operations: []string{"addComment", opGetTicket},
+			"then written with the act and points at it. To mention a person — tell them in their inbox and make them " +
+			"watch the ticket — name them in mentions as well as in the text; a name in the text alone tells nobody. " +
+			"Only a member who sees the ticket can be mentioned.",
+		Operations: []string{"addComment", opGetTicket, opGetMe, opListMembers},
 		limits:     limitsOf(refusalNote),
 	}, func(s *jsonschema.Schema) {
 		minLen := 1
 		s.Properties["text"].MinLength = &minLen
-	}, func(ctx context.Context, s *Session, in commentInput) (string, error) {
-		ref, err := s.resolveKey(in.Key)
+		maxMentions := 50
+		s.Properties["mentions"].MaxItems = &maxMentions
+	}, runComment)
+}
+
+func runComment(ctx context.Context, s *Session, in commentInput) (string, error) {
+	ref, err := s.resolveKey(in.Key)
+	if err != nil {
+		return "", err
+	}
+	body := apigen.CommentWrite{Body: in.Text}
+	var ids []openapi_types.UUID
+	var names []string
+	for _, who := range in.Mentions {
+		id, name, err := person(ctx, s, ref.Tenant, who)
 		if err != nil {
 			return "", err
 		}
-		res, err := s.API.AddCommentWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
-			&apigen.AddCommentParams{IdempotencyKey: s.key()}, apigen.CommentWrite{Body: in.Text})
-		if err := check(res, err, http.StatusCreated); err != nil {
-			return "", err
+		if !slices.Contains(ids, id) {
+			ids, names = append(ids, id), append(names, name)
 		}
-		tk, _, err := getTicket(ctx, s, ref)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Commented on %s (comment %s).\n%s", ref.Full(), res.JSON201.Id, commitLines(ref, string(tk.Type), tk.Title)), nil
-	})
+	}
+	if len(ids) > 0 {
+		body.Mentions = &ids
+	}
+	res, err := s.API.AddCommentWithResponse(ctx, ref.Tenant, ref.Project, int(ref.Number),
+		&apigen.AddCommentParams{IdempotencyKey: s.key()}, body)
+	if err := check(res, err, http.StatusCreated); err != nil {
+		return "", err
+	}
+	tk, _, err := getTicket(ctx, s, ref)
+	if err != nil {
+		return "", err
+	}
+	mentioned := ""
+	if len(names) > 0 {
+		mentioned = ", mentioning " + strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("Commented on %s (comment %s%s).\n%s", ref.Full(), res.JSON201.Id, mentioned, commitLines(ref, string(tk.Type), tk.Title)), nil
 }
 
 type linkInput struct {

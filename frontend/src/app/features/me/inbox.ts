@@ -72,6 +72,8 @@ export function happening(entry: InboxEntry): string {
       return 'commented';
     case 'urgent':
       return 'registered an urgent need';
+    case 'mentioned':
+      return 'mentioned you in a comment';
   }
 }
 

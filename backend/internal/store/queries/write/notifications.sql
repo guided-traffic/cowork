@@ -4,9 +4,10 @@
 -- ticket, never by the writer's.
 
 -- name: ListWatchers :many
--- The watchers of a ticket (docs/adr/0013 D6): every person with a stake of
--- any weight, the assignee, the reporter, and whoever asked or was asked an
--- open question on it.
+-- The watchers of a ticket (docs/adr/0013 D6 as amended 2026-10-05): every
+-- person with a stake of any weight, the assignee, the reporter, whoever asked
+-- or was asked an open question on it, and whoever a comment on it that is not
+-- withdrawn mentions (docs/adr/0015 D5).
 -- visibility: exempt (whom an act tells; NoticeRecipients holds each to their own sight of the ticket)
 SELECT i.user_id FROM ticket_interest i
 WHERE i.tenant_id = sqlc.arg(tenant_id) AND i.ticket_id = sqlc.arg(ticket_id)
@@ -22,7 +23,10 @@ WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.ticket_id = sqlc.arg(ticket_id) AN
 UNION
 SELECT q.asked_of FROM questions q
 WHERE q.tenant_id = sqlc.arg(tenant_id) AND q.ticket_id = sqlc.arg(ticket_id) AND q.status = 'open'
-  AND q.asked_of IS NOT NULL;
+  AND q.asked_of IS NOT NULL
+UNION
+SELECT m.person FROM comments c, unnest(c.mentions) AS m (person)
+WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.ticket_id = sqlc.arg(ticket_id) AND c.withdrawn_at IS NULL;
 
 -- name: ListTicketsBlockedBy :many
 -- The tickets a ticket blocks (docs/adr/0012 D1): the watchers of each hear
