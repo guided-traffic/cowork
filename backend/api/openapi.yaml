@@ -18,7 +18,8 @@ info:
     operation says which it takes: most take either, a few a session only —
     creating a token, a tenant or a local account, resetting or changing a
     password, logging out, a turn of the chat and stopping one, choosing the
-    chat's capabilities, a global administrator's list of every tenant, and the
+    chat's capabilities, a global administrator's list of every tenant, purging a
+    deleted ticket — the one irreversible act on a ticket —, and the
     administration acts that give access: adding a member, setting a grant,
     making or changing a group mapping, restricting or opening a project,
     putting a person on its access list. A request of a session that writes must come from the installation's

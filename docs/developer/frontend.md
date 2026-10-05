@@ -785,7 +785,8 @@ type, title, confidential mark, state, who deleted it and when, and when the pur
 *Restore* brings one back at once — it undoes a deletion and asks nothing. *Purge* asks twice: first
 naming the day the job would purge it and what goes, then *Purge for good*, a danger button, with
 the focus on *Keep it*, saying that nothing brings it back; a question belongs to the tenant it was
-asked in. The service reads the bin through `ConditionalPages`,
+asked in. The purge goes in the page's browser session, which the API asks of it — a token cannot
+purge ([ADR 0024] D7 as amended 2026-10-05). The service reads the bin through `ConditionalPages`,
 so a poll that finds it unchanged moves nothing, and again when the stream tells of a deletion, a
 restoration or a purge in the tenant (`changesExistence`). Anybody else reads that the page is the
 administrators'.

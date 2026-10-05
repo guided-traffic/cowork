@@ -270,16 +270,13 @@ func TestTheToolsNeverDeleteAndMissADeletedTicket(t *testing.T) {
 	assert.Contains(t, missing, "404")
 	assert.NotContains(t, missing, "Pasted into the wrong tenant")
 	assert.NotContains(t, mustCall(t, cs, "search", map[string]any{"query": "wrong tenant"}), key)
-	for _, route := range []string{"/restore", ""} {
-		method := "PUT"
-		if route == "" {
-			method = "DELETE"
-		}
-		answer, isError := callTool(t, cs, "api", map[string]any{"method": method,
-			"path": fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/ALPHA-%d%s", e.SlugA, n, route)})
-		assert.True(t, isError)
-		assert.Contains(t, answer, "hard-off: deleting, restoring or purging", "an agent neither restores nor purges")
-	}
+	inBin := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/ALPHA-%d", e.SlugA, n)
+	answer, isError := callTool(t, cs, "api", map[string]any{"method": "PUT", "path": inBin + "/restore"})
+	assert.True(t, isError)
+	assert.Contains(t, answer, "hard-off: deleting, restoring or purging", "an agent restores nothing")
+	answer, isError = callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": inBin})
+	assert.True(t, isError)
+	assert.Contains(t, answer, "session_required", "nor purges: a token never does (docs/adr/0024 D7)")
 }
 
 // docs/adr/0067, docs/adr/0070 D6: the hook modes and the subcommands run

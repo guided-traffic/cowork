@@ -122,14 +122,14 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-sixteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+seventeen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`, `purgeTicket`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
-(`setMyChat`); a turn of the chat acts with the person's session and its stop ends the session's
+(`setMyChat`) and what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
@@ -300,7 +300,7 @@ another token and marking notifications read (`write` scope,
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
 | `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets |
-| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's |
+| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
 | `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden` |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, an override `override-urgency` and of an agent a reason, a filing into a horizon other than `later` `override-urgency` and with a place `rank`, an agent's answer `record-answer` | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |

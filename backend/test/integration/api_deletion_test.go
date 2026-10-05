@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
@@ -57,16 +58,30 @@ func binKeys(items []apigen.DeletedTicket) []string {
 type deletedScene struct {
 	ticketEnv
 	admin, member, viewer, both caller
+	session                     *browser
 	parent, gone, child         apigen.Ticket
 	blocked, waiting, related   apigen.Ticket
 	attachment                  uuid.UUID
 }
 
+// sessionEnv is a ticketEnv whose persons have local accounts, with tenant A's
+// administrator logged in to a browser session: the purge takes one
+// (docs/adr/0024 D7).
+func sessionEnv(t *testing.T) (ticketEnv, map[string]string, *browser) {
+	t.Helper()
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	e := ticketEnv{world: w, tk: issueTokens(t, w), s: newAPI(t, withLogin), ctx: context.Background()}
+	b := e.s.browser(t)
+	b.mustLogin(names["adminA"], testPassword)
+	return e, names, b
+}
+
 func newDeletedScene(t *testing.T) deletedScene {
 	t.Helper()
-	e := newTicketEnv(t)
+	e, _, session := sessionEnv(t)
 	s := deletedScene{ticketEnv: e, admin: caller{Token: e.tk.AdminA}, member: caller{Token: e.tk.MemberA},
-		viewer: caller{Token: e.tk.ViewerA}, both: caller{Token: e.tk.Both}}
+		viewer: caller{Token: e.tk.ViewerA}, both: caller{Token: e.tk.Both}, session: session}
 	s.parent = e.file(t, s.member, "ALPHA", task("the parent"))
 	s.gone = e.file(t, s.admin, "ALPHA", task("the wrong paste with another client's data", func(b *apigen.TicketCreate) {
 		b.Parent, b.Assignee, b.Effort = ptr(short(s.parent)), &e.MemberA, apigen.EffortL
@@ -316,11 +331,11 @@ func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
 }
 
 // docs/adr/0024 D7, docs/adr/0043 D3: deleting, restoring and purging are a
-// tenant administrator's acts with admin scope, never an agent's; the bin is
-// the administrators' to read; another tenant's never answers but as an
-// unknown tenant.
+// tenant administrator's acts with admin scope, never an agent's, and the
+// purge takes a browser session besides; the bin is the administrators' to
+// read; another tenant's never answers but as an unknown tenant.
 func TestDeletionIsATenantAdministratorsActNeverAnAgents(t *testing.T) {
-	e := newTicketEnv(t)
+	e, _, session := sessionEnv(t)
 	f := fixtures(t)
 	admin := caller{Token: e.tk.AdminA}
 	tk := e.file(t, caller{Token: e.tk.MemberA}, "ALPHA", task("to delete"))
@@ -352,16 +367,15 @@ func TestDeletionIsATenantAdministratorsActNeverAnAgents(t *testing.T) {
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, binPath(e.SlugA), nil), http.StatusNotFound, "not_found")
 	assert.Equal(t, http.StatusOK, e.s.do(t, caller{Token: e.tk.AdminAWrite}, http.MethodGet, binPath(e.SlugA), nil).StatusCode,
 		"reading the bin takes read scope")
-	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		p := binPath(e.SlugA, short(tk))
-		if method == http.MethodPut {
-			p += "/restore"
-		}
-		assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberA}, method, p, nil), http.StatusForbidden, "forbidden")
-		assertProblem(t, e.s.do(t, caller{Token: e.tk.AdminAWrite}, method, p, nil), http.StatusForbidden, "insufficient_scope")
-		assertProblem(t, e.s.do(t, caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}, method, p, nil),
-			http.StatusForbidden, "agent_forbidden")
-		assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, method, p, nil), http.StatusNotFound, "not_found")
+	restore := binPath(e.SlugA, short(tk)) + "/restore"
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberA}, http.MethodPut, restore, nil), http.StatusForbidden, "forbidden")
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.AdminAWrite}, http.MethodPut, restore, nil), http.StatusForbidden, "insufficient_scope")
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}, http.MethodPut, restore, nil),
+		http.StatusForbidden, "agent_forbidden")
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodPut, restore, nil), http.StatusNotFound, "not_found")
+	for _, token := range []string{e.tk.MemberA, e.tk.AdminAWrite, e.tk.AdminA, e.tk.AgentA, e.tk.MemberB} {
+		assertProblem(t, e.s.do(t, caller{Token: token}, http.MethodDelete, binPath(e.SlugA, short(tk)), nil),
+			http.StatusForbidden, "session_required")
 	}
 
 	// Tenant B's administrator finds nothing of A's bin in B's, and neither a
@@ -376,9 +390,51 @@ func TestDeletionIsATenantAdministratorsActNeverAnAgents(t *testing.T) {
 		http.StatusNotFound, "not_found")
 	live := e.file(t, admin, "ALPHA", task("live"))
 	assertProblem(t, e.s.do(t, admin, http.MethodPut, binPath(e.SlugA, short(live))+"/restore", nil), http.StatusNotFound, "not_found")
-	assertProblem(t, e.s.do(t, admin, http.MethodDelete, binPath(e.SlugA, short(live)), nil), http.StatusNotFound, "not_found")
-	assertProblem(t, e.s.do(t, admin, http.MethodDelete, binPath(e.SlugA, "ALPHA-999"), nil), http.StatusNotFound, "not_found")
+	assertProblem(t, session.request(http.MethodDelete, binPath(e.SlugA, short(live)), nil), http.StatusNotFound, "not_found")
+	assertProblem(t, session.request(http.MethodDelete, binPath(e.SlugA, "ALPHA-999"), nil), http.StatusNotFound, "not_found")
 	assert.Equal(t, http.StatusOK, e.get(t, admin, "ALPHA", live.Number).StatusCode(), "a refused purge leaves a live ticket alone")
+}
+
+// docs/adr/0024 D7 as amended 2026-10-05, docs/adr/0035 D5: the purge, the
+// one act on a ticket nothing undoes, takes a person in a browser session — a
+// token answers 403 session_required before anything else is looked at, an
+// administrator's admin token included, and the ticket stays in the bin; in
+// a session it is still a tenant administrator's act and never an agent's.
+func TestPurgingTakesABrowserSession(t *testing.T) {
+	e, names, session := sessionEnv(t)
+	admin := caller{Token: e.tk.AdminA}
+	tk := e.file(t, admin, "ALPHA", task("to purge"))
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", tk.Number), nil)
+	purge := binPath(e.SlugA, short(tk))
+
+	for name, c := range map[string]caller{
+		"an administrator's admin token": admin,
+		"the same token as an agent":     {Token: e.tk.AdminA, Agent: "claude-code/opus/s1"},
+		"an administrator's write token": {Token: e.tk.AdminAWrite},
+		"a member's token":               {Token: e.tk.MemberA},
+		"another tenant's token":         {Token: e.tk.MemberB},
+	} {
+		body := assertProblem(t, e.s.do(t, c, http.MethodDelete, purge, nil), http.StatusForbidden, "session_required")
+		assert.NotContains(t, body["detail"], "hard-off", name)
+	}
+	assert.Equal(t, []string{tk.Key}, binKeys(e.bin(t, admin, e.SlugA)), "a refused purge leaves the ticket in the bin")
+
+	member, stranger := e.s.browser(t), e.s.browser(t)
+	member.mustLogin(names["memberA"], testPassword)
+	stranger.mustLogin(names["memberB"], testPassword)
+	assertProblem(t, member.request(http.MethodDelete, purge, nil), http.StatusForbidden, "forbidden")
+	assertProblem(t, stranger.request(http.MethodDelete, purge, nil), http.StatusNotFound, "not_found")
+	body := assertProblem(t, session.request(http.MethodDelete, purge, nil, withHeader(auth.AgentHeader, "chat/stub/c1")),
+		http.StatusForbidden, "agent_forbidden")
+	assert.Equal(t, "hard-off: what only a browser session does is a person's act, never an agent's", body["detail"],
+		"the chat's agent in the session purges nothing")
+	assertProblem(t, session.request(http.MethodDelete, purge, nil, without("X-Requested-With")), http.StatusForbidden, "csrf")
+	assert.Equal(t, []string{tk.Key}, binKeys(e.bin(t, admin, e.SlugA)))
+
+	require.Equal(t, http.StatusNoContent, session.request(http.MethodDelete, purge, nil).StatusCode)
+	assert.Empty(t, e.bin(t, admin, e.SlugA))
+	assert.Equal(t, 1, scalar[int](t, `SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'purged'
+		AND actor_user_id = $2 AND token_id IS NULL AND agent IS NULL`, tk.Id, e.AdminA), "the person's own act, in a session")
 }
 
 // docs/adr/0024 D2, docs/adr/0026 D3: the purge removes the ticket and what
@@ -394,7 +450,7 @@ func TestThePurgeRemovesTheTicketAndKeepsItsAuditRows(t *testing.T) {
 	require.Positive(t, scalar[int](t, `SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND after IS NOT NULL`, s.gone.Id))
 	waitingVersion := e.reread(t, s.member, s.waiting).Version
 
-	e.send(t, s.admin, http.StatusNoContent, http.MethodDelete, binPath(e.SlugA, short(s.gone)), nil)
+	require.Equal(t, http.StatusNoContent, s.session.request(http.MethodDelete, binPath(e.SlugA, short(s.gone)), nil).StatusCode)
 	_, ok := stream.until(t, func(m sse) bool { return m.Event == "ticket.changed" && strings.Contains(m.Data, `"kind":"purged"`) })
 	assert.Equal(t, key, eventKey(t, ok))
 
@@ -410,7 +466,7 @@ func TestThePurgeRemovesTheTicketAndKeepsItsAuditRows(t *testing.T) {
 	assert.Positive(t, scalar[int](t, `SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND ticket_key = $2
 		AND action = 'commented'`, s.gone.Id, key), "the rows keep the key, the actor and the act")
 	assert.Equal(t, 1, scalar[int](t, `SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'purged'
-		AND actor_user_id = $2 AND ticket_key = $3`, s.gone.Id, e.AdminA, key))
+		AND actor_user_id = $2 AND ticket_key = $3 AND token_id IS NULL`, s.gone.Id, e.AdminA, key), "the person's act in a session")
 	assert.JSONEq(t, `{"attachments":1,"children":1,"comments":1,"interest":1,"links":3,"notifications":3,"questions":1,"time_entries":1}`,
 		scalar[string](t, `SELECT after::text FROM audit_events WHERE ticket_id = $1 AND action = 'purged'`, s.gone.Id),
 		"the purge records what it removed, counted, never what it said")
@@ -431,7 +487,7 @@ func TestThePurgeRemovesTheTicketAndKeepsItsAuditRows(t *testing.T) {
 		assertProblem(t, e.s.do(t, s.admin, http.MethodGet, path, nil), http.StatusNotFound, "not_found")
 	}
 	assertProblem(t, e.s.do(t, s.admin, http.MethodPut, binPath(e.SlugA, short(s.gone))+"/restore", nil), http.StatusNotFound, "not_found")
-	assertProblem(t, e.s.do(t, s.admin, http.MethodDelete, binPath(e.SlugA, short(s.gone)), nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.session.request(http.MethodDelete, binPath(e.SlugA, short(s.gone)), nil), http.StatusNotFound, "not_found")
 	assert.Equal(t, 7, e.file(t, s.member, "ALPHA", task("after the purge")).Number, "the purged key is never handed out again")
 }
 
@@ -535,14 +591,22 @@ func TestThePurgePoliciesHoldEveryDeleteToTheBin(t *testing.T) {
 // docs/adr/0027 conventions: two administrators deleting or purging the same
 // ticket at once — one wins, the other answers as a later request would.
 func TestSimultaneousDeletionsAndPurgesAnswerAlike(t *testing.T) {
-	e := newTicketEnv(t)
+	e, _, session := sessionEnv(t)
 	admin := caller{Token: e.tk.AdminA}
+	// The deletions and the restoration go with the administrator's token,
+	// the purges in the administrator's browser session (docs/adr/0024 D7).
+	token := func(req *http.Request) { _ = admin.editor(context.Background(), req) }
+	cookie := func(req *http.Request) {
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: session.Cookie})
+		req.Header.Set("Origin", testOrigin)
+		req.Header.Set("X-Requested-With", "cowork")
+	}
 	for round := range 4 {
 		tk := e.file(t, admin, "ALPHA", task("race "+strconv.Itoa(round)))
-		send := func(method, path string) func() int {
+		send := func(as func(*http.Request), method, path string) func() int {
 			return func() int {
 				req, _ := http.NewRequest(method, e.s.URL+path, nil)
-				_ = admin.editor(context.Background(), req)
+				as(req)
 				res, err := http.DefaultClient.Do(req)
 				if err != nil {
 					return 0
@@ -551,11 +615,11 @@ func TestSimultaneousDeletionsAndPurgesAnswerAlike(t *testing.T) {
 				return res.StatusCode
 			}
 		}
-		codes := simultaneously(times(3, send(http.MethodDelete, ticketPath(e.SlugA, "ALPHA", tk.Number)))...)
+		codes := simultaneously(times(3, send(token, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", tk.Number)))...)
 		slices.Sort(codes)
 		assert.Equal(t, []int{http.StatusNoContent, http.StatusNotFound, http.StatusNotFound}, codes, "deletions")
-		codes = simultaneously(append(times(2, send(http.MethodDelete, binPath(e.SlugA, short(tk)))),
-			send(http.MethodPut, binPath(e.SlugA, short(tk))+"/restore"))...)
+		codes = simultaneously(append(times(2, send(cookie, http.MethodDelete, binPath(e.SlugA, short(tk)))),
+			send(token, http.MethodPut, binPath(e.SlugA, short(tk))+"/restore"))...)
 		assert.Equal(t, 1, countOf(codes, http.StatusNoContent)+countOf(codes, http.StatusOK), "one purge or the restoration wins: %v", codes)
 		assert.NotContains(t, codes, http.StatusInternalServerError, "%v", codes)
 	}

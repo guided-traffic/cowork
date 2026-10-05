@@ -356,8 +356,12 @@ it — or the job does, thirty days after the deletion
 ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D1–D3, D7). Deleting, restoring and purging take the tenant role `admin` and `admin` scope; an agent
 — a token's or the chat's — meets the hard-off rule `deleting, restoring or purging`
-([tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list)). The bin is read with
-`read` scope; a token restricted to a project reaches neither the bin nor any of its routes.
+([tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list)). The purge, which nothing
+undoes, takes a browser session besides: a token — an administrator's `admin` token included — is
+`403 session_required` before anything is looked up (D7 as amended 2026-10-05,
+[tokens.md](tokens.md#what-only-a-session-does); `TestPurgingTakesABrowserSession`); what a leaked
+token can still do here is H-54. The bin is read with `read` scope; a token restricted to a project
+reaches neither the bin nor any of its routes.
 
 **The deletion is an application filter, not a policy.** Row-level security stays the tenant
 alone (D3). Every query that reads a ticket carries `deleted_at IS NULL` beside the visibility
@@ -891,16 +895,19 @@ hidden matches. Mitigation: none in cowork; a tenant whose members must not lear
 keeps such work in an installation of its own.
 
 <a id="h-54"></a>
-### H-54 — An administrator's `admin` token purges for good
+### H-54 — An administrator's `admin` token deletes, and the job purges what nobody restores
 
-Live today. Deleting and purging take `admin` scope and no browser session, by the rule of
-[tokens.md](tokens.md#what-only-a-session-does) — an act that gives access, or leaves something
-behind a revoked token, takes a session; one that takes something away does not. A leaked token of
-a tenant administrator with `admin` scope can therefore delete every ticket it sees and purge each
-at once, two requests per ticket: the content, the comments, the files and the time of the tenant
-are gone, irreversibly, before anyone looks at the bin, and the audit record keeps only who did it
-through which token. The browser asks twice before a purge; the API does not. Mitigation: give
-scripts no `admin` token; a backup is the only way back
+Live today. The purge takes a browser session
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7 as amended 2026-10-05, [tokens.md](tokens.md#what-only-a-session-does)): a token — a tenant
+administrator's `admin` token included — answers `403 session_required` and purges nothing.
+Deleting does not take one: the bin undoes a deletion, so it stays open to an `admin`-scope token,
+and a leaked token of a tenant administrator can delete every ticket it sees, one request each.
+Each stays in the bin as it was, restorable by an administrator, for thirty days; what nobody
+restores in that time the purge job removes for good, and the audit record keeps who deleted it
+through which token. Nothing tells the administrators that their bin filled — a deletion creates no
+notification; the bin and the audit record show it to whoever looks. Mitigation: give scripts no
+`admin` token; look at the bin; after the purge a backup is the only way back
 ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
 
 <a id="h-55"></a>
@@ -916,14 +923,14 @@ roll back across the deletion only with an empty bin, or purge first.
 <a id="h-56"></a>
 ### H-56 — Deleted is not gone until the purge, and the purge leaves traces outside the tables
 
-Live for every deleted ticket. Until the purge — thirty days, or an administrator's act — the
-deleted ticket, everything that hangs off it and its files stay in the database, the bucket and the
-backups as they were; only the queries hide them, for everybody, administrators included. After the
-purge, its key and the ids of its rows stay in the audit record by design (ADR 0024 D2), its key in
-the log lines that name it (`ticket purged`, the request log's paths) and in the event ring for the
-replay window (H-5); the stored answer of a keyed creation of the ticket, a question or a comment
-keeps their text in `idempotency_keys` for up to a day after it was written (H-2); and an object
-whose removal failed after the commit stays in the bucket with no row naming it
+Live for every deleted ticket. Until the purge — thirty days, or an administrator's act in a browser
+session — the deleted ticket, everything that hangs off it and its files stay in the database, the
+bucket and the backups as they were; only the queries hide them, for everybody, administrators
+included. After the purge, its key and the ids of its rows stay in the audit record by design
+(ADR 0024 D2), its key in the log lines that name it (`ticket purged`, the request log's paths) and
+in the event ring for the replay window (H-5); the stored answer of a keyed creation of the ticket, a
+question or a comment keeps their text in `idempotency_keys` for up to a day after it was written
+(H-2); and an object whose removal failed after the commit stays in the bucket with no row naming it
 ([attachments.md](attachments.md#h-13)). Backups taken before the purge keep everything. A legal
 retention shorter or longer than thirty days is not configurable.
 

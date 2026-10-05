@@ -496,8 +496,10 @@ comment names a person is not decided.
 
 - **Who.** Deleting, restoring and purging are a tenant administrator's acts with `admin` scope —
   the tenant role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
-  or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The bin is
-  read with `read` scope.
+  or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The purge
+  takes a browser session besides: the document declares `purgeTicket` with the session cookie
+  alone, so a token — an administrator's `admin` token included — is `403 session_required`
+  (D7 as amended 2026-10-05). The bin is read with `read` scope.
 - **Deleting** (`DELETE …/{number}`, `deleted`) puts the ticket into the bin. From then on it
   answers like a missing ticket everywhere but the bin: its routes are `404` — a second deletion
   too, its rendered body among them —, it leaves every list, the boards, the search, the

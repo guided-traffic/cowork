@@ -40,9 +40,9 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, sixteen routes take a session only — what can give access, or outlive a leaked
-  token, the chat's turn, its stop and its capabilities, and a global administrator's list of every
-  tenant — and a temporary
+  CSRF-checked, seventeen routes take a session only — what can give access, or outlive a leaked
+  token, the purge of a deleted ticket among them, the chat's turn, its stop and its capabilities,
+  and a global administrator's list of every tenant — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
   every act made through a token records and shows the token's id and name beside the agent mark

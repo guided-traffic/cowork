@@ -4800,8 +4800,11 @@ type ClientInterface interface {
 
 	// PurgeTicket Purge a deleted ticket for good
 	//
-	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
-	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+	// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+	// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+	// administrator's `admin` token included — answers `403 session_required`, and the purge job
+	// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+	// ticket of the bin only — any other key is 404. The ticket, its
 	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
 	// and the attachments' objects after them; its children become roots, and a block that waited
 	// on it waits on its key as an external reference. Its audit rows stay with their content
@@ -7077,8 +7080,11 @@ func (c *Client) ListDeletedTickets(ctx context.Context, tenant TenantSlug, para
 
 // PurgeTicket Purge a deleted ticket for good
 //
-// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
-// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+// administrator's `admin` token included — answers `403 session_required`, and the purge job
+// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+// ticket of the bin only — any other key is 404. The ticket, its
 // comments, questions, links, stakes, time entries, notifications and attachments are removed,
 // and the attachments' objects after them; its children become roots, and a block that waited
 // on it waits on its key as an external reference. Its audit rows stay with their content
@@ -18259,8 +18265,11 @@ type ClientWithResponsesInterface interface {
 
 	// PurgeTicketWithResponse Purge a deleted ticket for good
 	//
-	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
-	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+	// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+	// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+	// administrator's `admin` token included — answers `403 session_required`, and the purge job
+	// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+	// ticket of the bin only — any other key is 404. The ticket, its
 	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
 	// and the attachments' objects after them; its children become roots, and a block that waited
 	// on it waits on its key as an external reference. Its audit rows stay with their content
@@ -27260,8 +27269,11 @@ func (c *ClientWithResponses) ListDeletedTicketsWithResponse(ctx context.Context
 
 // PurgeTicketWithResponse Purge a deleted ticket for good
 //
-// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
-// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+// administrator's `admin` token included — answers `403 session_required`, and the purge job
+// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+// ticket of the bin only — any other key is 404. The ticket, its
 // comments, questions, links, stakes, time entries, notifications and attachments are removed,
 // and the attachments' objects after them; its children become roots, and a block that waited
 // on it waits on its key as an external reference. Its audit rows stay with their content

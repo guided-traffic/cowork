@@ -59,7 +59,7 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
-- 🗑️ **Deletion that waits thirty days** — a tenant administrator deletes a ticket, never an agent; from then on it answers like a missing one everywhere but the tenant's bin, which restores it as it was, until the purge — a job thirty days later, or an administrator's second confirmation — removes it with its files, keeping in the audit record only its key, who did what and when.
+- 🗑️ **Deletion that waits thirty days** — a tenant administrator deletes a ticket, never an agent; from then on it answers like a missing one everywhere but the tenant's bin, which restores it as it was, until the purge — a job thirty days later, or an administrator's second confirmation in a browser session, which no token gives — removes it with its files, keeping in the audit record only its key, who did what and when.
 - 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the backlog's filter bar; a value that no longer holds is a warning, and a shared filter that names what the reader cannot see is shown without its conditions.
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
@@ -655,12 +655,13 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Sixteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Seventeen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
-  capabilities, a global administrator's list of every tenant, and the administration acts that can give access — adding a
+  capabilities, a global administrator's list of every tenant, purging a deleted ticket, and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
+  [ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7,
   [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
@@ -873,15 +874,16 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 
 For the tenant's administrators, never an agent
 ([ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-D1, D2, D7). A token restricted to a project is refused like an unknown tenant. `{key}` is a short
-key, `<PROJECT>-<number>`, of a ticket in the bin; any other key — a ticket that is not deleted
+D1, D2, D7); the purge, the one act on a ticket nothing undoes, in a browser session only. A
+token restricted to a project is refused like an unknown tenant. `{key}` is a short key,
+`<PROJECT>-<number>`, of a ticket in the bin; any other key — a ticket that is not deleted
 included — is `404 not_found`.
 
 | Method and path | Does |
 |---|---|
 | `GET …/deleted-tickets` | `read` scope: the deleted tickets the caller can see, the last deleted first — `key`, `project`, `number`, `type`, `title`, `state`, `confidential`, `deleted_at`, `deleted_by`, `purge_at` (thirty days after the deletion); `limit` and `cursor` |
 | `PUT …/deleted-tickets/{key}/restore` | `admin` scope: bring it back as it was — its links, comments, stakes and place in the rank with it; `200` with the ticket and its `ETag`, the version raised; recorded as `restored` |
-| `DELETE …/deleted-tickets/{key}` | `admin` scope: purge it now — the ticket, its comments and their revisions, questions, links, stakes, time entries and their revisions, notifications and attachments, then the attachments' objects; its children become roots, and a block that waited on it waits on its key as an external reference; its audit rows stay with their content emptied; `204`, recorded as `purged`. The job `ticket-purge` does the same thirty days after the deletion |
+| `DELETE …/deleted-tickets/{key}` | a browser session only — a token, an administrator's `admin` token included, is `403 session_required`: purge it now — the ticket, its comments and their revisions, questions, links, stakes, time entries and their revisions, notifications and attachments, then the attachments' objects; its children become roots, and a block that waited on it waits on its key as an external reference; its audit rows stay with their content emptied; `204`, recorded as `purged`. The job `ticket-purge` does the same thirty days after the deletion |
 
 </details>
 

@@ -451,7 +451,9 @@ A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3
   off it, which the deletion filter hides with it. Both refresh the parent's derived stages.
 - **The bin** is the one view that inverts the filter: `ListDeletedTickets` and `GetDeletedTicket`
   read the deleted tickets under the visibility predicate.
-- **Purging** is `Writer.PurgeTicket`, the same for an administrator's request and the job. It names
+- **Purging** is `Writer.PurgeTicket`, the same for an administrator's request — in a browser
+  session, which the document requires of `purgeTicket` (ADR 0024 D7 as amended 2026-10-05) — and
+  the job. It names
   `ticket-purge` in `app.job` for its part of the transaction — the job's transaction is named so
   already — and then, on a ticket it reads `FOR UPDATE` (`GetPurgedTicket`, `deleted_at IS NOT
   NULL`): empties its audit rows through `purge_ticket_audit`; deletes its notifications and those
