@@ -447,9 +447,8 @@ person's act `read`.
 written — by `Mutate` and by the identity provider's transactions alike — that belongs to a tenant
 and carries an `Event.Membership`, carries an `Event.NewProject` or names a ticket, except the
 actions `downloaded` and `exported` and the entity `time_entry`. A ticket's act reads the ticket's
-project, version and confidential facts (`TicketFacts`) — a question's act also whom the question
-is asked of (`QuestionAskedOf`); a membership act sends the keys of its `MembershipChange` and its
-audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
+project, version and confidential facts (`TicketFacts`); a membership act sends the keys of its
+`MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
 one connection outside the pool on the channel. The rest is [events.md](events.md).
 

@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { listMyInbox, markMyInboxRead, markNotificationRead } from '../api/functions';
 import { ConditionalPages } from './conditional';
-import { EventStreamService } from './event-stream.service';
+import { changesVisibility, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -41,7 +41,8 @@ export const personPageSize = 50;
 /**
  * The person's inbox (docs/adr/0020): the unread count of the bell in the top bar — loaded once the
  * person is known, kept by the person-level stream's `inbox.changed` (docs/adr/0054 D2) and loaded
- * again on `resync` and the fallback's `poll` — and marking notifications read. The inbox spans the
+ * again on `resync`, the fallback's `poll` and a change of what the person sees in any of their
+ * tenants — and marking notifications read. The inbox spans the
  * person's tenants (D1), so this service follows no tenant.
  */
 @Injectable({ providedIn: 'root' })
@@ -75,7 +76,13 @@ export class InboxService {
       .subscribe((event) => {
         if (event.name === 'inbox.changed') {
           this.unread.set(event.unread);
-        } else if (event.name === 'resync' || event.name === 'poll') {
+        } else if (
+          event.name === 'resync' ||
+          event.name === 'poll' ||
+          (event.name === 'membership.changed' && changesVisibility(event, this.person()))
+        ) {
+          // A tenant left, or a project hidden, takes its notifications out of the count, and
+          // tells the inbox nothing.
           refresh(this.unread, this.injector);
         }
       });

@@ -21,7 +21,12 @@ import {
 import { Ticket, TicketList } from '../api/models';
 import { ConditionalPages, PageFetcher } from './conditional';
 import { EntityCache } from './entity-cache';
-import { changesVisibility, EventStreamService, StreamEvent } from './event-stream.service';
+import {
+  changesVisibility,
+  EventStreamService,
+  ofTenant,
+  StreamEvent,
+} from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -251,6 +256,11 @@ export class TicketsService {
   }
 
   private react(event: StreamEvent): void {
+    // The person-level stream carries the events of every tenant of the person (docs/adr/0054
+    // D1); this service holds the tickets of the tenant the pages show.
+    if (!ofTenant(event, this.session.tenant())) {
+      return;
+    }
     // A project's restriction, its access list or the person's own role may have hidden a project
     // or shown one: what is shown is fetched again, and a ticket the person no longer sees goes.
     // Any other change of a membership leaves the tickets as they are.
@@ -263,13 +273,7 @@ export class TicketsService {
       this.reloadLists();
       return;
     }
-    // The person-level stream also names tickets of the person's other tenants (docs/adr/0054 D1);
-    // this service holds the tickets of the tenant the pages show.
-    if (
-      event.name === 'membership.changed' ||
-      event.name === 'inbox.changed' ||
-      splitKey(event.key).tenant !== this.session.tenant()
-    ) {
+    if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
       return;
     }
     const held = this.cache.value(event.key);

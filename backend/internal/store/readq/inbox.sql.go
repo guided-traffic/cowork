@@ -196,35 +196,3 @@ func (q *Queries) ListInbox(ctx context.Context, arg ListInboxParams) ([]ListInb
 	}
 	return items, nil
 }
-
-const seesPublishedTicket = `-- name: SeesPublishedTicket :one
-SELECT coalesce(EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = $1 AND m.user_id = app_user_id())
-                AND app_ticket_visible($2::uuid, $3::boolean,
-                                       $4::uuid, $5::uuid), false)::boolean AS visible
-`
-
-type SeesPublishedTicketParams struct {
-	TenantID     uuid.UUID
-	ProjectID    uuid.UUID
-	Confidential bool
-	AssigneeID   *uuid.UUID
-	ReporterID   uuid.UUID
-}
-
-// Whether the caller may hear a person-level event of another tenant than its
-// stream's (docs/adr/0054 D1, D3): still a member of the event's tenant, and
-// able to see the ticket the event names by the facts it carries. The
-// predicate answers NULL, not false, for a confidential ticket without an
-// assignee — enough for a WHERE, not for an answer.
-func (q *Queries) SeesPublishedTicket(ctx context.Context, arg SeesPublishedTicketParams) (bool, error) {
-	row := q.db.QueryRow(ctx, seesPublishedTicket,
-		arg.TenantID,
-		arg.ProjectID,
-		arg.Confidential,
-		arg.AssigneeID,
-		arg.ReporterID,
-	)
-	var visible bool
-	err := row.Scan(&visible)
-	return visible, err
-}

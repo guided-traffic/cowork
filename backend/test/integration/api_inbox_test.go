@@ -362,10 +362,11 @@ func (s *stream) until(t *testing.T, match func(sse) bool) (before []sse, found 
 }
 
 // docs/adr/0054 D1, D2, D3: the person-level stream tells the unread count
-// when it opens and when the inbox changes, and carries the questions asked of
-// the person in their other tenants, without an id — and nothing of another
-// person, of a tenant the person left, of a project restricted away from them
-// or of a confidential ticket they cannot see.
+// when it opens and when the inbox changes, and carries the events of the
+// person's other tenants that each tenant's filter admits, with their ids — a
+// question asked of the person or of another — and nothing of a tenant the
+// person left, of a project restricted away from them or of a confidential
+// ticket they cannot see.
 func TestThePersonLevelStream(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -407,16 +408,19 @@ func TestThePersonLevelStream(t *testing.T) {
 	e.send(t, memberB, http.StatusCreated, http.MethodPost, b1Path+"/questions", map[string]any{"question": "yes?", "asked_of": e.Both})
 	_, m = me.until(t, func(m sse) bool { return m.Event == "question.changed" })
 	assert.Equal(t, b1.Key, eventKey(t, m))
-	assert.Empty(t, m.ID, "another tenant's event moves no replay point")
+	assert.NotEmpty(t, m.ID, "every event carries its id: a reconnect replays across the person's tenants")
 	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
 	assert.Equal(t, 2, unreadOf(t, m))
 
-	// What it must not carry: a question asked of another person; the acts of
-	// questions asked of the person on a ticket of a project restricted away
-	// from them and on a confidential ticket. The stream judges its events in
-	// order, so a sentinel in A says each was judged while the person still
-	// belonged to B.
+	// A question asked of another person in B is an event of B like any other.
 	e.send(t, memberB, http.StatusCreated, http.MethodPost, b1Path+"/questions", map[string]any{"question": "you?", "asked_of": other})
+	_, m = me.until(t, func(m sse) bool { return m.Event == "question.changed" })
+	assert.Equal(t, b1.Key, eventKey(t, m))
+
+	// What it must not carry: the acts of questions asked of the person on a
+	// ticket of a project restricted away from them and on a confidential
+	// ticket. The stream judges its events in order, so a sentinel in A says
+	// each was judged while the person still belonged to B.
 	e.send(t, memberB, http.StatusOK, http.MethodPatch, h1Path+"/questions/1", map[string]any{"question": "hidden, edited?"}, "If-Match", `"1"`)
 	e.send(t, memberB, http.StatusOK, http.MethodPatch, c1Path+"/questions/1", map[string]any{"question": "secret, edited?"}, "If-Match", `"1"`)
 	a1 := e.fileIn(t, admin, e.SlugA, "ALPHA", task("a1", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
@@ -424,19 +428,36 @@ func TestThePersonLevelStream(t *testing.T) {
 	assert.Equal(t, a1.Key, eventKey(t, sentinel))
 	assert.NotEmpty(t, sentinel.ID, "the stream's own tenant keeps its ids")
 	for _, m := range before {
-		assert.NotEqual(t, "question.changed", m.Event, "nothing of another person, a hidden project or a confidential ticket: %v", m)
+		assert.NotEqual(t, "question.changed", m.Event, "nothing of a hidden project or a confidential ticket: %v", m)
 	}
 	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
 	assert.Equal(t, 3, unreadOf(t, m), "A's assignment beside B's two")
 
-	// Nor, once the person left B, the act of a question asked of them there.
-	require.NoError(t, f.Exec(e.ctx, "DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2", e.B, e.Both))
+	// Nor, once the person left B, the act of a question asked of them there: an
+	// administrator of B removes their grant, and the stream hears that act —
+	// the person's own — and nothing of B after it.
+	adminB, err := f.Person(e.ctx, uniqueSlug("admin-b"), "Admin B")
+	require.NoError(t, err)
+	require.NoError(t, f.Member(e.ctx, e.B, adminB, "admin"))
+	adminBToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: adminB, Scope: "admin"})
+	require.NoError(t, err)
+	e.send(t, caller{Token: adminBToken}, http.StatusNoContent, http.MethodDelete,
+		"/api/v1/tenants/"+e.SlugB+"/members/"+e.Both.String()+"/grant", nil)
+	_, m = me.until(t, func(m sse) bool { return m.Event == "membership.changed" })
+	assert.JSONEq(t, `{"tenant":"`+e.SlugB+`","person_id":"`+e.Both.String()+`"}`, m.Data)
 	e.send(t, memberB, http.StatusOK, http.MethodPatch, b1Path+"/questions/1", map[string]any{"question": "after leaving?"}, "If-Match", `"1"`)
+	// Nor a later act of B that names the person: the removal of an access
+	// entry they left behind.
+	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) SELECT tenant_id, id, $2, 'member' FROM projects WHERE tenant_id = $1 AND key = 'BETA'",
+		e.B, e.Both))
+	e.send(t, caller{Token: adminBToken}, http.StatusNoContent, http.MethodDelete,
+		"/api/v1/tenants/"+e.SlugB+"/projects/BETA/access/"+e.Both.String(), nil)
 	a2 := e.fileIn(t, admin, e.SlugA, "ALPHA", task("a2", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
 	before, sentinel = me.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
 	assert.Equal(t, a2.Key, eventKey(t, sentinel))
 	for _, m := range before {
 		assert.NotEqual(t, "question.changed", m.Event, "nothing of a tenant left: %v", m)
+		assert.NotEqual(t, "membership.changed", m.Event, "nothing of a tenant left: %v", m)
 	}
 	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
 	assert.Equal(t, 2, unreadOf(t, m), "A's two; B's are the tenant's the person left")
@@ -452,7 +473,7 @@ func TestThePersonLevelStream(t *testing.T) {
 // tenant on the act that changes it, as any stream does, and goes on telling
 // its person's own events: a ticket filed in a project created after it opened
 // arrives at once, with the count it changes, and a question asked of the
-// person in another tenant still arrives without an id; the heartbeat, an hour
+// person in another tenant still arrives, with its id; the heartbeat, an hour
 // here, plays no part.
 func TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents(t *testing.T) {
 	e := newTicketEnv(t)
@@ -479,9 +500,136 @@ func TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents(t *testing.T) {
 	e.send(t, memberB, http.StatusCreated, http.MethodPost, b1Path+"/questions", map[string]any{"question": "yes?", "asked_of": e.Both})
 	_, m = me.until(t, func(m sse) bool { return m.Event == "question.changed" })
 	assert.Equal(t, b1.Key, eventKey(t, m))
-	assert.Empty(t, m.ID, "another tenant's event moves no replay point")
+	assert.NotEmpty(t, m.ID, "every event carries its id")
 	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
 	assert.Equal(t, 2, unreadOf(t, m))
+}
+
+// docs/adr/0054 D1, D3, D5: the person-level stream opened on tenant A carries
+// the events of B that B's filter admits — a ticket assigned to the person
+// there within a second, with an hour's heartbeat — and follows the person
+// into a tenant they are granted a role in at once; it carries nothing of a
+// project of B hidden from them or a confidential ticket of B they cannot see;
+// and a reconnect with the id of an event of A replays what B published
+// meanwhile.
+func TestThePersonLevelStreamSpansThePersonsTenants(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	srv := newAPI(t, withLogin, func(o *api.Options) { o.Heartbeat = time.Hour })
+	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	hidden, err := f.Project(e.ctx, e.B, "HIDDEN", "Hidden")
+	require.NoError(t, err)
+	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", hidden))
+	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')",
+		e.B, hidden, e.MemberB))
+	path := "/api/v1/tenants/" + e.SlugA + "/events?me=true"
+	me := e.openStreamAt(t, srv, both, path, "")
+	_, _ = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
+
+	start := time.Now()
+	assigned := e.fileIn(t, memberB, e.SlugB, "BETA", task("assigned in B", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
+	m, ok := me.next(t, time.Second)
+	require.True(t, ok, "a ticket assigned to the person in B arrives on the stream opened on A within a second")
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, "ticket.changed", m.Event)
+	assert.Equal(t, assigned.Key, eventKey(t, m))
+	assert.NotEmpty(t, m.ID)
+	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
+	assert.Equal(t, 1, unreadOf(t, m))
+
+	// Never: a ticket of a project of B hidden from the person, a confidential
+	// ticket of B they cannot see. A sentinel in A ends the wait.
+	notSeen := map[string]bool{}
+	notSeen[e.fileIn(t, memberB, e.SlugB, "HIDDEN", task("hidden")).Key] = true
+	notSeen[e.fileIn(t, memberB, e.SlugB, "BETA", task("secret", func(b *apigen.TicketCreate) {
+		b.Security, b.Threat = apigen.SecurityClassLive, ptr("leak")
+	})).Key] = true
+	sentinel := e.fileIn(t, admin, e.SlugA, "ALPHA", task("sentinel"))
+	before, last := me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && eventKey(t, m) == sentinel.Key })
+	for _, m := range before {
+		if m.Event == "ticket.changed" {
+			assert.False(t, notSeen[eventKey(t, m)], "nothing hidden from the person: %v", m)
+		}
+	}
+
+	// A reconnect with the id of A's sentinel replays what B published meanwhile.
+	me.Close()
+	missed := e.fileIn(t, memberB, e.SlugB, "BETA", task("while away"))
+	again := e.openStreamAt(t, srv, both, path, last.ID)
+	_, m = again.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
+	assert.Equal(t, missed.Key, eventKey(t, m), "the replay merges the person's tenants")
+
+	// Granted a role in a tenant C, the person's stream follows C at once.
+	c, err := f.Tenant(e.ctx, uniqueSlug("tenant-c"), "Tenant C")
+	require.NoError(t, err)
+	slugC := scalar[string](t, `SELECT slug FROM tenants WHERE id = $1`, c)
+	_, err = f.Project(e.ctx, c, "GAMMA", "Gamma")
+	require.NoError(t, err)
+	adminC, err := f.Person(e.ctx, uniqueSlug("admin-c"), "Admin C")
+	require.NoError(t, err)
+	require.NoError(t, f.Member(e.ctx, c, adminC, "admin"))
+	require.NoError(t, f.Account(e.ctx, adminC, testPassword, c, false))
+	adminCToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: adminC, Scope: "admin"})
+	require.NoError(t, err)
+	browser := srv.browser(t)
+	browser.mustLogin(usernameOf(t, adminC), testPassword)
+	res := browser.request(http.MethodPost, "/api/v1/tenants/"+slugC+"/members", map[string]string{"person": usernameOf(t, e.Both), "role": "member"})
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	_, m = again.until(t, func(m sse) bool { return m.Event == "membership.changed" })
+	assert.JSONEq(t, `{"tenant":"`+slugC+`","person_id":"`+e.Both.String()+`"}`, m.Data, "the person hears their grant")
+	start = time.Now()
+	res = srv.do(t, caller{Token: adminCToken}, http.MethodPost, "/api/v1/tenants/"+slugC+"/projects/GAMMA/tickets", task("in C"))
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	inC := decode[apigen.Ticket](t, res)
+	_, m = again.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
+	assert.Equal(t, inC.Key, eventKey(t, m), "a tenant the person joined, without a heartbeat")
+	assert.Less(t, time.Since(start), time.Second)
+}
+
+// docs/adr/0054 D3, D5: the heartbeat checks every membership a person-level
+// stream follows — a change made in the database past the API, which no act
+// announces: a tenant the person left is followed no more, one they joined is.
+func TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	srv := newAPI(t, func(o *api.Options) { o.Heartbeat = 100 * time.Millisecond })
+	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	me := e.openStreamAt(t, srv, both, "/api/v1/tenants/"+e.SlugA+"/events?me=true", "")
+	beats := func(n int) {
+		t.Helper()
+		for seen := 0; seen < n; {
+			select {
+			case m := <-me.Messages:
+				if m.Comment == "heartbeat" {
+					seen++
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("no heartbeat")
+			}
+		}
+	}
+
+	require.NoError(t, f.Exec(e.ctx, "DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2", e.B, e.Both))
+	c, err := f.Tenant(e.ctx, uniqueSlug("tenant-c"), "Tenant C")
+	require.NoError(t, err)
+	_, err = f.Project(e.ctx, c, "GAMMA", "Gamma")
+	require.NoError(t, err)
+	require.NoError(t, f.Member(e.ctx, c, e.Both, "member"))
+	beats(2)
+
+	left := e.fileIn(t, memberB, e.SlugB, "BETA", task("after leaving"))
+	slugC := scalar[string](t, `SELECT slug FROM tenants WHERE id = $1`, c)
+	joined := e.fileIn(t, both, slugC, "GAMMA", task("after joining"))
+	sentinel := e.fileIn(t, admin, e.SlugA, "ALPHA", task("sentinel"))
+	before, _ := me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && eventKey(t, m) == sentinel.Key })
+	keys := []string{}
+	for _, m := range before {
+		if m.Event == "ticket.changed" {
+			keys = append(keys, eventKey(t, m))
+		}
+	}
+	assert.NotContains(t, keys, left.Key, "a tenant the person left")
+	assert.Contains(t, keys, joined.Key, "a tenant the person joined")
 }
 
 // docs/adr/0035 D3: a token restricted to a tenant hears nothing of another on

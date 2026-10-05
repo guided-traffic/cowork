@@ -528,7 +528,8 @@ channel `cowork_events` inside the act's transaction, so it is delivered at comm
 on a rollback ([`store/notify.go`](../../backend/internal/store/notify.go)). The notification
 carries the audit row's id, the tenant, the project, the entity, the action, the ticket's key
 and version, and the inputs of the confidential rule: the flag, the assignee and the reporter.
-One connection per replica listens and hands each notification to the streams of its tenant.
+One connection per replica listens and hands each notification to the streams that follow its
+tenant, each judging it by its filter of that tenant.
 
 A stream (`GET …/events`) passes authentication and the boundary like any route and computes
 its filter when it connects ([`api/events.go`](../../backend/internal/api/events.go)
@@ -559,14 +560,17 @@ person and no project: the token knows nothing of the tenant beyond its project
 
 The filter follows the person. An act that can change what a stream admits — a project
 created, a grant, a derived membership, a mapping, a project's restriction, an entry of an access
-list — makes every stream of the tenant compute its filter again, with the person's role as the
-boundary reads it then and the projects they see, before it lets the next event through: until it
-has, the hub hands the stream every event unjudged and the stream judges them itself, so neither a
-project the person gains nor one they lose waits for a heartbeat (`Hub.Changes`, `Hub.Refilter`,
-`refilter` in [`api/events.go`](../../backend/internal/api/events.go);
+list — makes every stream that follows the tenant compute its filter of the tenant again, with the
+person's role as the boundary reads it then and the projects they see, before it lets the tenant's
+next event through: until it has, the hub hands the stream every event of the tenant unjudged and
+the stream judges them itself, so neither a project the person gains nor one they lose waits for a
+heartbeat (`Hub.Changes`, `Hub.Refilter`, `refilter` in
+[`api/events.go`](../../backend/internal/api/events.go);
 `TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters`,
 `TestTheStreamAdmitsWhatAnActOpensAtOnce`). A project's creation is published for that and sent to
-no client. A person the boundary no longer admits at that moment loses the stream. Every twenty
+no client. A person the boundary no longer admits at that moment loses the stream opened on that
+tenant; a person-level stream stops following another tenant they left
+([below](#the-person-level-stream)). Every twenty
 seconds the heartbeat checks the token and the membership again ([tokens.md](tokens.md) H-7) and
 recomputes the filter too, which catches a change made in the database past the API within one
 heartbeat (`TestStreamFollowsAccess`).
@@ -636,22 +640,52 @@ a log is [trust-boundaries.md](trust-boundaries.md#h-14) H-14; what its timing m
 
 ## The person-level stream
 
-`GET …/events?me=true` is a tenant's stream that also carries the person's own events across their
-tenants ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D1, [events.md](../developer/events.md#the-person-level-stream)): `inbox.changed` with the unread
-count — counted per tenant, as the inbox counts, so a notification the person no longer sees does not
-count — and the `question.changed` of a question asked of the person in another of their tenants. The
-hub hands an inbox change only to its person's person-level streams, and a question's act only to
-those of the person it is asked of; the stream then judges another tenant's event before it writes it:
-a token restricted to another tenant never hears it, and otherwise the person must still belong to the
-event's tenant and see its ticket by the facts the event carries — the project, a project-restricted
-token's restriction, and the confidential rule — read in that tenant's transaction as the caller
-([`api/events.go`](../../backend/internal/api/events.go) `writeStreamed`). It carries no other event
-of another tenant. `TestThePersonLevelStream` asserts what never arrives: another person's question,
-the questions on a project restricted away from the person and on a confidential ticket they are
-neither assignee nor reporter of, a question of a tenant they left; and
-`TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a tenant-restricted token hears nothing
-of another tenant and counts its own tenant's notifications only.
+`GET …/events?me=true` is the one stream that spans tenants: besides the person's unread count, it
+carries every event of every tenant the person belongs to that the filter of that tenant admits
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D3 as amended on 2026-10-05, [events.md](../developer/events.md#the-person-level-stream)). It is
+built the way the person-level lists are: the person's memberships are read first (`personTenants`),
+and the filter of each tenant is computed in a transaction of that tenant's own, bound to it and the
+caller — the person's role there, the projects they see there (`ListVisibleProjectIDs`), a
+project-restricted token's project — so an event of a tenant passes on the person-level stream exactly
+what it would pass on that tenant's own stream: its project among those the person sees there, the
+confidential rule with the person's role there, the audience of a membership event
+([`api/events.go`](../../backend/internal/api/events.go) `streamFilters`, `tenantFilter`). The hub
+judges an event by the filter of the event's tenant and no other ([`events/hub.go`](../../backend/internal/events/hub.go)
+`deliver`); the stream still sends keys and versions, never content.
+
+- **A token restricted to a tenant does not span.** Its person-level stream follows its tenant alone —
+  a token restricted to a project included, which is restricted to its project's tenant
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D3, `streamReq.span`).
+- **A role, not the global administrator's flag.** A tenant the person holds no role in is not
+  followed: a global administrator without a role there hears nothing of it, as the person-level
+  lists read nothing of it.
+- **Leaving.** An act that takes a tenant from the person — a grant removed, a membership derived
+  away — makes the stream compute that tenant's filter before the tenant's next event, find no
+  membership, and stop following it. The act itself names the person and reaches them
+  (`{"tenant": "<slug>", "person_id": …}`); nothing of the tenant after it does, a later act that
+  names them there — the removal of an access entry they left behind — included.
+- **Joining.** A membership act that names the person in a tenant the stream does not follow makes
+  the hub follow that tenant with an empty filter: every event of the tenant reaches the stream
+  unjudged until it has read the person's membership there and computed the real filter, and is
+  judged by that filter then, so nothing passes on the empty filter.
+- **The heartbeat** reads every membership again, which catches a membership removed or added in the
+  database past the API within one heartbeat ([tokens.md](tokens.md#h-7) H-7).
+- **The replay** after a reconnect covers the tenants the stream follows at the reconnect, each
+  through its filter as computed then: a tenant left is not replayed, and one joined meanwhile is
+  replayed from the reconnect's id on, under the person's sight there now.
+- **The count** is counted per tenant, as the inbox counts, so a notification the person no longer
+  sees does not count.
+
+`TestThePersonLevelStream` asserts what never arrives: a question on a project restricted away from the
+person, one on a confidential ticket they are neither assignee nor reporter of, and anything of a tenant
+after the act that took it from them; `TestThePersonLevelStreamSpansThePersonsTenants` that nothing of a
+project of another tenant hidden from them or of a confidential ticket there arrives, while a ticket
+assigned to them there does within a second; `TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream`
+the heartbeat's check; and `TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a
+tenant-restricted token hears nothing of another tenant and counts its own tenant's notifications only.
+What a person-level stream costs grows with the person's tenants — one transaction per tenant when it
+opens, at every heartbeat and on every act that changes what it admits of one.
 
 ## Time follows its own rule
 

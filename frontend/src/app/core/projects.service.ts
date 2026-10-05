@@ -11,7 +11,7 @@ import {
 import { Project, ProjectCreate, ProjectPatch } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';
-import { changesVisibility, EventStreamService } from './event-stream.service';
+import { changesVisibility, EventStreamService, ofTenant } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -59,6 +59,7 @@ export class ProjectsService {
           event.name === 'resync' ||
           event.name === 'poll' ||
           (event.name === 'membership.changed' &&
+            ofTenant(event, this.session.tenant()) &&
             changesVisibility(event, this.session.person()?.id))
         ) {
           refresh(this.projects, this.injector);

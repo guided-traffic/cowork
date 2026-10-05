@@ -82,7 +82,7 @@ export class AccessList {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed(inject(DestroyRef)))
       .subscribe((event) => {
-        if (changesMemberships(event)) {
+        if (changesMemberships(event, this.session.tenant())) {
           refresh(this.entries, this.injector);
         }
       });

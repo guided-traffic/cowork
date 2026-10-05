@@ -69,7 +69,7 @@ export class GroupMappingsService {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed())
       .subscribe((event) => {
-        if (changesMemberships(event)) {
+        if (changesMemberships(event, this.session.tenant())) {
           refresh(this.mappings, this.injector);
         }
       });

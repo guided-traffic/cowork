@@ -86,7 +86,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
      renderer, the sanitiser and the rendered texts of the ticket page are built)
    - T34 — the score beside the rank, and the rebalancing of the rank keys (the backlog's
      end-to-end path is built)
-   - T35 — next for me, the person-level pages following every tenant, the lists in the score's order
+   - T35 — next for me, the lists in the score's order
    - T36 — the mention in a comment, and the inbox's end-to-end path
    - T37 — the search's end-to-end check, and where "that tenant first" puts the other tenants (the
      search routes, the box and the results page are built)
