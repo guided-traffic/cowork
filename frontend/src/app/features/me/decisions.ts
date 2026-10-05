@@ -11,7 +11,7 @@ import { RouterLink } from '@angular/router';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
-import { listMyDecisions } from '../../api/functions';
+import { listMyDecisions } from '../../api/fn/me/list-my-decisions';
 import { Decision } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { followPages, personPageSize, PersonPages } from '../../core/inbox.service';

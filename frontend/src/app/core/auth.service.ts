@@ -1,6 +1,9 @@
 import { inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
-import { changeMyPassword, getAuthOptions, loginLocal, logout } from '../api/functions';
+import { getAuthOptions } from '../api/fn/auth/get-auth-options';
+import { loginLocal } from '../api/fn/auth/login-local';
+import { logout } from '../api/fn/auth/logout';
+import { changeMyPassword } from '../api/fn/me/change-my-password';
 import { LocalLoginResult, LogoutResult } from '../api/models';
 import { SessionService } from './session.service';
 

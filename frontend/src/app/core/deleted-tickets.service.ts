@@ -1,7 +1,9 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { listDeletedTickets, purgeTicket, restoreTicket } from '../api/functions';
+import { listDeletedTickets } from '../api/fn/tickets/list-deleted-tickets';
+import { purgeTicket } from '../api/fn/tickets/purge-ticket';
+import { restoreTicket } from '../api/fn/tickets/restore-ticket';
 import { DeletedTicket, Ticket } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { changesExistence, EventStreamService, StreamEvent } from './event-stream.service';

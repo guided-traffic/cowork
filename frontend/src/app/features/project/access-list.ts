@@ -10,7 +10,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../../api/api';
-import { listProjectAccess, removeProjectAccess, setProjectAccess } from '../../api/functions';
+import { listProjectAccess } from '../../api/fn/projects/list-project-access';
+import { removeProjectAccess } from '../../api/fn/projects/remove-project-access';
+import { setProjectAccess } from '../../api/fn/projects/set-project-access';
 import { ProjectAccessEntry, ProjectAccessRole } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { changesMemberships, EventStreamService } from '../../core/event-stream.service';

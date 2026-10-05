@@ -15,7 +15,7 @@ import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Api } from '../../api/api';
-import { getAttachmentUsage } from '../../api/functions';
+import { getAttachmentUsage } from '../../api/fn/attachments/get-attachment-usage';
 import { AttachmentUsage } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { EventStreamService, ofTenant, StreamEvent } from '../../core/event-stream.service';

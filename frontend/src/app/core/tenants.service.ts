@@ -1,6 +1,6 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { Api } from '../api/api';
-import { createTenant } from '../api/functions';
+import { createTenant } from '../api/fn/tenants/create-tenant';
 import { Tenant, TenantCreate } from '../api/models';
 import { refresh } from './refresh';
 import { SessionService } from './session.service';

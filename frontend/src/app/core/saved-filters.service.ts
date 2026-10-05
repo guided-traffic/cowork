@@ -1,12 +1,10 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import {
-  createSavedFilter,
-  deleteSavedFilter,
-  listSavedFilters,
-  updateSavedFilter,
-} from '../api/functions';
+import { createSavedFilter } from '../api/fn/filters/create-saved-filter';
+import { deleteSavedFilter } from '../api/fn/filters/delete-saved-filter';
+import { listSavedFilters } from '../api/fn/filters/list-saved-filters';
+import { updateSavedFilter } from '../api/fn/filters/update-saved-filter';
 import { SavedFilter, SavedFilterParameters, SavedFilterPatch } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';

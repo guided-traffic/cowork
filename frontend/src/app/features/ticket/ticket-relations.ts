@@ -9,17 +9,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../../api/api';
-import {
-  getTicketBody,
-  listActivity,
-  listAttachments,
-  listComments,
-  listInterest,
-  listPrerequisites,
-  listQuestions,
-  listTicketLinks,
-  listTicketTime,
-} from '../../api/functions';
+import { listAttachments } from '../../api/fn/attachments/list-attachments';
+import { listActivity } from '../../api/fn/comments/list-activity';
+import { listComments } from '../../api/fn/comments/list-comments';
+import { listQuestions } from '../../api/fn/questions/list-questions';
+import { getTicketBody } from '../../api/fn/tickets/get-ticket-body';
+import { listInterest } from '../../api/fn/tickets/list-interest';
+import { listPrerequisites } from '../../api/fn/tickets/list-prerequisites';
+import { listTicketLinks } from '../../api/fn/tickets/list-ticket-links';
+import { listTicketTime } from '../../api/fn/time/list-ticket-time';
 import { PrerequisiteTree, TicketBody as RenderedBody } from '../../api/models';
 import { ConditionalPages, PageFetcher } from '../../core/conditional';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';

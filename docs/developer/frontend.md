@@ -336,8 +336,7 @@ page's lazy chunk, and draw on a canvas, which cannot take a `light-dark()` toke
 would have to be resolved from the computed style and the chart drawn again on a change of scheme.
 Nine tiles of counts and short series do not need it. The page is a lazy chunk of its own, about
 26 kB; what it puts into the initial bundle is its route and the navigation's match for *Overview*
-— 1,041,418 bytes against the 1,048,576 of the budget, 386 more than the branch it was merged with,
-`make frontend-build` on 2026-10-05.
+— 386 bytes, `make frontend-build` on 2026-10-05.
 
 **Live.** The page's resource is `DashboardService`'s: an act on a ticket or a question of the
 tenant it shows — a ticket's deletion and restoration among them —, a change of who sees a project
@@ -1014,6 +1013,15 @@ difference ([ADR 0046] D3). After an API change: `make generate` (backend), then
 `make frontend-generate`, then commit both. The root URL is `''` (`provideApiConfiguration('')`):
 the generated paths already start with `/api/v1`, and the default `'/'` would make them
 protocol-relative (`//api/v1/…`).
+
+**Import an operation from its own file**, `api/fn/<tag>/<operation>`, never from the barrel
+`api/functions`; `make frontend-lint` refuses the barrel (`no-restricted-imports` in
+[`eslint.config.js`](../../frontend/eslint.config.js)). Every generated function assigns its `PATH`
+after its declaration, a side effect that keeps a module in the bundle once anything reaches it, so
+one eager service importing the barrel put every operation of the API into the initial bundle —
+about 50 kB of it, measured on 2026-10-05 ([ADR 0052] D6's budget). With the files imported one by
+one the initial bundle holds the few operations the shell and its services call: 984,618 bytes of
+JavaScript on 2026-10-05, about 7 kB of it operations.
 
 Every request carries `X-Requested-With: cowork` ([`http.ts`](../../frontend/src/app/core/http.ts),
 [ADR 0037] D4), and a `401` from `/api/` sends the browser to `/login?return=<where it was>`; the

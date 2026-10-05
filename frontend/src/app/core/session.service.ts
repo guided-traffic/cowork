@@ -12,7 +12,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { getMe, listTenants } from '../api/functions';
+import { getMe } from '../api/fn/me/get-me';
+import { listTenants } from '../api/fn/tenants/list-tenants';
 import { Me, Membership, Role, TenantSummary } from '../api/models';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { RELOAD } from './hard-navigation';

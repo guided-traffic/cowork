@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import { listTenantTokens, revokeTenantToken } from '../api/functions';
+import { listTenantTokens } from '../api/fn/tenants/list-tenant-tokens';
+import { revokeTenantToken } from '../api/fn/tenants/revoke-tenant-token';
 import { MemberTokenList } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { PerPage } from './table-pages';

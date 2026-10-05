@@ -1,7 +1,10 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { addMember, listMembers, removeMemberGrant, setMemberGrant } from '../api/functions';
+import { addMember } from '../api/fn/tenants/add-member';
+import { listMembers } from '../api/fn/tenants/list-members';
+import { removeMemberGrant } from '../api/fn/tenants/remove-member-grant';
+import { setMemberGrant } from '../api/fn/tenants/set-member-grant';
 import { Member, MemberList, Role } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { changesMemberships, EventStreamService } from './event-stream.service';

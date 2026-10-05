@@ -1,19 +1,17 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import {
-  addComment,
-  answerQuestion,
-  askQuestion,
-  editComment,
-  linkTickets,
-  listCommentRevisions,
-  removeInterest,
-  setInterest,
-  unlinkTickets,
-  updateQuestion,
-  withdrawComment,
-  withdrawQuestion,
-} from '../api/functions';
+import { addComment } from '../api/fn/comments/add-comment';
+import { editComment } from '../api/fn/comments/edit-comment';
+import { listCommentRevisions } from '../api/fn/comments/list-comment-revisions';
+import { withdrawComment } from '../api/fn/comments/withdraw-comment';
+import { answerQuestion } from '../api/fn/questions/answer-question';
+import { askQuestion } from '../api/fn/questions/ask-question';
+import { updateQuestion } from '../api/fn/questions/update-question';
+import { withdrawQuestion } from '../api/fn/questions/withdraw-question';
+import { linkTickets } from '../api/fn/tickets/link-tickets';
+import { removeInterest } from '../api/fn/tickets/remove-interest';
+import { setInterest } from '../api/fn/tickets/set-interest';
+import { unlinkTickets } from '../api/fn/tickets/unlink-tickets';
 import {
   Comment,
   CommentRevision,

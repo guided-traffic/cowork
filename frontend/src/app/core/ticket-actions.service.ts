@@ -1,19 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import {
-  createTicket,
-  deleteTicket,
-  listPrerequisites,
-  moveTicketRank,
-  overrideUrgency,
-  replaceTicketBody,
-  setConfidential,
-  sortProjectRank,
-  transitionTicket,
-  updateTicket,
-  withdrawUrgencyOverride,
-} from '../api/functions';
+import { createTicket } from '../api/fn/tickets/create-ticket';
+import { deleteTicket } from '../api/fn/tickets/delete-ticket';
+import { listPrerequisites } from '../api/fn/tickets/list-prerequisites';
+import { moveTicketRank } from '../api/fn/tickets/move-ticket-rank';
+import { overrideUrgency } from '../api/fn/tickets/override-urgency';
+import { replaceTicketBody } from '../api/fn/tickets/replace-ticket-body';
+import { setConfidential } from '../api/fn/tickets/set-confidential';
+import { sortProjectRank } from '../api/fn/tickets/sort-project-rank';
+import { transitionTicket } from '../api/fn/tickets/transition-ticket';
+import { updateTicket } from '../api/fn/tickets/update-ticket';
+import { withdrawUrgencyOverride } from '../api/fn/tickets/withdraw-urgency-override';
 import {
   ConfidentialSet,
   Ticket,

@@ -21,7 +21,7 @@ import { Select } from 'primeng/select';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
 import type { PaginatorState } from 'primeng/types/paginator';
-import { ListTenantTickets$Params } from '../../api/functions';
+import { ListTenantTickets$Params } from '../../api/fn/tickets/list-tenant-tickets';
 import { SavedFilter, SavedFilterParameters, Ticket } from '../../api/models';
 import { EFFORT } from '../../api/models/effort-array';
 import { MembersService } from '../../core/members.service';

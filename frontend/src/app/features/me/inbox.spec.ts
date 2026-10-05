@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { Subject } from 'rxjs';
 import { Api } from '../../api/api';
-import { listMyInbox } from '../../api/functions';
+import { listMyInbox } from '../../api/fn/me/list-my-inbox';
 import { Activity, InboxEntry, InboxList, Me } from '../../api/models';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { InboxService } from '../../core/inbox.service';

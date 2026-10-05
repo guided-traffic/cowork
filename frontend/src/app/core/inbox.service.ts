@@ -1,7 +1,9 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { listMyInbox, markMyInboxRead, markNotificationRead } from '../api/functions';
+import { listMyInbox } from '../api/fn/me/list-my-inbox';
+import { markMyInboxRead } from '../api/fn/me/mark-my-inbox-read';
+import { markNotificationRead } from '../api/fn/me/mark-notification-read';
 import { ConditionalPages } from './conditional';
 import { changesExistence, changesVisibility, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';

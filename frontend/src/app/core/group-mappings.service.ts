@@ -1,12 +1,10 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import {
-  createGroupMapping,
-  deleteGroupMapping,
-  listGroupMappings,
-  updateGroupMapping,
-} from '../api/functions';
+import { createGroupMapping } from '../api/fn/tenants/create-group-mapping';
+import { deleteGroupMapping } from '../api/fn/tenants/delete-group-mapping';
+import { listGroupMappings } from '../api/fn/tenants/list-group-mappings';
+import { updateGroupMapping } from '../api/fn/tenants/update-group-mapping';
 import { GroupMapping, Role } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';

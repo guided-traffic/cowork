@@ -12,7 +12,7 @@ import { RouterLink } from '@angular/router';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
-import { listMyInbox } from '../../api/functions';
+import { listMyInbox } from '../../api/fn/me/list-my-inbox';
 import { InboxEntry, TenantRef, TicketRef } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { followPages, InboxService, personPageSize, PersonPages } from '../../core/inbox.service';

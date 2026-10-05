@@ -1,13 +1,11 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import {
-  archiveProject,
-  createProject,
-  listProjects,
-  setProjectRestriction,
-  updateProject,
-} from '../api/functions';
+import { archiveProject } from '../api/fn/projects/archive-project';
+import { createProject } from '../api/fn/projects/create-project';
+import { listProjects } from '../api/fn/projects/list-projects';
+import { setProjectRestriction } from '../api/fn/projects/set-project-restriction';
+import { updateProject } from '../api/fn/projects/update-project';
 import { Project, ProjectCreate, ProjectPatch } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';

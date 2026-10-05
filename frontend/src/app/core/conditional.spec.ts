@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Api } from '../api/api';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { listProjects } from '../api/functions';
+import { listProjects } from '../api/fn/projects/list-projects';
 import { Project, ProjectList } from '../api/models';
 import { ConditionalPages } from './conditional';
 

@@ -9,7 +9,7 @@ import { MenuItem, MessageService } from 'primeng/api';
 import { Menu } from 'primeng/menu';
 import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
-import { ListProjectTickets$Params } from '../../api/functions';
+import { ListProjectTickets$Params } from '../../api/fn/tickets/list-project-tickets';
 import { Block, Problem, Project, Ticket, TicketState, Urgency } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';

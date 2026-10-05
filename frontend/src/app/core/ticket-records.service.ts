@@ -1,12 +1,10 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import {
-  bookTime,
-  editTimeEntry,
-  listTimeEntryRevisions,
-  uploadAttachment,
-  voidTimeEntry,
-} from '../api/functions';
+import { uploadAttachment } from '../api/fn/attachments/upload-attachment';
+import { bookTime } from '../api/fn/time/book-time';
+import { editTimeEntry } from '../api/fn/time/edit-time-entry';
+import { listTimeEntryRevisions } from '../api/fn/time/list-time-entry-revisions';
+import { voidTimeEntry } from '../api/fn/time/void-time-entry';
 import { Attachment, TimeEntry, TimeEntryPatch, TimeEntryRevision } from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';

@@ -1,6 +1,9 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { Api } from '../api/api';
-import { createMyToken, listMyTokens, listProjects, revokeMyToken } from '../api/functions';
+import { createMyToken } from '../api/fn/me/create-my-token';
+import { listMyTokens } from '../api/fn/me/list-my-tokens';
+import { revokeMyToken } from '../api/fn/me/revoke-my-token';
+import { listProjects } from '../api/fn/projects/list-projects';
 import { Project, Token, TokenCreate, TokenCreated } from '../api/models';
 import { refresh } from './refresh';
 import { tablePages } from './table-pages';

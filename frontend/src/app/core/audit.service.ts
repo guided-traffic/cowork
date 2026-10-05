@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import { listAudit, listAudit$Csv } from '../api/functions';
+import { listAudit } from '../api/fn/tenants/list-audit';
+import { listAudit$Csv } from '../api/fn/tenants/list-audit-csv';
 import { AuditAction, AuditList } from '../api/models';
 import { PerPage } from './table-pages';
 

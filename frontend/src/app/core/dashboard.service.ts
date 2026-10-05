@@ -1,7 +1,7 @@
 import { DestroyRef, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { getDashboard } from '../api/functions';
+import { getDashboard } from '../api/fn/dashboard/get-dashboard';
 import { Dashboard } from '../api/models';
 import { ConditionalPages } from './conditional';
 import {

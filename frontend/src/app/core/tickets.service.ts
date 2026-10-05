@@ -14,10 +14,9 @@ import { Api } from '../api/api';
 import {
   listProjectTickets,
   ListProjectTickets$Params,
-  listTenantTickets,
-  ListTenantTickets$Params,
-  resolveTicket,
-} from '../api/functions';
+} from '../api/fn/tickets/list-project-tickets';
+import { listTenantTickets, ListTenantTickets$Params } from '../api/fn/tickets/list-tenant-tickets';
+import { resolveTicket } from '../api/fn/tickets/resolve-ticket';
 import { Ticket, TicketList } from '../api/models';
 import { ConditionalPages, PageFetcher } from './conditional';
 import { EntityCache } from './entity-cache';

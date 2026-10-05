@@ -11,7 +11,7 @@ import { Select } from 'primeng/select';
 import { Subject } from 'rxjs';
 import type { Mock } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
-import { ListTenantTickets$Params } from '../../api/functions';
+import { ListTenantTickets$Params } from '../../api/fn/tickets/list-tenant-tickets';
 import { Member, Problem, Project, SavedFilter, Ticket, TicketList } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
