@@ -39,21 +39,6 @@ run in a browser.
    tenants* lists a second tenant's beside them for the person in both, a hit in a comment opens the
    ticket scrolled to that comment, and no content-security violation is reported, in Chromium and
    WebKit.
-2. Whatever Q1's answer changes in the results page and the box, with its tests and
-   [search.md](../developer/search.md#in-the-browser).
-
-## Open questions
-
-### Q1: Inside a tenant, does "that tenant first" mean the tenant's search with every tenant one click away, or one page with the tenant's hits on top and the other tenants' under them?
-
-The box inside a tenant opens that tenant's results; the other tenants are one link away
-(`/me/search`). The alternative is one page of two sections — the tenant's hits, then the other
-tenants' from `/me/search` with the tenant's own left out —, which shows everything at once but asks
-the server twice per page and pages the second section less evenly, since it filters a page of the
-union. Recommended: the built one — one list, one order, one cursor, and nothing of another client's
-tenant on the screen until the person asks for it.
-
-**Answer:** _open_
 
 ## Not verified
 
