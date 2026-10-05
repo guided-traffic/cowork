@@ -63,7 +63,9 @@ mention, and an agent writing through `cowork-mcp` must be able to mention as we
 - **(b) A Markdown link the UI writes into the text, `[@Sam Rivera](person:<id>)`.** One source:
   the text carries the mention, every person can be mentioned, an edit's mentions are the new
   text's; it needs a parser on the comment's path and a form the Markdown export and the rendering
-  of T33 must keep, and a link a person types by hand is a mention as well.
+  of T33 must keep — the rendering keeps a link only to an `http`, `https`, `mailto` or relative
+  address today, so `person:` would need its own rule —, and a link a person types by hand is a
+  mention as well.
 - **(c) A list of person ids beside the text, `{"body", "mentions": [...]}`.** The API reads no text:
   each id is checked like `asked_of` (a member who sees the ticket), every person can be mentioned,
   the UI's picker writes the name into the text and the id into the list, and the MCP tool takes the

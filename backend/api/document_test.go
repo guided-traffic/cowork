@@ -40,13 +40,15 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // chat's capabilities gives the person's agent access, which a token does not
 // give (docs/adr/0043 D5). The list of every tenant is a global
 // administrator's view across the installation's clients, which a token of
-// theirs does not get (docs/adr/0034 D2).
+// theirs does not get (docs/adr/0034 D2). Purging a deleted ticket is the one
+// irreversible act on a ticket, which a leaked token must not make either
+// (docs/adr/0024 D7 as amended 2026-10-05).
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true, "listTenants": true,
 	"createAccount": true, "resetAccountPassword": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
 	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true, "stopChatTurns": true,
-	"setMyChat": true,
+	"setMyChat": true, "purgeTicket": true,
 }
 
 // The document is part of the security documentation (docs/adr/0046 D8):

@@ -48,7 +48,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` (one file per installation and binding under the user's cache directory) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
-| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
+| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
 | [`mcpserver/server.go`](../../backend/internal/mcpserver/server.go) | `New(Options)`: the server, its `Instructions`, each tool with its schema, its described limits and its annotations; a handler that learns the client's name, asks `Ready` and runs the tool |
 | [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup` |
 | [`cmd/cowork-mcp/main.go`](../../backend/cmd/cowork-mcp/main.go) | The linker's variables, the signal context, standard input for a hook when it is not a terminal |
@@ -83,7 +83,11 @@ func watchTool() Tool {
   failure: `check` turns an answer other than the wanted status into an `APIError`, rendered
   with the API's code, its message, the fields it named and — for `agent_forbidden` — that a
   refusal is the API's no; `usage` is a call the tool refuses itself, a key it cannot resolve; a
-  `textError` (the `api` tool) is the answer as it is.
+  `textError` (the `api` tool) is the answer as it is. A deleted ticket is a `404` to every tool, as
+  a missing one is, and no tool deletes: through `api`, the deletion, the restoration and the purge
+  meet the hard-off rule `deleting, restoring or purging` with any token
+  ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+  D7; `TestTheToolsNeverDeleteAndMissADeletedTicket`).
 - **A creating `POST`** sends `IdempotencyKey: s.key()`, from the session's `NewKey` — a fresh
   UUIDv7 per act in `cowork-mcp`, a key derived from the conversation and the call in the chat; a
   write that overwrites reads the ticket first and sends its `ETag` in `If-Match`; a transition sends

@@ -66,16 +66,54 @@ describe('changesDashboard', () => {
     }
   });
 
-  it('reloads when who sees a project may have changed, and not on another membership act', () => {
-    const membership = (keys: object): StreamEvent => ({
-      name: 'membership.changed',
-      id: 'e',
-      ...keys,
-    });
+  it('reloads on the deletion and the restoration of a ticket of the tenant shown', () => {
+    for (const kind of ['deleted', 'restored', 'purged']) {
+      const event: StreamEvent = {
+        name: 'ticket.changed',
+        id: 'e',
+        key: 'acme/ALPHA-1',
+        version: 3,
+        kind,
+      };
+      expect(changesDashboard(event, 'acme', 'p1')).toBe(true);
+    }
+  });
+
+  const membership = (keys: object): StreamEvent => ({
+    name: 'membership.changed',
+    id: 'e',
+    ...keys,
+  });
+
+  it('reloads when who sees a project of the tenant may have changed, and not on another membership act', () => {
+    expect(changesDashboard(membership({ tenant: 'acme', projectId: 'x' }), 'acme', 'p1')).toBe(
+      true,
+    );
+    expect(changesDashboard(membership({ tenant: 'acme', personId: 'p1' }), 'acme', 'p1')).toBe(
+      true,
+    );
+    expect(changesDashboard(membership({ tenant: 'acme', personId: 'p2' }), 'acme', 'p1')).toBe(
+      false,
+    );
+    expect(changesDashboard(membership({ tenant: 'acme', mappingId: 'm' }), 'acme', 'p1')).toBe(
+      false,
+    );
+  });
+
+  it('leaves every event of another tenant of the person alone (docs/adr/0054 D1)', () => {
+    expect(changesDashboard(ticketEvent('ticket.changed', 'other/ALPHA-1'), 'acme', 'p1')).toBe(
+      false,
+    );
+    expect(changesDashboard(membership({ tenant: 'other', projectId: 'x' }), 'acme', 'p1')).toBe(
+      false,
+    );
+    expect(changesDashboard(membership({ tenant: 'other', personId: 'p1' }), 'acme', 'p1')).toBe(
+      false,
+    );
+  });
+
+  it('takes a membership event without its tenant, from a server before it, for the tenant shown', () => {
     expect(changesDashboard(membership({ projectId: 'x' }), 'acme', 'p1')).toBe(true);
-    expect(changesDashboard(membership({ personId: 'p1' }), 'acme', 'p1')).toBe(true);
-    expect(changesDashboard(membership({ personId: 'p2' }), 'acme', 'p1')).toBe(false);
-    expect(changesDashboard(membership({ mappingId: 'm' }), 'acme', 'p1')).toBe(false);
   });
 
   it('leaves the unread count alone', () => {
@@ -190,6 +228,19 @@ describe('DashboardService', () => {
 
     stream.next(ticketEvent('comment.changed', 'acme/ALPHA-1'));
     stream.next(ticketEvent('ticket.changed', 'other/ALPHA-1'));
+    await vi.advanceTimersByTimeAsync(dashboardReloadDelay * 2);
+    await settle();
+
+    expect(pending()).toEqual([]);
+  });
+
+  it('does not load again for an event of another tenant of the person', async () => {
+    await load(open());
+
+    stream.next(ticketEvent('ticket.changed', 'other/ALPHA-1'));
+    stream.next(ticketEvent('question.changed', 'other/ALPHA-2'));
+    stream.next({ name: 'membership.changed', id: 'e', tenant: 'other', projectId: 'x' });
+    stream.next({ name: 'membership.changed', id: 'e', tenant: 'other', personId: 'p1' });
     await vi.advanceTimersByTimeAsync(dashboardReloadDelay * 2);
     await settle();
 

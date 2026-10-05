@@ -24,6 +24,15 @@ importer, D6's sanitiser with the first rendered Markdown. *(2026-10-04.)* In th
 body is edited as Markdown and replaced as a whole over the version its editor began with
 ([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
 D3), and the asker edits an open question's text; the body is still shown as text.
+*(2026-10-05.)* D6 built: the server renders the body, a comment, a question's options and its answer
+— goldmark parses, the tree is rewritten, bluemonday holds the HTML to an allow-list
+([`internal/richtext`](../../backend/internal/richtext/richtext.go)) —; raw HTML is shown as the text
+it is, a link keeps an `http`, `https`, `mailto` or relative address and carries
+`rel="noopener noreferrer nofollow"` — D6's `noopener` and two more —, an image shows only as a raster
+attachment of the same ticket (ADR 0016 D7). The body is answered on `GET …/body`, beside the Markdown
+elsewhere; the detail page shows it through Angular's own sanitiser. The library and the allow-list,
+a test fixture as D6 asks, are recorded on [docs/security/rendered-markdown.md](../security/rendered-markdown.md),
+as the residual risk below foresaw.
 
 ## Context
 

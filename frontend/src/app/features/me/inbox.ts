@@ -22,6 +22,7 @@ import { SessionService } from '../../core/session.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { StateBadge } from '../../shared/badges';
 import { ago, Clock, count } from '../../shared/time';
+import { changesExistence } from '../../core/event-stream.service';
 import { reloadOn, shortKey, ticketRoute } from './person-list';
 
 /** The notifications of one ticket, newest first (docs/adr/0020 D1). */
@@ -143,7 +144,7 @@ export class Inbox {
   });
 
   constructor() {
-    reloadOn(this.list, (event) => event.name === 'inbox.changed');
+    reloadOn(this.list, (event) => event.name === 'inbox.changed' || changesExistence(event));
   }
 
   protected ago(iso: string): string {

@@ -10,14 +10,17 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ButtonDirective } from 'primeng/button';
 import { Textarea } from 'primeng/textarea';
-import { Ticket } from '../../api/models';
+import { TicketBody as RenderedBody, Ticket } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { ConflictNote } from '../../shared/conflict-note';
+import { RenderedText } from '../../shared/rendered-text';
 
 /**
- * The ticket's description: its body, the current state, shown as text and edited as Markdown
- * (docs/adr/0011 D1). Saving replaces it as a whole with `replaceTicketBody`, over the version the
+ * The ticket's description: its body, the current state, shown as the server rendered it and edited
+ * as Markdown (docs/adr/0011 D1, D6). The rendering is the page's ({@link TicketRelations}); while
+ * it is not the rendering of the body the cache holds — loading, failed, or of an older body — the
+ * body is shown as text. Saving replaces it as a whole with `replaceTicketBody`, over the version the
  * editing began with (docs/adr/0050 D3): a change of another field meanwhile is written over at
  * once, a change of the body is shown in the editor, which asks whether to write over it or to take
  * the new body and go on from there. The editor belongs to the ticket it was opened on and closes
@@ -26,7 +29,7 @@ import { ConflictNote } from '../../shared/conflict-note';
 @Component({
   selector: 'app-ticket-body',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, ConflictNote, FormsModule, Textarea],
+  imports: [ButtonDirective, ConflictNote, FormsModule, RenderedText, Textarea],
   template: `
     <div class="head">
       <h2>Description</h2>
@@ -97,7 +100,11 @@ import { ConflictNote } from '../../shared/conflict-note';
         </div>
       </form>
     } @else if (ticket().body) {
-      <div class="body" data-testid="body">{{ ticket().body }}</div>
+      @if (html(); as shown) {
+        <app-rendered-text data-testid="body" [html]="shown" />
+      } @else {
+        <div class="body" data-testid="body">{{ ticket().body }}</div>
+      }
     } @else {
       <p class="muted">No description.</p>
     }
@@ -140,11 +147,18 @@ import { ConflictNote } from '../../shared/conflict-note';
 })
 export class TicketBody {
   readonly ticket = input.required<Ticket>();
+  /** The body as the server rendered it, when the page has it. */
+  readonly rendered = input<RenderedBody | undefined>();
 
   private readonly actions = inject(TicketActions);
   private readonly problems = inject(ProblemService);
 
   private readonly key = computed(() => this.ticket().key);
+  /** The rendered body, only while it is the rendering of the body shown. */
+  protected readonly html = computed(() => {
+    const rendered = this.rendered();
+    return rendered && rendered.body === this.ticket().body ? rendered.body_html : null;
+  });
   /** The ticket as the editing began; null while the body is not edited. Another ticket closes it. */
   protected readonly since = linkedSignal<string, Ticket | null>({
     source: this.key,

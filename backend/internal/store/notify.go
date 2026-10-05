@@ -37,10 +37,6 @@ type Notification struct {
 	Person   *uuid.UUID `json:"person,omitempty"`
 	Mapping  *uuid.UUID `json:"mapping,omitempty"`
 	Audience string     `json:"audience,omitempty"`
-	// AskedOf is the person a question's act is addressed to: its event
-	// reaches their person-level streams across their tenants
-	// (docs/adr/0054 D1); nil for every other act.
-	AskedOf *uuid.UUID `json:"asked_of,omitempty"`
 }
 
 // EntityMembership is the entity of every notification of a membership act:
@@ -91,24 +87,20 @@ func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) e
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil
 	}
-	facts, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
-	if err != nil {
-		return fmt.Errorf("read the published ticket: %w", err)
-	}
-	n := Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
-		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
-		Assignee: facts.AssigneeID, Reporter: facts.ReporterID}
-	if e.EntityType == entityQuestion && e.EntityID != uuid.Nil {
-		if n.AskedOf, err = w.QuestionAskedOf(ctx, writeq.QuestionAskedOfParams{TenantID: tenantID, ID: e.EntityID}); err != nil {
-			return fmt.Errorf("read whom the published question is asked of: %w", err)
+	facts := e.Published
+	if facts == nil {
+		row, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
+		if err != nil {
+			return fmt.Errorf("read the published ticket: %w", err)
 		}
+		facts = &TicketFacts{Project: row.ProjectID, Version: row.Version, Confidential: row.Confidential,
+			Assignee: row.AssigneeID, Reporter: row.ReporterID}
 	}
+	n := Notification{ID: id, Tenant: tenantID, Project: facts.Project, Entity: e.EntityType,
+		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
+		Assignee: facts.Assignee, Reporter: facts.Reporter}
 	return w.notify(ctx, n)
 }
-
-// entityQuestion is the entity of a question's acts, whose events reach the
-// person asked across their tenants.
-const entityQuestion = "question"
 
 func membershipNotification(tenantID, id uuid.UUID, e Event) Notification {
 	m := e.Membership

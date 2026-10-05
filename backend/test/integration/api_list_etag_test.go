@@ -28,21 +28,23 @@ func TestThePolledListsAnswerNotModified(t *testing.T) {
 	ticket := tenant + "/projects/ALPHA/tickets/" + strconv.Itoa(number)
 
 	lists := map[string]string{
-		"listProjects":      tenant + "/projects",
-		"listMembers":       tenant + "/members",
-		"listGroupMappings": tenant + "/group-mappings",
-		"listProjectAccess": tenant + "/projects/ALPHA/access",
-		"listComments":      ticket + "/comments",
-		"listActivity":      ticket + "/activity",
-		"listQuestions":     ticket + "/questions",
-		"listTicketLinks":   ticket + "/links",
-		"listInterest":      ticket + "/interest",
-		"listAttachments":   ticket + "/attachments",
-		"listTicketTime":    ticket + "/time-entries",
-		"listPrerequisites": ticket + "/prerequisites",
-		"listMyInbox":       "/api/v1/me/inbox",
-		"listMyAssigned":    "/api/v1/me/assigned",
-		"listMyDecisions":   "/api/v1/me/decisions",
+		"listProjects":       tenant + "/projects",
+		"listMembers":        tenant + "/members",
+		"listGroupMappings":  tenant + "/group-mappings",
+		"listProjectAccess":  tenant + "/projects/ALPHA/access",
+		"listComments":       ticket + "/comments",
+		"listActivity":       ticket + "/activity",
+		"listQuestions":      ticket + "/questions",
+		"listTicketLinks":    ticket + "/links",
+		"listInterest":       ticket + "/interest",
+		"listAttachments":    ticket + "/attachments",
+		"listTicketTime":     ticket + "/time-entries",
+		"listPrerequisites":  ticket + "/prerequisites",
+		"listMyInbox":        "/api/v1/me/inbox",
+		"listMyAssigned":     "/api/v1/me/assigned",
+		"listMyDecisions":    "/api/v1/me/decisions",
+		"listDeletedTickets": tenant + "/deleted-tickets",
+		"listSavedFilters":   tenant + "/filters",
 	}
 	for op, path := range lists {
 		t.Run(op, func(t *testing.T) {

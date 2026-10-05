@@ -766,6 +766,26 @@ describe('ProjectsService', () => {
       http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
     });
 
+    it.each<[string, StreamEvent]>([
+      [
+        "a restriction in another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
+      ],
+      [
+        "the person's own role in another of their tenants",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' },
+      ],
+    ])('leaves the projects alone on %s', async (_what, event) => {
+      stream.next(event);
+      await settle();
+      for (const request of http.match('/api/v1/me')) {
+        request.flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+      }
+      await settle();
+
+      http.expectNone((request) => request.method === 'GET' && request.url === listUrl);
+    });
+
     it('leaves the projects alone on an event that names a ticket', async () => {
       stream.next({ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' });
       await settle();

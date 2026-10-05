@@ -175,6 +175,18 @@ func ticketListScope(t tenantScope, projectKey string, order store.TicketOrder) 
 // parameter is named (docs/adr/0049 D4).
 func (s *Server) parseTicketQuery(ctx context.Context, q ticketQuery, op, scope string, order store.TicketOrder) (ticketListing, *problem.Error) {
 	l := ticketListing{page: store.TicketPage{Order: order}}
+	errs := s.parseFilters(principal(ctx).PersonID, q, &l)
+	errs = append(errs, pagingConflicts(q)...)
+	if len(errs) > 0 {
+		return l, &problem.Error{Code: problem.ValidationFailed, Detail: "the list request has values this route does not take", Errors: errs}
+	}
+	return l, s.paging(q, op, scope, &l)
+}
+
+// parseFilters checks the filters of docs/adr/0049 D1, D2 into l, me standing
+// for the person of the caller (D5), and returns every refused value, its
+// pointer query:<name> — the lists and a saved filter alike (D6, D7).
+func (s *Server) parseFilters(me uuid.UUID, q ticketQuery, l *ticketListing) []problem.FieldError {
 	var errs []problem.FieldError
 	vocab := func(name string, values *[]string, valid func(string) bool, set *store.ValueSet) {
 		for _, v := range deref(values) {
@@ -198,7 +210,6 @@ func (s *Server) parseTicketQuery(ctx context.Context, q ticketQuery, op, scope 
 	vocab("security", q.security, func(v string) bool { return apigen.SecurityClass(v).Valid() }, &f.Securities)
 	vocab("urgency", q.urgency, func(v string) bool { return apigen.Urgency(v).Valid() }, &f.Urgencies)
 	vocab("effort", q.effort, func(v string) bool { return apigen.Effort(v).Valid() }, &f.Efforts)
-	me := principal(ctx).PersonID
 	errs = append(errs, persons(fieldAssignee, q.assignee, me, true, &f.Assignees)...)
 	errs = append(errs, persons("reporter", q.reporter, me, false, &f.Reporters)...)
 	errs = append(errs, l.parentRefs(q.parent)...)
@@ -210,16 +221,12 @@ func (s *Server) parseTicketQuery(ctx context.Context, q ticketQuery, op, scope 
 	f.Blocked, f.HasOpenQuestions = q.blocked, q.hasOpenQuestions
 	if q.q != nil {
 		if s.h.opts.MaxQueryLength > 0 && utf8.RuneCountInString(*q.q) > s.h.opts.MaxQueryLength {
-			errs = append(errs, problem.FieldError{Pointer: "query:q",
+			errs = append(errs, problem.FieldError{Pointer: fieldQuery,
 				Message: "longer than " + strconv.Itoa(s.h.opts.MaxQueryLength) + " characters"})
 		}
 		f.Query = *q.q
 	}
-	errs = append(errs, pagingConflicts(q)...)
-	if len(errs) > 0 {
-		return l, &problem.Error{Code: problem.ValidationFailed, Detail: "the list request has values this route does not take", Errors: errs}
-	}
-	return l, s.paging(q, op, scope, &l)
+	return errs
 }
 
 // persons parses a person filter: an id, me, and — where the column may be

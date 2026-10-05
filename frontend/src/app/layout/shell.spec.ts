@@ -502,6 +502,75 @@ describe('Shell', () => {
     });
   });
 
+  describe('the search box (docs/adr/0018 D7)', () => {
+    async function submit(fixture: ComponentFixture<Shell>, page: HTMLElement, words: string) {
+      const box = page.querySelector('[data-testid="search-input"]') as HTMLInputElement;
+      box.value = words;
+      box.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      box.form?.dispatchEvent(new Event('submit', { cancelable: true }));
+      await fixture.whenStable();
+    }
+
+    it('searches the tenant the pages show, that tenant first', async () => {
+      const { fixture, page } = await render();
+
+      await submit(fixture, page, '  readyReplicas gate ');
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'search'], {
+        queryParams: { q: 'readyReplicas gate' },
+      });
+      const box = page.querySelector('[data-testid="search-input"]');
+      expect(box?.getAttribute('aria-label')).toBe('Search Acme Corp');
+    });
+
+    it('searches every tenant of the person outside a tenant, and in one a global administrator only oversees', async () => {
+      tenant.set(null);
+      const { fixture, page } = await render();
+      expect(page.querySelector('[data-testid="search-input"]')?.getAttribute('aria-label')).toBe(
+        'Search all your tenants',
+      );
+
+      await submit(fixture, page, 'gate');
+      expect(navigate).toHaveBeenLastCalledWith(['/me', 'search'], { queryParams: { q: 'gate' } });
+
+      tenant.set('acme');
+      oversight.set(true);
+      fixture.detectChanges();
+      await submit(fixture, page, 'gate');
+      expect(navigate).toHaveBeenLastCalledWith(['/me', 'search'], { queryParams: { q: 'gate' } });
+    });
+
+    it('searches nothing for a box of white space', async () => {
+      const { fixture, page } = await render();
+
+      await submit(fixture, page, '   ');
+
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('holds the words of the search the page shows', async () => {
+      const { fixture, page } = await render();
+      navigate.mockRestore();
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/search?q=flicker%20board');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect((page.querySelector('[data-testid="search-input"]') as HTMLInputElement).value).toBe(
+        'flicker board',
+      );
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/members');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect((page.querySelector('[data-testid="search-input"]') as HTMLInputElement).value).toBe(
+        '',
+      );
+    });
+  });
+
   describe('the live indicator', () => {
     it('shows nothing outside a tenant', async () => {
       const { page } = await render();
@@ -817,19 +886,33 @@ describe('Shell', () => {
   });
 
   describe('the navigation', () => {
-    it('links the overview, the members, the time and the settings of the tenant', async () => {
+    it('links the overview, the board, the members, the time and the settings of the tenant', async () => {
       const { page } = await render();
 
-      const links = ['nav-overview', 'nav-members', 'nav-time', 'nav-settings'].map((testId) => [
-        page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
-        page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
-      ]);
+      const links = ['nav-overview', 'nav-board', 'nav-members', 'nav-time', 'nav-settings'].map(
+        (testId) => [
+          page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
+          page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
+        ],
+      );
       expect(links).toEqual([
         ['/t/acme', 'Overview'],
+        ['/t/acme/board', 'Board'],
         ['/t/acme/members', 'Members'],
         ['/t/acme/time', 'Time'],
         ['/t/acme/settings', 'Settings'],
       ]);
+    });
+
+    // docs/adr/0018 D4: the tenant's board stands beside its front page.
+    it('links the board of the tenant right after its overview', async () => {
+      const { page } = await render();
+
+      expect(
+        page
+          .querySelector('[data-testid="nav-board"]')
+          ?.previousElementSibling?.getAttribute('data-testid'),
+      ).toBe('nav-overview');
     });
 
     it('lists the projects of the tenant, each linked to its board', async () => {
@@ -900,6 +983,19 @@ describe('Shell', () => {
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-group-mappings');
     });
 
+    it('offers the deleted tickets to an administrator of the tenant only (docs/adr/0024 D1)', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-deleted-tickets"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-deleted-tickets"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/deleted-tickets');
+      expect(link?.textContent).toBe('Deleted tickets');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-time');
+    });
+
     // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
     // administration — the members, the group mappings, the settings — and none of its work.
     it('offers a global administrator without a role the administration only', async () => {
@@ -939,6 +1035,7 @@ describe('Shell', () => {
       expect(page.querySelector('[data-testid="nav-members"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
+      expect(page.querySelector('[data-testid="nav-board"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
       expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
@@ -962,6 +1059,21 @@ describe('Shell', () => {
       await TestBed.inject(Router).navigateByUrl('/t/acme');
       await fixture.whenStable();
       expect(active()).toEqual(['nav-overview']);
+
+      // The dashboard keeps its filters in its address (docs/adr/0018 D6).
+      await TestBed.inject(Router).navigateByUrl(
+        '/t/acme?project=COW&from=2026-09-01&to=2026-09-30',
+      );
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-overview']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/board');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-board']);
+
+      await TestBed.inject(Router).navigateByUrl('/t/acme/board?project=COW');
+      await fixture.whenStable();
+      expect(active()).toEqual(['nav-board']);
 
       await TestBed.inject(Router).navigateByUrl('/t/acme/members');
       await fixture.whenStable();

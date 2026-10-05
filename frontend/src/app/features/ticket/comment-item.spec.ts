@@ -21,6 +21,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     agent: null,
     token: null,
     body: 'Reproduced on the second board.',
+    body_html: null,
     edited: false,
     explains: [],
     withdrawn: false,
@@ -110,6 +111,23 @@ describe('CommentItem', () => {
     (el(fixture, 'comment-save-c-1') as HTMLButtonElement).click();
     await settle(fixture);
   }
+
+  describe('its text', () => {
+    it('shows the text as the server rendered it', async () => {
+      const fixture = await render(
+        comment({ body: 'see `x`', body_html: '<p>see <code>x</code></p>' }),
+      );
+
+      expect(el(fixture, 'comment-text-c-1')?.querySelector('code')?.textContent).toBe('x');
+    });
+
+    it('shows the text as text where it has no rendering', async () => {
+      const fixture = await render(comment({ body: '<b>x</b>', body_html: null }));
+
+      expect(page(fixture).querySelector('p.text')?.textContent).toBe('<b>x</b>');
+      expect(page(fixture).querySelector('b')).toBeNull();
+    });
+  });
 
   describe('what it offers', () => {
     it('offers its author to edit it, to attach a file to it and to withdraw it', async () => {

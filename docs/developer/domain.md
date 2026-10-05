@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-04.
+tree on 2026-10-05.
 
 ## Projects, keys and the counter
 
@@ -102,7 +102,9 @@ stream applies the confidential rule once more in Go, to each event it holds
 
 What a reader may not see does not exist for them: its routes answer `404`, lists, links and
 the event stream leave it out, and an act that names it is shown without its payload
-([ADR 0065] D5). The SQL is [data-access.md](data-access.md#visibility-in-sql).
+([ADR 0065] D5). A deleted ticket is the same for everybody, its tenant's administrators included,
+everywhere but the bin ([deletion](#deletion-the-bin-and-the-purge)). The SQL is
+[data-access.md](data-access.md#visibility-in-sql).
 
 ## Parent
 
@@ -487,12 +489,43 @@ it ([ADR 0065] D5). The table and the store's side are
 [data-access.md](data-access.md#notifications). A mention in a comment tells nobody yet: how a
 comment names a person is not decided.
 
+## Deletion, the bin and the purge
+
+[ADR 0024] D1–D3, D7; [`api/deletion.go`](../../backend/internal/api/deletion.go), the store's side
+[data-access.md](data-access.md#deletion-and-the-purge):
+
+- **Who.** Deleting, restoring and purging are a tenant administrator's acts with `admin` scope —
+  the tenant role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
+  or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The purge
+  takes a browser session besides: the document declares `purgeTicket` with the session cookie
+  alone, so a token — an administrator's `admin` token included — is `403 session_required`
+  (D7 as amended 2026-10-05). The bin is read with `read` scope.
+- **Deleting** (`DELETE …/{number}`, `deleted`) puts the ticket into the bin. From then on it
+  answers like a missing ticket everywhere but the bin: its routes are `404` — a second deletion
+  too, its rendered body among them —, it leaves every list, the boards, the search, the
+  prerequisite trees, the person-level lists, the inbox and its count, the context and the Markdown
+  export, a link to it is hidden from the other end and an act that
+  names it is redacted, a block that names it names no ticket, a child shows its parent as hidden,
+  its parent's derived stages leave it out, and a ticket it blocks no longer counts it as an open
+  prerequisite. Nothing is removed. Its number stays taken. It is not refused when open tickets
+  depend on it; the browser names them and asks.
+- **Restoring** (`PUT …/deleted-tickets/{key}/restore`, `restored`) brings it back as it was — its
+  links, comments, stakes, its key in the rank — and raises its version.
+- **Purging** (`DELETE …/deleted-tickets/{key}`, `purged`; or the job, thirty days after the
+  deletion, as `system:ticket-purge`) removes it and everything that belongs only to it, its
+  attachments' objects last; its children become roots, a block that waited on it waits on its key
+  as an external reference — an `updated` act on that ticket, its version raised —, and its audit
+  rows keep its key, the actor and the act, their content emptied. Its number is never handed out
+  again: the project's counter only grows.
+- **Concurrent acts** answer as a later request would: a deletion that lost the race is `404`; of a
+  purge and a restoration at once, one wins and the other is `404`.
+
 ## Not built
 
 The score of [ADR 0014] D3–D5 is not built — no score beside the rank; the person-level lists,
 which it would order, are ordered by the tenant, the project and the project's rank meanwhile — nor
-is the rebalancing of the rank's keys. There is no `deleted_at` and
-no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
+is the rebalancing of the rank's keys. The deletion of a project and of a tenant ([ADR 0024] D4, D6)
+is not built. No route creates memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 

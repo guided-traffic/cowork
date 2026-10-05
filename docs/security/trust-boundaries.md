@@ -260,9 +260,13 @@ D6), as the second line behind the panel that shows that output as text
 | `frame-ancestors 'none'` | no page may frame the UI | clickjacking |
 | `base-uri 'self'`, `form-action 'self'`, `object-src 'none'` | no `<base>` of another origin, no form posting elsewhere, no plugin | — |
 
-`'unsafe-inline'` for styles is what the policy concedes: should markup ever reach the page, it could
-restyle the page — hide a control, imitate one — but not load anything from another origin, because
-`img-src`, `font-src` and `connect-src` keep every request on the origin, and run no script. The
+`'unsafe-inline'` for styles is what the policy concedes. Markup from people's texts reaches the page
+only as the server rendered and sanitised it, which carries no `style` attribute and no `<style>`
+element, and through Angular's sanitiser ([rendered-markdown.md](rendered-markdown.md)); should other
+markup ever reach the page, it could restyle the page — hide a control, imitate one — but not load
+anything from another origin, because `img-src`, `font-src` and `connect-src` keep every request on
+the origin, and run no script. An image in a rendered text is an attachment of the origin, which
+`img-src 'self'` admits. The
 PrimeUI license is checked in the page, offline, and needs no source of its own. The answers of
 `/api/` and `/auth/` carry no policy of the shell's — they are no documents — and an attachment's
 content carries its own `sandbox` ([attachments.md](attachments.md)). Verified on 2026-10-04 against
@@ -270,7 +274,9 @@ the production bundle behind nginx with this policy, in Chromium and WebKit, in 
 with the API mocked: no violation was reported while the shell, the settings and the chat panel ran
 a turn; and again on 2026-10-04, after the routing moved to the Ingress, in Chromium behind the
 Ingress stand-in and behind ingress-nginx with the real backend: no violation through the login,
-the tenant page and the backlog. Not verified: every page of the UI under the policy — a page that needs another source fails
+the tenant page and the backlog. Not verified: every page of the UI under the policy — the rendered
+Markdown of a ticket's page and the search's results among them, added on 2026-10-05 and run under no
+policy since — a page that needs another source fails
 in the browser with a violation in the console, and nginx has no unit test.
 
 ## What this does not cover

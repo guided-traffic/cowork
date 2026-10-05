@@ -21,7 +21,7 @@ export interface StreamEvents$Params {
   'Last-Event-ID'?: string;
 
 /**
- * Adds the person's own events across their tenants (docs/adr/0054 D1)
+ * Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)
  */
   me?: boolean;
 }

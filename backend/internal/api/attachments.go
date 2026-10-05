@@ -51,7 +51,7 @@ func attachmentView(t tenantScope, tc ticketCtx, a attachment) apigen.Attachment
 		ContentType: apigen.AttachmentContentType(a.ContentType), Comment: nullableOf(a.CommentID),
 		UploadedBy: personView(a.UploadedBy, a.UploadedByUsername, a.UploadedByName), Agent: nullableOf(a.Agent),
 		Token: tokenMarkView(a.TokenID, a.TokenName), CreatedAt: a.CreatedAt,
-		ContentUrl: ticketURL(t, tc.project.Key, tc.row.Number) + "/attachments/" + a.ID.String() + "/content",
+		ContentUrl: attachmentContentURL(t, ticketAt{project: tc.project.Key, number: tc.row.Number}, a.ID),
 	}
 }
 

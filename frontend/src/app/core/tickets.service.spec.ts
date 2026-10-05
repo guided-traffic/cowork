@@ -1460,6 +1460,14 @@ describe('TicketsService', () => {
     it.each<[string, StreamEvent]>([
       ["somebody else's membership", { name: 'membership.changed', id: 'e1', personId: 'p2' }],
       ['a group mapping', { name: 'membership.changed', id: 'e1', mappingId: 'm1' }],
+      [
+        "a restriction in another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
+      ],
+      [
+        "the person's own role in another of their tenants",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' },
+      ],
     ])('leaves the tickets and the lists alone on %s', async (_what, event) => {
       await show('acme/VKO-1', 2);
       projectList();

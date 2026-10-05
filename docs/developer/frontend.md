@@ -1,9 +1,10 @@
 # The frontend
 
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
-how a change reaches the screen, the tenant's dashboard, the person-level pages and the inbox, the assistant, the generated
-client, and the development loop.
-Read against the tree on 2026-10-04. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+how a change reaches the screen, the tenant's dashboard, the person-level pages and the inbox, the
+search, the backlog and the two boards, the assistant, the generated client, and the development loop.
+Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets and the
+saved filters on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -14,8 +15,8 @@ frontend/src/app/
 ├── theme/        # the PrimeNG preset over Aura, the theme service, providePrimeNG
 ├── core/         # services: session, projects, tickets, dashboard, event stream, inbox, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar with the bell, navigation), the assistant's panel, the tenant scope, the live indicator
-├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), tenant, project, ticket, time
-├── shared/       # badges, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
+├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), search, tenant, project, ticket, time
+├── shared/       # badges, rendered Markdown, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -67,25 +68,27 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on `membership.changed`, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
-| `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
-| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only: the person-level stream also names tickets of the person's other tenants |
-| `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events, `membership.changed` and `inbox.changed` |
-| `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync` and `poll`; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
-| `DashboardService` | The tenant's dashboard, `GET …/dashboard`, as a resource the page creates with its filters (`dashboard(params)`); every dashboard shown loads again a second after the first event of a burst that may change a tile (`changesDashboard`: a ticket's or a question's act of the tenant shown, a change of who sees a project, `resync`, `poll`), at most once a second ([the dashboard](#the-dashboard)) |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current tenant or one that names the person in any of their tenants — a tenant joined appears in the tenant switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
+| `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current tenant may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
+| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only (`ofTenant`): the person-level stream carries the events of every tenant of the person |
+| `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events and `membership.changed` of every tenant of the person, and `inbox.changed`. `ofTenant(event, tenant)` says whether an event concerns a page of the tenant, `changesMemberships(event, tenant)` whether it may have changed who belongs to it, `changesExistence(event)` whether a ticket was deleted, restored or purged — what changes lists no other event tells of, the inbox and its count among them |
+| `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync`, `poll` and a `membership.changed` that may change what the person sees in any of their tenants (`changesVisibility`) — a tenant left takes its notifications out of the count; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
+| `DashboardService` | The tenant's dashboard, `GET …/dashboard`, as a resource the page creates with its filters (`dashboard(params)`); every dashboard shown loads again a second after the first event of a burst that may change a tile (`changesDashboard`: a ticket's or a question's act of the tenant it shows, a change of who sees a project of that tenant — `ofTenant`, `changesMemberships` and `changesVisibility` —, `resync`, `poll`), at most once a second; an event of the person's other tenants loads nothing ([the dashboard](#the-dashboard)) |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
 | `ThemeService` | The colour scheme |
-| `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on `membership.changed`, a `resync` and a `poll` |
+| `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on a `membership.changed` of the current tenant, a `resync` and a `poll` |
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, and the confidential flag. A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, the confidential flag, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them, each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `AuditService` | A numbered page of the tenant's audit record, and its CSV: the JSON's first page gives the server's `Date`, which ends the period of the download, then numbered pages of a hundred rows as CSV, put together with the header once, at most the newest 10 000 rows (*The audit record*, below) |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
+| `DeletedTicketsService` | The current tenant's bin of deleted tickets, every page of it, loaded only while the person is its administrator; a restoration, whose answer goes into the ticket cache, and a purge; loads again on a `ticket.changed` of its tenant whose kind is `deleted`, `restored` or `purged` (`changesExistence`) — the purge job's included —, on `resync` and on `poll`, through `ConditionalPages` |
+| `SavedFiltersService` | The saved filters of `workTenant` — the person's own and the shared ones —, every page of them, through `ConditionalPages`; `create` with the form's key, `update` with the filter's version as `If-Match`, `remove`; filters are not on the event stream, so the list loads again after each act, on `resync`, `poll` and when a filter bar opens its select |
 | `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
 
 **A resource loads again every time its `params` function runs** — Angular 22 wraps each result
@@ -126,12 +129,12 @@ what they hold.
 
 **A creating form holds one `Idempotency-Key` per content**, so that a lost answer does not
 become a second creation (ADR 0045 D3): the first tenant, a new local account, a member's grant, a
-group mapping, a ticket, a comment, a question, a project and a booking of time keep a key in a
+group mapping, a ticket, a comment, a question, a project, a saved filter and a booking of time keep a key in a
 `linkedSignal` over their fields — and over the place they write to, the tenant, the project or the
 ticket — reuse it when the same content is sent again and make a new one when a field changes,
 which a reset after a success is. The services take the key from the form
 (`TicketActions.create`, `Conversation.comment` and `ask`, `ProjectsService.create`,
-`TicketRecords.attach` and `book`). The files card keeps the key of an upload whose answer did not
+`SavedFiltersService.create`, `TicketRecords.attach` and `book`). The files card keeps the key of an upload whose answer did not
 come, by ticket, file name, size and modification time, so the same file picked again is sent
 with it and a successful upload forgets it; a comment's upload does the same by its comment
 ([`UploadKey`](../../frontend/src/app/shared/upload-key.ts)). The new ticket's key covers its parent
@@ -225,19 +228,32 @@ TicketRelations (detail page): comment/question/link of its key ─► that part
 ```
 
 ```
-an administrator's act, or the identity provider's groups ─► SSE: event membership.changed {person_id | project_id | mapping_id}
+an administrator's act, or the identity provider's groups ─► SSE: event membership.changed {tenant, person_id | project_id | mapping_id}
         │
         ▼
-EventStreamService.events ─► SessionService: GET /api/v1/me ─► the role, the navigation, the controls a page offers
-                         ├─► MembersService, GroupMappingsService, an open AccessList: load again
-                         └─► a project_id, or the person's own person_id: ProjectsService loads again,
-                             TicketsService refetches what is shown and reloads the open lists
+EventStreamService.events ─► SessionService: of the current tenant, or naming the person in any ─► GET /api/v1/me ─► the role, the tenants, the navigation
+                         ├─► of the current tenant: MembersService, GroupMappingsService, an open AccessList load again
+                         ├─► of the current tenant, a project_id or the person's own person_id: ProjectsService loads again,
+                         │   TicketsService refetches what is shown and reloads the open lists
+                         └─► of any tenant, a project_id or the person's own person_id: the bell's count and the person-level pages load again
 ```
 
+The person-level stream carries the events of every tenant of the person
+([events.md](events.md#the-person-level-stream)), whichever tenant it is opened on. What shows one
+tenant — every service above but `InboxService`, and `TicketRelations` — reacts to that tenant's events
+alone: a ticket event's key names its tenant, a membership event says it in `tenant`, and
+`ofTenant(event, session.tenant())` in
+[`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) is the check. A
+membership event without `tenant`, from a backend that does not send it yet, counts for every
+tenant: a reload too many, never one too few.
+
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
-board, the person-level lists and the detail page at once; the dashboard holds no keys, it is counts the server makes, and loads again on its own ([the dashboard](#the-dashboard)). The backlog holds a reload back while a row is dragged and keeps its own
-moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); the board holds
-itself while a card is dragged ([the board](#the-board)). `comment.changed` and `interest.changed` do not refetch the
+boards, the person-level lists and the detail page at once; the dashboard holds no keys, it is
+counts the server makes, and loads again on its own ([the dashboard](#the-dashboard)). The backlog
+holds a reload back while a row is dragged and keeps its own
+moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); a board holds
+itself while a card is dragged ([the board](#the-board)), the tenant board every swimlane
+([the tenant board](#the-tenant-board)). `comment.changed` and `interest.changed` do not refetch the
 ticket — its version counts its own fields only ([ADR 0050] D1) — and neither does
 `question.changed`, while `link.changed` does, because a link changes the ticket's
 `open_prerequisites` without a new version. `resync` (the stream could not replay a
@@ -251,8 +267,8 @@ an act that tells the person, or their notifications marked read ─► SSE on t
         │
         ▼
 EventStreamService.events ─► InboxService: the count of the bell and of the navigation
-                         └─► the inbox, "assigned to me" and "open decisions": load again
-a question asked of the person in another tenant ─► question.changed {key} without an id ─► "open decisions" loads again
+                         └─► the inbox: loads again
+any act of any tenant of the person ─► its event, with its id ─► reloadOn: the person-level pages that follow it load again
 ```
 
 **The fallback** (ADR 0054 D7): three `EventSource` errors in a row, a `CLOSED` source, or
@@ -262,7 +278,8 @@ first `open` ends it. The live indicator in the top bar shows `Live`, `Connectin
 **A load again asks whether anything changed** (D7). Every list that loads again on events, a
 `resync` or a `poll` — the ticket lists of `TicketsService`, the projects, the members, the group
 mappings, an access list, the parts of `TicketRelations` with the prerequisite tree, the unread
-count of `InboxService`, the person-level pages and the dashboard — runs its requests through its own
+count of `InboxService`, the person-level pages, the bin of deleted tickets, the saved filters and
+the dashboard — runs its requests through its own
 [`ConditionalPages`](../../frontend/src/app/core/conditional.ts): a request sends the weak
 `ETag` of the same request's last answer in `If-None-Match`, and a `304` — which `HttpClient`
 hands on as an error — answers with the page held. A page is its request, so a list followed
@@ -278,7 +295,9 @@ The tenant's front page, `/t/:tenant`, is its dashboard ([ADR 0018] D6;
 of `GET …/dashboard` ([api.md](api.md#the-dashboard)), then a card per counted project with its
 open tickets by state, linked to its board, and the eight open tickets updated last — what the
 front page held before the dashboard, now counted by the server over every open ticket instead of
-one page of them.
+one page of them. It is *Overview* in the navigation, before *Board*, and *Overview* stays marked
+whatever filters the address holds: its link matches the path exactly and ignores the query
+(`frontPageActive` in [`shell.ts`](../../frontend/src/app/layout/shell.ts)).
 
 | Tile | Shows |
 |---|---|
@@ -306,21 +325,28 @@ shared and the back button undoes a filter.
 screen reader reads; the bars are `aria-hidden`. The rows of a tile's bars are one grid
 (`.bar-row` is `display: contents`), so every track has the same length whatever a label or a
 count takes and the bars compare. Three tiles — the age, done per week and the time — span two
-columns, and the grid places densely, so the nine fill whole rows at two, three and four columns. PrimeNG's chart component would bring Chart.js, a
-dependency the project does not have, into the page's lazy chunk, and draw on a canvas, which cannot take a
-`light-dark()` token: every colour would have to be resolved from the computed style and the
-chart drawn again on a change of scheme. Nine tiles of counts and short series do not need it, and
-the page's chunk is about 26 kB; the initial bundle did not grow (1,033,755 bytes, against
-1,033,843 before, measured on 2026-10-05).
+columns, and the grid places densely, so the nine fill whole rows at two, three and four columns.
+PrimeNG's chart component would bring Chart.js, a dependency the project does not have, into the
+page's lazy chunk, and draw on a canvas, which cannot take a `light-dark()` token: every colour
+would have to be resolved from the computed style and the chart drawn again on a change of scheme.
+Nine tiles of counts and short series do not need it. The page is a lazy chunk of its own, about
+26 kB; what it puts into the initial bundle is its route and the navigation's match for *Overview*
+— 1,041,418 bytes against the 1,048,576 of the budget, 386 more than the branch it was merged with,
+`make frontend-build` on 2026-10-05.
 
 **Live.** The page's resource is `DashboardService`'s: an act on a ticket or a question of the
-tenant, a change of who sees a project, a `resync` or a `poll` load it again a second after the
-first of a burst, with the weak `ETag` of its last answer, so an agent that works in a loop costs
-one request a second and a reload that finds nothing new a `304`; a reload that fails keeps the
-tiles shown. A comment, a stake or a link changes no tile and loads nothing. Time entries are not
-published ([events.md](events.md#publication)): a booking made elsewhere shows at the next reload
-another event causes, or when the page is opened again. Under `oversight` the page shows the
-tenant's name and asks for nothing.
+tenant it shows — a ticket's deletion and restoration among them —, a change of who sees a project
+of that tenant, the person's own role included, a `resync` or a `poll` load it again a second after
+the first of a burst (`changesDashboard`), with the weak `ETag` of its last answer, so an agent that
+works in a loop costs one request a second and a reload that finds nothing new a `304`; a reload
+that fails keeps the tiles shown. The person-level stream carries the events of every tenant of the
+person ([events.md](events.md#the-person-level-stream)): `ofTenant` and `changesMemberships` keep the
+dashboard to its own, and another tenant's act loads nothing. A comment, a stake or a link changes
+no tile and loads nothing either. Time entries are not published
+([events.md](events.md#publication)), and stay so for the dashboard ([ADR 0018] D6 and ADR 0054 D4,
+made concrete on 2026-10-05): a booking made elsewhere shows at the next reload another event of the
+tenant causes, or when the page is opened again. Under `oversight` the page shows the tenant's name
+and asks for nothing.
 
 ## The person-level pages
 
@@ -337,16 +363,39 @@ order stays the server's — and links each ticket to `/t/<tenant>/tickets/<PROJ
 ([`person-list.ts`](../../frontend/src/app/features/me/person-list.ts) `ticketRoute`). A page reads the
 person's id as a primitive in its `params`, so that `me` loaded again leaves the list alone.
 
-| Page | Shows | Loads again on |
-|---|---|---|
-| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, `resync`, `poll` |
-| Assigned to me | the person's open tickets: the tenant, the type, the key and title, the severity, the state, the last change | `inbox.changed` — an assignment tells the assignee —, `ticket.changed` of the stream's tenant, `resync`, `poll` |
-| Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` — of any of the person's tenants for a question asked of them —, `inbox.changed`, `resync`, `poll` |
+**Every person-level page follows every tenant of the person through one call**, `reloadOn(list,
+changes)` in [`person-list.ts`](../../frontend/src/app/features/me/person-list.ts), made in the
+page's constructor with the page's list resource and a predicate over the stream's events — of any
+tenant, since the person-level stream carries them all
+([events.md](events.md#the-person-level-stream)). Besides the events the predicate picks, it loads
+the list again on what every person-level list depends on: a `membership.changed` that names the
+person or a project in any of their tenants (`changesVisibility` — a tenant joined or left, a role
+changed, a project restricted, opened or put on an access list), a `resync` and the fallback's
+`poll`. It reloads through `refresh`, so a burst of events, of one tenant or of several, costs one
+load in flight and one after it. A new person-level page — "next for me" among them — does the same:
 
-A change in another tenant that is not the person's own — a ticket unassigned there, a question open
-in that tenant answered by somebody else — shows at the next reload: the person-level stream carries
-the person's own events across their tenants and the events of one tenant
-([events.md](events.md#the-person-level-stream)); `/` still lists the tenants.
+```ts
+constructor() {
+  reloadOn(this.list, (event) => event.name === 'ticket.changed');
+}
+```
+
+| Page | Shows | Its predicate, besides what `reloadOn` follows for every page |
+|---|---|---|
+| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, and a ticket deleted or restored in any tenant (`changesExistence`): no `inbox.changed` tells of either, and the server leaves a deleted ticket's notifications out |
+| Assigned to me | the person's open tickets: the tenant, the type, the key and title, the severity, the state, the last change | `ticket.changed` of any tenant — an assignment, an unassignment, a move |
+| Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` of any tenant, and a ticket deleted or restored in any tenant (`changesExistence`) |
+
+`/` still lists the tenants.
+
+## The search
+
+The top bar's search box opens the results of the tenant the pages show — that tenant first — or,
+outside a tenant and in one a global administrator only oversees, of every tenant of the person;
+[`SearchResults`](../../frontend/src/app/features/search/search.ts) (`/t/:tenant/search?q=`,
+`/me/search?q=`) lists the hits fifty at a time, each with where it was found and its snippet as text,
+the found words in `<mark>`, linked to the ticket and the part it was found in. The whole of it is
+[search.md](search.md#in-the-browser).
 
 ## The backlog
 
@@ -441,6 +490,22 @@ done tickets links it, the section is the tickets done after that time (`state=d
 `done_after`), headed *done since* that time, until *Show all closed* goes back to every closed
 ticket; a `done_after` that is no time is left out.
 
+**Saved filters** ([ADR 0018] D5). The filter bar holds
+[`SavedFilters`](../../frontend/src/app/features/project/saved-filters.ts),
+`<app-saved-filters [current] [applied] (chosen)>`: a select of the person's filters by name and the
+shared ones with their owner — another member's that the server answers `redacted` is listed and
+disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
+deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
+the conditions the bar applies now (`current`); and the applied filter's warnings under the bar.
+What a backlog makes of a filter is
+[`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts): `toBacklog`
+puts its `q` into the search and the plain open states into the state select, and keeps every other
+condition — a negated or closed state included — in the page's `extra`, which both lists take as
+they are (`listParameters`); `project`, no parameter of a project's list, stays out and is noted.
+Applying one starts the lists at one page; choosing none clears the search, the states and the
+rest. `fromBacklog` is what saving keeps. A saved filter belongs to its tenant: another tenant's
+page starts without one.
+
 **The size.** [`SizeIcon`](../../frontend/src/app/shared/size.ts), `<app-size [value]="ticket.effort" />`,
 draws the effort as a T-shirt outline in inline SVG in the muted text colour with the letter on it,
 names itself `Effort M` as an image, and says so in its tooltip. The board's cards carry it as
@@ -464,6 +529,15 @@ functions in [`board-model.ts`](../../frontend/src/app/features/project/board-mo
 | `arrange` | The columns in the order of the list, each with its count, its limit and whether it is over the limit |
 | `dropMove`, `dropTargets` | The transition a drop on a column is — the move of [`transitions.ts`](../../frontend/src/app/shared/transitions.ts) to a state of that column, forward, back, into `blocked` or out of it — or none |
 | `cardAction`, `menuMoves` | The move inside the card's own column (`filed → analysed`), and the card's menu: that action, then a move to each column that takes the card |
+
+The page is three parts it shares with [the tenant board](#the-tenant-board), so that a card stands
+in the same column and moves the same way on both:
+
+| Part | What it is |
+|---|---|
+| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for |
+| [`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts) `BoardColumns` | The grid: *Next* and the five state columns with their counts, the cards, the drag with its marks and its hold, and the card's menu; `idPrefix` keeps the ids of its headings unique where a page shows several, `headingLevel` puts its headings one level below a swimlane's (`aria-level`), `hold` holds it while a card is dragged elsewhere on the page |
+| [`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts) `BoardMoves` | The moves, provided by the page: what a move on its way shows, the transition at once or after the dialog, *Now*, the live region's sentence and where the keyboard goes after a move; the page shows the dialog and the live region |
 
 **The columns.** Each state column shows its count against the project's WIP limit as `2 / 3` and
 is marked where it holds more ([ADR 0019] D3), the limit never refusing a card; *Next* counts its
@@ -515,6 +589,55 @@ ticket, and a card moves where another person moved it. While a card is dragged 
 columns as they were when it was picked up — the CDK measures its lists as the drag starts, and the
 card must not be moved from under the pointer — and applies what changed once it is put down.
 
+## The tenant board
+
+The tenant board ([`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts),
+`/t/:tenant/board`, [ADR 0018] D4 as amended 2026-10-05) is *Board* in the navigation, right after
+*Overview*; under `oversight` the link is not there and the page shows nothing of the work. It has
+a swimlane, [`BoardLane`](../../frontend/src/app/features/tenant/board-lane.ts), for each project of
+`ProjectsService` — the projects the person sees, which the list gives without the archived ones —
+in the order of the list, the projects' keys. A swimlane names its project with a link to the
+project's board, counts its cards, and shows the project board's columns over the same list
+(`boardList`, `BoardColumns`, [the board](#the-board)), counted against its own project's WIP
+limits; the count of the tickets done is the project board's alone. The decisions are pure
+functions in [`tenant-board-model.ts`](../../frontend/src/app/features/tenant/tenant-board-model.ts):
+
+| Function | Decides |
+|---|---|
+| `chosenKeys` | The filter of the address: `?project=`, repeated, each key once; none, every project |
+| `lanesOf` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list |
+| `laneOf` | The swimlane an element is in, by the `data-lane` of the swimlane's element |
+| `refusingLane` | The swimlane that says no to a dragged card: any but the card's own |
+
+**Lazy.** A swimlane asks for its list only while it is in view or near it: an
+`IntersectionObserver` per swimlane, whose root is the shell's content area — the scrollable the
+`ScrollDispatcher` names, because the page scrolls there and a margin on the window would end at
+the area's edge — with the margin `100% 0px` (`nearMargin`), a screen's height above and below.
+Before its first answer a swimlane's columns say nothing. A swimlane that leaves that area gives
+its list's parameters up, so the event stream no longer reloads it, and keeps showing what it
+showed — its cards read through the cache, which an event about a cached ticket still refetches;
+back near the view it asks again with the pages' `ETag`s, so an unchanged list costs a `304`.
+Without an `IntersectionObserver` every swimlane loads.
+
+**The filter** is a select of every project with a search, *Every project* when nothing is
+chosen. The choice is the address's `project`, repeated as the API's filters are ([ADR 0049] D1),
+written with `replaceUrl` and read back as the page's input, so a board can be linked and comes
+back as it was; a filter that names no project here says so and offers every project.
+
+**Drags.** Each swimlane is a `cdkDropListGroup` of its own: a card goes among the columns of its
+swimlane with the project board's rules, menu and dialogs (one `BoardMoves`, one dialog and one
+live region for the page). While a card is dragged every swimlane holds still — the CDK measures the
+card's swimlane as the drag starts, and a swimlane above it that grew would move it from under the
+pointer — and the other swimlanes step back. A drag into another swimlane is refused, visibly:
+the CDK does not let the card in, the page follows the pointer (`cdkDragMoved` and
+`document.elementFromPoint`, which the drag's preview lets through because it takes no pointer
+events), and the swimlane under it is outlined and says *A ticket never changes project on a
+board*; let go there, the card goes back and a toast says *Not moved*, *A ticket never changes
+project on a board: COW-12 stays in COW.* No list sorts, and nothing here edits the rank.
+
+**Live.** The swimlanes' lists are the service's: an event reloads those in or near view and
+refetches the cached tickets, so a card moves where another person moved it.
+
 ## The progress stages and the done dialog
 
 A ticket has three progress stages ([ADR 0017] D2): refinement (`progress_refinement`), implementation
@@ -558,8 +681,14 @@ The ticket's page ([`ticket-detail.ts`](../../frontend/src/app/features/ticket/t
 [ADR 0018] D2) shows the title as its heading, the body, the prerequisite tree, the questions, the
 comments and the activity, and beside them the fields, the stake, the links, the files and the time.
 Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
-which the page provides; everything else reads the ticket through the cache. The body is shown as
-text; Markdown is not rendered.
+which the page provides; everything else reads the ticket through the cache. The body, a comment, a
+question's options and its answer show as the server rendered them, through
+[`RenderedText`](../../frontend/src/app/shared/rendered-text.ts) and Angular's sanitiser; the body's
+rendering is a part of `TicketRelations` of its own, loaded for the ticket's version and again on an
+upload, and shown only while it is the rendering of the body the cache holds — the text as text
+until then ([rendered-markdown.md](rendered-markdown.md#in-the-browser)). The comments and the
+questions carry `id`s, `comment-<id>` and `question-<n>`, and a link with one of them as its fragment —
+a search hit's — scrolls the page to that part once it has loaded.
 
 | Part | Writes | A change made meanwhile |
 |---|---|---|
@@ -570,6 +699,11 @@ text; Markdown is not rendered.
 | [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
+| [`TicketDelete`](../../frontend/src/app/features/ticket/ticket-delete.ts), beside the moves for a tenant administrator | The deletion ([ADR 0024] D1, D7): the open tickets that wait on it read first (`TicketActions.dependents`), then the page's dialog names them — a deletion does not refuse over them — and says that the ticket can be restored from the deleted tickets for thirty days; confirmed, `DELETE …/{number}`, a toast, and the project's backlog | — |
+
+**A ticket that goes while it is shown** — deleted, or out of the person's sight — leaves the cache
+when the refetch its event starts answers `404`, and the page says *No such ticket* as for a key that
+names nothing: the load succeeded for this key, and the cache holds no entry for it any more.
 
 **The parent** is chosen among the open tickets of the project, every page of them, read the first
 time the picker opens (`TicketsService.openTickets`) and filtered by short key and title as the
@@ -708,6 +842,19 @@ page's edge, which its `id` tells. Beyond 10 000 rows the page says the file hol
 ones, and to narrow the period. A member who is no administrator reads that the record is the
 administrators'.
 
+**The deleted tickets** ([`deleted-tickets.ts`](../../frontend/src/app/features/tenant/deleted-tickets.ts),
+`/t/:tenant/deleted-tickets`, mirroring `GET …/deleted-tickets`; [ADR 0024] D1, D2), linked for a
+tenant's administrators below *Time*: the bin of `DeletedTicketsService`, each ticket with its key,
+type, title, confidential mark, state, who deleted it and when, and when the purge removes it.
+*Restore* brings one back at once — it undoes a deletion and asks nothing. *Purge* asks twice: first
+naming the day the job would purge it and what goes, then *Purge for good*, a danger button, with
+the focus on *Keep it*, saying that nothing brings it back; a question belongs to the tenant it was
+asked in. The purge goes in the page's browser session, which the API asks of it — a token cannot
+purge ([ADR 0024] D7 as amended 2026-10-05). The service reads the bin through `ConditionalPages`,
+so a poll that finds it unchanged moves nothing, and again when the stream tells of a deletion, a
+restoration or a purge in the tenant (`changesExistence`). Anybody else reads that the page is the
+administrators'.
+
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
 version without touching them, so neither takes back what is being typed; a save sends the newest
@@ -827,6 +974,7 @@ attributes it finds things by are part of a page's contract, and `ng lint` cover
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
@@ -836,6 +984,7 @@ attributes it finds things by are part of a page's contract, and `ng lint` cover
 [ADR 0038]: ../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
+[ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0052]: ../adr/0052-primeng-with-the-angular-cdk-a-themes-preset-and-dark-mode-from-the-start.md
 [ADR 0053]: ../adr/0053-signals-and-services-no-store-framework.md

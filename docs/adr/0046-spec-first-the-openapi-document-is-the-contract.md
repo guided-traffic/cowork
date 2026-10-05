@@ -18,7 +18,9 @@ generated server like the event stream; D6, D8: thirteen session-only operations
 2026-10-04 for the global administrator's list of every tenant (D6, D8: fourteen session-only
 operations), and by the owner's answers on the chat recorded in ADR 0076 (D1: `chat.yaml` gains
 stopping the person's turns, `me.yaml` the chat's capabilities; D6, D8: sixteen session-only
-operations). `oapi-codegen`
+operations), and on 2026-10-05 by the decision on the purge of a deleted ticket, built on the recommendation
+([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7; D6, D8: seventeen session-only operations). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -102,8 +104,9 @@ function), request and response examples, and its error responses declared throu
 applied per operation, so the document says which routes a token may call. *(Built 2026-10-03:
 an operation has one of three forms — both schemes, which is the default; `sessionCookie` alone,
 for the ~~six~~ routes a token must not call *(amended 2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~
-sixteen, a turn of the chat, stopping one, choosing the chat's capabilities and the list of every
-tenant among them — [ADR 0035](0035-personal-access-tokens.md) D5)*; or none, for the public ones — and the pipeline reads
+~~sixteen~~, a turn of the chat, stopping one, choosing the chat's capabilities and the list of every
+tenant among them — [ADR 0035](0035-personal-access-tokens.md) D5; amended 2026-10-05: seventeen,
+the purge of a deleted ticket the seventeenth)*; or none, for the public ones — and the pipeline reads
 the credentials an operation takes from its own requirement. A public write carries the
 extension `x-cowork-origin-check: true`, which makes the pipeline hold it to the origin check of
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5.)*
@@ -123,7 +126,7 @@ document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) 
 `operationId`, the bearer requirement (or an explicit empty one on the public operations), the
 problem response and a tag on every operation. *(Amended 2026-10-03: the requirement is either
 credential, the session cookie alone for exactly the ~~six~~ session-only operations *(amended
-2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ sixteen)*, or an explicit empty one on the public operations, which as writes also carry
+2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: seventeen)*, or an explicit empty one on the public operations, which as writes also carry
 `x-cowork-origin-check`.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
 callback alone.)*
 

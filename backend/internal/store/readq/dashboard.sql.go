@@ -26,6 +26,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $5
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state NOT IN ('done', 'dropped')
   AND (p.key = ANY ($6::text[])
        OR (cardinality($6::text[]) = 0 AND p.archived_at IS NULL))
@@ -53,7 +54,7 @@ type DashboardAgeRow struct {
 // Tile 5: the open tickets per age bucket, by their filing against the
 // bounds the handler computes from its clock: opened after a bound is
 // younger than it.
-// visibility: app_ticket_visible on every ticket counted.
+// visibility: app_ticket_visible and the deletion filter on every ticket counted.
 func (q *Queries) DashboardAge(ctx context.Context, arg DashboardAgeParams) (DashboardAgeRow, error) {
 	row := q.db.QueryRow(ctx, dashboardAge,
 		arg.Cut7,
@@ -85,6 +86,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state = 'blocked'
   AND (p.key = ANY ($2::text[])
        OR (cardinality($2::text[]) = 0 AND p.archived_at IS NULL))
@@ -112,8 +114,8 @@ type DashboardBlockedRow struct {
 // blocked since its latest act that moved it into blocked (docs/adr/0026), or
 // since its last update where no act records one; the earlier id on a tie.
 // No row while none is blocked.
-// visibility: app_ticket_visible on every ticket counted and named; the act
-// is read only for a ticket the caller sees.
+// visibility: app_ticket_visible and the deletion filter on every ticket
+// counted and named; the act is read only for a ticket the caller sees.
 func (q *Queries) DashboardBlocked(ctx context.Context, arg DashboardBlockedParams) ([]DashboardBlockedRow, error) {
 	rows, err := q.db.Query(ctx, dashboardBlocked, arg.TenantID, arg.Projects, arg.WithoutProjects)
 	if err != nil {
@@ -149,6 +151,7 @@ JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE q.tenant_id = $1 AND q.status = 'open'
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND (p.key = ANY ($2::text[])
        OR (cardinality($2::text[]) = 0 AND p.archived_at IS NULL))
   AND NOT (p.key = ANY ($3::text[]))
@@ -174,7 +177,8 @@ type DashboardDecisionsRow struct {
 
 // Tile 8: the open questions' count, on the one asked first, the earlier id
 // on a tie (docs/adr/0011 D3); no row while none is open.
-// visibility: app_ticket_visible on the ticket of every question counted.
+// visibility: app_ticket_visible and the deletion filter on the ticket of
+// every question counted.
 func (q *Queries) DashboardDecisions(ctx context.Context, arg DashboardDecisionsParams) ([]DashboardDecisionsRow, error) {
 	rows, err := q.db.Query(ctx, dashboardDecisions, arg.TenantID, arg.Projects, arg.WithoutProjects)
 	if err != nil {
@@ -211,6 +215,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state = 'done'
   AND t.done_at >= $2::timestamptz AND t.done_at < $3::timestamptz
   AND (p.key = ANY ($4::text[])
@@ -233,7 +238,7 @@ type DashboardLeadTimeRow struct {
 
 // Tile 7: the tickets done now whose done_at lies in [since, until), and the
 // median of their seconds from filing to done; 0 while there is none.
-// visibility: app_ticket_visible on every ticket measured.
+// visibility: app_ticket_visible and the deletion filter on every ticket measured.
 func (q *Queries) DashboardLeadTime(ctx context.Context, arg DashboardLeadTimeParams) (DashboardLeadTimeRow, error) {
 	row := q.db.QueryRow(ctx, dashboardLeadTime,
 		arg.TenantID,
@@ -253,6 +258,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state NOT IN ('done', 'dropped')
   AND (p.key = ANY ($2::text[])
        OR (cardinality($2::text[]) = 0 AND p.archived_at IS NULL))
@@ -273,7 +279,7 @@ type DashboardOpenBySeverityRow struct {
 }
 
 // Tile 2: the open tickets per severity; a severity without one has no row.
-// visibility: app_ticket_visible on every ticket counted.
+// visibility: app_ticket_visible and the deletion filter on every ticket counted.
 func (q *Queries) DashboardOpenBySeverity(ctx context.Context, arg DashboardOpenBySeverityParams) ([]DashboardOpenBySeverityRow, error) {
 	rows, err := q.db.Query(ctx, dashboardOpenBySeverity, arg.TenantID, arg.Projects, arg.WithoutProjects)
 	if err != nil {
@@ -301,6 +307,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state NOT IN ('done', 'dropped')
   AND (p.key = ANY ($2::text[])
        OR (cardinality($2::text[]) = 0 AND p.archived_at IS NULL))
@@ -325,14 +332,15 @@ type DashboardOpenByStateRow struct {
 // transaction by GET …/dashboard. Each counts only what the caller can see:
 // app_ticket_visible holds every ticket a query reads, so a restricted project
 // or a confidential ticket the caller cannot see counts nowhere and is named
-// nowhere (docs/adr/0034 D4, docs/adr/0065 D4).
+// nowhere (docs/adr/0034 D4, docs/adr/0065 D4); beside it the deletion filter
+// leaves a ticket in the bin out, as if it did not exist (docs/adr/0024 D1).
 //
 // The counted projects: the keys of `projects`, or — while it is empty —
 // every project that is not archived; never one of `without_projects`. The
 // handler passes both arrays, empty rather than NULL. Open is every state but
 // done and dropped (docs/adr/0009 D1).
 // Tile 1: the open tickets per project and state.
-// visibility: app_ticket_visible on every ticket counted.
+// visibility: app_ticket_visible and the deletion filter on every ticket counted.
 func (q *Queries) DashboardOpenByState(ctx context.Context, arg DashboardOpenByStateParams) ([]DashboardOpenByStateRow, error) {
 	rows, err := q.db.Query(ctx, dashboardOpenByState, arg.TenantID, arg.Projects, arg.WithoutProjects)
 	if err != nil {
@@ -359,6 +367,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state NOT IN ('done', 'dropped')
   AND (p.key = ANY ($2::text[])
        OR (cardinality($2::text[]) = 0 AND p.archived_at IS NULL))
@@ -384,7 +393,7 @@ type DashboardRecentRow struct {
 }
 
 // Beside the tiles: the open tickets updated last, the later id on a tie.
-// visibility: app_ticket_visible on every ticket listed.
+// visibility: app_ticket_visible and the deletion filter on every ticket listed.
 func (q *Queries) DashboardRecent(ctx context.Context, arg DashboardRecentParams) ([]DashboardRecentRow, error) {
 	rows, err := q.db.Query(ctx, dashboardRecent,
 		arg.TenantID,
@@ -424,6 +433,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state NOT IN ('done', 'dropped')
   AND t.security IN ('live', 'boundary')
   AND (p.key = ANY ($2::text[])
@@ -449,7 +459,8 @@ type DashboardSecurityRow struct {
 
 // Tile 3: per class live and boundary that has an open ticket, the count and
 // the oldest by filing, the earlier id on a tie.
-// visibility: app_ticket_visible on every ticket counted and named.
+// visibility: app_ticket_visible and the deletion filter on every ticket
+// counted and named.
 func (q *Queries) DashboardSecurity(ctx context.Context, arg DashboardSecurityParams) ([]DashboardSecurityRow, error) {
 	rows, err := q.db.Query(ctx, dashboardSecurity, arg.TenantID, arg.Projects, arg.WithoutProjects)
 	if err != nil {
@@ -483,6 +494,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE t.tenant_id = $1
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND t.state = 'done'
   AND t.done_at >= $2::timestamptz AND t.done_at < $3::timestamptz
   AND (p.key = ANY ($4::text[])
@@ -508,7 +520,7 @@ type DashboardThroughputRow struct {
 // Tile 6: the tickets done now per ISO week of their done_at in UTC, the
 // Monday naming the week, inside [since, until); a week without one has no
 // row (docs/adr/0019 D2).
-// visibility: app_ticket_visible on every ticket counted.
+// visibility: app_ticket_visible and the deletion filter on every ticket counted.
 func (q *Queries) DashboardThroughput(ctx context.Context, arg DashboardThroughputParams) ([]DashboardThroughputRow, error) {
 	rows, err := q.db.Query(ctx, dashboardThroughput,
 		arg.TenantID,
@@ -542,6 +554,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE e.tenant_id = $1 AND e.voided_at IS NULL
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL
   AND app_time_visible(e.person_id)
   AND e.day >= $2::date AND e.day <= $3::date
   AND (p.key = ANY ($4::text[])
@@ -567,8 +580,8 @@ type DashboardTimeRow struct {
 
 // Tile 9: the minutes booked on a day of [from_day, to_day] per project,
 // voided entries left out (docs/adr/0017 D7, D10).
-// visibility: app_ticket_visible on every entry's ticket, and app_time_visible
-// on the entry (docs/adr/0034 D5).
+// visibility: app_ticket_visible and the deletion filter on every entry's
+// ticket, and app_time_visible on the entry (docs/adr/0034 D5).
 func (q *Queries) DashboardTime(ctx context.Context, arg DashboardTimeParams) ([]DashboardTimeRow, error) {
 	rows, err := q.db.Query(ctx, dashboardTime,
 		arg.TenantID,

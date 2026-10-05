@@ -39,6 +39,12 @@ export const routes: Routes = [
         path: 'me/decisions',
         loadComponent: () => import('./features/me/decisions').then((m) => m.Decisions),
       },
+      // The search of every tenant of the person (docs/adr/0023 D2, docs/adr/0025).
+      {
+        path: 'me/search',
+        data: { scope: 'me' },
+        loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
+      },
       {
         path: 't/:tenant',
         component: TenantScope,
@@ -49,6 +55,12 @@ export const routes: Routes = [
             pathMatch: 'full',
             loadComponent: () =>
               import('./features/tenant/dashboard').then((m) => m.TenantDashboard),
+          },
+          // The tenant's board, a swimlane per project (docs/adr/0018 D4).
+          {
+            path: 'board',
+            loadComponent: () =>
+              import('./features/tenant/tenant-board').then((m) => m.TenantBoard),
           },
           // A project's address without a view opens its board (docs/adr/0018 D1).
           { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/board' },
@@ -75,6 +87,12 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./features/ticket/ticket-detail').then((m) => m.TicketDetail),
           },
+          // The tenant's search, what the search box does inside a tenant (docs/adr/0018 D7).
+          {
+            path: 'search',
+            data: { scope: 'tenant' },
+            loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
+          },
           {
             path: 'members',
             loadComponent: () => import('./features/tenant/members').then((m) => m.Members),
@@ -95,6 +113,12 @@ export const routes: Routes = [
           {
             path: 'time',
             loadComponent: () => import('./features/time/time-report').then((m) => m.TimeReport),
+          },
+          // The tenant's bin, mirroring GET …/deleted-tickets (docs/adr/0024 D1, docs/adr/0023 D4).
+          {
+            path: 'deleted-tickets',
+            loadComponent: () =>
+              import('./features/tenant/deleted-tickets').then((m) => m.DeletedTickets),
           },
         ],
       },

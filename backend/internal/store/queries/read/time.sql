@@ -12,7 +12,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.ticket_id = sqlc.arg(ticket_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND (sqlc.narg(after)::uuid IS NULL OR e.id > sqlc.narg(after)::uuid)
 ORDER BY e.id
@@ -25,7 +25,7 @@ SELECT coalesce(sum(e.minutes), 0)::bigint AS minutes
 FROM time_entries e
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.ticket_id = sqlc.arg(ticket_id) AND e.voided_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id);
 
 -- name: GetTimeEntry :one
@@ -39,7 +39,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.ticket_id = sqlc.arg(ticket_id) AND e.id = sqlc.arg(id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id);
 
 -- name: ListTimeEntryRevisions :many
@@ -50,7 +50,7 @@ JOIN time_entries e ON e.tenant_id = r.tenant_id AND e.id = r.entry_id
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 LEFT JOIN users u ON u.id = r.edited_by
 WHERE r.tenant_id = sqlc.arg(tenant_id) AND r.entry_id = sqlc.arg(entry_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND (sqlc.narg(after)::uuid IS NULL OR r.id > sqlc.narg(after)::uuid)
 ORDER BY r.id
@@ -70,7 +70,7 @@ JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users pu ON pu.id = e.person_id
 LEFT JOIN users au ON au.id = e.author_id
 WHERE e.tenant_id = sqlc.arg(tenant_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND (sqlc.narg(from_day)::date IS NULL OR e.day >= sqlc.narg(from_day)::date)
   AND (sqlc.narg(to_day)::date IS NULL OR e.day <= sqlc.narg(to_day)::date)
@@ -88,7 +88,7 @@ FROM time_entries e
 JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 WHERE e.tenant_id = sqlc.arg(tenant_id)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND (sqlc.narg(from_day)::date IS NULL OR e.day >= sqlc.narg(from_day)::date)
   AND (sqlc.narg(to_day)::date IS NULL OR e.day <= sqlc.narg(to_day)::date)
@@ -116,7 +116,7 @@ JOIN tickets t ON t.tenant_id = e.tenant_id AND t.id = e.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users u ON u.id = e.person_id
 WHERE e.tenant_id = sqlc.arg(tenant_id) AND e.voided_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_time_visible(e.person_id)
   AND (sqlc.narg(from_day)::date IS NULL OR e.day >= sqlc.narg(from_day)::date)
   AND (sqlc.narg(to_day)::date IS NULL OR e.day <= sqlc.narg(to_day)::date)

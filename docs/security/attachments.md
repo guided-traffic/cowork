@@ -2,7 +2,8 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04, an image in a
+rendered text on 2026-10-05. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -85,8 +86,12 @@ ADR 0016 D5):
 - `Cache-Control: no-store`, like every API response.
 
 `TestAttachmentRoundTrip` asserts the type, `nosniff`, `sandbox`, the disposition and the
-`ETag`. Nothing in cowork renders Markdown yet, so ADR 0016 D7's rule for an image embedded in
-a ticket's text has nothing to act on.
+`ETag`. **An image in a ticket's text** (ADR 0016 D7): the server renders the body, a comment, a
+question's options and its answer, and shows an image only when it names a raster attachment of the
+same ticket — from that attachment's own path, so the browser asks nothing of another origin; an SVG,
+another ticket's attachment and an address elsewhere become links, which load nothing until a person
+follows them ([rendered-markdown.md](rendered-markdown.md#images)). Each time a reader's page shows
+such an image, it is a recorded download, as a preview's is.
 
 **The preview in the UI.** The ticket's page shows a raster attachment — the four types delivered
 inline, never an SVG — as an `<img>` of the attachment's own URL
@@ -245,11 +250,16 @@ read attachment rows. Withdrawing the comment a file was attached to hides the c
 the file stays listed, downloadable and named in the export for every reader of the ticket. A
 screenshot uploaded by mistake with a secret in it stays readable until someone with the
 administrative database credential and access to the bucket removes both — outside the API,
-with the `uploaded` act left in the record. The purge of a ticket, which would remove its
-attachments
-([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)),
-is not built. Inside the API, a tenant administrator can narrow who reads the file by setting
-the ticket confidential ([tenancy.md](tenancy.md) "The confidential flag").
+with the `uploaded` act left in the record. Inside the API, a tenant administrator can narrow who
+reads the file by setting the ticket confidential ([tenancy.md](tenancy.md) "The confidential
+flag"), or take it back only with the whole ticket: deleting the ticket hides its files at once,
+and purging it removes their rows and then their objects
+([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)). The objects go after the
+purge committed, so that a rollback leaves no row naming missing bytes; an object whose removal
+fails then — or that no configured storage could remove — stays in the bucket with no row naming
+it, and the log names its key (`an attachment object of a purged ticket could not be removed`).
+Nothing sweeps such objects.
 
 ### The bucket's own controls
 

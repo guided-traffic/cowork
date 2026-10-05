@@ -4,10 +4,15 @@ import { Api } from '../api/api';
 import { getDashboard } from '../api/functions';
 import { Dashboard } from '../api/models';
 import { ConditionalPages } from './conditional';
-import { changesVisibility, EventStreamService, StreamEvent } from './event-stream.service';
+import {
+  changesMemberships,
+  changesVisibility,
+  EventStreamService,
+  ofTenant,
+  StreamEvent,
+} from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
-import { splitKey } from './tickets.service';
 
 /** What a dashboard is read for: the tenant, the `project` filter as the address holds it, the period. */
 export interface DashboardQuery {
@@ -24,10 +29,13 @@ export interface DashboardQuery {
 export const dashboardReloadDelay = 1000;
 
 /**
- * Whether an event may change a tile of the tenant's dashboard (docs/adr/0018 D6): a ticket's act —
- * its state, its fields, its filing — or a question's, in the tenant shown; a change of who sees a
- * project; a gap in the stream or the fallback's tick. A comment, a stake or a link changes no tile,
- * and time entries are not published (docs/adr/0054 D4): a booking shows at the next reload.
+ * Whether an event may change a tile of the dashboard of the tenant shown (docs/adr/0018 D6): an act
+ * on one of its tickets — its state, its fields, its filing, its deletion and restoration — or on a
+ * question of one ({@link ofTenant}); a change of who sees a project of it, the person's own role
+ * among them ({@link changesMemberships}, {@link changesVisibility}); a gap in the stream or the
+ * fallback's tick. The person-level stream carries every tenant of the person (docs/adr/0054 D1):
+ * another tenant's event changes nothing here. A comment, a stake or a link changes no tile, and
+ * time entries are not published (D4): a booking shows at the next reload.
  */
 export function changesDashboard(
   event: StreamEvent,
@@ -35,14 +43,13 @@ export function changesDashboard(
   person: string | undefined,
 ): boolean {
   switch (event.name) {
-    case 'resync':
-    case 'poll':
-      return true;
     case 'membership.changed':
-      return changesVisibility(event, person);
+      return changesMemberships(event, tenant) && changesVisibility(event, person);
     case 'ticket.changed':
     case 'question.changed':
-      return splitKey(event.key).tenant === tenant;
+    case 'resync':
+    case 'poll':
+      return ofTenant(event, tenant);
     default:
       return false;
   }

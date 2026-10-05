@@ -26,12 +26,17 @@ export interface TicketEvent {
 /**
  * `membership.changed` (docs/adr/0054 D2): who belongs to the tenant, or who sees a project,
  * changed — by an administrator's act or by the identity provider's groups (docs/adr/0030). The
- * payload carries keys only, each where it applies.
+ * payload carries the tenant and keys only, each where it applies.
  */
 export interface MembershipEvent {
   name: 'membership.changed';
   /** The audit row's id, which is also the stream's event id (D5). */
   id: string;
+  /**
+   * The tenant's slug (D1 as amended on 2026-10-05). A server that does not send it yet sends a
+   * stream's own tenant's events alone; {@link ofTenant} takes such an event for any tenant.
+   */
+  tenant?: string;
   /** The person whose membership or project access changed. */
   personId?: string;
   /** The project whose restriction or access list changed. */
@@ -53,15 +58,43 @@ export interface InboxEvent {
 /**
  * What the services react to: a change of a ticket or of the memberships, the person's unread
  * count; `resync`, after which everything shown is fetched again; or `poll`, the fallback's tick
- * (D7). A ticket event may name a ticket of another tenant than the page's: the person-level stream
- * carries the questions asked of the person in all their tenants (D1).
+ * (D7). A ticket or membership event may be of any tenant of the person: the person-level stream
+ * carries the events of all of them (D1 as amended on 2026-10-05). What shows one tenant reacts to
+ * that tenant's ({@link ofTenant}); the person-level pages follow every tenant
+ * (`features/me/person-list.ts`, `reloadOn`).
  */
 export type StreamEvent =
   TicketEvent | MembershipEvent | InboxEvent | { name: 'resync' } | { name: 'poll' };
 
-/** Whether an event may have changed who belongs to the tenant: its own event, or a gap in the stream. */
-export function changesMemberships(event: StreamEvent): boolean {
-  return event.name === 'membership.changed' || event.name === 'resync' || event.name === 'poll';
+/**
+ * Whether an event may concern what a page of the tenant shows: a ticket event whose key is of the
+ * tenant, a membership event of it, and a `resync` or `poll`, which may have missed one. The unread
+ * count is of no tenant. `null`, no tenant shown, has no events but the gaps.
+ */
+export function ofTenant(event: StreamEvent, tenant: string | null): boolean {
+  switch (event.name) {
+    case 'resync':
+    case 'poll':
+      return true;
+    case 'inbox.changed':
+      return false;
+    case 'membership.changed':
+      return event.tenant === undefined || event.tenant === tenant;
+    default:
+      // The canonical key, `<tenant>/<PROJECT>-<number>`.
+      return tenant !== null && event.key.slice(0, event.key.indexOf('/')) === tenant;
+  }
+}
+
+/**
+ * Whether an event may have changed who belongs to the tenant: a membership event of it, or a gap
+ * in the stream.
+ */
+export function changesMemberships(event: StreamEvent, tenant: string | null): boolean {
+  return (
+    (event.name === 'membership.changed' || event.name === 'resync' || event.name === 'poll') &&
+    ofTenant(event, tenant)
+  );
 }
 
 /**
@@ -71,6 +104,18 @@ export function changesMemberships(event: StreamEvent): boolean {
  */
 export function changesVisibility(event: MembershipEvent, person: string | undefined): boolean {
   return event.projectId !== undefined || (person !== undefined && event.personId === person);
+}
+
+/** The acts that take a ticket out of existence for everybody but the bin, or bring it back. */
+const existenceKinds: ReadonlySet<string> = new Set(['deleted', 'restored', 'purged']);
+
+/**
+ * Whether an event deleted, restored or purged a ticket (docs/adr/0024 D1, D2): whatever names the
+ * ticket — the inbox and its count, the open decisions — changes without an event of its own, so
+ * the views that show them load again on it.
+ */
+export function changesExistence(event: StreamEvent): boolean {
+  return event.name === 'ticket.changed' && existenceKinds.has(event.kind);
 }
 
 /**
@@ -122,6 +167,7 @@ function unreadOf(data: unknown): number | undefined {
 
 /** The keys a `membership.changed` payload may carry, and the event's names for them. */
 const membershipKeys = {
+  tenant: 'tenant',
   person_id: 'personId',
   project_id: 'projectId',
   mapping_id: 'mappingId',
@@ -133,12 +179,12 @@ const membershipKeys = {
  */
 function membershipPayload(
   data: unknown,
-): Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> | undefined {
+): Pick<MembershipEvent, 'tenant' | 'personId' | 'projectId' | 'mappingId'> | undefined {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     return undefined;
   }
   const payload = data as Record<string, unknown>;
-  const keys: Pick<MembershipEvent, 'personId' | 'projectId' | 'mappingId'> = {};
+  const keys: Pick<MembershipEvent, 'tenant' | 'personId' | 'projectId' | 'mappingId'> = {};
   for (const [key, field] of Object.entries(membershipKeys)) {
     const value = payload[key];
     if (typeof value === 'string') {
@@ -158,9 +204,9 @@ const closed = 2;
 /**
  * The event stream (docs/adr/0054): one `EventSource`, opened as the person-level stream
  * (`?me=true`, D1) on the tenant the pages show, or — on the person-level pages and wherever no
- * tenant is shown — on one of the person's tenants ({@link personal}), so that the unread count
- * and the questions asked of the person arrive everywhere; events that carry keys and versions and
- * nothing else, and the polling fallback — after three failures in a row or `event: unavailable`,
+ * tenant is shown — on one of the person's tenants ({@link personal}); either way it carries the
+ * unread count and the events of every tenant of the person, whatever tenant it is opened on.
+ * Events that carry keys and versions and nothing else, and the polling fallback — after three failures in a row or `event: unavailable`,
  * a `poll` tick every fifteen seconds and a new attempt at the stream every minute. While the tab
  * is hidden the events wait and arrive, merged, when it is visible again (D8). The browser sends
  * `Last-Event-ID` on its own reconnects (D5).

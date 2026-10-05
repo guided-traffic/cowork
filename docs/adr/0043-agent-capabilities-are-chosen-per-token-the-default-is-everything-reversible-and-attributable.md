@@ -47,6 +47,11 @@ questions, recorded in ADR 0076, and built the same day (D5: the person chooses 
 capabilities from the nine of D4 — by default every one but `decide`, `close`, `drop` and
 `record-answer` —, a session the agent header marks holds that set and no longer every capability,
 and the chat proposes nothing: every call runs at once).
+*(2026-10-05:)* D3's "deleting, restoring or purging anything" is built for tickets as the hard-off rule
+`deleting, restoring or purging` ([`api/deletion.go`](../../backend/internal/api/deletion.go)): an
+agent-marked request — a token's or the chat's — that deletes, restores or purges a ticket is
+`403 agent_forbidden`. Saving, changing, sharing and deleting a saved filter is an act no record lists
+and is open to agents until the review after experience.
 
 ## Context
 

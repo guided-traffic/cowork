@@ -947,4 +947,50 @@ describe('TicketActions', () => {
       none(flagUrl);
     });
   });
+
+  describe('delete (docs/adr/0024 D1)', () => {
+    it('deletes the ticket by its route and drops it from the cache', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = actions.delete(key);
+
+      await settle();
+      const sent = request(route);
+      expect(sent.request.method).toBe('DELETE');
+      sent.flush(null, { status: 204, statusText: 'No Content' });
+      await done;
+
+      expect(tickets.cache.value(key)).toBeUndefined();
+    });
+
+    it('keeps the ticket in the cache when the deletion is refused', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = rejection(actions.delete(key));
+
+      await settle();
+      request(route).flush(problem(403), failed(403, 'Forbidden'));
+
+      expect(await done).toBeInstanceOf(HttpErrorResponse);
+      expect(tickets.cache.value(key)?.version).toBe(5);
+    });
+
+    it('names the open tickets that wait on it directly, a step up its tree', async () => {
+      const names = actions.dependents(key);
+
+      await settle();
+      const sent = request(`${route}/prerequisites`);
+      expect(sent.request.params.get('direction')).toBe('up');
+      sent.flush({
+        open: 2,
+        next_cursor: null,
+        items: [
+          { key: 'acme/VKO-13', depth: 1, state: 'filed' },
+          { key: 'acme/OPS-2', depth: 1, state: 'done' },
+          { key: 'acme/VKO-20', depth: 2, state: 'filed' },
+          { key: 'acme/OPS-3', depth: 1, state: 'blocked' },
+        ],
+      });
+
+      expect(await names).toEqual(['VKO-13', 'OPS-3']);
+    });
+  });
 });

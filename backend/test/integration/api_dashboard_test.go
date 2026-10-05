@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -517,4 +518,61 @@ func TestDashboardRoute(t *testing.T) {
 	assertProblem(t, e.s.do(t, caller{Token: restricted}, http.MethodGet, path, nil), http.StatusNotFound, "not_found")
 	agent := e.dashboard(t, caller{Token: e.tk.AssistedAgentA, Agent: "claude-code/opus/1"}, "")
 	assert.NotEmpty(t, agent.OpenByState, "an agent reads it like its person")
+}
+
+// docs/adr/0024 D1: a deleted ticket answers like a missing one on the
+// dashboard as everywhere — it counts in no tile, nor its open question nor its
+// booked time, for nobody — and counts again where it counted once it is
+// restored.
+func TestDashboardLeavesADeletedTicketOut(t *testing.T) {
+	e := newDashboardEnv(t)
+	admin, member := e.admin(), e.member()
+	e.ticket(t, e.ProjectA, "kept", ago(1))
+	baseAdmin, baseMember := e.dashboard(t, admin, ""), e.dashboard(t, member, "")
+
+	// One ticket in every tile of the open tickets, with an open question and a
+	// booking, updated last; one done in the windows of throughput and lead time.
+	everywhere, everywhereNumber, err := e.f.Ticket(e.ctx, e.A, e.ProjectA, e.AdminA, "in every tile")
+	require.NoError(t, err)
+	e.exec(t, `UPDATE tickets SET opened_at = $2, updated_at = $3, state = 'blocked', blocked_from = 'filed',
+		block_kind = 'human', block_reason = 'it waits', severity = 'critical', security = 'live',
+		threat = 'a principal reads what it should not' WHERE id = $1`, everywhere, ago(10), ago(0.5))
+	e.exec(t, `INSERT INTO audit_events (tenant_id, actor_user_id, entity_type, entity_id, ticket_id, action, after, created_at)
+		VALUES ($1, $2, 'ticket', $3, $3, 'transitioned', '{"state":"blocked"}', $4)`, e.A, e.AdminA, everywhere, ago(3))
+	e.exec(t, `INSERT INTO questions (tenant_id, ticket_id, number, question, asked_by, created_at)
+		VALUES ($1, $2, 1, 'Which way?', $3, $4)`, e.A, everywhere, e.MemberA, ago(2))
+	e.exec(t, `INSERT INTO time_entries (tenant_id, ticket_id, person_id, author_id, minutes, day)
+		VALUES ($1, $2, $3, $3, 45, '2026-10-06')`, e.A, everywhere, e.MemberA)
+	closed, closedNumber, err := e.f.Ticket(e.ctx, e.A, e.ProjectA, e.AdminA, "done")
+	require.NoError(t, err)
+	e.exec(t, "UPDATE tickets SET opened_at = $2 WHERE id = $1", closed, ago(5))
+	e.done(t, closed, ago(1))
+
+	full := e.dashboard(t, admin, "")
+	require.Equal(t, 1, full.Blocked.Count)
+	require.Equal(t, 1, full.Security[0].Count)
+	require.Equal(t, 1, full.OpenBySeverity[0].Count)
+	require.Equal(t, 1, full.Decisions.Count)
+	require.Equal(t, 45, full.Time.TotalMinutes)
+	require.Equal(t, 1, full.LeadTime.Done)
+	require.Equal(t, e.SlugA+"/ALPHA-2", full.Recent[0].Key)
+
+	numbers := []int{everywhereNumber, closedNumber}
+	for _, number := range numbers {
+		e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", number), nil)
+	}
+	assert.Equal(t, baseAdmin, e.dashboard(t, admin, ""), "the deleted tickets count in no tile")
+	assert.Equal(t, baseMember, e.dashboard(t, member, ""), "nor for a member, whose time it was")
+
+	for _, number := range numbers {
+		e.send(t, admin, http.StatusOK, http.MethodPut, binPath(e.SlugA, "ALPHA-"+strconv.Itoa(number))+"/restore", nil)
+	}
+	back := e.dashboard(t, admin, "")
+	recent := make([]string, 0, len(back.Recent))
+	for _, r := range back.Recent {
+		recent = append(recent, r.Key)
+	}
+	assert.Contains(t, recent, e.SlugA+"/ALPHA-2", "listed again, at the time of its restoration")
+	back.Recent, full.Recent = nil, nil
+	assert.Equal(t, full, back, "the restored tickets count again where they counted")
 }

@@ -80,14 +80,14 @@ WITH RECURSIVE reach (id, via, depth) AS (
     FROM ticket_links l
     JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.target_id
     WHERE l.tenant_id = $3 AND l.source_id = $4::uuid AND l.type = 'blocks'
-      AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
     UNION
     SELECT l.target_id, l.source_id, reach.depth + 1
     FROM reach
     JOIN ticket_links l ON l.tenant_id = $3 AND l.source_id = reach.id AND l.type = 'blocks'
     JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.target_id
     WHERE reach.depth < $5::integer AND s.id <> $4::uuid
-      AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 ), first AS (
     SELECT DISTINCT ON (reach.id) reach.id, reach.via, reach.depth FROM reach ORDER BY reach.id, reach.depth, reach.via
 ), tree (id, depth, path) AS (
@@ -111,7 +111,7 @@ WITH RECURSIVE reach (id, via, depth) AS (
     JOIN tickets s ON s.tenant_id = $3 AND s.id = nodes.id
     JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
     LEFT JOIN users au ON au.id = s.assignee_id
-    WHERE app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+    WHERE s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 )
 SELECT shown.depth::integer AS depth, shown.path::uuid[] AS path, shown.repeated::boolean AS repeated,
        shown.project_key, shown.number, shown.title, shown.state, shown.blocked_from,
@@ -208,7 +208,7 @@ JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
 JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
 WHERE l.tenant_id = $1 AND l.target_id = $2 AND l.type = 'blocks'
   AND s.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+  AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 ORDER BY sp.key, s.number
 `
 
@@ -260,14 +260,14 @@ WITH RECURSIVE reach (id, via, depth) AS (
     FROM ticket_links l
     JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
     WHERE l.tenant_id = $3 AND l.target_id = $4::uuid AND l.type = 'blocks'
-      AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
     UNION
     SELECT l.source_id, l.target_id, reach.depth + 1
     FROM reach
     JOIN ticket_links l ON l.tenant_id = $3 AND l.target_id = reach.id AND l.type = 'blocks'
     JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
     WHERE reach.depth < $5::integer AND s.id <> $4::uuid
-      AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+      AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 ), first AS (
     SELECT DISTINCT ON (reach.id) reach.id, reach.via, reach.depth FROM reach ORDER BY reach.id, reach.depth, reach.via
 ), tree (id, depth, path) AS (
@@ -291,7 +291,7 @@ WITH RECURSIVE reach (id, via, depth) AS (
     JOIN tickets s ON s.tenant_id = $3 AND s.id = nodes.id
     JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
     LEFT JOIN users au ON au.id = s.assignee_id
-    WHERE app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
+    WHERE s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
 )
 SELECT shown.depth::integer AS depth, shown.path::uuid[] AS path, shown.repeated::boolean AS repeated,
        shown.project_key, shown.number, shown.title, shown.state, shown.blocked_from,
@@ -400,7 +400,7 @@ JOIN projects op ON op.tenant_id = o.tenant_id AND op.id = o.project_id
 LEFT JOIN users u ON u.id = l.created_by
 WHERE l.tenant_id = $2
   AND (l.source_id = $1::uuid OR l.target_id = $1::uuid)
-  AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
+  AND o.deleted_at IS NULL AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
   AND ($3::uuid IS NULL OR l.id > $3::uuid)
 ORDER BY l.id
 LIMIT $4

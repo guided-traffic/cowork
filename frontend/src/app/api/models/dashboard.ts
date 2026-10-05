@@ -19,7 +19,8 @@ import { DashboardWeek } from '../models/dashboard-week';
  * each ticket, question and time entry it reads, so a restricted project or a confidential
  * ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,
  * docs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034
- * D5). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they
+ * D5). A deleted ticket counts nowhere either — nor its questions and its time — until it is
+ * restored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they
  * stand at the request; throughput and lead time end with the period's last day; the time is
  * the period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them
  * (docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without

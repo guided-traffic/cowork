@@ -27,6 +27,11 @@ Amended 2026-10-04 by the owner's decision that every act made through a token i
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
 under the ticket's path. D6's per-tenant quota is neither enforced nor reported; D7 arrives
 with the sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6.
+*(Built 2026-10-05.)* D7 with that sanitiser: an image in a rendered text shows only when its address
+names a raster attachment of the same ticket — PNG, JPEG, GIF, WebP — and is then served from that
+attachment's own path; an SVG, another ticket's attachment and any other address are rendered as a
+link, which a non-raster attachment answers as a download (D5)
+([docs/security/rendered-markdown.md](../security/rendered-markdown.md#images)).
 *(2026-10-04.)* In the browser: an upload to a comment of the person's own, and the preview of a
 raster attachment — an image of its own URL, inline by D5, never an SVG — each load of which is a
 recorded download.
