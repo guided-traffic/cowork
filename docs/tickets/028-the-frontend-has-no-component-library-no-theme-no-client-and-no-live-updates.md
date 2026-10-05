@@ -71,43 +71,9 @@ ADR 0054 (D3 amended, D7's client side built), ADR 0045's Status, the README ref
 
 Left:
 
-- **The bundle budget warns on every production build** (Q1). Measured on this branch with
-  `ng build`: the initial bundle is 1,027,630 bytes, 7,120 more than the 1,020,510 of the commit it
-  branched from — above Angular's 1,000,000 and below the 1,048,576 of ADR 0052 D6.
 - **A check by hand is outstanding:** nobody has looked at a released frontend image for the
   license notice.
 
 ## Required changes
 
-### Independent of the open question
-
 1. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
-
-### Depends on the answer
-
-2. The budget in [`angular.json`](../../frontend/angular.json#L52-L57) as Q1's answer has it, and
-   ADR 0052's D6 and Status settled with it.
-
-## Open questions
-
-### Q1: At which number does the initial bundle's budget warn?
-
-ADR 0052 D6 raises the warning to 1 MiB (1,048,576 bytes) "once the library is in"; `angular.json`
-writes `"1mb"`, which Angular reads in thousands — 1,000,000 bytes — so the warning fires at the
-smaller number. The initial bundle lies between the two (1,016.52 kB as ADR 0052's Status
-records it), every `make frontend-build` warns, CI's included, and the record calls which number
-holds open.
-
-- **(a) `angular.json` follows the record:** `"maximumWarning": "1048576b"` and, for the error,
-  `"1572864b"` (1.5 MiB); the build warns again once the bundle passes 1 MiB, and D6 stands as
-  written.
-- **(b) The record follows `angular.json`:** 1,000,000 bytes, and code leaves the initial bundle
-  until it fits; D6 is amended to the decimal number. Work to save some 17 kB below a line the
-  record did not choose.
-
-Recommended: **(a)** — 1 MiB is the number the record decided, and `"1mb"` meaning 1,000,000
-bytes is the builder's unit, not a decision; a warning that fires on every build tells nobody
-anything, which is the opposite of a budget, and (a) makes it mean "past the decided line"
-again.
-
-**Answer:** _open_
