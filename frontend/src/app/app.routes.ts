@@ -39,6 +39,12 @@ export const routes: Routes = [
         path: 'me/decisions',
         loadComponent: () => import('./features/me/decisions').then((m) => m.Decisions),
       },
+      // The search of every tenant of the person (docs/adr/0023 D2, docs/adr/0025).
+      {
+        path: 'me/search',
+        data: { scope: 'me' },
+        loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
+      },
       {
         path: 't/:tenant',
         component: TenantScope,
@@ -72,6 +78,12 @@ export const routes: Routes = [
             path: 'tickets/:key',
             loadComponent: () =>
               import('./features/ticket/ticket-detail').then((m) => m.TicketDetail),
+          },
+          // The tenant's search, what the search box does inside a tenant (docs/adr/0018 D7).
+          {
+            path: 'search',
+            data: { scope: 'tenant' },
+            loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
           },
           {
             path: 'members',

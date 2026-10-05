@@ -172,6 +172,55 @@ describe('TicketRelations', () => {
     });
   });
 
+  describe('the rendered body', () => {
+    const bodyUrl = `${base}/body`;
+    const rendered = (version: number) => ({ body: 'x', body_html: '<p>x</p>', version });
+
+    it('loads once the version of the ticket is known, and again for a newer one', () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      http.expectNone(bodyUrl);
+
+      relations.version.set(3);
+      TestBed.tick();
+      http.expectOne(bodyUrl).flush(rendered(3));
+
+      relations.version.set(4);
+      TestBed.tick();
+      http.expectOne(bodyUrl);
+    });
+
+    it('loads again on a change that moves no version, an upload, and leaves a newer one to the version', async () => {
+      relations.at.set(cow12);
+      relations.version.set(3);
+      TestBed.tick();
+      http.expectOne(bodyUrl).flush(rendered(3));
+      // The other parts stay unanswered, so the application is not stable: wait for the answer.
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(relations.body.value()).toEqual(rendered(3));
+      const reload = vi.spyOn(relations.body, 'reload').mockReturnValue(true);
+
+      events.next({
+        name: 'ticket.changed',
+        id: 'e-1',
+        key: 'acme/COW-12',
+        version: 3,
+        kind: 'uploaded',
+      });
+      expect(reload).toHaveBeenCalledOnce();
+
+      reload.mockClear();
+      events.next({
+        name: 'ticket.changed',
+        id: 'e-2',
+        key: 'acme/COW-12',
+        version: 4,
+        kind: 'edited',
+      });
+      expect(reload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('events of the ticket', () => {
     beforeEach(() => {
       relations.at.set(cow12);

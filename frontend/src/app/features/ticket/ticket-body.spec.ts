@@ -76,11 +76,45 @@ describe('TicketBody', () => {
     await settle(fixture);
   }
 
-  it('shows the body as text, never as markup', async () => {
+  it('shows the body as text, never as markup, while it has no rendering', async () => {
     const fixture = await render(ticket({ body: '<b>bold</b> and **strong**' }));
 
     expect(el(fixture, 'body')?.textContent).toBe('<b>bold</b> and **strong**');
     expect(el(fixture, 'body')?.querySelector('b')).toBeNull();
+  });
+
+  it("shows the rendering of the body the server sanitised, through Angular's sanitiser again", async () => {
+    const fixture = TestBed.createComponent(TicketBody);
+    fixture.componentRef.setInput('ticket', ticket());
+    fixture.componentRef.setInput('rendered', {
+      body: ticket().body,
+      body_html:
+        '<h2>Current state</h2><p>It <a href="https://e.com" rel="noopener noreferrer nofollow" target="_blank">flickers</a>.</p>' +
+        '<img src="/x.png" onerror="alert(1)"><script>alert(2)</script>',
+      version: 3,
+    });
+    await settle(fixture);
+
+    const body = el(fixture, 'body') as HTMLElement;
+    expect(body.querySelector('h2')?.textContent).toBe('Current state');
+    expect(body.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer nofollow');
+    expect(body.querySelector('a')?.getAttribute('target')).toBe('_blank');
+    expect(body.querySelector('img')?.getAttribute('onerror')).toBeNull();
+    expect(body.querySelector('script')).toBeNull();
+  });
+
+  it('shows the body as text while the rendering is of another body', async () => {
+    const fixture = TestBed.createComponent(TicketBody);
+    fixture.componentRef.setInput('ticket', ticket({ body: 'The new text.', version: 4 }));
+    fixture.componentRef.setInput('rendered', {
+      body: ticket().body,
+      body_html: '<p>The old text.</p>',
+      version: 3,
+    });
+    await settle(fixture);
+
+    expect(el(fixture, 'body')?.textContent).toBe('The new text.');
+    expect(el(fixture, 'body')?.querySelector('p')).toBeNull();
   });
 
   it('says so when there is no body', async () => {

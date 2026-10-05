@@ -21,6 +21,7 @@ import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
 import { ProjectSettings } from './features/project/project-settings';
+import { SearchResults } from './features/search/search';
 import { Accounts } from './features/tenant/accounts';
 import { GroupMappings } from './features/tenant/group-mappings';
 import { Members } from './features/tenant/members';
@@ -53,12 +54,14 @@ const pages: [string, Type<unknown>][] = [
   ['me/inbox', Inbox],
   ['me/assigned', Assigned],
   ['me/decisions', Decisions],
+  ['me/search', SearchResults],
   ['t/:tenant', TenantOverview],
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
   ['t/:tenant/p/:project/settings', ProjectSettings],
   ['t/:tenant/settings', TenantSettings],
   ['t/:tenant/tickets/:key', TicketDetail],
+  ['t/:tenant/search', SearchResults],
   ['t/:tenant/members', Members],
   ['t/:tenant/accounts', Accounts],
   ['t/:tenant/group-mappings', GroupMappings],
@@ -146,6 +149,8 @@ describe('the routes', () => {
       named('/login', Login),
       named('/', Shell, Home),
       named('/me/tokens', Shell, Tokens),
+      named('/me/search?q=gate', Shell, SearchResults),
+      named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
       named('/t/acme', Shell, TenantScope, TenantOverview),
       named('/t/acme/members', Shell, TenantScope, Members),
       named('/t/acme/accounts', Shell, TenantScope, Accounts),

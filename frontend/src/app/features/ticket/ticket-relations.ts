@@ -10,6 +10,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../../api/api';
 import {
+  getTicketBody,
   listActivity,
   listAttachments,
   listComments,
@@ -27,6 +28,7 @@ import {
   LinkList,
   PrerequisiteTree,
   QuestionList,
+  TicketBody as RenderedBody,
   TimeEntryList,
 } from '../../api/models';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
@@ -49,20 +51,36 @@ export function address(tenant: string | null, key: string): TicketAddress | und
 export type TreeDirection = 'down' | 'up';
 
 /**
- * What surrounds a ticket on its detail page — comments, activity, questions, links, interest,
- * attachments, time, the prerequisite tree — loaded through the API and reloaded when the event
- * stream names the ticket (docs/adr/0054 D2): an event says which part changed, and only that part
- * and the activity are fetched again; an upload is a `ticket.changed`. Time entries are not
- * published (D4): the page that books reloads them, and `resync` and `poll` do. The tree loads again
- * on a link of the ticket and on any change of a ticket it shows. A part that is loading when its
- * event arrives loads once more afterwards (`refresh`), and a part that loads again and fails keeps
- * what it shows ({@link keepShown}). Provided by the page, so it lives exactly as long as the page.
+ * What surrounds a ticket on its detail page — the rendered body, comments, activity, questions,
+ * links, interest, attachments, time, the prerequisite tree — loaded through the API and reloaded
+ * when the event stream names the ticket (docs/adr/0054 D2): an event says which part changed, and
+ * only that part and the activity are fetched again; an upload is a `ticket.changed`. Time entries
+ * are not published (D4): the page that books reloads them, and `resync` and `poll` do. The tree
+ * loads again on a link of the ticket and on any change of a ticket it shows. The rendered body
+ * loads again when the ticket's version moves ({@link version}, which the page sets from the
+ * cache), and on a `ticket.changed` that moves no version, an upload — whose image the body may
+ * show (docs/adr/0016 D7). A part that is loading when its event arrives loads once more afterwards
+ * (`refresh`), and a part that loads again and fails keeps what it shows ({@link keepShown}).
+ * Provided by the page, so it lives exactly as long as the page.
  */
 @Injectable()
 export class TicketRelations {
   private readonly api = inject(Api);
   private readonly injector = inject(Injector);
   readonly at = signal<TicketAddress | undefined>(undefined);
+  /** The version of the ticket the page shows, from the cache; the rendered body follows it. */
+  readonly version = signal<number | undefined>(undefined);
+
+  /** The body as the server rendered and sanitised it (docs/adr/0011 D6). */
+  readonly body: ResourceRef<RenderedBody | undefined> = resource({
+    params: () => {
+      const at = this.at();
+      const version = this.version();
+      return at && version !== undefined ? { ...at, version } : undefined;
+    },
+    loader: ({ params: { tenant, project, number } }) =>
+      keepShown(this.body, () => this.api.invoke(getTicketBody, { tenant, project, number })),
+  });
 
   readonly comments: ResourceRef<CommentList | undefined> = resource({
     params: () => this.at(),
@@ -127,6 +145,7 @@ export class TicketRelations {
     }
     if (event.name === 'resync' || event.name === 'poll') {
       for (const part of [
+        this.body,
         this.comments,
         this.questions,
         this.links,
@@ -165,6 +184,10 @@ export class TicketRelations {
       refresh(this.interest, this.injector);
     } else {
       refresh(this.attachments, this.injector);
+      // A change that moves the version reloads the body through the version the page sets.
+      if (this.body.hasValue() && event.version <= (this.body.value()?.version ?? 0)) {
+        refresh(this.body, this.injector);
+      }
     }
     refresh(this.activity, this.injector);
   }
