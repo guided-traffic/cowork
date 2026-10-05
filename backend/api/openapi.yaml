@@ -41,6 +41,7 @@ tags:
   - name: projects
   - name: repositories
   - name: tickets
+  - name: filters
   - name: questions
   - name: comments
   - name: time
@@ -140,6 +141,10 @@ paths:
     $ref: './tenants.yaml#/projectTickets'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}:
     $ref: './tenants.yaml#/ticket'
+  /api/v1/tenants/{tenant}/filters:
+    $ref: './filters.yaml#/savedFilters'
+  /api/v1/tenants/{tenant}/filters/{filter}:
+    $ref: './filters.yaml#/savedFilter'
   /api/v1/tenants/{tenant}/deleted-tickets:
     $ref: './tenants.yaml#/deletedTickets'
   /api/v1/tenants/{tenant}/deleted-tickets/{key}:

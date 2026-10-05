@@ -471,6 +471,16 @@
           "type": "string"
         }
       },
+      "SavedFilterID": {
+        "description": "The saved filter's id",
+        "in": "path",
+        "name": "filter",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
       "TenantSlug": {
         "description": "The tenant's slug (docs/adr/0005 D4)",
         "in": "path",
@@ -3613,6 +3623,277 @@
         ],
         "type": "string"
       },
+      "SavedFilter": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "redacted": {
+            "description": "Another person's filter names a project or a ticket the caller cannot see, or one that no\nlonger exists; its parameters and warnings are withheld (docs/adr/0065 D5)\n",
+            "type": "boolean"
+          },
+          "shared": {
+            "description": "Shown to every member of the tenant, with its owner",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner",
+          "shared",
+          "parameters",
+          "redacted",
+          "warnings",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SavedFilterCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "parameters"
+        ],
+        "type": "object"
+      },
+      "SavedFilterList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedFilter"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "SavedFilterParameters": {
+        "additionalProperties": false,
+        "description": "The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each\nrepeatable parameter an array of its values — `!` negates one —, the bounds and the booleans\nsingle values. What a list's query string would carry, without the paging.\n",
+        "properties": {
+          "assignee": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "done_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effort": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "has_open_questions": {
+            "type": "boolean"
+          },
+          "include_terminal": {
+            "type": "boolean"
+          },
+          "interest": {
+            "items": {
+              "maxLength": 8,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "opened_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "opened_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "parent": {
+            "items": {
+              "maxLength": 80,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "progress_max": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_min": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "project": {
+            "items": {
+              "maxLength": 16,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "q": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reporter": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "security": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "severity": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "state": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "type": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "updated_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_before": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "urgency": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterPatch": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SavedFilterParameters"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "SavedFilterWarning": {
+        "description": "A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "message"
+        ],
+        "type": "object"
+      },
       "Scope": {
         "description": "A token's scope (docs/adr/0035 D3)",
         "enum": [
@@ -6294,6 +6575,187 @@
           "$ref": "#/components/parameters/TenantSlug"
         }
       ]
+    },
+    "/api/v1/tenants/{tenant}/filters": {
+      "get": {
+        "description": "The caller's own filters and every filter a member shared with the tenant, oldest first, each\nwith its owner. Every filter is checked against the vocabularies as it is read\n(docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody\nelse that names a project or a ticket the caller cannot see — or one that no longer exists —\nis answered `redacted`, without its parameters, as an act that names a hidden ticket is\n(docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listSavedFilters",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterList"
+                }
+              }
+            },
+            "description": "A page of saved filters"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The caller's saved filters and those shared with the tenant",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'\n(docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value\noutside its vocabulary is 400 at `/parameters/\u003cname\u003e` (D4). `me` stays `me`: whoever applies\nthe filter is meant. `shared` shows it to every member of the tenant with the owner beside\nit. Recorded as `created`.\n",
+        "operationId": "createSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Save a filter",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/filters/{filter}": {
+      "delete": {
+        "description": "Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a\nfilter the caller cannot see — or one already gone — 404. Recorded as `deleted`.\n",
+        "operationId": "deleteSavedFilter",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "get": {
+        "description": "The caller's own, or a shared one; any other is 404.",
+        "operationId": "getSavedFilter",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The saved filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "One saved filter",
+        "tags": [
+          "filters"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/SavedFilterID"
+        }
+      ],
+      "patch": {
+        "description": "Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's\nshared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces\nthe whole set, checked as on creation. Recorded as `updated` with the fields that changed.\n",
+        "operationId": "updateSavedFilter",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedFilterPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilter"
+                }
+              }
+            },
+            "description": "The changed filter",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Rename, change, share or unshare a saved filter",
+        "tags": [
+          "filters"
+        ]
+      }
     },
     "/api/v1/tenants/{tenant}/group-mappings": {
       "get": {
@@ -9836,6 +10298,9 @@
     },
     {
       "name": "tickets"
+    },
+    {
+      "name": "filters"
     },
     {
       "name": "questions"

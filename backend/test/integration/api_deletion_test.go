@@ -116,7 +116,7 @@ func (e ticketEnv) treeKeys(t *testing.T, c caller, tk apigen.Ticket, query stri
 	res := e.s.do(t, c, http.MethodGet, ticketPath(e.SlugA, tk.Project, tk.Number)+"/prerequisites"+query, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	tree := decode[apigen.PrerequisiteTree](t, res)
-	var keys []string
+	keys := make([]string, 0, len(tree.Items))
 	for _, n := range tree.Items {
 		keys = append(keys, n.Key)
 	}
@@ -393,7 +393,7 @@ func TestThePurgeJobPurgesAfterThirtyDays(t *testing.T) {
 
 	purged, err := openRuntime(t).PurgeDeletedTickets(e.ctx, time.Now())
 	require.NoError(t, err)
-	var keys []string
+	keys := make([]string, 0, len(purged))
 	for _, p := range purged {
 		keys = append(keys, p.Key)
 		if p.Key == old.Key {

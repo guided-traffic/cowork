@@ -2298,6 +2298,91 @@ type RequestMark struct {
 // Role A tenant role, lowest first (docs/adr/0034 D1)
 type Role string
 
+// SavedFilter defines model for SavedFilter.
+type SavedFilter struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	Owner     Person             `json:"owner"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters SavedFilterParameters `json:"parameters"`
+
+	// Redacted Another person's filter names a project or a ticket the caller cannot see, or one that no
+	// longer exists; its parameters and warnings are withheld (docs/adr/0065 D5)
+	Redacted bool `json:"redacted"`
+
+	// Shared Shown to every member of the tenant, with its owner
+	Shared    bool                 `json:"shared"`
+	UpdatedAt time.Time            `json:"updated_at"`
+	Version   int                  `json:"version"`
+	Warnings  []SavedFilterWarning `json:"warnings"`
+}
+
+// SavedFilterCreate defines model for SavedFilterCreate.
+type SavedFilterCreate struct {
+	Name string `json:"name"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters SavedFilterParameters `json:"parameters"`
+	Shared     *bool                 `json:"shared,omitempty"`
+}
+
+// SavedFilterList defines model for SavedFilterList.
+type SavedFilterList struct {
+	Items      []SavedFilter             `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// SavedFilterParameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+// single values. What a list's query string would carry, without the paging.
+type SavedFilterParameters struct {
+	Assignee         *[]string  `json:"assignee,omitempty"`
+	Blocked          *bool      `json:"blocked,omitempty"`
+	DoneAfter        *time.Time `json:"done_after,omitempty"`
+	Effort           *[]string  `json:"effort,omitempty"`
+	HasOpenQuestions *bool      `json:"has_open_questions,omitempty"`
+	IncludeTerminal  *bool      `json:"include_terminal,omitempty"`
+	Interest         *[]string  `json:"interest,omitempty"`
+	OpenedAfter      *time.Time `json:"opened_after,omitempty"`
+	OpenedBefore     *time.Time `json:"opened_before,omitempty"`
+	Parent           *[]string  `json:"parent,omitempty"`
+	ProgressMax      *int       `json:"progress_max,omitempty"`
+	ProgressMin      *int       `json:"progress_min,omitempty"`
+	Project          *[]string  `json:"project,omitempty"`
+	Q                *string    `json:"q,omitempty"`
+	Reporter         *[]string  `json:"reporter,omitempty"`
+	Security         *[]string  `json:"security,omitempty"`
+	Severity         *[]string  `json:"severity,omitempty"`
+	State            *[]string  `json:"state,omitempty"`
+	Type             *[]string  `json:"type,omitempty"`
+	UpdatedAfter     *time.Time `json:"updated_after,omitempty"`
+	UpdatedBefore    *time.Time `json:"updated_before,omitempty"`
+	Urgency          *[]string  `json:"urgency,omitempty"`
+}
+
+// SavedFilterPatch defines model for SavedFilterPatch.
+type SavedFilterPatch struct {
+	Name *string `json:"name,omitempty"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters *SavedFilterParameters `json:"parameters,omitempty"`
+	Shared     *bool                  `json:"shared,omitempty"`
+}
+
+// SavedFilterWarning A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)
+type SavedFilterWarning struct {
+	Message   string `json:"message"`
+	Parameter string `json:"parameter"`
+}
+
 // Scope A token's scope (docs/adr/0035 D3)
 type Scope string
 
@@ -2926,6 +3011,9 @@ type QuestionNumber = int
 // RepositoryID defines model for RepositoryID.
 type RepositoryID = openapi_types.UUID
 
+// SavedFilterID defines model for SavedFilterID.
+type SavedFilterID = openapi_types.UUID
+
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
 
@@ -3099,6 +3187,29 @@ type ListDeletedTicketsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSavedFiltersParams defines parameters for ListSavedFilters.
+type ListSavedFiltersParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateSavedFilterParams defines parameters for CreateSavedFilter.
+type CreateSavedFilterParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// UpdateSavedFilterParams defines parameters for UpdateSavedFilter.
+type UpdateSavedFilterParams struct {
+	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
+	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // ListGroupMappingsParams defines parameters for ListGroupMappings.
@@ -3647,6 +3758,12 @@ type CreateAccountJSONRequestBody = AccountCreate
 
 // ResetAccountPasswordJSONRequestBody defines body for ResetAccountPassword for application/json ContentType.
 type ResetAccountPasswordJSONRequestBody = AccountPasswordReset
+
+// CreateSavedFilterJSONRequestBody defines body for CreateSavedFilter for application/json ContentType.
+type CreateSavedFilterJSONRequestBody = SavedFilterCreate
+
+// UpdateSavedFilterJSONRequestBody defines body for UpdateSavedFilter for application/json ContentType.
+type UpdateSavedFilterJSONRequestBody = SavedFilterPatch
 
 // CreateGroupMappingJSONRequestBody defines body for CreateGroupMapping for application/json ContentType.
 type CreateGroupMappingJSONRequestBody = GroupMappingCreate
@@ -4333,6 +4450,81 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
 	RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	//
+	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+	// with its owner. Every filter is checked against the vocabularies as it is read
+	// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+	// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+	// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+	// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+	ListSavedFilters(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSavedFilterWithBody Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSavedFilter Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilter(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSavedFilter Delete a saved filter
+	//
+	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+	DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSavedFilter One saved filter
+	//
+	// The caller's own, or a shared one; any other is 404.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+	GetSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGroupMappings The tenant's group mappings, by group
 	//
@@ -6471,6 +6663,151 @@ func (c *Client) PurgeTicket(ctx context.Context, tenant TenantSlug, key TicketK
 // Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
 func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRestoreTicketRequest(c.Server, tenant, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSavedFilters The caller's saved filters and those shared with the tenant
+//
+// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+// with its owner. Every filter is checked against the vocabularies as it is read
+// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+func (c *Client) ListSavedFilters(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSavedFiltersRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSavedFilterWithBody Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *Client) CreateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSavedFilterRequestWithBody(c.Server, tenant, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSavedFilter Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *Client) CreateSavedFilter(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSavedFilterRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSavedFilter Delete a saved filter
+//
+// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+func (c *Client) DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSavedFilterRequest(c.Server, tenant, filter)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSavedFilter One saved filter
+//
+// The caller's own, or a shared one; any other is 404.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+func (c *Client) GetSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSavedFilterRequest(c.Server, tenant, filter)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *Client) UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSavedFilterRequestWithBody(c.Server, tenant, filter, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSavedFilter Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *Client) UpdateSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSavedFilterRequest(c.Server, tenant, filter, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10336,6 +10673,292 @@ func NewRestoreTicketRequest(server string, tenant TenantSlug, key TicketKeyPath
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSavedFiltersRequest constructs an http.Request for the ListSavedFilters method
+func NewListSavedFiltersRequest(server string, tenant TenantSlug, params *ListSavedFiltersParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSavedFilterRequest calls the generic CreateSavedFilter builder with application/json body
+func NewCreateSavedFilterRequest(server string, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSavedFilterRequestWithBody(server, tenant, params, "application/json", bodyReader)
+}
+
+// NewCreateSavedFilterRequestWithBody constructs an http.Request for the CreateSavedFilter method, with any body, and a specified content type
+func NewCreateSavedFilterRequestWithBody(server string, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteSavedFilterRequest constructs an http.Request for the DeleteSavedFilter method
+func NewDeleteSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSavedFilterRequest constructs an http.Request for the GetSavedFilter method
+func NewGetSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSavedFilterRequest calls the generic UpdateSavedFilter builder with application/json body
+func NewUpdateSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSavedFilterRequestWithBody(server, tenant, filter, params, "application/json", bodyReader)
+}
+
+// NewUpdateSavedFilterRequestWithBody constructs an http.Request for the UpdateSavedFilter method, with any body, and a specified content type
+func NewUpdateSavedFilterRequestWithBody(server string, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -16563,6 +17186,87 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
 	RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error)
 
+	// ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
+	//
+	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+	// with its owner. Every filter is checked against the vocabularies as it is read
+	// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+	// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+	// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+	// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+	ListSavedFiltersWithResponse(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*ListSavedFiltersResponse, error)
+
+	// CreateSavedFilterWithBodyWithResponse Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error)
+
+	// CreateSavedFilterWithResponse Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error)
+
+	// DeleteSavedFilterWithResponse Delete a saved filter
+	//
+	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+	DeleteSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*DeleteSavedFilterResponse, error)
+
+	// GetSavedFilterWithResponse One saved filter
+	//
+	// The caller's own, or a shared one; any other is 404.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+	GetSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*GetSavedFilterResponse, error)
+
+	// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error)
+
+	// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error)
+
 	// ListGroupMappingsWithResponse The tenant's group mappings, by group
 	//
 	// Each mapping gives its role to every person whose groups include its
@@ -19597,6 +20301,296 @@ func (r RestoreTicketResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RestoreTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListSavedFiltersResponseDefaultHeaders the declared response headers of an HTTP default response for ListSavedFilters
+type ListSavedFiltersResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListSavedFiltersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilterList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListSavedFiltersResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSavedFiltersResponse) GetJSON200() *SavedFilterList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListSavedFiltersResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSavedFiltersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSavedFiltersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSavedFiltersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSavedFiltersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateSavedFilterResponse201Headers the declared response headers of an HTTP 201 response for CreateSavedFilter
+type CreateSavedFilterResponse201Headers struct {
+	ETag     *string
+	Location *string
+}
+
+// CreateSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for CreateSavedFilter
+type CreateSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateSavedFilterResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSavedFilterResponse) GetJSON201() *SavedFilter {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for DeleteSavedFilter
+type DeleteSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeleteSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeleteSavedFilterResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetSavedFilterResponse200Headers the declared response headers of an HTTP 200 response for GetSavedFilter
+type GetSavedFilterResponse200Headers struct {
+	ETag *string
+}
+
+// GetSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for GetSavedFilter
+type GetSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetSavedFilterResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSavedFilterResponse) GetJSON200() *SavedFilter {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateSavedFilterResponse200Headers the declared response headers of an HTTP 200 response for UpdateSavedFilter
+type UpdateSavedFilterResponse200Headers struct {
+	ETag *string
+}
+
+// UpdateSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for UpdateSavedFilter
+type UpdateSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UpdateSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateSavedFilterResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UpdateSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSavedFilterResponse) GetJSON200() *SavedFilter {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSavedFilterResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -24718,6 +25712,129 @@ func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, ten
 	return ParseRestoreTicketResponse(rsp)
 }
 
+// ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
+//
+// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+// with its owner. Every filter is checked against the vocabularies as it is read
+// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+func (c *ClientWithResponses) ListSavedFiltersWithResponse(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*ListSavedFiltersResponse, error) {
+	rsp, err := c.ListSavedFilters(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSavedFiltersResponse(rsp)
+}
+
+// CreateSavedFilterWithBodyWithResponse Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *ClientWithResponses) CreateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error) {
+	rsp, err := c.CreateSavedFilterWithBody(ctx, tenant, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSavedFilterResponse(rsp)
+}
+
+// CreateSavedFilterWithResponse Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *ClientWithResponses) CreateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error) {
+	rsp, err := c.CreateSavedFilter(ctx, tenant, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSavedFilterResponse(rsp)
+}
+
+// DeleteSavedFilterWithResponse Delete a saved filter
+//
+// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+func (c *ClientWithResponses) DeleteSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*DeleteSavedFilterResponse, error) {
+	rsp, err := c.DeleteSavedFilter(ctx, tenant, filter, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSavedFilterResponse(rsp)
+}
+
+// GetSavedFilterWithResponse One saved filter
+//
+// The caller's own, or a shared one; any other is 404.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+func (c *ClientWithResponses) GetSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*GetSavedFilterResponse, error) {
+	rsp, err := c.GetSavedFilter(ctx, tenant, filter, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSavedFilterResponse(rsp)
+}
+
+// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *ClientWithResponses) UpdateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error) {
+	rsp, err := c.UpdateSavedFilterWithBody(ctx, tenant, filter, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSavedFilterResponse(rsp)
+}
+
+// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *ClientWithResponses) UpdateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error) {
+	rsp, err := c.UpdateSavedFilter(ctx, tenant, filter, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSavedFilterResponse(rsp)
+}
+
 // ListGroupMappingsWithResponse The tenant's group mappings, by group
 //
 // Each mapping gives its role to every person whose groups include its
@@ -28089,6 +29206,269 @@ func ParseRestoreTicketResponse(rsp *http.Response) (*RestoreTicketResponse, err
 		response.Headers200 = &headers
 	case true:
 		var headers RestoreTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListSavedFiltersResponse parses an HTTP response from a ListSavedFiltersWithResponse call
+func ParseListSavedFiltersResponse(rsp *http.Response) (*ListSavedFiltersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSavedFiltersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilterList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListSavedFiltersResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateSavedFilterResponse parses an HTTP response from a CreateSavedFilterWithResponse call
+func ParseCreateSavedFilterResponse(rsp *http.Response) (*CreateSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateSavedFilterResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers CreateSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSavedFilterResponse parses an HTTP response from a DeleteSavedFilterWithResponse call
+func ParseDeleteSavedFilterResponse(rsp *http.Response) (*DeleteSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeleteSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetSavedFilterResponse parses an HTTP response from a GetSavedFilterWithResponse call
+func ParseGetSavedFilterResponse(rsp *http.Response) (*GetSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetSavedFilterResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers GetSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSavedFilterResponse parses an HTTP response from a UpdateSavedFilterWithResponse call
+func ParseUpdateSavedFilterResponse(rsp *http.Response) (*UpdateSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateSavedFilterResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers UpdateSavedFilterResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -32094,6 +33474,21 @@ type ServerInterface interface {
 	// RestoreTicket Restore a deleted ticket from the bin
 	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
 	RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	// (GET /api/v1/tenants/{tenant}/filters)
+	ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams)
+	// CreateSavedFilter Save a filter
+	// (POST /api/v1/tenants/{tenant}/filters)
+	CreateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateSavedFilterParams)
+	// DeleteSavedFilter Delete a saved filter
+	// (DELETE /api/v1/tenants/{tenant}/filters/{filter})
+	DeleteSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID)
+	// GetSavedFilter One saved filter
+	// (GET /api/v1/tenants/{tenant}/filters/{filter})
+	GetSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID)
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	// (PATCH /api/v1/tenants/{tenant}/filters/{filter})
+	UpdateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID, params UpdateSavedFilterParams)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
@@ -33526,6 +34921,240 @@ func (siw *ServerInterfaceWrapper) RestoreTicket(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RestoreTicket(w, r, tenant, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSavedFilters operation middleware
+func (siw *ServerInterfaceWrapper) ListSavedFilters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSavedFiltersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSavedFilters(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) CreateSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSavedFilterParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSavedFilter(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSavedFilter(w, r, tenant, filter)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) GetSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSavedFilter(w, r, tenant, filter)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSavedFilterParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSavedFilter(w, r, tenant, filter, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -38650,6 +40279,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets", wrapper.ListDeletedTickets)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}", wrapper.PurgeTicket)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore", wrapper.RestoreTicket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.ListSavedFilters)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.CreateSavedFilter)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.DeleteSavedFilter)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.GetSavedFilter)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.UpdateSavedFilter)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
@@ -40126,6 +41760,257 @@ type RestoreTicketdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response RestoreTicketdefaultApplicationProblemPlusJSONResponse) VisitRestoreTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedFiltersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListSavedFiltersParams
+}
+
+type ListSavedFiltersResponseObject interface {
+	VisitListSavedFiltersResponse(w http.ResponseWriter) error
+}
+
+type ListSavedFilters200JSONResponse SavedFilterList
+
+func (response ListSavedFilters200JSONResponse) VisitListSavedFiltersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedFiltersdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListSavedFiltersdefaultApplicationProblemPlusJSONResponse) VisitListSavedFiltersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedFilterRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params CreateSavedFilterParams
+	Body   *CreateSavedFilterJSONRequestBody
+}
+
+type CreateSavedFilterResponseObject interface {
+	VisitCreateSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type CreateSavedFilter201ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateSavedFilter201JSONResponse struct {
+	Body    SavedFilter
+	Headers CreateSavedFilter201ResponseHeaders
+}
+
+func (response CreateSavedFilter201JSONResponse) VisitCreateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitCreateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+}
+
+type DeleteSavedFilterResponseObject interface {
+	VisitDeleteSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type DeleteSavedFilter204Response struct {
+}
+
+func (response DeleteSavedFilter204Response) VisitDeleteSavedFilterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitDeleteSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+}
+
+type GetSavedFilterResponseObject interface {
+	VisitGetSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type GetSavedFilter200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetSavedFilter200JSONResponse struct {
+	Body    SavedFilter
+	Headers GetSavedFilter200ResponseHeaders
+}
+
+func (response GetSavedFilter200JSONResponse) VisitGetSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitGetSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+	Params UpdateSavedFilterParams
+	Body   *UpdateSavedFilterJSONRequestBody
+}
+
+type UpdateSavedFilterResponseObject interface {
+	VisitUpdateSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type UpdateSavedFilter200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateSavedFilter200JSONResponse struct {
+	Body    SavedFilter
+	Headers UpdateSavedFilter200ResponseHeaders
+}
+
+func (response UpdateSavedFilter200JSONResponse) VisitUpdateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitUpdateSavedFilterResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -44147,6 +46032,21 @@ type StrictServerInterface interface {
 	// RestoreTicket Restore a deleted ticket from the bin
 	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
 	RestoreTicket(ctx context.Context, request RestoreTicketRequestObject) (RestoreTicketResponseObject, error)
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	// (GET /api/v1/tenants/{tenant}/filters)
+	ListSavedFilters(ctx context.Context, request ListSavedFiltersRequestObject) (ListSavedFiltersResponseObject, error)
+	// CreateSavedFilter Save a filter
+	// (POST /api/v1/tenants/{tenant}/filters)
+	CreateSavedFilter(ctx context.Context, request CreateSavedFilterRequestObject) (CreateSavedFilterResponseObject, error)
+	// DeleteSavedFilter Delete a saved filter
+	// (DELETE /api/v1/tenants/{tenant}/filters/{filter})
+	DeleteSavedFilter(ctx context.Context, request DeleteSavedFilterRequestObject) (DeleteSavedFilterResponseObject, error)
+	// GetSavedFilter One saved filter
+	// (GET /api/v1/tenants/{tenant}/filters/{filter})
+	GetSavedFilter(ctx context.Context, request GetSavedFilterRequestObject) (GetSavedFilterResponseObject, error)
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	// (PATCH /api/v1/tenants/{tenant}/filters/{filter})
+	UpdateSavedFilter(ctx context.Context, request UpdateSavedFilterRequestObject) (UpdateSavedFilterResponseObject, error)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
@@ -45285,6 +47185,156 @@ func (sh *strictHandler) RestoreTicket(w http.ResponseWriter, r *http.Request, t
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RestoreTicketResponseObject); ok {
 		if err := validResponse.VisitRestoreTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSavedFilters operation middleware
+func (sh *strictHandler) ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams) {
+	var request ListSavedFiltersRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSavedFilters(ctx, request.(ListSavedFiltersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSavedFilters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSavedFiltersResponseObject); ok {
+		if err := validResponse.VisitListSavedFiltersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSavedFilter operation middleware
+func (sh *strictHandler) CreateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateSavedFilterParams) {
+	var request CreateSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	var body CreateSavedFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSavedFilter(ctx, request.(CreateSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSavedFilterResponseObject); ok {
+		if err := validResponse.VisitCreateSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSavedFilter operation middleware
+func (sh *strictHandler) DeleteSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID) {
+	var request DeleteSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSavedFilter(ctx, request.(DeleteSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSavedFilterResponseObject); ok {
+		if err := validResponse.VisitDeleteSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSavedFilter operation middleware
+func (sh *strictHandler) GetSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID) {
+	var request GetSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSavedFilter(ctx, request.(GetSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSavedFilterResponseObject); ok {
+		if err := validResponse.VisitGetSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSavedFilter operation middleware
+func (sh *strictHandler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID, params UpdateSavedFilterParams) {
+	var request UpdateSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+	request.Params = params
+
+	var body UpdateSavedFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSavedFilter(ctx, request.(UpdateSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSavedFilterResponseObject); ok {
+		if err := validResponse.VisitUpdateSavedFilterResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

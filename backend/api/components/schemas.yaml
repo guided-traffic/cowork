@@ -1535,6 +1535,94 @@ DeletedTicketList:
         $ref: '#/DeletedTicket'
     next_cursor:
       type: [string, 'null']
+SavedFilterParameters:
+  type: object
+  description: |
+    The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+    repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+    single values. What a list's query string would carry, without the paging.
+  additionalProperties: false
+  properties:
+    project: {type: array, maxItems: 50, items: {type: string, maxLength: 16}}
+    state: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    type: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    severity: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    security: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    urgency: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    effort: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    assignee: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    reporter: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    parent: {type: array, maxItems: 50, items: {type: string, maxLength: 80}}
+    interest: {type: array, maxItems: 50, items: {type: string, maxLength: 8}}
+    progress_min: {type: integer, minimum: 0, maximum: 100}
+    progress_max: {type: integer, minimum: 0, maximum: 100}
+    opened_after: {type: string, format: date-time}
+    opened_before: {type: string, format: date-time}
+    updated_after: {type: string, format: date-time}
+    updated_before: {type: string, format: date-time}
+    done_after: {type: string, format: date-time}
+    q: {type: string, minLength: 1, maxLength: 4096}
+    include_terminal: {type: boolean}
+    blocked: {type: boolean}
+    has_open_questions: {type: boolean}
+SavedFilterWarning:
+  type: object
+  description: A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)
+  required: [parameter, message]
+  properties:
+    parameter: {type: string}
+    message: {type: string}
+SavedFilter:
+  type: object
+  required: [id, name, owner, shared, parameters, redacted, warnings, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    name: {type: string}
+    owner:
+      $ref: '#/Person'
+    shared: {type: boolean, description: 'Shown to every member of the tenant, with its owner'}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    redacted:
+      type: boolean
+      description: |
+        Another person's filter names a project or a ticket the caller cannot see, or one that no
+        longer exists; its parameters and warnings are withheld (docs/adr/0065 D5)
+    warnings:
+      type: array
+      items:
+        $ref: '#/SavedFilterWarning'
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+SavedFilterCreate:
+  type: object
+  additionalProperties: false
+  required: [name, parameters]
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean, default: false}
+SavedFilterPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean}
+SavedFilterList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SavedFilter'
+    next_cursor:
+      type: [string, 'null']
 AuthOptions:
   type: object
   required: [local, oidc, oidc_name, password_min_length]
