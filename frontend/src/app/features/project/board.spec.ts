@@ -10,7 +10,7 @@ import { Menu } from 'primeng/menu';
 import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
 import { ListProjectTickets$Params } from '../../api/fn/tickets/list-project-tickets';
-import { Block, Problem, Project, Ticket, TicketState, Urgency } from '../../api/models';
+import { Block, Horizon, Problem, Project, Ticket, TicketState } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';
 import { ProblemView } from '../../core/problem.service';
@@ -50,6 +50,8 @@ function ticket(number: number, fields: Partial<Ticket> = {}): Ticket {
     progress_refinement: 0,
     progress_review: 0,
     progress_derived: false,
+    horizon: 'now',
+    horizon_set: null,
     urgency: 'now',
     urgency_derived: 'later',
     urgency_override: null,
@@ -133,8 +135,7 @@ describe('Board', () => {
   let openParams: () => ProjectTicketPagesParams | undefined;
   let doneParams: () => ListProjectTickets$Params | undefined;
   let transition: Mock<TicketActions['transition']>;
-  let overrideUrgency: Mock<TicketActions['overrideUrgency']>;
-  let withdrawUrgency: Mock<TicketActions['withdrawUrgency']>;
+  let setHorizon: Mock<TicketActions['setHorizon']>;
   let navigate: MockInstance<Router['navigate']>;
   let toast: MockInstance<MessageService['add']>;
 
@@ -151,23 +152,12 @@ describe('Board', () => {
       cache.put(key, answer);
       return answer;
     });
-    overrideUrgency = vi.fn<TicketActions['overrideUrgency']>(async (key, value) => {
+    setHorizon = vi.fn<TicketActions['setHorizon']>(async (key, value) => {
       const held = cache.value(key) as Ticket;
       const answer = {
         ...held,
-        urgency: value,
-        urgency_override: { value, at: 'then', reason: null },
-        version: held.version + 1,
-      } as Ticket;
-      cache.put(key, answer);
-      return answer;
-    });
-    withdrawUrgency = vi.fn<TicketActions['withdrawUrgency']>(async (key) => {
-      const held = cache.value(key) as Ticket;
-      const answer = {
-        ...held,
-        urgency: held.urgency_derived,
-        urgency_override: null,
+        horizon: value,
+        horizon_set: value === 'later' ? null : { value, at: 'then', reason: null },
         version: held.version + 1,
       } as Ticket;
       cache.put(key, answer);
@@ -183,8 +173,7 @@ describe('Board', () => {
           useValue: {
             create: vi.fn(),
             transition,
-            overrideUrgency,
-            withdrawUrgency,
+            setHorizon,
             update: vi.fn(),
           },
         },
@@ -315,14 +304,14 @@ describe('Board', () => {
       );
     });
 
-    it('asks for the open tickets of urgency now, release and next, every page of them', async () => {
+    it('asks for the open tickets of the horizon now, release and next, every page of them', async () => {
       await render();
 
       expect(openParams()).toEqual({
         tenant: 'acme',
         project: 'COW',
         pages: Number.POSITIVE_INFINITY,
-        urgency: ['now', 'release', 'next'],
+        horizon: ['now', 'release', 'next'],
       });
     });
 
@@ -413,7 +402,7 @@ describe('Board', () => {
     });
 
     it('says how many cards are on the board', async () => {
-      load([ticket(1), ticket(2, { urgency: 'next' }), ticket(3, { urgency: 'later' })]);
+      load([ticket(1), ticket(2, { horizon: 'next' }), ticket(3, { horizon: 'later' })]);
       const { page } = await render();
 
       expect(text(page, '[data-testid="card-count"]')).toBe('2 on the board');
@@ -444,16 +433,16 @@ describe('Board', () => {
       );
     });
 
-    it('put the open leaves of urgency now and release in the column of their state, in rank, and next on the left', async () => {
+    it('put the open leaves of the horizon now and release in the column of their state, in rank, and next on the left', async () => {
       load([
         ticket(1, { state: 'review' }),
         ticket(2, { state: 'filed' }),
-        ticket(3, { state: 'decided', urgency: 'release' }),
-        ticket(4, { state: 'in-progress', urgency: 'next' }),
+        ticket(3, { state: 'decided', horizon: 'release' }),
+        ticket(4, { state: 'in-progress', horizon: 'next' }),
         ticket(5, { state: 'analysed' }),
         blocked(6, 'in-progress'),
         ticket(7, { state: 'in-progress' }),
-        ticket(8, { state: 'filed', urgency: 'next' }),
+        ticket(8, { state: 'filed', horizon: 'next' }),
       ]);
 
       const { page } = await render();
@@ -469,7 +458,7 @@ describe('Board', () => {
     });
 
     it('leave out a parent, and a ticket the cache says is later now', async () => {
-      load([ticket(1, { progress_derived: true }), ticket(2, { urgency: 'later' }), ticket(3)]);
+      load([ticket(1, { progress_derived: true }), ticket(2, { horizon: 'later' }), ticket(3)]);
 
       const { page } = await render();
 
@@ -477,7 +466,7 @@ describe('Board', () => {
     });
 
     it('make the cards of next compact, and the others full, with their actions', async () => {
-      load([ticket(1, { state: 'filed', urgency: 'next' }), ticket(2, { state: 'filed' })]);
+      load([ticket(1, { state: 'filed', horizon: 'next' }), ticket(2, { state: 'filed' })]);
 
       const { page } = await render();
 
@@ -506,7 +495,7 @@ describe('Board', () => {
     });
 
     it('count their cards, and the next column too', async () => {
-      load([ticket(1), ticket(2), ticket(3, { urgency: 'next' })]);
+      load([ticket(1), ticket(2), ticket(3, { horizon: 'next' })]);
 
       const { page } = await render();
 
@@ -570,7 +559,7 @@ describe('Board', () => {
     });
 
     it('opens the ticket of a card of next as well', async () => {
-      load([ticket(12, { urgency: 'next' })]);
+      load([ticket(12, { horizon: 'next' })]);
       const { page } = await render();
 
       page.querySelector<HTMLElement>('[data-testid="card-acme/COW-12"]')?.click();
@@ -595,7 +584,7 @@ describe('Board', () => {
 
   describe('a drag', () => {
     it('makes only the cards of the state columns draggable; next takes no drop', async () => {
-      load([ticket(1), ticket(2, { urgency: 'next' })]);
+      load([ticket(1), ticket(2, { horizon: 'next' })]);
       const { fixture } = await render();
 
       expect(
@@ -974,21 +963,21 @@ describe('Board', () => {
   });
 
   describe('now, the way into the state columns (docs/adr/0018 D1)', () => {
-    it('overrides the urgency to now without a reason, and moves the card to the column of its state at once', async () => {
+    it('sets the horizon now without a reason, and moves the card to the column of its state at once', async () => {
       const answer = deferred<Ticket>();
-      overrideUrgency.mockImplementationOnce(() => answer.promise);
-      load([ticket(1, { state: 'review', urgency: 'next', urgency_derived: 'later' })]);
+      setHorizon.mockImplementationOnce(() => answer.promise);
+      load([ticket(1, { state: 'review', horizon: 'next' })]);
       const { fixture, page } = await render();
 
       page.querySelector<HTMLElement>('[data-testid="card-now-acme/COW-1"]')?.click();
       await fixture.whenStable();
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-1', 'now');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-1', 'now');
       expect(cardsIn(page, 'next')).toEqual([]);
       expect(cardsIn(page, 'review')).toEqual([1]);
       expect(navigate).not.toHaveBeenCalled();
 
-      const now = ticket(1, { state: 'review', urgency: 'now', version: 2 });
+      const now = ticket(1, { state: 'review', horizon: 'now', version: 2 });
       cache.put(now.key, now);
       answer.resolve(now);
       await settle(fixture);
@@ -996,21 +985,20 @@ describe('Board', () => {
       expect(text(page, '[data-testid="status"]')).toBe('COW-1 moved to Review');
     });
 
-    it('withdraws the override where the ticket derives now', async () => {
-      load([ticket(1, { urgency: 'next', urgency_derived: 'now' })]);
+    it('sets the horizon now whatever the ticket held before, nothing deriving it', async () => {
+      load([ticket(1, { horizon: 'next', horizon_set: { value: 'next', at: 'then', reason: 'x' } })]);
       const { fixture, page } = await render();
 
       page.querySelector<HTMLElement>('[data-testid="card-now-acme/COW-1"]')?.click();
       await settle(fixture);
 
-      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-1');
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-1', 'now');
       expect(cardsIn(page, 'in-progress')).toEqual([1]);
     });
 
     it('puts the card back into next and says why when the server refuses', async () => {
-      overrideUrgency.mockRejectedValueOnce(refusal(403, 'forbidden', 'Forbidden', 'Not yours.'));
-      load([ticket(1, { urgency: 'next' })]);
+      setHorizon.mockRejectedValueOnce(refusal(403, 'forbidden', 'Forbidden', 'Not yours.'));
+      load([ticket(1, { horizon: 'next' })]);
       const { fixture, page } = await render();
 
       page.querySelector<HTMLElement>('[data-testid="card-now-acme/COW-1"]')?.click();
@@ -1022,8 +1010,8 @@ describe('Board', () => {
 
     it('takes the keyboard with the card to its column, onto its menu button, before the answer', async () => {
       const answer = deferred<Ticket>();
-      overrideUrgency.mockImplementationOnce(() => answer.promise);
-      load([ticket(1, { state: 'in-progress', urgency: 'next' })]);
+      setHorizon.mockImplementationOnce(() => answer.promise);
+      load([ticket(1, { state: 'in-progress', horizon: 'next' })]);
       const { fixture, page } = await render();
       const button = page.querySelector<HTMLElement>('[data-testid="card-now-acme/COW-1"]');
 
@@ -1036,7 +1024,7 @@ describe('Board', () => {
         page.querySelector('[data-testid="card-menu-acme/COW-1"]'),
       );
 
-      const now = ticket(1, { state: 'in-progress', urgency: 'now', version: 2 });
+      const now = ticket(1, { state: 'in-progress', horizon: 'now', version: 2 });
       cache.put(now.key, now);
       answer.resolve(now);
       await settle(fixture);
@@ -1047,8 +1035,8 @@ describe('Board', () => {
 
     it('brings the keyboard back to the button Now when the server refuses', async () => {
       const answer = deferred<Ticket>();
-      overrideUrgency.mockImplementationOnce(() => answer.promise);
-      load([ticket(1, { urgency: 'next' })]);
+      setHorizon.mockImplementationOnce(() => answer.promise);
+      load([ticket(1, { horizon: 'next' })]);
       const { fixture, page } = await render();
       const button = page.querySelector<HTMLElement>('[data-testid="card-now-acme/COW-1"]');
 
@@ -1066,7 +1054,7 @@ describe('Board', () => {
       );
     });
 
-    it('says when somebody else decided its urgency meanwhile', async () => {
+    it('says when somebody else decided its horizon meanwhile', async () => {
       const problem: ProblemView = {
         status: 412,
         code: 'version_mismatch',
@@ -1075,10 +1063,10 @@ describe('Board', () => {
         fields: {},
         current: {},
       };
-      overrideUrgency.mockRejectedValueOnce(
-        new StaleWrite(problem, ticket(1, { urgency: 'later' as Urgency })),
+      setHorizon.mockRejectedValueOnce(
+        new StaleWrite(problem, ticket(1, { horizon: 'later' as Horizon })),
       );
-      load([ticket(1, { urgency: 'next' })]);
+      load([ticket(1, { horizon: 'next' })]);
       const { fixture } = await render();
 
       (fixture.nativeElement as HTMLElement)

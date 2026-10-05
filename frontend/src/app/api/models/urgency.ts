@@ -3,7 +3,11 @@
 
 
 /**
- * The ticket's horizon, a planning category a person or an agent sets in whatever state the ticket is (docs/adr/0010 D3)
+ * The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
+ * `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
+ * (docs/adr/0046 D7).
+ *
+ * @deprecated
  */
 export type Urgency = 'now' | 'release' | 'next' | 'later' | 'icebox';
 

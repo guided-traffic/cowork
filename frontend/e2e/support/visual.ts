@@ -21,36 +21,36 @@ export async function seedVisualBoard(
       return;
     }
     const p = visualProject;
-    await seed.file(p, { title: 'Sketch the import report', urgency: 'now', effort: 'S' });
+    await seed.file(p, { title: 'Sketch the import report', horizon: 'now', effort: 'S' });
     const analysed = await seed.file(p, {
       title: 'Decide the archive format',
-      urgency: 'now',
+      horizon: 'now',
       effort: 'L',
       type: 'decision',
     });
     await seed.transition(p, analysed.number, 'filed', 'analysed');
     const decided = await seed.file(p, {
       title: 'Write the migration',
-      urgency: 'now',
+      horizon: 'now',
       severity: 'high',
     });
     await forward(seed, decided.number, 'decided');
     const release = await seed.file(p, {
       title: 'Ship the release notes',
-      urgency: 'release',
+      horizon: 'release',
       type: 'feature',
       effort: 'XS',
     });
     await forward(seed, release.number, 'decided');
     const working = await seed.file(p, {
       title: 'Draw the dark theme',
-      urgency: 'now',
+      horizon: 'now',
       type: 'feature',
     });
     await forward(seed, working.number, 'in-progress');
     const blocked = await seed.file(p, {
       title: 'Translate the copy',
-      urgency: 'now',
+      horizon: 'now',
       severity: 'low',
     });
     await forward(seed, blocked.number, 'in-progress');
@@ -60,16 +60,16 @@ export async function seedVisualBoard(
     });
     const review = await seed.file(p, {
       title: 'Check the export of confidential tickets',
-      urgency: 'now',
+      horizon: 'now',
       type: 'bug',
       security: 'hardening',
       threat: 'A member reads a confidential ticket in an export',
     });
     await forward(seed, review.number, 'review');
-    await seed.file(p, { title: 'Plan the search', urgency: 'next', effort: 'L' });
+    await seed.file(p, { title: 'Plan the search', horizon: 'next', effort: 'L' });
     await seed.file(p, {
       title: 'Measure the stream',
-      urgency: 'next',
+      horizon: 'next',
       type: 'question',
       effort: 'XS',
     });

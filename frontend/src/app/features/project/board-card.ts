@@ -13,7 +13,7 @@ import { meanings } from '../../shared/vocabulary';
 
 /**
  * A card of the board (docs/adr/0018 D1). In a state column: the type and the key, the title,
- * `release` where the urgency is that, the state in Refinement (which holds two), severity and
+ * `release` where the horizon is that, the state in Refinement (which holds two), severity and
  * security, the bar of the stage the ticket works on, the block on a blocked card, the open
  * prerequisites, the effort as its size and the assignee — and the button of the card's action and
  * the menu of its moves. In the column `next` it is compact: key, title, size, state and the button

@@ -83,6 +83,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     progress_derived: false,
     progress_refinement: 0,
     progress_review: 0,
+    horizon: 'next',
+    horizon_set: null,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -260,6 +262,28 @@ describe('describe', () => {
     expect(describeActivity(activity({ action: 'ranked', entity_type: 'ticket' }))).toBe(
       'Ada Lovelace ranked',
     );
+  });
+
+  // docs/adr/0010 D1: the act on the horizon is recorded as overridden, its name before.
+  it('says what an act on the horizon did, never overridden', () => {
+    expect(
+      describeActivity(
+        activity({
+          action: 'overridden',
+          before: { urgency_override: null },
+          after: { urgency_override: 'now' },
+        }),
+      ),
+    ).toBe('Ada Lovelace set the horizon to now');
+    expect(
+      describeActivity(
+        activity({
+          action: 'overridden',
+          before: { urgency_override: 'next' },
+          after: { urgency_override: null },
+        }),
+      ),
+    ).toBe('Ada Lovelace returned the ticket to later');
   });
 });
 

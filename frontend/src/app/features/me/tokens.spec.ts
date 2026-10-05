@@ -6,9 +6,9 @@ import { ConfirmationService, MessageService } from 'primeng/api';
 import { Tooltip } from 'primeng/tooltip';
 import type { MockInstance } from 'vitest';
 import { Membership, Problem, Token, TokenCreated } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
+import { selectableCapabilities } from '../../shared/capabilities';
 import { dateTime } from '../../shared/time';
 import { NewTokenDialog, scopeMeanings } from './new-token-dialog';
 import { day, Tokens, tokenStateMeanings } from './tokens';
@@ -34,7 +34,7 @@ function token(id: string, overrides: Partial<Token> = {}): Token {
 const laptop = token('t1', {
   name: 'claude on my laptop',
   agent: true,
-  capabilities: [...CAPABILITY],
+  capabilities: [...selectableCapabilities],
   restricted_tenant: 'acme',
   restricted_project: 'COW',
   restricted_project_id: '0199aaaa-0000-7000-8000-00000000c0de',
@@ -322,8 +322,8 @@ describe('Tokens', () => {
     });
 
     it('names every capability of a long list, so that two agent tokens can be told apart by looking', async () => {
-      const eight = CAPABILITY.filter((each) => each !== 'close');
-      const seven = CAPABILITY.filter((each) => each !== 'close' && each !== 'decide');
+      const eight = selectableCapabilities.filter((each) => each !== 'close');
+      const seven = selectableCapabilities.filter((each) => each !== 'close' && each !== 'decide');
       list.set([
         token('a', { agent: true, capabilities: eight }),
         token('b', { agent: true, capabilities: seven }),

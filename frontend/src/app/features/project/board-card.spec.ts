@@ -18,7 +18,7 @@ function ticket(fields: Partial<Ticket> = {}): Ticket {
     state: 'in-progress',
     severity: 'high',
     security: 'boundary',
-    urgency: 'now',
+    horizon: 'now',
     effort: 'M',
     assignee: sam,
     block: null,
@@ -185,7 +185,7 @@ describe('BoardCard', () => {
     });
 
     it('marks a ticket in the horizon release, and explains it', async () => {
-      const release = await render(ticket({ urgency: 'release' }));
+      const release = await render(ticket({ horizon: 'release' }));
       expect(text(release, '[data-testid="card-release"]')).toBe('release');
       expect(
         release.debugElement
@@ -253,7 +253,7 @@ describe('BoardCard', () => {
 
   describe('in the column next', () => {
     it('is compact: the key, the size, the title, the state and the button that makes it now', async () => {
-      const fixture = await render(ticket({ state: 'review', urgency: 'next' }), {
+      const fixture = await render(ticket({ state: 'review', horizon: 'next' }), {
         compact: true,
       });
 
@@ -269,7 +269,7 @@ describe('BoardCard', () => {
     });
 
     it('makes the ticket now from its button, and keeps the click from the card', async () => {
-      const fixture = await render(ticket({ urgency: 'next' }), { compact: true });
+      const fixture = await render(ticket({ horizon: 'next' }), { compact: true });
       let made = 0;
       fixture.componentInstance.now.subscribe(() => made++);
 

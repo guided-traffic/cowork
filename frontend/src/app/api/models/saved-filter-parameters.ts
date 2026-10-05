@@ -13,6 +13,7 @@ export interface SavedFilterParameters {
   done_after?: string;
   effort?: Array<string>;
   has_open_questions?: boolean;
+  horizon?: Array<string>;
   include_terminal?: boolean;
   interest?: Array<string>;
   opened_after?: string;
@@ -29,5 +30,13 @@ export interface SavedFilterParameters {
   type?: Array<string>;
   updated_after?: string;
   updated_before?: string;
+
+  /**
+   * `horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back
+   * as `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release
+   * (docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
   urgency?: Array<string>;
 }

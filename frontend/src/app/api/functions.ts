@@ -135,6 +135,8 @@ export type { SetConfidential$Params as SetConfidential$Params } from './fn/tick
 export { setConfidential as setConfidential } from './fn/tickets/set-confidential';
 export type { ExportTicketContext$Params as ExportTicketContext$Params } from './fn/tickets/export-ticket-context';
 export { exportTicketContext as exportTicketContext } from './fn/tickets/export-ticket-context';
+export type { SetHorizon$Params as SetHorizon$Params } from './fn/tickets/set-horizon';
+export { setHorizon as setHorizon } from './fn/tickets/set-horizon';
 export type { ListInterest$Params as ListInterest$Params } from './fn/tickets/list-interest';
 export { listInterest as listInterest } from './fn/tickets/list-interest';
 export type { SetInterest$Params as SetInterest$Params } from './fn/tickets/set-interest';

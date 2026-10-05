@@ -51,6 +51,8 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     progress_derived: false,
     progress_refinement: 0,
     progress_review: 0,
+    horizon: 'next',
+    horizon_set: null,
     urgency: 'next',
     urgency_derived: 'next',
     urgency_override: null,
@@ -113,16 +115,14 @@ describe('shown', () => {
 
 describe('TicketFields', () => {
   let update: MockInstance<TicketActions['update']>;
-  let overrideUrgency: MockInstance<TicketActions['overrideUrgency']>;
-  let withdrawUrgency: MockInstance<TicketActions['withdrawUrgency']>;
+  let setHorizon: MockInstance<TicketActions['setHorizon']>;
   let confirm: MockInstance<ConfirmationService['confirm']>;
   let people: WritableSignal<Member[]>;
   let role: WritableSignal<'admin' | 'member'>;
 
   beforeEach(() => {
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
-    overrideUrgency = vi.fn<TicketActions['overrideUrgency']>().mockResolvedValue(ticket());
-    withdrawUrgency = vi.fn<TicketActions['withdrawUrgency']>().mockResolvedValue(ticket());
+    setHorizon = vi.fn<TicketActions['setHorizon']>().mockResolvedValue(ticket());
     confirm = vi.fn<ConfirmationService['confirm']>();
     role = signal<'admin' | 'member'>('member');
     people = signal<Member[]>([
@@ -147,7 +147,7 @@ describe('TicketFields', () => {
         { provide: ConfirmationService, useValue: { confirm } },
         {
           provide: TicketActions,
-          useValue: { update, overrideUrgency, withdrawUrgency, setConfidential: vi.fn() },
+          useValue: { update, setHorizon, setConfidential: vi.fn() },
         },
         { provide: MembersService, useValue: { list: people } },
         {
@@ -300,7 +300,7 @@ describe('TicketFields', () => {
         .content();
 
     it('shows the horizon, explained by its meaning alone', async () => {
-      const fixture = await render(ticket({ urgency: 'next', urgency_rule: 'v1:default' }));
+      const fixture = await render(ticket({ horizon: 'next' }));
 
       expect(fields(fixture)).not.toHaveProperty('Urgency');
       expect(fields(fixture)['Horizon']).toBe('next');
@@ -312,20 +312,20 @@ describe('TicketFields', () => {
     it('adds the reason the horizon was set with to its meaning, and marks nothing else', async () => {
       const fixture = await render(
         ticket({
-          urgency: 'now',
-          urgency_override: { value: 'now', reason: 'Today', at: '2026-10-03T09:00:00Z' },
+          horizon: 'now',
+          horizon_set: { value: 'now', reason: 'Today', at: '2026-10-03T09:00:00Z' },
         }),
       );
 
       expect(fields(fixture)['Horizon']).toBe('now');
-      expect(horizonTip(fixture, 'now')).toBe(`${meanings.urgency.now} — Today`);
+      expect(horizonTip(fixture, 'now')).toBe(`${meanings.horizon.now} — Today`);
     });
 
     it('shows the meaning alone for a horizon set without a reason', async () => {
       const fixture = await render(
         ticket({
-          urgency: 'release',
-          urgency_override: { value: 'release', reason: null, at: '2026-10-03T09:00:00Z' },
+          horizon: 'release',
+          horizon_set: { value: 'release', reason: null, at: '2026-10-03T09:00:00Z' },
         }),
       );
 
@@ -1272,17 +1272,17 @@ describe('TicketFields', () => {
     });
 
     it('sets the horizon chosen, without a reason, and then offers the reason', async () => {
-      const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
 
       change(fixture, 'field-horizon', 'now');
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'now');
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'now');
       expect(reasonField(fixture)?.placeholder).toBe('Why now? Enter saves, Esc skips');
     });
 
     it('sends the reason typed with the same horizon once more, and then closes the field', async () => {
-      const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
       change(fixture, 'field-horizon', 'now');
       await settle(fixture);
 
@@ -1290,7 +1290,7 @@ describe('TicketFields', () => {
       key(fixture, 'Enter');
       await settle(fixture);
 
-      expect(overrideUrgency).toHaveBeenLastCalledWith(
+      expect(setHorizon).toHaveBeenLastCalledWith(
         'acme/COW-12',
         'now',
         'The release is on Friday',
@@ -1301,48 +1301,45 @@ describe('TicketFields', () => {
     it.each(['Enter', 'Escape'])(
       'leaves the horizon as set, without a reason, on %s in an empty field',
       async (name) => {
-        const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+        const fixture = await render(ticket({ horizon: 'later' }));
         change(fixture, 'field-horizon', 'next');
         await settle(fixture);
 
         key(fixture, name);
         await settle(fixture);
 
-        expect(overrideUrgency).toHaveBeenCalledOnce();
+        expect(setHorizon).toHaveBeenCalledOnce();
         expect(reasonField(fixture)).toBeNull();
       },
     );
 
-    it('returns the ticket to later by withdrawing the horizon set, and asks no reason', async () => {
+    it('returns the ticket to later through the same route, which clears the horizon set, and asks no reason', async () => {
       const fixture = await render(
         ticket({
-          urgency: 'now',
-          urgency_derived: 'later',
-          urgency_override: { value: 'now', reason: null, at: '2026-10-03T09:00:00Z' },
+          horizon: 'now',
+          horizon_set: { value: 'now', reason: null, at: '2026-10-03T09:00:00Z' },
         }),
       );
 
       change(fixture, 'field-horizon', 'later');
       await settle(fixture);
 
-      expect(withdrawUrgency).toHaveBeenCalledExactlyOnceWith('acme/COW-12');
-      expect(overrideUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'later');
       expect(reasonField(fixture)).toBeNull();
     });
 
     it('writes nothing for the horizon the ticket has', async () => {
-      const fixture = await render(ticket({ urgency: 'next' }));
+      const fixture = await render(ticket({ horizon: 'next' }));
 
       change(fixture, 'field-horizon', 'next');
       await settle(fixture);
 
-      expect(overrideUrgency).not.toHaveBeenCalled();
-      expect(withdrawUrgency).not.toHaveBeenCalled();
+      expect(setHorizon).not.toHaveBeenCalled();
     });
 
     it('asks whether to set it over a horizon somebody else set meanwhile, and does on request', async () => {
-      overrideUrgency.mockRejectedValueOnce(stale({ urgency: 'icebox' }));
-      const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+      setHorizon.mockRejectedValueOnce(stale({ horizon: 'icebox' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
 
       change(fixture, 'field-horizon', 'now');
       await settle(fixture);
@@ -1353,17 +1350,17 @@ describe('TicketFields', () => {
           'Someone set the horizon of this ticket while you chose: now icebox, yours now. Set yours over it?',
       });
       expect(reasonField(fixture)).toBeNull();
-      fixture.componentRef.setInput('ticket', ticket({ urgency: 'icebox', version: 4 }));
+      fixture.componentRef.setInput('ticket', ticket({ horizon: 'icebox', version: 4 }));
       confirm.mock.calls[0][0].accept?.();
       await settle(fixture);
-      expect(overrideUrgency).toHaveBeenCalledTimes(2);
-      expect(overrideUrgency).toHaveBeenLastCalledWith('acme/COW-12', 'now');
+      expect(setHorizon).toHaveBeenCalledTimes(2);
+      expect(setHorizon).toHaveBeenLastCalledWith('acme/COW-12', 'now');
     });
 
     it('toasts a refusal and offers no reason', async () => {
-      overrideUrgency.mockRejectedValueOnce(refused());
+      setHorizon.mockRejectedValueOnce(refused());
       const add = vi.spyOn(TestBed.inject(MessageService), 'add');
-      const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
 
       change(fixture, 'field-horizon', 'now');
       await settle(fixture);
@@ -1475,7 +1472,7 @@ describe('TicketFields', () => {
     });
 
     it('closes the reason of a horizon set on the ticket before, and nothing more is written', async () => {
-      const fixture = await render(ticket({ urgency: 'later', urgency_derived: 'later' }));
+      const fixture = await render(ticket({ horizon: 'later' }));
       change(fixture, 'field-horizon', 'now');
       await settle(fixture);
       expect(el(fixture, 'field-horizon-reason')).not.toBeNull();
@@ -1483,7 +1480,7 @@ describe('TicketFields', () => {
       await turn(fixture);
 
       expect(el(fixture, 'field-horizon-reason')).toBeNull();
-      expect(overrideUrgency).toHaveBeenCalledOnce();
+      expect(setHorizon).toHaveBeenCalledOnce();
     });
 
     it('closes the confidential dialog, which wrote nothing', async () => {

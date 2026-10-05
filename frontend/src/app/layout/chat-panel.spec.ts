@@ -3,9 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Select } from 'primeng/select';
 import { Capability, ChatCapabilities, ChatProvider } from '../api/models';
-import { CAPABILITY } from '../api/models/capability-array';
 import { CallEntry, ChatEntry, ChatService, NoticeEntry } from '../core/chat.service';
-import { capabilityMeanings } from '../shared/capabilities';
+import { capabilityMeanings, selectableCapabilities } from '../shared/capabilities';
 import { ChatPanel } from './chat-panel';
 
 const lmstudio: ChatProvider = {
@@ -418,7 +417,7 @@ describe('ChatPanel', () => {
 
       await render();
 
-      for (const capability of CAPABILITY) {
+      for (const capability of selectableCapabilities) {
         const row = el(`chat-capability-${capability}`)?.closest('label');
         expect(row?.querySelector('code')?.textContent).toBe(capability);
         expect(row?.querySelector('small')?.textContent).toBe(capabilityMeanings[capability]);
@@ -431,7 +430,7 @@ describe('ChatPanel', () => {
 
     it('says when the set is the default', async () => {
       chat.capabilitiesValue.set({
-        capabilities: ['rank', 'override-urgency', 'interest', 'upload', 'create-project'],
+        capabilities: ['rank', 'set-horizon', 'interest', 'upload', 'create-project'],
         chosen: false,
       });
 
@@ -463,13 +462,13 @@ describe('ChatPanel', () => {
 
       el('chat-capabilities-full')?.click();
       await settle();
-      expect(chat.setCapabilities).toHaveBeenLastCalledWith([...CAPABILITY]);
+      expect(chat.setCapabilities).toHaveBeenLastCalledWith([...selectableCapabilities]);
 
       el('chat-capabilities-assisted')?.click();
       await settle();
       expect(chat.setCapabilities).toHaveBeenLastCalledWith([
         'drop',
-        'override-urgency',
+        'set-horizon',
         'interest',
         'upload',
       ]);

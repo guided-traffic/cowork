@@ -1,6 +1,6 @@
 import { linkedSignal, ResourceRef, Signal } from '@angular/core';
 import { TicketPage, TicketsService } from '../../core/tickets.service';
-import { boardUrgencies } from './board-model';
+import { boardHorizons } from './board-model';
 
 /** A board shows every card of the current work: its list follows the cursor to the end. */
 const everyPage = Number.POSITIVE_INFINITY;
@@ -27,7 +27,7 @@ export function boardList(
   const list = tickets.projectTicketPages(() => {
     const at = tenant();
     return at
-      ? { tenant: at, project: project(), pages: everyPage, urgency: [...boardUrgencies] }
+      ? { tenant: at, project: project(), pages: everyPage, horizon: [...boardHorizons] }
       : undefined;
   });
   const keys = linkedSignal<

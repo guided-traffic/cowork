@@ -51,7 +51,7 @@ test(
 
     await expect(rows(page, 'next')).toHaveText([/Bravo/]);
     await expect(rows(page, 'later')).toHaveText([/Alpha/]);
-    await expect.poll(async () => (await seed.ticket(project, 2)).urgency).toBe('next');
+    await expect.poll(async () => (await seed.ticket(project, 2)).horizon).toBe('next');
     // The reason a person may give for the horizon is offered in the row, and may be left out.
     const reason = bravo.getByTestId('reason');
     await expect(reason).toBeVisible();

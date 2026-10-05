@@ -20,7 +20,7 @@ export function etagOf(version: number): string {
  * The one copy of an entity that several views show (docs/adr/0053 D2): the detail page, the
  * boards and the lists read the same entry, and a write or a refetch replaces it for all of them.
  * A value older than the one held is ignored, so a slow list answer cannot undo the refetch an
- * event triggered; an equal version replaces, because derived fields (urgency, a parent's
+ * event triggered; an equal version replaces, because derived fields (a score, a parent's
  * progress) change without a new version.
  */
 export class EntityCache<T extends Versioned> {

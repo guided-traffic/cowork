@@ -57,6 +57,8 @@ function ticket(key: string, number: number, fields: Partial<Ticket> = {}): Tick
     progress_refinement: 0,
     progress_review: 0,
     progress_derived: false,
+    horizon: 'now',
+    horizon_set: null,
     urgency: 'now',
     urgency_derived: 'later',
     urgency_override: null,
@@ -170,7 +172,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
         {
           provide: TicketActions,
           // No rank: a move on a board never changes the rank, and a call would fail.
-          useValue: { transition, overrideUrgency: vi.fn(), withdrawUrgency: vi.fn() },
+          useValue: { transition, setHorizon: vi.fn() },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
         { provide: SessionService, useValue: { tenant, oversight } },
@@ -350,9 +352,9 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
       const { fixture, page } = await render();
       await load(fixture, 'COW', [
         ticket('COW', 1, { state: 'review' }),
-        ticket('COW', 2, { state: 'analysed', urgency: 'release' }),
-        ticket('COW', 3, { state: 'in-progress', urgency: 'next' }),
-        ticket('COW', 4, { state: 'decided', urgency: 'later' }),
+        ticket('COW', 2, { state: 'analysed', horizon: 'release' }),
+        ticket('COW', 3, { state: 'in-progress', horizon: 'next' }),
+        ticket('COW', 4, { state: 'decided', horizon: 'later' }),
         ticket('COW', 5, { progress_derived: true }),
       ]);
       await load(fixture, 'OPS', [ticket('OPS', 1, { state: 'decided' })]);
@@ -472,7 +474,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
         tenant: 'acme',
         project: 'OPS',
         pages: Number.POSITIVE_INFINITY,
-        urgency: ['now', 'release', 'next'],
+        horizon: ['now', 'release', 'next'],
       });
       expect(lists[0].params()).toBeUndefined();
     });

@@ -5,10 +5,10 @@ import { Paginator } from 'primeng/paginator';
 import { TableModule } from 'primeng/table';
 import { Tooltip } from 'primeng/tooltip';
 import { Scope, Token, TokenCreated, TokenState } from '../../api/models';
-import { CAPABILITY } from '../../api/models/capability-array';
 import { ProblemService } from '../../core/problem.service';
 import { perPageOptions } from '../../core/table-pages';
 import { TokensService } from '../../core/tokens.service';
+import { selectableCapabilities } from '../../shared/capabilities';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { SecretDialog } from '../../shared/secret-dialog';
 import { dateTime } from '../../shared/time';
@@ -124,7 +124,7 @@ export class Tokens {
    * are what a person looks at to decide which token to revoke.
    */
   protected capabilitiesText(token: Token): string {
-    if (token.capabilities.length === CAPABILITY.length) {
+    if (token.capabilities.length === selectableCapabilities.length) {
       return 'all nine capabilities';
     }
     return token.capabilities.length === 0 ? 'the baseline only' : token.capabilities.join(', ');

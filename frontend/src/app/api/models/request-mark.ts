@@ -18,7 +18,9 @@ export interface RequestMark {
    * What an agent's request may do beyond the baseline: the token's set for a flagged token,
    * every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
    * capabilities for a session the header marks (D5); empty for a person's request, which the
-   * capabilities do not bound
+   * capabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`
+   * follows it, for the cowork-mcp of the release before, until a later release removes it
+   * (docs/adr/0046 D7)
    */
   capabilities: Array<Capability>;
 }

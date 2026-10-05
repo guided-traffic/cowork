@@ -27,10 +27,10 @@ const doneDays = 14;
 const hour = 3_600_000;
 
 /**
- * A project's board (docs/adr/0018 D1): the current work. The open leaves of urgency `now` and
+ * A project's board (docs/adr/0018 D1): the current work. The open leaves of the horizon `now` and
  * `release` stand in the columns Refinement, Ready, In Progress, Blocked and Review — a view over
  * their states, each in the project's rank and counted against its WIP limit (docs/adr/0019 D3) —
- * and the leaves of urgency `next` in the column `next` on the left, whatever their state, each
+ * and the leaves of the horizon `next` in the column `next` on the left, whatever their state, each
  * with the button that makes it `now` ({@link BoardColumns}). A card dragged into another column is
  * that transition of docs/adr/0009, made by {@link BoardMoves}, whose dialog and live region the
  * page shows. The header counts the tickets done in the last fourteen days and leads to them. The
@@ -55,7 +55,7 @@ export class Board {
   private readonly injector = inject(Injector);
   protected readonly moves = inject(BoardMoves);
 
-  /** The open tickets of the board's urgencies, every page of them, in the project's rank. */
+  /** The open tickets of the board's horizons, every page of them, in the project's rank. */
   private readonly cards = boardList(this.tickets, this.project, this.session.tenant);
 
   /**

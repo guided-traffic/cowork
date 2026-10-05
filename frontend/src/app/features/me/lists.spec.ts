@@ -69,6 +69,8 @@ function ticket(key: string, overrides: Partial<Ticket> = {}): Ticket {
     progress_derived: false,
     progress_refinement: 0,
     progress_review: 0,
+    horizon: 'later',
+    horizon_set: null,
     urgency: 'later',
     urgency_derived: 'later',
     urgency_override: null,
@@ -169,7 +171,7 @@ describe('the person-level lists', () => {
       items: [
         {
           tenant: { slug: 'acme', name: 'Acme Corp' },
-          ticket: ticket('acme/COW-2', { score: 9.4, score_version: 1, urgency: 'now' }),
+          ticket: ticket('acme/COW-2', { score: 9.4, score_version: 1, horizon: 'now' }),
           place: 2,
         },
         {
