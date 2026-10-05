@@ -95,6 +95,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": true,
             "coverageExclude": [
               "src/app/api/**",
               "src/app/dev/dev.routes.prod.ts",

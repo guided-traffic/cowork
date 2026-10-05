@@ -316,7 +316,10 @@ generated types the server encodes, and `TestATurnIsHeldToTheDocument` in
 `--watch=false` make it run once; the Make targets set both. Coverage comes from
 `@vitest/coverage-v8`, a dev dependency of the frontend (`make frontend-test-coverage`,
 reports under `frontend/coverage/frontend/`: `text-summary` on the console, `lcov.info`,
-`coverage-summary.json` for CI).
+`coverage-summary.json` for CI). A test may take fifteen seconds, not Vitest's five:
+[`vitest-base.config.mts`](../../frontend/vitest-base.config.mts), which the builder merges
+(`runnerConfig` in `angular.json`), because a component test that renders a page took 5.4 s on a
+shared CI runner under coverage and failed a run that was otherwise green.
 
 | Pattern | Where |
 |---|---|
