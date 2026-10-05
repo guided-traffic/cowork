@@ -1,6 +1,6 @@
 ---
 id: T35
-title: there is no "next for me", the person-level pages do not follow every tenant, and the lists wait for the score's order
+title: there is no "next for me", and the lists wait for the score's order
 state: analysed
 severity: high
 security: none
@@ -21,7 +21,11 @@ union of per-tenant reads ([api.md](../developer/api.md#the-person-level-routes)
 pages `/me/assigned` and `/me/decisions` with the tenant beside each key, in the navigation for every
 person ([frontend.md](../developer/frontend.md#the-person-level-pages)). Their order is the interim
 one written in [ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)'s Status — the
-tenant's slug, the project's key, the project's rank — because the score of D5 is T34's.
+tenant's slug, the project's key, the project's rank — because the score of D5 is T34's. The pages
+follow the changes of every tenant of the person over the one person-level stream, which carries
+every event of the person's tenants that each tenant's filter admits
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D3, D5; `reloadOn` in [`person-list.ts`](../../frontend/src/app/features/me/person-list.ts)).
 
 What is missing:
 
@@ -31,12 +35,6 @@ What is missing:
   ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D1). No route
   `GET /api/v1/me/next`, no page `/me/next`, and `/` still lists the tenants or goes to the only one
   ([ADR 0023](../adr/0023-the-tenant-is-in-the-path.md) D2, D4).
-- **The pages follow one tenant.** The browser's one stream is the person-level stream of
-  [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-  D1 on one tenant: it carries the person's own events across their tenants — the inbox count, the
-  questions asked of them — and the events of that tenant. A change in another tenant that tells the
-  person nothing — a ticket assigned to them there and unassigned by somebody else, a question open
-  in that tenant answered — shows on `/me/assigned` and `/me/decisions` only at the next reload.
 - **The score's order.** When T34 builds the score, both lists, and "next for me", take its order
   (ADR 0014 D5) and their cursors `(score, id)`
   ([ADR 0048](../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D1).
@@ -54,34 +52,27 @@ What is missing:
 ### Depends on the answers
 
 3. `GET /api/v1/me/next` with what Q2 decides it holds, ordered and narrowed as the others, its page
-   `/me/next` in the navigation, and `/` as "next for me" (ADR 0023 D4).
-4. The three pages follow the changes of every tenant the person belongs to as Q1 decides.
+   `/me/next` in the navigation — following every tenant through `reloadOn`, as the other
+   person-level pages do —, and `/` as "next for me" (ADR 0023 D4).
 
 ## Open questions
 
 ### Q1: How do the person-level pages follow every tenant's changes?
 
-Change 4 wants the lists to change without a reload, as a tenant's pages do. ADR 0054 D1 gives a
-stream per tenant, and its `?me=true` adds only the person's own events; a person holds at most
-`COWORK_SSE_MAX_STREAMS_PER_PERSON` streams per replica, ten by default, and one more closes the
-oldest with `event: unavailable` ([README](../../README.md#configuration)).
+The person-level pages were to change without a reload, as a tenant's pages do, when ADR 0054 D1
+gave a stream per tenant and its `?me=true` added only the person's own events; a person holds at
+most `COWORK_SSE_MAX_STREAMS_PER_PERSON` streams per replica, ten by default, and one more closes
+the oldest with `event: unavailable` ([README](../../README.md#configuration)).
 
 - **(a) One stream per tenant on the person-level pages.** No backend change. A person in more
   than ten tenants — fewer, with tenant pages open in other tabs — closes their own streams,
   which fall back to polling, and over HTTP/1.1 the browser's six connections per origin go to
   streams before the page's own requests (ADR 0054 Consequences).
-- **(b) The person-level stream carries every event of the person's tenants** that each tenant's
-  filter admits (ADR 0054 D3, a token's restriction included); D1 and D3 are amended — the
-  stream spans the person's tenants. One connection whatever the number of tenants, and all
-  three lists within the stream's latency; every payload already holds what the filter reads —
-  tenant, project, confidential flag, assignee and reporter
-  ([`notify.go`](../../backend/internal/store/notify.go)). It costs the hub's subscription across
-  tenants — the person-level stream already receives the questions asked of its person from every
-  tenant and judges them in their tenant (`writeStreamed` in
-  [`events.go`](../../backend/internal/api/events.go)), and would judge every event so or keep a
-  filter per tenant refreshed at the heartbeat —, a replay that merges the tenants' buffers or
-  answers `resync` (D5), and integration tests that an event of a tenant the person left or of a
-  project hidden from them never arrives, which `TestThePersonLevelStream` already has the shape of.
+- **(b) The person-level stream carries every event of the person's tenants** (built) that each
+  tenant's filter admits (ADR 0054 D3, a token's restriction included); D1, D3 and D5 are amended —
+  the stream spans the person's tenants, with a filter per tenant, and a reconnect replays them
+  merged. One connection whatever the number of tenants, and all three lists within the stream's
+  latency.
 - **(c) Reload on `inbox.changed`, and poll.** The pages reload on the person-level stream's
   `inbox.changed` — which they do today — and every fifteen seconds with `If-None-Match` (ADR 0054
   D7); the stream carries no more than it does. An assignment, a state change and a comment on a
@@ -95,7 +86,9 @@ input. (a) breaks at the default limit for the person with many tenants, the one
 (c) is the fifteen-second latency the owner turned down when ADR 0054 chose streams over
 polling.
 
-**Answer:** _open_
+**Answer:** (b) — the owner, 2026-10-05: the person-level stream carries every event of every
+tenant the person belongs to, as far as that tenant's filter admits it, as built. Recorded in ADR 0054
+(D1, D3 and D5 amended).
 
 ### Q2: Which tickets does "next for me" list?
 

@@ -253,22 +253,3 @@ func (q *Queries) NoticeRecipients(ctx context.Context, arg NoticeRecipientsPara
 	}
 	return items, nil
 }
-
-const questionAskedOf = `-- name: QuestionAskedOf :one
-SELECT asked_of FROM questions
-WHERE tenant_id = $1 AND id = $2
-`
-
-type QuestionAskedOfParams struct {
-	TenantID uuid.UUID
-	ID       uuid.UUID
-}
-
-// The person a question is asked of, whom its events reach across their
-// tenants (docs/adr/0054 D1); null for a question open in the tenant.
-func (q *Queries) QuestionAskedOf(ctx context.Context, arg QuestionAskedOfParams) (*uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, questionAskedOf, arg.TenantID, arg.ID)
-	var asked_of *uuid.UUID
-	err := row.Scan(&asked_of)
-	return asked_of, err
-}

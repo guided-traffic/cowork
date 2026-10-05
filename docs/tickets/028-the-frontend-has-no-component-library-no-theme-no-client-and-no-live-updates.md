@@ -62,7 +62,7 @@ Built on this branch, items 1, 2 and 4 of the work list:
   `TestTheStreamAdmitsWhatAnActOpensAtOnce` files a ticket in a project created, opened and let
   into after the stream opened, each arriving within a second with an hour's heartbeat, and fails
   without the change; `TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents` holds the same for
-  the person-level stream, which goes on telling its count and another tenant's question.
+  the person-level stream, which goes on telling its count and the events of its other tenant.
 
 ADR 0054 (D3 amended, D7's client side built), ADR 0045's Status, the README reference,
 [api.md](../developer/api.md), [events.md](../developer/events.md),

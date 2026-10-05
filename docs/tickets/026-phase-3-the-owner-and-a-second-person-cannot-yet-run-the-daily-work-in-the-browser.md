@@ -85,7 +85,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T33 — the rendered Markdown body and the server-side sanitiser
    - T34 — the score beside the rank, and the rebalancing of the rank keys (the backlog's
      end-to-end path is built)
-   - T35 — next for me, the person-level pages following every tenant, the lists in the score's order
+   - T35 — next for me, the lists in the score's order
    - T36 — the mention in a comment, and the inbox's end-to-end path
    - T37 — search
    - T38 — saved filters

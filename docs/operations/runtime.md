@@ -367,16 +367,21 @@ event: ticket.changed
 data: {"key":"dev/COW-1","version":2,"kind":"transitioned"}
 ```
 
-A change of who belongs to the tenant or who sees a project is `membership.changed`, with the ids of
-what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
+A change of who belongs to the tenant or who sees a project is `membership.changed`, with the
+tenant's slug and the ids of what changed — `tenant`, `person_id`, `project_id`, `mapping_id` — and
+reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
 
-Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it also
-carries `inbox.changed` with `data: {"unread": n}`, the person's unread notifications in every
-tenant, when it opens and once a burst of changes of the inbox is over (a tenth of a second), and the
-`question.changed` of a question asked of the person in another of their tenants. Neither carries an
-`id:`, so neither is replayed; the browser reloads its person-level pages when the stream opens.
+Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it carries
+the events of every tenant the person belongs to, each as that tenant's own stream would judge it,
+over one connection whatever the number of tenants, and `inbox.changed` with `data: {"unread": n}`,
+the person's unread notifications in every tenant, when it opens and once a burst of changes of the
+inbox is over (a tenth of a second). A reconnect replays the gap of every tenant it follows; the
+count carries no `id:` and is not replayed, and the browser reloads its person-level pages when the
+stream opens. Every tenant it follows costs one database transaction when it opens, at every
+heartbeat and on every act that changes what the person may see there
+([tenancy.md](../security/tenancy.md#the-person-level-stream)).
 
 How it behaves, as somebody running it sees it:
 

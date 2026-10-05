@@ -430,15 +430,17 @@ agent a `read` token, and an administrator finds them in the tenant's audit view
 <a id="h-7"></a>
 ### H-7 — An open event stream outlives a revocation by up to one heartbeat
 
-Live today. A stream checks its token — or its session — and its person's membership at every
+Live today. A stream checks its token — or its session — and its person's memberships at every
 heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
 stream whose token was revoked or expired, whose session ended or whose person was deactivated
-still receives the events its filter admitted at the last heartbeat — the keys, versions and
-kinds of the acts, no content. A person who leaves the tenant or loses a project by an act — a
-grant removed, a membership derived away, a restriction, an access entry — loses it at the stream
-before its next event, because every such act makes the stream run the boundary and compute its
-filter again ([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read));
-only such a change made in the database past the API waits for the heartbeat. Every request the
+still receives the events its filters admitted at the last heartbeat — the keys, versions and
+kinds of the acts, no content, of every tenant a person-level stream follows. A person who leaves a
+tenant or loses a project by an act — a grant removed, a membership derived away, a restriction, an
+access entry — loses it at the stream before that tenant's next event, because every such act makes
+the stream compute its filter of the tenant again
+([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read),
+[the person-level stream](tenancy.md#the-person-level-stream)); only such a change made in the
+database past the API waits for the heartbeat. Every request the
 client makes with the dead token or session is refused at once; the window is the stream's alone.
 
 <a id="h-30"></a>

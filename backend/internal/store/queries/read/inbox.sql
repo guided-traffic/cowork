@@ -53,13 +53,3 @@ JOIN tickets xt ON xt.tenant_id = a.tenant_id AND xt.id = a.ticket_id
 WHERE n.tenant_id = sqlc.arg(tenant_id) AND n.user_id = sqlc.arg(user_id) AND n.id = sqlc.arg(id)
   AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND app_ticket_visible(xt.project_id, xt.confidential, xt.assignee_id, xt.reporter_id);
-
--- name: SeesPublishedTicket :one
--- Whether the caller may hear a person-level event of another tenant than its
--- stream's (docs/adr/0054 D1, D3): still a member of the event's tenant, and
--- able to see the ticket the event names by the facts it carries. The
--- predicate answers NULL, not false, for a confidential ticket without an
--- assignee — enough for a WHERE, not for an answer.
-SELECT coalesce(EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = sqlc.arg(tenant_id) AND m.user_id = app_user_id())
-                AND app_ticket_visible(sqlc.arg(project_id)::uuid, sqlc.arg(confidential)::boolean,
-                                       sqlc.narg(assignee_id)::uuid, sqlc.arg(reporter_id)::uuid), false)::boolean AS visible;

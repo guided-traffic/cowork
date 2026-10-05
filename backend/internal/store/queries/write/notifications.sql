@@ -48,12 +48,6 @@ INSERT INTO notifications (tenant_id, user_id, ticket_id, audit_event_id, reason
 SELECT sqlc.arg(tenant_id), r.id, sqlc.arg(ticket_id), sqlc.arg(audit_event_id), sqlc.arg(reason)::notification_reason
 FROM unnest(sqlc.arg(recipients)::uuid[]) AS r (id);
 
--- name: QuestionAskedOf :one
--- The person a question is asked of, whom its events reach across their
--- tenants (docs/adr/0054 D1); null for a question open in the tenant.
-SELECT asked_of FROM questions
-WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
-
 -- name: MarkNotificationRead :execrows
 -- One of the person's notifications, read now; one they no longer see stays
 -- as it is (docs/adr/0065 D5).
