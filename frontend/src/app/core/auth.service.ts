@@ -33,6 +33,10 @@ export class AuthService {
     await this.api.invoke(changeMyPassword, {
       body: { current_password: current, new_password: next },
     });
+    // The answer ends the requirement (docs/adr/0033 D4). Said here before the page goes on: the
+    // shell sends a person who must change it to the password page, and while `me` loads again it
+    // shows the answer before — a page reached in that moment was sent back to change it again.
+    this.session.me.update((me) => (me ? { ...me, password_change_required: false } : me));
     this.session.me.reload();
   }
 

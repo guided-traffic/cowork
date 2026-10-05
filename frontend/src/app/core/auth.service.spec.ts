@@ -199,6 +199,19 @@ describe('AuthService', () => {
       expect(session.person()?.password_change_required).toBe(false);
     });
 
+    it('ends the requirement at once, before who is working has answered again', async () => {
+      session.me.set({ ...hans, password_change_required: true });
+      const done = service.changePassword('initial', 'correct horse battery');
+      http.expectOne('/api/v1/me/password').flush(null, { status: 204, statusText: 'No Content' });
+      await done;
+
+      // The shell decides where the next page goes now, while /api/v1/me has not answered yet.
+      expect(session.person()?.password_change_required).toBe(false);
+      (await meAgain()).flush({ ...hans, password_change_required: false });
+      await settle();
+      expect(session.person()?.password_change_required).toBe(false);
+    });
+
     it('rejects with the HTTP error of a refusal and does not ask who is working', async () => {
       const done = service.changePassword('wrong', 'correct horse battery');
       const outcome = done.then(
