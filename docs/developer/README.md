@@ -93,7 +93,7 @@ change.
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant boundary, authorization, errors, idempotency, versions, paging, filters |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters |
 | [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
 | [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage |
@@ -129,7 +129,9 @@ change.
 
 ## What has no page here
 
-The tenant board, the score beside the rank, "next for me", deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the inbox
+The tenant board, the score beside the rank, "next for me", deletion, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the tenant's
+dashboard is a section of [api.md](api.md#the-dashboard), [data-access.md](data-access.md#the-dashboards-queries)
+and [frontend.md](frontend.md#the-dashboard); the inbox
 and the person-level lists are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the rank itself is a section of

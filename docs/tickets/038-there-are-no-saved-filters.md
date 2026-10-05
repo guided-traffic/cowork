@@ -24,8 +24,8 @@ applicable to the backlog, the tenant list view and the tenant board; it carries
 
 No page lists a tenant's tickets, and no ticket builds one. The API serves the tenant-wide list
 with every filter and numbered pages (`listTenantTickets`,
-[`tenants.yaml`](../../backend/api/tenants.yaml#L332-L388)), and the frontend reads it for the
-tenant's front page only ([`overview.ts`](../../frontend/src/app/features/tenant/overview.ts#L74));
+[`tenants.yaml`](../../backend/api/tenants.yaml#L332-L388)), and no page of the frontend reads it
+since the tenant's front page is the dashboard, which counts through a route of its own;
 the tenant's routes have no list view ([`app.routes.ts`](../../frontend/src/app/app.routes.ts#L29-L80)),
 and ADR 0023 D4's UI routes name none — while ADR 0018 D5 applies saved filters to "the tenant
 list view" and ADR 0049 D6 serves "the tenant-wide list" with the same parameters.

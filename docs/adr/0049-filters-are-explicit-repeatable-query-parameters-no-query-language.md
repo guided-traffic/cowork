@@ -16,8 +16,11 @@ D1.
 
 **Built** (phase 2, 2026-10-02; `done_after` since 2026-10-03): D1–D6 on the project's and the tenant's ticket lists,
 [`ticketlist.go`](../../backend/internal/api/ticketlist.go) parsing and
-[`tickets.go`](../../backend/internal/store/tickets.go) rendering; D6's board, dashboard and
-saved filters and D7 arrive with their views.
+[`tickets.go`](../../backend/internal/store/tickets.go) rendering; ~~D6's board, dashboard and
+saved filters and D7 arrive with their views~~ D6's board and saved filters and D7 arrive with their
+views. *(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
+D6 — `project` as the ticket lists take it, and as its period parameters the time lists' `from` and
+`to`, days ([`dashboard.go`](../../backend/internal/api/dashboard.go) `parseDashboardQuery`).
 
 ## Context
 

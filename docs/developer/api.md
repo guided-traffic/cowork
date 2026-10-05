@@ -2,8 +2,8 @@
 
 How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
-the CSRF check, the tenant boundary, authorization, errors, idempotency, versions, paging,
-filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
+the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
+paging, filters, and the media types beside JSON. The decisions are [ADR 0046] (spec first), [ADR 0047]
 (errors), [ADR 0045] (idempotency), [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050]
 (versions), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
@@ -28,6 +28,7 @@ into the file of its path family.
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
+| [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
@@ -242,6 +243,43 @@ out. Marking read needs `markRead` — any member, `write` scope, the agent base
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
 reading each tenant in turn (`FindNotification`); no query reads two tenants.
 
+## The dashboard
+
+`GET /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go))
+answers the nine tiles of [ADR 0018] D6, and beside them the open tickets updated last, in **one
+route**: the page shows the tiles together under one set of filters, one read-only transaction
+(`InTenant`) gives counts that agree with each other, and a reload after an event costs one
+request, which a weak `ETag` answers with `304` while nothing the caller sees changed. Nine routes
+would have cost nine requests per reload and nine snapshots that could disagree. **Each tile's
+definition is its field's description in the document**, `components/schemas.yaml#/Dashboard` —
+the one place a reader checks a number against — and the code follows it:
+
+- `parseDashboardQuery` reads `project` as the ticket lists do ([ADR 0049] D6): repeatable, a `!`
+  leaving a project out, a value that is no key `400` at `query:project`; the plain values become
+  `projects`, the negated `without`, both empty arrays rather than `nil`, because the queries read
+  an empty array as no filter and a `NULL` would match nothing. Without a plain value every project
+  that is not archived counts; a key that names no project the caller sees counts nothing, and
+  answers exactly like one that names no project at all.
+- The period is `from` and `to`, UTC days, both inclusive, by default the thirty days that end
+  today by `Options.Now` (the tests fix the clock); `from` after `to` is `400` at `query:from`. It
+  bounds the time booked; throughput's eight ISO weeks end with the week of `to`, cut at `to`, and
+  lead time's thirty days end with `to` ([ADR 0019] D2); the open tiles and the ages stand as the
+  tickets do at the request. A week is named `2026-W40` by Go's `ISOWeek`, the Monday the query's
+  `date_trunc('week', …)` gives.
+- `dashboardRows.read` runs the ten queries of
+  [`queries/read/dashboard.sql`](../../backend/internal/store/queries/read/dashboard.sql) in the
+  transaction ([data-access.md](data-access.md#visibility-in-sql)); one small function per tile
+  (`stateCounts`, `severityCounts`, `securityTile`, `blockedTile`, `ageTile`, `throughputTile`,
+  `leadTimeTile`, `decisionsTile`, `timeTile`, `recentList`) turns its rows into the answer — the
+  severities, the two classes, the five age buckets and the eight weeks always present, zero
+  included, the rows of state and time only where they count something.
+
+It takes `read`, any member and an agent; a global administrator without a role and a token
+restricted to a project are refused by the boundary, the dashboard being neither of `oversight`
+nor of `tenantWideForProjectTokens`. The time entries are not published to the event stream
+([events.md](events.md#publication)), so the browser's dashboard shows a booking made elsewhere
+at its next reload ([frontend.md](frontend.md#the-dashboard)).
+
 ## The tenant boundary
 
 `boundary` in [`tenant.go`](../../backend/internal/api/tenant.go) admits a request to the tenant
@@ -395,7 +433,7 @@ the ticket goes, so the last move wins — and raises the ticket's version.
 The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
 `listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
-`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions` — answer a
+`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions` — and the dashboard, `getDashboard`, answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
 `304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
 `tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
@@ -488,6 +526,8 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
   after the stream began is its `error` event, a problem body from `problem.BodyOf`
   ([chat.md](chat.md#a-turn)).
 
+[ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
+[ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
 [ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md

@@ -27,8 +27,8 @@ D4 was not amended when D1's amendment of 2026-10-03 gave the project board its 
 
 ## Required changes
 
-1. `/t/{slug}` board view (beside the overview of T28 until the dashboard of T43 takes the front
-   page) with lazy swimlanes, the columns Q1 decides and the project filter; saved filters apply
+1. `/t/{slug}` board view (beside the dashboard of T43, which is the front page) with lazy
+   swimlanes, the columns Q1 decides and the project filter; saved filters apply
    (T38).
 2. The refusal of a drag across swimlanes is visible, not silent.
 3. Unit tests; the e2e path of T29's tier drags a card across columns and is refused across rows.

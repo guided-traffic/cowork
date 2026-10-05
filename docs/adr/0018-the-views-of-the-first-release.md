@@ -7,7 +7,9 @@ tree on the detail page, [ADR 0012](0012-four-typed-directed-links-within-a-tena
 and 2026-10-03 (D1: the backlog grouped by urgency; the board's columns as a view over the
 states, its `next` column and the urgencies its other columns hold; D2: the three progress
 stages and done by hand) and 2026-10-04 (D1: a project opens on its board, the Board tab left of
-the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day).
+the Backlog tab; the backlog's groups are the horizons of ADR 0010 D3 as amended the same day),
+and made concrete 2026-10-05 (D6: one route, the definition of each tile, what the period
+bounds, the front page beside the tiles).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -53,14 +55,26 @@ text until it is rendered), and since 2026-10-04 the title and the body edited t
 and the horizon chosen there, the confidential flag for a tenant administrator, the prerequisite
 tree with its upward reading, comments edited, their earlier texts and their withdrawal, an open
 question's text edited, uploads to a comment, the preview of raster images and the correction of
-time; the time report; and as the tenant's
+time; the time report; ~~and as the tenant's
 front page, until D6's dashboard, each project's open tickets by state with the tickets updated
-last. *(2026-10-04:)* D3's "assigned to me", "open decisions" and the inbox, each across every tenant
+last~~ *(replaced 2026-10-05 by D6's dashboard, below, which carries both)*. *(2026-10-04:)* D3's "assigned to me", "open decisions" and the inbox, each across every tenant
 of the person as a union of per-tenant reads with the tenant beside each key, in the navigation for
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
 "assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status. Not built: the score's marker in the backlog, D3's "next for me", D4–D7.
+Status. Not built: the score's marker in the backlog, D3's "next for me", D4, D5, D7.
+
+**Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
+/api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),
+[`queries/read/dashboard.sql`](../../backend/internal/store/queries/read/dashboard.sql)), each
+tile's definition in its field of the API document's `Dashboard`, every query under the visibility
+predicate and each tile's definition and hidden-ticket case an integration test
+([`api_dashboard_test.go`](../../backend/test/integration/api_dashboard_test.go)); the tenant's
+front page `/t/{slug}` is the dashboard ([`features/tenant/dashboard.ts`](../../frontend/src/app/features/tenant/dashboard.ts)),
+live through the event stream at most once a second, its filters in the page's address, its
+charts bars in CSS over the preset's tokens. Not verified: how the page looks in either scheme in
+a browser, and how long the queries take over a large tenant; no end-to-end test walks the page
+yet.
 
 ## Context
 
@@ -148,6 +162,31 @@ its reason kind; age distribution of open tickets; throughput (`done` per week, 
 weeks); lead time (median `filed`→`done`, last thirty days); open decisions with the oldest
 named; time booked in the period by project. No tile is configurable and no custom
 dashboard exists; a new tile is an amendment of this record.
+
+*(Made concrete 2026-10-05, built the same day; this record's proposal for the implementation,
+open to objection like the definitions themselves, Residual risks:)* **One route answers all nine
+tiles** — `GET /api/v1/tenants/{tenant}/dashboard`, read in one transaction — because the page
+shows them together under one set of filters, one transaction gives counts that agree, and a
+reload costs one request that a weak `ETag` answers `304` while nothing changed; nine routes would
+have meant nine requests per reload and nine snapshots. **Each tile's definition is written in the
+API document** (`components/schemas.yaml#/Dashboard`), which the code and its tests follow, and
+every tile counts only what the caller can see ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D4, [ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D4). The filters are the ticket lists' `project` of [ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)
+D6 — an archived project counted only when named — and the period, `from` and `to`, UTC days, the
+thirty days that end today by default. **The period bounds the time booked; throughput's eight
+ISO weeks and lead time's thirty days end with its last day** ([ADR 0019](0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md)
+D2); the open tiles stand as the tickets do at the request, since nothing records how the open
+tickets stood on an earlier day. The definitions this needed: *open* is every state but `done` and
+`dropped`; the oldest finding is the earliest filed; a ticket is blocked since its latest recorded
+act into `blocked` ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)),
+or its last update where none is recorded; the age buckets are under 7, 30, 90 and 365 days and
+older; throughput counts the tickets done now in the week of their `done_at` — a reopened ticket
+nowhere, as the board's count of done tickets has it —, and lead time is the median from `opened_at`
+to `done_at` of the tickets done in its window; the open decisions are every open question on the
+counted tickets, whomever asked and whatever the ticket's state. **Beside the tiles** the front page
+keeps what the interim front page showed — each project's open tickets by state, which is tile 1
+per project, and the eight open tickets updated last — from the same answer; neither is a tile.
 
 **D7 — Search.** Full-text over title, body, comments and question texts within a tenant,
 from the tenant's pages; the person-level pages search across the person's tenants as a

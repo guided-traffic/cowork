@@ -342,7 +342,12 @@ Where the predicate hides a related ticket, the visible one shows less rather th
 parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
 `parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
 hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
-a ticket's `open_prerequisites` count only the blockers the caller sees.
+a ticket's `open_prerequisites` count only the blockers the caller sees. The tenant's dashboard
+counts, names and measures only what the caller sees, every one of its queries under the predicate
+— a median of lead time or the oldest blocked ticket moves for nobody who cannot see the ticket
+that moves it —, and a `project` filter that names a project the caller cannot see answers exactly
+as one that names no project, its weak `ETag` included
+([api_dashboard_test.go](../../backend/test/integration/api_dashboard_test.go)).
 
 ## Members, grants and group mappings
 
