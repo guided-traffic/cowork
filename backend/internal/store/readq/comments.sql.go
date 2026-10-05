@@ -272,7 +272,9 @@ SELECT a.id, a.actor_user_id, u.username AS actor_username, u.display_name AS ac
        a.explained_by_comment_id, a.refs, a.created_at
 FROM audit_events a
 LEFT JOIN users u ON u.id = a.actor_user_id
-WHERE a.tenant_id = $1 AND a.ticket_id = $2
+WHERE a.tenant_id = $1
+  AND (a.ticket_id = $2
+       OR (a.entity_type = 'project' AND a.action = 'ranked' AND a.refs @> ARRAY[$2::uuid]))
   AND a.entity_type <> 'time_entry' AND a.action NOT IN ('downloaded', 'exported', 'booked', 'voided', 'locked')
   AND ($3::uuid IS NULL
        OR ($4::boolean AND a.id < $3::uuid)
@@ -312,9 +314,11 @@ type ListTicketActivityRow struct {
 }
 
 // The ticket's acts (docs/adr/0015 D1, D6) without time entries
-// (docs/adr/0017 D9) and without data leaving the system (docs/adr/0026 D5).
-// The caller has read the ticket through the predicate; the refs of each act
-// are checked against it before its payload is shown.
+// (docs/adr/0017 D9) and without data leaving the system (docs/adr/0026 D5),
+// and the sorts of its project's rank by the score that moved it: one act of
+// the project, which names every ticket it moved in its refs
+// (docs/adr/0014 D3). The caller has read the ticket through the predicate;
+// the refs of each act are checked against it before its payload is shown.
 func (q *Queries) ListTicketActivity(ctx context.Context, arg ListTicketActivityParams) ([]ListTicketActivityRow, error) {
 	rows, err := q.db.Query(ctx, listTicketActivity,
 		arg.TenantID,

@@ -25,6 +25,12 @@ ALTER TABLE tickets
 -- (docs/adr/0014 D5).
 CREATE INDEX tickets_by_score ON tickets (tenant_id, score_key DESC, id);
 
+-- A sort of a project's rank by the score is one act of the project that
+-- names every ticket it moved in its refs (D3); a ticket's activity finds the
+-- sorts that moved it here.
+CREATE INDEX audit_sorts_by_ticket ON audit_events USING gin (refs)
+    WHERE entity_type = 'project' AND action = 'ranked';
+
 -- Every ticket is scored with version 1, the weights of domain.ScoreKey
 -- written out once more: this is the migration that computes what the
 -- function computes (D4), and an integration test holds the two equal.

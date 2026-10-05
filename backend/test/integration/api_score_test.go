@@ -164,6 +164,26 @@ func TestSortByScore(t *testing.T) {
 	require.NoError(t, f.QueryRow(e.ctx, "SELECT after::text FROM audit_events WHERE entity_type = 'project' AND entity_id = $1", e.ProjectA).Scan(&after))
 	assert.JSONEq(t, `{"by":"score","moved":3,"score_version":1}`, after)
 
+	// docs/adr/0015 D1: the activity of each ticket the sort moved shows it.
+	sorts := func(c caller, number int) []apigen.Activity {
+		t.Helper()
+		res := e.s.do(t, c, http.MethodGet, ticketPath(e.SlugA, "ALPHA", number)+"/activity", nil)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		var out []apigen.Activity
+		for _, a := range decode[apigen.ActivityList](t, res).Items {
+			if a.EntityType == "project" {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	moved := sorts(member, low.Number)
+	require.Len(t, moved, 1)
+	assert.Equal(t, apigen.AuditActionRanked, moved[0].Action)
+	assert.Equal(t, "score", moved[0].After.MustGet()["by"])
+	assert.False(t, moved[0].Redacted)
+	assert.Empty(t, sorts(admin, secret.Number), "the hidden ticket was not moved, and its activity holds no sort")
+
 	again := e.sortRank(t, member, "ALPHA")
 	require.Equal(t, http.StatusOK, again.StatusCode)
 	assert.Equal(t, 0, decode[apigen.ProjectRankSorted](t, again).Moved, "the rank follows the score already")

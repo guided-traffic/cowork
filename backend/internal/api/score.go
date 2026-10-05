@@ -84,12 +84,16 @@ func (s *Server) SortProjectRank(ctx context.Context, req apigen.SortProjectRank
 		if perr := auth.Authorize(principal(ctx), role, rankNeed); perr != nil {
 			return perr
 		}
-		if moved, err = sortRank(ctx, w, t, p.ID); err != nil {
+		ids, err := sortRank(ctx, w, t, p.ID)
+		if err != nil {
 			return err
 		}
+		moved = len(ids)
+		// The act names every ticket it moved, whose activity shows it
+		// (docs/adr/0015 D1); each is one the caller sees.
 		w.Record(store.Event{EntityType: entityProject, EntityID: p.ID, Action: actionRanked,
-			After:   map[string]any{"by": sortedBy, "score_version": domain.ScoreVersion, "moved": moved},
-			Project: &store.ProjectChange{ID: p.ID, Key: t.Slug + "/" + p.Key}})
+			After: map[string]any{"by": sortedBy, "score_version": domain.ScoreVersion, "moved": moved},
+			Refs:  ids, Project: &store.ProjectChange{ID: p.ID, Key: t.Slug + "/" + p.Key}})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
@@ -99,19 +103,19 @@ func (s *Server) SortProjectRank(ctx context.Context, req apigen.SortProjectRank
 }
 
 // sortRank writes the score's order into the project's rank under the rank
-// lock and returns how many tickets changed their place; ErrNoChange when the
+// lock and returns the tickets that changed their place; ErrNoChange when the
 // rank followed the score already, which rolls back the scores written anew
 // and the keys given to unranked tickets with it.
-func sortRank(ctx context.Context, w *store.Writer, t tenantScope, projectID uuid.UUID) (int, error) {
+func sortRank(ctx context.Context, w *store.Writer, t tenantScope, projectID uuid.UUID) ([]uuid.UUID, error) {
 	if err := lockRank(ctx, w, t, projectID); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if _, err := rankUnranked(ctx, w, t, projectID); err != nil {
-		return 0, err
+		return nil, err
 	}
 	rows, err := w.ListScoredTickets(ctx, writeq.ListScoredTicketsParams{TenantID: t.ID, ProjectID: projectID})
 	if err != nil {
-		return 0, fmt.Errorf("read the tickets to sort: %w", err)
+		return nil, fmt.Errorf("read the tickets to sort: %w", err)
 	}
 	tickets := make([]rankedScore, 0, len(rows))
 	for _, r := range rows {
@@ -120,19 +124,19 @@ func sortRank(ctx context.Context, w *store.Writer, t tenantScope, projectID uui
 		if key != r.ScoreKey || r.ScoreVersion != domain.ScoreVersion {
 			if err := w.SetTicketScore(ctx, writeq.SetTicketScoreParams{TenantID: t.ID, ID: r.ID, ScoreKey: key,
 				ScoreVersion: domain.ScoreVersion}); err != nil {
-				return 0, fmt.Errorf("store the score: %w", err)
+				return nil, fmt.Errorf("store the score: %w", err)
 			}
 		}
 		tickets = append(tickets, rankedScore{id: r.ID, rank: r.Rank, score: key})
 	}
 	ids, keys := sortByScore(tickets)
 	if len(ids) == 0 {
-		return 0, store.ErrNoChange
+		return nil, store.ErrNoChange
 	}
 	if err := writeRanks(ctx, w, t, ids, ids, keys); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return len(ids), nil
+	return ids, nil
 }
 
 // rankedScore is a ticket in the rank with its score's key.
