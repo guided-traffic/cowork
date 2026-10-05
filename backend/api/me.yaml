@@ -161,7 +161,7 @@ chat:
             schema:
               $ref: './components/schemas.yaml#/ChatCapabilities'
             example:
-              capabilities: [rank, override-urgency, interest, upload, create-project]
+              capabilities: [rank, set-horizon, interest, upload, create-project]
               chosen: false
       default:
         $ref: './components/responses.yaml#/Problem'
@@ -186,7 +186,7 @@ chat:
           schema:
             $ref: './components/schemas.yaml#/ChatCapabilitiesUpdate'
           example:
-            capabilities: [rank, override-urgency]
+            capabilities: [rank, set-horizon]
     responses:
       '200':
         description: The chat's capabilities as chosen

@@ -5,7 +5,7 @@ type: bug
 state: done
 severity: medium
 security: none
-urgency: later
+horizon: later
 effort: XS
 progress-refinement: 100
 progress: 100

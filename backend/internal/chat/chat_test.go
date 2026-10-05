@@ -97,7 +97,7 @@ func newAPI() *api {
 			doneFrom = a.doneFrom
 		}
 		return map[string]any{"key": key, "title": "Guard the gate", "state": state, "type": "task", "number": 12, "project": "COW",
-			"urgency": "later", "urgency_derived": "later", "block": nil, "done_from": doneFrom, "progress": 40,
+			"horizon": "later", "horizon_set": nil, "block": nil, "done_from": doneFrom, "progress": 40,
 			"progress_refinement": 100, "progress_review": a.review, "progress_derived": false, "done_by_hand": state == "done",
 			"confidential": false, "version": a.version}
 	}
@@ -634,15 +634,15 @@ func TestTheModelIsToldWhatTheChatHolds(t *testing.T) {
 		return m.got[0].System, byName
 	}
 	system, tools := descriptions(t, auth.DefaultChatCapabilities)
-	assert.Contains(t, system, "Beyond the baseline the person gave you these capabilities: rank, override-urgency, interest, upload, create-project.")
+	assert.Contains(t, system, "Beyond the baseline the person gave you these capabilities: rank, set-horizon, interest, upload, create-project.")
 	assert.Contains(t, system, "the list above is the current one, and it replaces whatever earlier messages of this conversation say")
 	assert.Contains(t, tools["transition"], "lacks decide, close, drop")
 	assert.Contains(t, tools["record_answer"], "lacks record-answer")
-	assert.Contains(t, tools["place_ticket"], "holds override-urgency, rank")
+	assert.Contains(t, tools["place_ticket"], "holds set-horizon, rank")
 
 	system, tools = descriptions(t, []string{})
 	assert.Contains(t, system, "The person gave you no capability beyond the baseline")
-	assert.Contains(t, tools["place_ticket"], "lacks override-urgency, rank")
+	assert.Contains(t, tools["place_ticket"], "lacks set-horizon, rank")
 }
 
 // A call its turn ended before running — the person stopped it — stays in the

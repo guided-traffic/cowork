@@ -164,16 +164,12 @@ func tokenView(t readq.ListTokensOfUserRow, now time.Time, keys map[uuid.UUID]st
 	case !t.ExpiresAt.After(now):
 		state = apigen.TokenStateExpired
 	}
-	caps := make([]apigen.Capability, 0, len(t.Capabilities))
-	for _, c := range t.Capabilities {
-		caps = append(caps, apigen.Capability(c))
-	}
 	v := apigen.Token{
 		Id:           t.ID,
 		Name:         t.Name,
 		Scope:        apigen.Scope(t.Scope),
 		Agent:        t.Agent,
-		Capabilities: caps,
+		Capabilities: capabilitiesView(t.Capabilities),
 		CreatedAt:    t.CreatedAt,
 		ExpiresAt:    t.ExpiresAt,
 		State:        state,
@@ -309,11 +305,7 @@ type tokenSpec struct {
 }
 
 func (t tokenSpec) view(id uuid.UUID, createdAt time.Time) apigen.TokenCreated {
-	caps := make([]apigen.Capability, 0, len(t.capabilities))
-	for _, c := range t.capabilities {
-		caps = append(caps, apigen.Capability(c))
-	}
-	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: caps,
+	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: capabilitiesView(t.capabilities),
 		CreatedAt: createdAt, ExpiresAt: t.expiresAt, State: apigen.TokenStateActive}
 	v.RestrictedTenant = nullableOf(t.tenantSlug)
 	v.RestrictedProject = nullableOf(t.projectKey)
@@ -339,6 +331,9 @@ func (s *Server) tokenSpec(ctx context.Context, p auth.Principal, body apigen.Cr
 		for _, c := range *body.Capabilities {
 			named = append(named, string(c))
 		}
+		// A set is stored under this release's names, override-urgency as
+		// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
+		named = auth.Canonical(named)
 	}
 	switch {
 	case spec.agent && spec.scope == domain.ScopeAdmin:

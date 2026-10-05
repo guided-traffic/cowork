@@ -137,7 +137,7 @@ func TestFileTicket(t *testing.T) {
 func TestFileTicketIntoAHorizon(t *testing.T) {
 	f := newFake(t)
 	f.on("POST /api/v1/tenants/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed", func(m map[string]any) {
-		m["urgency"] = "next"
+		m["horizon"] = "next"
 	}))
 	s := f.session(true)
 	const filing = `"type": "feature", "title": "An idea", "severity": "low", "security": "none", "effort": "M"`
@@ -148,7 +148,8 @@ func TestFileTicketIntoAHorizon(t *testing.T) {
 	posted := f.calls(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets")
 	require.Len(t, posted, 1)
 	body := decodeBody(t, posted[0])
-	assert.Equal(t, "next", body["urgency"])
+	assert.Equal(t, "next", body["horizon"])
+	assert.NotContains(t, body, "urgency", "the filing names the horizon by its name")
 	assert.Equal(t, float64(3), body["after"])
 	assert.NotContains(t, body, "before")
 
@@ -251,11 +252,11 @@ func TestPlaceTicket(t *testing.T) {
 	f := newFake(t)
 	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
 	f.on("GET /api/v1/tenants/acme/projects/COW/tickets/3", http.StatusOK, ticket("acme/COW-3", "filed", func(m map[string]any) {
-		m["urgency"] = "next"
+		m["horizon"] = "next"
 	}))
 	f.on("GET /api/v1/tenants/acme/projects/COW/tickets/4", http.StatusOK, ticket("acme/COW-4", "in-progress"))
-	f.on("PUT "+ticketPath+"/urgency-override", http.StatusOK, ticket("acme/COW-12", "decided", func(m map[string]any) {
-		m["urgency"] = "next"
+	f.on("PUT "+ticketPath+"/horizon", http.StatusOK, ticket("acme/COW-12", "decided", func(m map[string]any) {
+		m["horizon"] = "next"
 	}))
 	f.on("PUT "+ticketPath+"/rank", http.StatusOK, ticket("acme/COW-12", "decided"))
 	s := f.session(true)
@@ -264,7 +265,7 @@ func TestPlaceTicket(t *testing.T) {
 	require.False(t, res.IsError, res.Text)
 	assert.Equal(t, "Moved acme/COW-12 from the horizon later to next, with the reason: the person wants it next.\n"+
 		"Placed acme/COW-12, directly after COW-3.", res.Text)
-	put := f.calls(http.MethodPut, ticketPath+"/urgency-override")
+	put := f.calls(http.MethodPut, ticketPath+"/horizon")
 	require.Len(t, put, 1)
 	assert.Equal(t, `"3"`, put[0].Header.Get("If-Match"))
 	assert.Equal(t, map[string]any{"value": "next", "reason": "the person wants it next"}, decodeBody(t, put[0]))
@@ -296,15 +297,30 @@ func TestPlaceTicket(t *testing.T) {
 		assert.True(t, res.IsError, args)
 		assert.Contains(t, res.Text, want, args)
 	}
-	assert.Len(t, f.calls(http.MethodPut, ticketPath+"/urgency-override"), 1, "nothing was sent for the refused calls")
+	assert.Len(t, f.calls(http.MethodPut, ticketPath+"/horizon"), 1, "nothing was sent for the refused calls")
 	assert.Len(t, f.calls(http.MethodPut, ticketPath+"/rank"), 2, "nothing was sent for the refused calls")
 
 	g := newFake(t)
 	g.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
-	g.refuse("PUT "+ticketPath+"/urgency-override", http.StatusForbidden, "agent_forbidden", "missing capability: override-urgency")
+	g.refuse("PUT "+ticketPath+"/horizon", http.StatusForbidden, "agent_forbidden", "missing capability: set-horizon")
 	res = call(t, g.session(true), "place_ticket", `{"key": "COW-12", "horizon": "now", "reason": "x"}`)
 	assert.True(t, res.IsError)
-	assert.Contains(t, res.Text, "403 `agent_forbidden`: missing capability: override-urgency")
+	assert.Contains(t, res.Text, "403 `agent_forbidden`: missing capability: set-horizon")
+
+	// Back to later is the same route: the API clears the horizon set.
+	h := newFake(t)
+	h.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided", func(m map[string]any) {
+		m["horizon"] = "now"
+		m["horizon_set"] = map[string]any{"value": "now", "reason": nil, "by": nil, "at": "2026-10-04T00:00:00Z"}
+	}), "ETag", `"5"`)
+	h.on("PUT "+ticketPath+"/horizon", http.StatusOK, ticket("acme/COW-12", "decided"))
+	res = call(t, h.session(true), "place_ticket", `{"key": "COW-12", "horizon": "later", "reason": "not this month"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Equal(t, "Moved acme/COW-12 from the horizon now to later, with the reason: not this month.", res.Text)
+	put = h.calls(http.MethodPut, ticketPath+"/horizon")
+	require.Len(t, put, 1)
+	assert.Equal(t, `"5"`, put[0].Header.Get("If-Match"))
+	assert.Equal(t, map[string]any{"value": "later", "reason": "not this month"}, decodeBody(t, put[0]))
 }
 
 // A session bound to a tenant and no project — the chat on a page that shows

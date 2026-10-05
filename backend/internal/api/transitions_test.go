@@ -25,7 +25,7 @@ var (
 	person   = auth.Principal{Scope: domain.ScopeWrite}
 	agent    = auth.Principal{Scope: domain.ScopeWrite, Agent: "claude-code/opus/s1", Capabilities: auth.AllCapabilities}
 	assisted = auth.Principal{Scope: domain.ScopeWrite, Agent: "claude-code/opus/s1",
-		Capabilities: []string{auth.CapDrop, auth.CapOverrideUrgency, auth.CapInterest, auth.CapUpload}}
+		Capabilities: []string{auth.CapDrop, auth.CapSetHorizon, auth.CapInterest, auth.CapUpload}}
 )
 
 // in is a ticket in a state, read by a member.
@@ -315,20 +315,30 @@ func TestStageInputs(t *testing.T) {
 	assert.Nil(t, stageInputs(person, in(domain.StateReview), keep, apigen.TicketPatch{OverridePrerequisites: ptrBool(false)}))
 }
 
-// docs/adr/0010 D3, docs/adr/0043 D4: the reason of an override is optional
-// for a person and required of an agent, which needs override-urgency; a
-// withdrawal takes none.
-func TestOverrideInputs(t *testing.T) {
+// docs/adr/0010 D3, docs/adr/0043 D4: the reason of a horizon set is optional
+// for a person and required of an agent, which needs set-horizon — on
+// setHorizon for later as well; the deprecated withdrawal takes none. A token
+// stored with the capability's name before holds it.
+func TestHorizonInputs(t *testing.T) {
 	now := domain.UrgencyNow
-	assert.Nil(t, overrideInputs(person, domain.RoleMember, &now, nil), "a person's drag between the groups")
-	assert.Nil(t, overrideInputs(agent, domain.RoleMember, &now, ptrStr("a customer is down")))
-	assertProblem(t, overrideInputs(agent, domain.RoleMember, &now, nil), problem.ValidationFailed, "/reason", "an agent without a reason")
-	assertProblem(t, overrideInputs(agent, domain.RoleMember, &now, ptrStr("  ")), problem.ValidationFailed, "/reason", "a blank reason")
-	assert.Nil(t, overrideInputs(agent, domain.RoleMember, nil, nil), "an agent's withdrawal")
-	perr := overrideInputs(auth.Principal{Scope: domain.ScopeWrite, Agent: "a/b/c", Capabilities: []string{auth.CapClose}},
-		domain.RoleMember, &now, ptrStr("x"))
-	assertProblem(t, perr, problem.AgentForbidden, "", "an agent without override-urgency")
-	assertProblem(t, overrideInputs(person, domain.RoleViewer, &now, nil), problem.Forbidden, "", "a viewer")
+	set := func(reason *string) horizonWrite { return horizonWrite{value: &now, reason: reason, named: true} }
+	assert.Nil(t, horizonInputs(person, domain.RoleMember, set(nil)), "a person's drag between the groups")
+	assert.Nil(t, horizonInputs(agent, domain.RoleMember, set(ptrStr("a customer is down"))))
+	assertProblem(t, horizonInputs(agent, domain.RoleMember, set(nil)), problem.ValidationFailed, "/reason", "an agent without a reason")
+	assertProblem(t, horizonInputs(agent, domain.RoleMember, set(ptrStr("  "))), problem.ValidationFailed, "/reason", "a blank reason")
+	assertProblem(t, horizonInputs(agent, domain.RoleMember, horizonWrite{named: true}), problem.ValidationFailed, "/reason",
+		"an agent's later on setHorizon")
+	assert.Nil(t, horizonInputs(person, domain.RoleMember, horizonWrite{named: true}), "a person's later")
+	assert.Nil(t, horizonInputs(agent, domain.RoleMember, horizonWrite{}), "an agent's withdrawal on the deprecated route")
+	assertProblem(t, horizonInputs(agent, domain.RoleMember, horizonWrite{value: &now}), problem.ValidationFailed, "/reason",
+		"an agent's set on the deprecated route")
+	perr := horizonInputs(auth.Principal{Scope: domain.ScopeWrite, Agent: "a/b/c", Capabilities: []string{auth.CapClose}},
+		domain.RoleMember, set(ptrStr("x")))
+	assertProblem(t, perr, problem.AgentForbidden, "", "an agent without set-horizon")
+	_, held := auth.Mark(true, []string{auth.CapClose, auth.CapOverrideUrgency}, "")
+	old := auth.Principal{Scope: domain.ScopeWrite, Agent: auth.UnknownAgent, Capabilities: held}
+	assert.Nil(t, horizonInputs(old, domain.RoleMember, set(ptrStr("x"))), "a token stored with override-urgency")
+	assertProblem(t, horizonInputs(person, domain.RoleViewer, set(nil)), problem.Forbidden, "", "a viewer")
 }
 
 // docs/adr/0017 D2, D3, D5, docs/adr/0009 D5: the view shows the stages as
@@ -354,6 +364,39 @@ func TestTicketViewShowsTheStages(t *testing.T) {
 	at := leaf.CreatedAt
 	leaf.UrgencyOverride, leaf.UrgencyOverrideAt, leaf.OpenPrerequisites = &now, &at, 2
 	v = ticketView(ts, leaf, time.Time{})
-	assert.True(t, v.UrgencyOverride.MustGet().Reason.IsNull(), "an override set without a reason")
+	assert.True(t, v.HorizonSet.MustGet().Reason.IsNull(), "a horizon set without a reason")
 	assert.Equal(t, 2, v.OpenPrerequisites)
+}
+
+// docs/adr/0010 D1, D3, docs/adr/0046 D7: the view answers the horizon and
+// the horizon set, and beside them the deprecated fields as the release
+// before reads them, the same values under the old names.
+func TestTicketViewAnswersTheHorizonUnderBothNames(t *testing.T) {
+	ts := tenantScope{ID: uuid.New(), Slug: "acme"}
+	row := in(domain.StateFiled).row
+	row.UrgencyDerived, row.UrgencyRule = domain.UrgencyDefault, domain.UrgencyRuleDefault
+	v := ticketView(ts, row, time.Time{})
+	assert.Equal(t, apigen.Horizon("later"), v.Horizon, "a ticket nobody placed stands in later")
+	assert.True(t, v.HorizonSet.IsNull())
+	assert.Equal(t, apigen.Urgency("later"), v.Urgency)                      //nolint:staticcheck // SA1019: the deprecated field under test
+	assert.True(t, v.UrgencyOverride.IsNull())                               //nolint:staticcheck // SA1019: the deprecated field under test
+	assert.Equal(t, domain.UrgencyRuleDefault, v.UrgencyRule)                //nolint:staticcheck // SA1019: the deprecated field under test
+	assert.Equal(t, apigen.Urgency(domain.UrgencyDefault), v.UrgencyDerived) //nolint:staticcheck // SA1019: the deprecated field under test
+
+	next, by, reason := domain.UrgencyNext, uuid.New(), "after the import"
+	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	row.UrgencyOverride, row.UrgencyOverrideAt, row.UrgencyOverrideBy, row.UrgencyOverrideReason = &next, &at, &by, &reason
+	v = ticketView(ts, row, time.Time{})
+	assert.Equal(t, apigen.Horizon("next"), v.Horizon)
+	set := v.HorizonSet.MustGet()
+	assert.Equal(t, apigen.Horizon("next"), set.Value)
+	assert.Equal(t, reason, set.Reason.MustGet())
+	assert.Equal(t, by, set.By.MustGet().Id)
+	assert.Equal(t, at, set.At)
+	assert.Equal(t, apigen.Urgency("next"), v.Urgency) //nolint:staticcheck // SA1019: the deprecated field under test
+	old := v.UrgencyOverride.MustGet()                 //nolint:staticcheck // SA1019: the deprecated field under test
+	assert.Equal(t, apigen.Urgency("next"), old.Value) //nolint:staticcheck // SA1019: the deprecated field under test
+	assert.Equal(t, set.Reason, old.Reason)
+	assert.Equal(t, set.By, old.By)
+	assert.Equal(t, set.At, old.At)
 }

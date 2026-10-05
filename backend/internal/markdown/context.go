@@ -199,6 +199,8 @@ func summary(a Act) string {
 	case a.Action == "ranked" && a.After["by"] == "score":
 		// The sort of the project's rank by the score (docs/adr/0014 D3).
 		s += " by score"
+	case a.Action == "overridden":
+		s = horizonAct(a)
 	}
 	if a.Reason != "" {
 		s += " — reason: " + quoted(a.Reason)
@@ -207,6 +209,18 @@ func summary(a Act) string {
 		s += " — note: " + quoted(a.Note)
 	}
 	return s
+}
+
+// horizonAct says what an act on the ticket's horizon did. The audit record
+// keeps such an act under its name before, overridden, with the field
+// urgency_override (docs/adr/0010 D1, docs/adr/0026 D3); the document says
+// horizon: a value set, or a set horizon cleared, which leaves the ticket in
+// later.
+func horizonAct(a Act) string {
+	if h, ok := a.After["urgency_override"].(string); ok && h != "" {
+		return "set the horizon to " + h
+	}
+	return "returned the ticket to later"
 }
 
 func linkPayload(a Act) map[string]any {

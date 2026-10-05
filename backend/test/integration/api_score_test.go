@@ -73,7 +73,7 @@ func TestTheScoreFollowsItsInputs(t *testing.T) {
 	tk = *res.JSON200
 	assert.Equal(t, 6.0, scoreOf(t, tk), "high 5")
 
-	e.send(t, member, http.StatusOK, http.MethodPut, ticketPath(e.SlugA, "ALPHA", tk.Number)+"/urgency-override",
+	e.send(t, member, http.StatusOK, http.MethodPut, ticketPath(e.SlugA, "ALPHA", tk.Number)+"/horizon",
 		map[string]any{"value": "now"}, "If-Match", strconv.Quote(strconv.Itoa(tk.Version)))
 	tk = read(tk.Number)
 	assert.Equal(t, 13.0, scoreOf(t, tk), "the horizon now 8")
@@ -100,7 +100,7 @@ func TestTheScoreFollowsItsInputs(t *testing.T) {
 	require.Equal(t, http.StatusOK, back.StatusCode(), string(back.Body))
 	assert.Equal(t, 14.0, scoreOf(t, *back.JSON200), "reopened, it scores as before")
 
-	into := e.file(t, member, "ALPHA", task("Into next", func(b *apigen.TicketCreate) { b.Urgency = ptr(apigen.UrgencyNext) }))
+	into := e.file(t, member, "ALPHA", task("Into next", func(b *apigen.TicketCreate) { b.Horizon = ptr(apigen.HorizonNext) }))
 	assert.Equal(t, 6.0, scoreOf(t, into), "filed into next: 3 and 3")
 
 	// Age counts from opened_at: forty-five days are one and a half.
@@ -289,7 +289,7 @@ func TestNextForMeAcrossTenants(t *testing.T) {
 	secretMine := e.fileIn(t, admin, e.SlugA, "ALPHA", task("secret and mine", sev(apigen.SeverityLow), secretly, toBoth)) // 1 + 1
 	inGamma := e.fileIn(t, admin, e.SlugA, "GAMMA", task("gamma", sev(apigen.SeverityCritical)))                           // 8 + 1
 	e.fileIn(t, admin, e.SlugA, "HIDDEN", task("hidden", sev(apigen.SeverityCritical)))
-	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", func(b *apigen.TicketCreate) { b.Urgency = ptr(apigen.UrgencyNow) })) // 3 + 8
+	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", func(b *apigen.TicketCreate) { b.Horizon = ptr(apigen.HorizonNow) })) // 3 + 8
 	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id IN ($1, $2)", gamma, hidden))
 	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')",
 		e.A, gamma, e.Both))

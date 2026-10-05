@@ -49,12 +49,12 @@ func limitsOf(text string, caps ...string) func(Token) string {
 
 // The capabilities the tools name.
 const (
-	capDecide          = auth.CapDecide
-	capClose           = auth.CapClose
-	capDrop            = auth.CapDrop
-	capRank            = auth.CapRank
-	capOverrideUrgency = auth.CapOverrideUrgency
-	capInterest        = auth.CapInterest
-	capCreateProject   = auth.CapCreateProject
-	capRecordAnswer    = auth.CapRecordAnswer
+	capDecide        = auth.CapDecide
+	capClose         = auth.CapClose
+	capDrop          = auth.CapDrop
+	capRank          = auth.CapRank
+	capSetHorizon    = auth.CapSetHorizon
+	capInterest      = auth.CapInterest
+	capCreateProject = auth.CapCreateProject
+	capRecordAnswer  = auth.CapRecordAnswer
 )

@@ -22,11 +22,11 @@ import (
 )
 
 // AllCapabilities is the "full" capability set of docs/adr/0043 D4.
-var AllCapabilities = []string{"decide", "close", "drop", "rank", "override-urgency", "interest",
+var AllCapabilities = []string{"decide", "close", "drop", "rank", "set-horizon", "interest",
 	"upload", "create-project", "record-answer"}
 
 // AssistedCapabilities is the "assisted" shortcut of docs/adr/0043 D4.
-var AssistedCapabilities = []string{"drop", "override-urgency", "interest", "upload"}
+var AssistedCapabilities = []string{"drop", "set-horizon", "interest", "upload"}
 
 // DB writes fixture rows over an administrative connection to the database
 // under test.

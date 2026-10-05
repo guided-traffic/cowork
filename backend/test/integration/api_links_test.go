@@ -157,29 +157,31 @@ func TestLinksLeaveTheHorizon(t *testing.T) {
 	plain := e.file(t, member, "ALPHA", task("No horizon set"))
 
 	etag := strconv.Quote(strconv.Itoa(work.Version))
-	ov, err := e.s.client(t, member).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", work.Number,
-		&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: apigen.UrgencyNow, Reason: ptr("demo on Friday")})
+	set, err := e.s.client(t, member).SetHorizonWithResponse(e.ctx, e.SlugA, "ALPHA", work.Number,
+		&apigen.SetHorizonParams{IfMatch: &etag}, apigen.HorizonUpdate{Value: apigen.HorizonNow, Reason: ptr("demo on Friday")})
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, ov.StatusCode(), string(ov.Body))
-	version := ov.JSON200.Version
+	require.Equal(t, http.StatusOK, set.StatusCode(), string(set.Body))
+	version := set.JSON200.Version
 
 	for _, source := range []apigen.Ticket{other, decision} {
 		require.Equal(t, http.StatusCreated, e.link(t, member, source, apigen.LinkTypeBlocks, work).StatusCode)
 		got := e.get(t, member, "ALPHA", work.Number).JSON200
-		assert.Equal(t, apigen.UrgencyNow, got.Urgency, "%s blocks it: the horizon holds", source.Title)
-		assert.Equal(t, "demo on Friday", got.UrgencyOverride.MustGet().Reason.MustGet())
-		assert.Equal(t, apigen.UrgencyLater, got.UrgencyDerived)
-		assert.Equal(t, "v2:default", got.UrgencyRule)
+		assert.Equal(t, apigen.HorizonNow, got.Horizon, "%s blocks it: the horizon holds", source.Title)
+		assert.Equal(t, "demo on Friday", got.HorizonSet.MustGet().Reason.MustGet())
 		assert.Equal(t, version, got.Version, "a link leaves the version")
 	}
+	derived, err := f.QueryCount(e.ctx, `SELECT count(*) FROM tickets WHERE id = $1 AND urgency_derived = 'later'
+		AND urgency_rule = 'v2:default'`, work.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, derived, "nothing derives anything but later")
 	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", work.Id)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the person's act alone")
 
 	require.Equal(t, http.StatusCreated, e.link(t, member, decision, apigen.LinkTypeBlocks, plain).StatusCode)
 	got := e.get(t, member, "ALPHA", plain.Number).JSON200
-	assert.Equal(t, apigen.UrgencyLater, got.Urgency, "an open decision that blocks it leaves it later")
-	assert.True(t, got.UrgencyOverride.IsNull())
+	assert.Equal(t, apigen.HorizonLater, got.Horizon, "an open decision that blocks it leaves it later")
+	assert.True(t, got.HorizonSet.IsNull())
 
 	assert.Equal(t, []string{"No horizon set", "Build it"}, e.titles(t, member, e.tenantTickets(), "blocked=true"))
 	assert.NotContains(t, e.titles(t, member, e.tenantTickets(), "blocked=false"), "Build it")
@@ -188,8 +190,7 @@ func TestLinksLeaveTheHorizon(t *testing.T) {
 	del := e.s.do(t, agent, http.MethodDelete, e.linkPath(decision, apigen.LinkTypeBlocks, work), nil)
 	require.Equal(t, http.StatusNoContent, del.StatusCode, "an agent removes an open blocks link: the open gate")
 	got = e.get(t, member, "ALPHA", work.Number).JSON200
-	assert.Equal(t, apigen.UrgencyNow, got.Urgency, "the horizon still holds")
-	assert.Equal(t, apigen.UrgencyLater, got.UrgencyDerived)
+	assert.Equal(t, apigen.HorizonNow, got.Horizon, "the horizon still holds")
 }
 
 // docs/adr/0065 D4: a link whose other end the caller cannot see is absent,

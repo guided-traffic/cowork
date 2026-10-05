@@ -35,9 +35,9 @@ func apiTool() Tool {
 			"installation; the token goes nowhere else.",
 		Operations: []string{"getOpenAPI"},
 		limits: limitsOf("The same rules hold as everywhere: an agent never deletes, books time, overrides prerequisites or "+
-			"administers members, tokens or tenants, and decide, close, drop, rank, override-urgency, interest, upload, "+
+			"administers members, tokens or tenants, and decide, close, drop, rank, set-horizon, interest, upload, "+
 			"create-project and record-answer are capabilities. "+refusalNote,
-			capDecide, capClose, capDrop, "rank", "override-urgency", capInterest, "upload", capCreateProject, capRecordAnswer),
+			capDecide, capClose, capDrop, "rank", capSetHorizon, capInterest, "upload", capCreateProject, capRecordAnswer),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "method", http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete)
 	}, runAPI)

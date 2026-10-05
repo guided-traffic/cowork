@@ -16,7 +16,7 @@ import (
 // Ticket is everything the document shows. Empty strings and nil times are
 // absent keys.
 type Ticket struct {
-	Key, Title, Type, State, Severity, Security, Threat, Urgency, Effort string
+	Key, Title, Type, State, Severity, Security, Threat, Horizon, Effort string
 	// The three progress stages (docs/adr/0017 D2): Progress is the
 	// implementation stage and keeps its key.
 	ProgressRefinement, Progress, ProgressReview int
@@ -66,7 +66,7 @@ func Render(t Ticket) []byte {
 	if t.Security != "none" {
 		field("threat", t.Threat)
 	}
-	field("urgency", t.Urgency)
+	field("horizon", t.Horizon)
 	field("effort", t.Effort)
 	raw("progress-refinement", strconv.Itoa(t.ProgressRefinement))
 	raw("progress", strconv.Itoa(t.Progress))

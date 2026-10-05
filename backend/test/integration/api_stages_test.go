@@ -384,13 +384,13 @@ func TestDoneFromBlocked(t *testing.T) {
 	res := e.move(t, member, tk, apigen.Transition{From: toDecided, To: apigen.TicketStateBlocked, Reason: ptr("needs 2.0 out"),
 		Block: &apigen.BlockSet{Kind: apigen.BlockKindRelease, ExternalRef: ptr("RELEASE-2.0")}})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency, "a block on a release moves no horizon")
+	assert.Equal(t, apigen.HorizonLater, res.JSON200.Horizon, "a block on a release moves no horizon")
 
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateBlocked, To: toDone, Note: ptr("2.0 shipped it")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.Equal(t, apigen.TicketStateBlocked, res.JSON200.DoneFrom.MustGet())
 	assert.True(t, res.JSON200.Block.IsNull(), "a done ticket shows no block")
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency)
+	assert.Equal(t, apigen.HorizonLater, res.JSON200.Horizon)
 
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: toDone, To: apigen.TicketStateBlocked, Reason: ptr("2.0 slipped")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
@@ -399,7 +399,7 @@ func TestDoneFromBlocked(t *testing.T) {
 	assert.Equal(t, apigen.BlockKindRelease, b.Kind)
 	assert.Equal(t, "needs 2.0 out", b.Reason)
 	assert.Equal(t, "RELEASE-2.0", b.ExternalRef.MustGet())
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.Urgency)
+	assert.Equal(t, apigen.HorizonLater, res.JSON200.Horizon)
 	res = e.move(t, member, *res.JSON200, apigen.Transition{From: apigen.TicketStateBlocked, To: toDecided})
 	require.Equal(t, http.StatusOK, res.StatusCode(), "and leaves it to where it came from")
 }
@@ -633,35 +633,34 @@ func TestDoneByThePreviousRelease(t *testing.T) {
 }
 
 // docs/adr/0010 D3 as amended 2026-10-04: the horizon set on a ticket holds
-// until it is withdrawn or replaced — across a block, an unblock, an open
-// decision that blocks it and that link removed, none of which moves it or
-// derives anything but later; the reason is optional for a person and
-// required of an agent.
-func TestUrgencyOverrideHolds(t *testing.T) {
+// until a person or an agent sets another — across a block, an unblock, an
+// open decision that blocks it and that link removed, none of which moves it;
+// the reason is optional for a person and required of an agent.
+func TestTheHorizonSetHolds(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
 	member := caller{Token: e.tk.MemberA}
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
 	tk := e.walk(t, member, e.file(t, member, "ALPHA", task("Planned now")), toAnalysed, toDecided)
 	decision := e.file(t, member, "ALPHA", task("Which queue?", func(b *apigen.TicketCreate) { b.Type = apigen.TicketTypeDecision }))
-	override := func(c caller, tk apigen.Ticket, value apigen.Urgency, reason *string) *apigen.OverrideUrgencyResponse {
+	set := func(c caller, tk apigen.Ticket, value apigen.Horizon, reason *string) *apigen.SetHorizonResponse {
 		etag := strconv.Quote(strconv.Itoa(tk.Version))
-		res, err := e.s.client(t, c).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number,
-			&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: value, Reason: reason})
+		res, err := e.s.client(t, c).SetHorizonWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number,
+			&apigen.SetHorizonParams{IfMatch: &etag}, apigen.HorizonUpdate{Value: value, Reason: reason})
 		require.NoError(t, err)
 		return res
 	}
 
-	byAgent := override(agent, tk, apigen.UrgencyNow, nil)
+	byAgent := set(agent, tk, apigen.HorizonNow, nil)
 	body := problemIn(t, http.StatusBadRequest, byAgent.StatusCode(), byAgent.Body, "validation_failed")
 	assert.Equal(t, "/reason", pointerOf(body))
-	res := override(member, tk, apigen.UrgencyNow, nil)
+	res := set(member, tk, apigen.HorizonNow, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode(), "a person's drag between the groups needs no reason")
 	tk = *res.JSON200
-	assert.True(t, tk.UrgencyOverride.MustGet().Reason.IsNull())
-	res = override(agent, tk, apigen.UrgencyNext, ptr("the demo moved"))
+	assert.True(t, tk.HorizonSet.MustGet().Reason.IsNull())
+	res = set(agent, tk, apigen.HorizonNext, ptr("the demo moved"))
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	res = override(member, *res.JSON200, apigen.UrgencyNow, nil)
+	res = set(member, *res.JSON200, apigen.HorizonNow, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode())
 	tk = *res.JSON200
 
@@ -692,23 +691,23 @@ func TestUrgencyOverrideHolds(t *testing.T) {
 	for _, s := range steps {
 		version := tk.Version
 		tk = s.do()
-		assert.Equal(t, apigen.UrgencyNow, tk.Urgency, "%s: the override holds", s.name)
-		assert.Equal(t, apigen.UrgencyNow, tk.UrgencyOverride.MustGet().Value, s.name)
-		assert.Equal(t, apigen.UrgencyLater, tk.UrgencyDerived, s.name)
-		assert.Equal(t, "v2:default", tk.UrgencyRule, s.name)
+		assert.Equal(t, apigen.HorizonNow, tk.Horizon, "%s: the horizon set holds", s.name)
+		assert.Equal(t, apigen.HorizonNow, tk.HorizonSet.MustGet().Value, s.name)
 		if s.name == "an open decision blocks it" || s.name == "the link removed" {
 			assert.Equal(t, version, tk.Version, "%s: a link leaves the version", s.name)
 		}
 	}
 	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", tk.Id)
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, n, "the three overrides, and nothing else")
-
-	etag := strconv.Quote(strconv.Itoa(tk.Version))
-	back, err := e.s.client(t, agent).WithdrawUrgencyOverrideWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number, &apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})
+	assert.EqualValues(t, 3, n, "the three horizons set, and nothing else")
+	n, err = f.QueryCount(e.ctx, "SELECT count(*) FROM tickets WHERE id = $1 AND urgency_derived = 'later' AND urgency_rule = 'v2:default'", tk.Id)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, back.StatusCode(), "an agent withdraws without a reason")
-	assert.Equal(t, apigen.UrgencyLater, back.JSON200.Urgency)
+	assert.EqualValues(t, 1, n, "nothing derives anything but later")
+
+	back := set(agent, tk, apigen.HorizonLater, ptr("the demo was cancelled"))
+	require.Equal(t, http.StatusOK, back.StatusCode(), string(back.Body))
+	assert.Equal(t, apigen.HorizonLater, back.JSON200.Horizon)
+	assert.True(t, back.JSON200.HorizonSet.IsNull())
 }
 
 // docs/adr/0018 D1, docs/adr/0049 D1: done_after keeps the tickets done after

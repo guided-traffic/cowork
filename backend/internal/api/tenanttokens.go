@@ -84,13 +84,9 @@ func memberTokenView(t tenantScope, row readq.ListTenantTokensRow, now time.Time
 	case !row.ExpiresAt.After(now):
 		state = apigen.TokenStateExpired
 	}
-	caps := make([]apigen.Capability, 0, len(row.Capabilities))
-	for _, c := range row.Capabilities {
-		caps = append(caps, apigen.Capability(c))
-	}
 	v := apigen.MemberToken{
 		Id: row.ID, Name: row.Name, Person: personView(row.UserID, row.Username, &row.DisplayName),
-		Scope: apigen.Scope(row.Scope), Agent: row.Agent, Capabilities: caps, CreatedAt: row.CreatedAt,
+		Scope: apigen.Scope(row.Scope), Agent: row.Agent, Capabilities: capabilitiesView(row.Capabilities), CreatedAt: row.CreatedAt,
 		ExpiresAt: row.ExpiresAt, State: state, RevokedAt: nullableOf(row.RevokedAt),
 		RestrictedTenant: nullableOf[string](nil), RestrictedProject: nullableOf(row.RestrictedProjectKey),
 		LastUsedOn: nullableOf[openapi_types.Date](nil),

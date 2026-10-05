@@ -133,7 +133,7 @@ func TestStartShowsCandidates(t *testing.T) {
 	item := func(key, state string, score any, waiting int) map[string]any {
 		return map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"}, "place": 2,
 			"ticket": map[string]any{"key": key, "title": "Title of " + key, "state": state, "effort": "M", "assignee": nil,
-				"urgency": "next", "score": score, "open_prerequisites": waiting}}
+				"horizon": "next", "score": score, "open_prerequisites": waiting}}
 	}
 	f.on("GET /api/v1/me/next", http.StatusOK, map[string]any{"next_cursor": nil, "items": []any{
 		item("acme/COW-3", "decided", 9.4, 0),
@@ -352,4 +352,20 @@ func TestActLineNamesTheAgentOrTheToken(t *testing.T) {
 	assert.Equal(t, "Sam through a token commented",
 		actLine(act(`"agent":null,"token":{"id":"0199a3c2-1d2e-7f00-8000-000000000005","name":null}`)))
 	assert.Equal(t, "Sam commented", actLine(act(`"agent":null,"token":null`)))
+}
+
+// An act on the horizon, which the record keeps as overridden, reads in this
+// release's words (docs/adr/0010 D1): a horizon set, or the ticket returned to
+// later.
+func TestActLineSaysHorizon(t *testing.T) {
+	act := func(after string) apigen.Activity {
+		var a apigen.Activity
+		require.NoError(t, json.Unmarshal([]byte(`{"id":"0199a3c2-1d2e-7f00-8000-0000000000e9","at":"2026-10-04T07:00:00Z",
+			"actor":{"id":"0199a3c2-1d2e-7f00-8000-000000000002","display_name":"Sam"},"actor_system":null,
+			"action":"overridden","entity_type":"ticket","entity_id":null,"before":{"urgency_override":null},
+			"after":`+after+`,"reason":null,"note":null,"explained_by_comment":null,"redacted":false,"agent":null,"token":null}`), &a))
+		return a
+	}
+	assert.Equal(t, "Sam set the horizon to now", actLine(act(`{"urgency_override":"now"}`)))
+	assert.Equal(t, "Sam returned the ticket to later", actLine(act(`{"urgency_override":null}`)))
 }

@@ -213,12 +213,42 @@ func TestSavedFilterParametersAreTheListsParameters(t *testing.T) {
 	assert.Equal(t, "parent", owners["deleted"].Warnings[0].Parameter)
 }
 
+// docs/adr/0010 D1 as amended 2026-10-05, docs/adr/0049 D6, D7: a filter
+// saved with urgency, the name horizon had before, keeps working and reads
+// back as horizon, the stored row as it was; a filter that names both is
+// refused at /parameters/urgency.
+//
+//nolint:staticcheck // SA1019: SavedFilterParameters.Urgency is the deprecated field under test
+func TestAFilterSavedWithTheNameBeforeReadsAsHorizon(t *testing.T) {
+	e := newTicketEnv(t)
+	member := caller{Token: e.tk.MemberA}
+	old := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "old form",
+		Parameters: apigen.SavedFilterParameters{Urgency: strs("now", "!icebox")}})
+	assert.Equal(t, strs("now", "!icebox"), old.Parameters.Horizon)
+	assert.Nil(t, old.Parameters.Urgency)
+	assert.Empty(t, old.Warnings)
+	assert.Equal(t, 1, scalar[int](t, `SELECT count(*) FROM saved_filters WHERE id = $1 AND parameters ? 'urgency'`, old.Id),
+		"the stored row keeps what was sent")
+	assert.Equal(t, strs("now", "!icebox"), e.savedFilters(t, member, e.SlugA)["old form"].Parameters.Horizon)
+
+	current := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "new form",
+		Parameters: apigen.SavedFilterParameters{Horizon: strs("next")}})
+	assert.Equal(t, strs("next"), current.Parameters.Horizon)
+
+	body := assertProblem(t, e.s.do(t, member, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "both",
+		Parameters: apigen.SavedFilterParameters{Horizon: strs("now"), Urgency: strs("now")}}), http.StatusBadRequest, "validation_failed")
+	assert.Equal(t, "/parameters/urgency", pointerOf(body))
+	body = assertProblem(t, e.s.do(t, member, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "unknown",
+		Parameters: apigen.SavedFilterParameters{Horizon: strs("soon")}}), http.StatusBadRequest, "validation_failed")
+	assert.Equal(t, "/parameters/horizon", pointerOf(body))
+}
+
 // docs/adr/0045 D3, D4: saving a filter takes an Idempotency-Key — an agent's
 // must — and a repetition replays the first answer.
 func TestSavingAFilterIsIdempotent(t *testing.T) {
 	e := newTicketEnv(t)
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
-	body := apigen.SavedFilterCreate{Name: "by the agent", Parameters: apigen.SavedFilterParameters{Urgency: strs("now")}}
+	body := apigen.SavedFilterCreate{Name: "by the agent", Parameters: apigen.SavedFilterParameters{Horizon: strs("now")}}
 	assertProblem(t, e.s.do(t, agent, http.MethodPost, filtersPath(e.SlugA), body), http.StatusBadRequest, "idempotency_key_required")
 	key := uuid.Must(uuid.NewV7()).String()
 	first := e.s.do(t, agent, http.MethodPost, filtersPath(e.SlugA), body, "Idempotency-Key", key)

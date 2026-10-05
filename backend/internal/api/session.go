@@ -92,7 +92,7 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 }
 
 // chatCapabilities is what the chat of a person holds: the set the person
-// chose, or the default (docs/adr/0043 D5).
+// chose, under this release's names, or the default (docs/adr/0043 D5).
 func (h *handler) chatCapabilities(ctx context.Context, person uuid.UUID) ([]string, error) {
 	caps, chosen, err := h.opts.DB.ChatCapabilities(ctx, person)
 	if err != nil {
@@ -101,7 +101,7 @@ func (h *handler) chatCapabilities(ctx context.Context, person uuid.UUID) ([]str
 	if !chosen {
 		return slices.Clone(auth.DefaultChatCapabilities), nil
 	}
-	return caps, nil
+	return auth.Canonical(caps), nil
 }
 
 // agentHeader reads the X-Cowork-Agent header of a request: empty without

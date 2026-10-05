@@ -5,7 +5,7 @@ type: decision
 state: analysed
 severity: medium
 security: none
-urgency: icebox
+horizon: icebox
 effort: S
 progress-refinement: 0
 progress: 0
