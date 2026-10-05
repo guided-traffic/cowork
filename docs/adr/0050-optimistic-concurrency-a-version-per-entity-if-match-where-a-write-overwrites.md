@@ -20,7 +20,12 @@ reason: counting it would fail an edit on a concurrent change elsewhere.
 
 **Built** (phase 2, 2026-10-02): D1–D5 for tickets, comments, questions, projects, tenants and
 time entries; the rank's moves since 2026-10-03. D6's clients and D7's UI arrive with them;
-memberships and saved filters have no write route yet.
+memberships and saved filters have no write route yet. *(2026-10-04.)* The UI sends `If-Match` on
+every overwriting write it makes — the ticket's fields and body, the horizon, the flag, a comment,
+a question's text and its answer, a time entry. An editor that stays open while the event stream
+brings newer versions writes over the version it began with, never over a newer one it did not
+show, and a `412` is written over once without asking only where the field the write changes is
+unchanged; otherwise the person decides. D7's recent writers are not shown.
 
 ## Context
 

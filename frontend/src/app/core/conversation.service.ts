@@ -4,13 +4,25 @@ import {
   addComment,
   answerQuestion,
   askQuestion,
+  editComment,
   linkTickets,
+  listCommentRevisions,
   removeInterest,
   setInterest,
   unlinkTickets,
+  updateQuestion,
+  withdrawComment,
   withdrawQuestion,
 } from '../api/functions';
-import { Comment, InterestWeight, LinkType, Question, QuestionCreate } from '../api/models';
+import {
+  Comment,
+  CommentRevision,
+  InterestWeight,
+  LinkType,
+  Question,
+  QuestionCreate,
+  QuestionPatch,
+} from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';
 
@@ -31,6 +43,34 @@ export class Conversation {
     });
   }
 
+  /**
+   * Replaces a comment's text over the version the editing began with (docs/adr/0015 D3,
+   * docs/adr/0050 D3): the author's act; the previous text is kept in its history.
+   */
+  editComment(key: string, comment: Comment, body: string): Promise<Comment> {
+    return this.api.invoke(editComment, {
+      ...routeOf(key),
+      comment: comment.id,
+      'If-Match': etagOf(comment.version),
+      body: { body },
+    });
+  }
+
+  /** A comment's previous texts, oldest first; none once it is withdrawn. */
+  async commentRevisions(key: string, comment: Comment): Promise<CommentRevision[]> {
+    const list = await this.api.invoke(listCommentRevisions, {
+      ...routeOf(key),
+      comment: comment.id,
+      limit: 200,
+    });
+    return list.items;
+  }
+
+  /** Hides a comment's text and keeps its entry: its author's act, or a tenant administrator's. */
+  withdrawComment(key: string, comment: Comment): Promise<Comment> {
+    return this.api.invoke(withdrawComment, { ...routeOf(key), comment: comment.id });
+  }
+
   ask(key: string, question: QuestionCreate): Promise<Question> {
     return this.api.invoke(askQuestion, {
       ...routeOf(key),
@@ -46,6 +86,16 @@ export class Conversation {
       question: question.number,
       ...(question.status === 'answered' ? { 'If-Match': etagOf(question.version) } : {}),
       body: { answer },
+    });
+  }
+
+  /** Changes an open question's text over the version the editing began with: the asker's act. */
+  editQuestion(key: string, question: Question, patch: QuestionPatch): Promise<Question> {
+    return this.api.invoke(updateQuestion, {
+      ...routeOf(key),
+      question: question.number,
+      'If-Match': etagOf(question.version),
+      body: patch,
     });
   }
 

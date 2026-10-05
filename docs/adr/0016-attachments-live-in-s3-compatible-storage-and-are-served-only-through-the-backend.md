@@ -27,6 +27,9 @@ Amended 2026-10-04 by the owner's decision that every act made through a token i
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
 under the ticket's path. D6's per-tenant quota is neither enforced nor reported; D7 arrives
 with the sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6.
+*(2026-10-04.)* In the browser: an upload to a comment of the person's own, and the preview of a
+raster attachment — an image of its own URL, inline by D5, never an SVG — each load of which is a
+recorded download.
 
 ## Context
 

@@ -1,7 +1,13 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import { bookTime, editTimeEntry, uploadAttachment, voidTimeEntry } from '../api/functions';
-import { Attachment, TimeEntry, TimeEntryPatch } from '../api/models';
+import {
+  bookTime,
+  editTimeEntry,
+  listTimeEntryRevisions,
+  uploadAttachment,
+  voidTimeEntry,
+} from '../api/functions';
+import { Attachment, TimeEntry, TimeEntryPatch, TimeEntryRevision } from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';
 
@@ -14,11 +20,12 @@ import { routeOf } from './ticket-actions.service';
 export class TicketRecords {
   private readonly api = inject(Api);
 
-  attach(key: string, file: File): Promise<Attachment> {
+  /** Uploads a file to the ticket, or to one of its comments, which only its author may (docs/adr/0016 D1). */
+  attach(key: string, file: File, comment?: string): Promise<Attachment> {
     return this.api.invoke(uploadAttachment, {
       ...routeOf(key),
       'Idempotency-Key': crypto.randomUUID(),
-      body: { file },
+      body: { file, ...(comment ? { comment_id: comment } : {}) },
     });
   }
 
@@ -38,6 +45,16 @@ export class TicketRecords {
       'If-Match': etagOf(entry.version),
       body: patch,
     });
+  }
+
+  /** An entry's previous values, oldest first (docs/adr/0017 D7). */
+  async revisions(key: string, entry: TimeEntry): Promise<TimeEntryRevision[]> {
+    const list = await this.api.invoke(listTimeEntryRevisions, {
+      ...routeOf(key),
+      entry: entry.id,
+      limit: 200,
+    });
+    return list.items;
   }
 
   void(key: string, entry: TimeEntry): Promise<TimeEntry> {

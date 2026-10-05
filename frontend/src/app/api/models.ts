@@ -80,6 +80,8 @@ export type { MyTicket } from './models/my-ticket';
 export type { MyTicketList } from './models/my-ticket-list';
 export type { PasswordChange } from './models/password-change';
 export type { Person } from './models/person';
+export type { PrerequisiteNode } from './models/prerequisite-node';
+export type { PrerequisiteTree } from './models/prerequisite-tree';
 export type { Problem } from './models/problem';
 export type { ProblemCode } from './models/problem-code';
 export type { Project } from './models/project';

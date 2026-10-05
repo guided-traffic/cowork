@@ -8,7 +8,8 @@ over configurable types, and over a parent expressed as a link.
 
 **Partly built** (phase 2, 2026-10-02): D1 and D2 — the five types and the parent in the same
 project (a composite key; a cycle refused by a walk under a per-project lock). The views of
-D3 and the importer's mapping arrive with them.
+D3 and the importer's mapping arrive with them. *(2026-10-04.)* The browser chooses the parent,
+on filing and on the detail page, among the project's open tickets.
 
 ## Context
 

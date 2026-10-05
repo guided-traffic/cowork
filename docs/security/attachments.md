@@ -2,7 +2,7 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -88,6 +88,19 @@ ADR 0016 D5):
 `ETag`. Nothing in cowork renders Markdown yet, so ADR 0016 D7's rule for an image embedded in
 a ticket's text has nothing to act on.
 
+**The preview in the UI.** The ticket's page shows a raster attachment — the four types delivered
+inline, never an SVG — as an `<img>` of the attachment's own URL
+([`file-preview.ts`](../../frontend/src/app/features/ticket/file-preview.ts)). The image is
+decoded in cowork's origin, which is what ADR 0016 D5 admits for raster types and nothing else:
+an image runs no script, and a response the browser treats as a document is sandboxed. The shell's
+policy admits images of its own origin and the `data:` and `blob:` URLs the page makes
+(`img-src 'self' data: blob:`,
+[trust-boundaries.md](trust-boundaries.md#the-shells-content-security-policy)); the request carries
+the session cookie, as a download does, and is read under the same check. What the preview adds is
+the decoder: a raster file crafted against a flaw in the browser's image decoder reaches it when the
+page is opened, not only when a person chooses to open the file — the same exposure as an image in
+any web page, and the reason the type is the server's, sniffed, never the client's.
+
 ## Limits before anything is stored
 
 - **Size.** The per-file maximum, `COWORK_ATTACHMENT_MAX_BYTES` (10 MiB by default), is
@@ -142,6 +155,7 @@ address another object.
   ([tokens.md](tokens.md#what-is-recorded)).
 - `downloaded`: every download that returns bytes, with the file name; a `304` is not one
   ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5).
+  The UI's preview of a raster image is such a download each time a page loads it.
   The act is written before the bytes are sent, and a download whose act cannot be written
   fails.
 - A row whose object the bucket lacks — a restore that brought the database back without its

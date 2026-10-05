@@ -685,6 +685,38 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('openTickets', () => {
+    const url = '/api/v1/tenants/acme/projects/VKO/tickets';
+
+    it('reads every page of the open tickets of a project, in the rank, into the cache', async () => {
+      const done = service.openTickets('acme', 'VKO');
+
+      const first = http.expectOne((request) => request.url === url);
+      expect(first.request.params.get('limit')).toBe('200');
+      expect(first.request.params.has('cursor')).toBe(false);
+      expect(first.request.params.has('include_terminal')).toBe(false);
+      first.flush({ ...listOf([ticket('acme/VKO-3', 2)]), next_cursor: 'more' });
+      await settle();
+      const second = http.expectOne((request) => request.url === url);
+      expect(second.request.params.get('cursor')).toBe('more');
+      second.flush(listOf([ticket('acme/VKO-1', 1)]));
+
+      expect((await done).map((each) => each.key)).toEqual(['acme/VKO-3', 'acme/VKO-1']);
+      expect(service.cache.value('acme/VKO-1')?.version).toBe(1);
+    });
+
+    it('is no open list: an event reloads nothing', async () => {
+      const done = service.openTickets('acme', 'VKO');
+      http.expectOne((request) => request.url === url).flush(listOf([]));
+      await done;
+
+      stream.next({ name: 'poll' });
+      await wait(200);
+
+      http.expectNone((request) => request.url === url);
+    });
+  });
+
   describe('ticket', () => {
     it('loads the ticket into the cache and hands out its key', async () => {
       const { ref } = await show('acme/VKO-12', 4);

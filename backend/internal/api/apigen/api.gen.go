@@ -1064,6 +1064,24 @@ func (e ListCommentsParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListPrerequisitesParamsDirection.
+const (
+	ListPrerequisitesParamsDirectionDown ListPrerequisitesParamsDirection = "down"
+	ListPrerequisitesParamsDirectionUp   ListPrerequisitesParamsDirection = "up"
+)
+
+// Valid indicates whether the value is a known member of the ListPrerequisitesParamsDirection enum.
+func (e ListPrerequisitesParamsDirection) Valid() bool {
+	switch e {
+	case ListPrerequisitesParamsDirectionDown:
+		return true
+	case ListPrerequisitesParamsDirectionUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListTenantTicketsParamsPerPage.
 const (
 	ListTenantTicketsParamsPerPageN100 ListTenantTicketsParamsPerPage = 100
@@ -1924,6 +1942,47 @@ type Person struct {
 	// Username A local account's username as it is stored, without the `local:` that names the identity
 	// (docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider
 	Username nullable.Nullable[string] `json:"username,omitempty"`
+}
+
+// PrerequisiteNode A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
+type PrerequisiteNode struct {
+	Assignee nullable.Nullable[Person] `json:"assignee"`
+
+	// BlockedFrom The state a blocked ticket came from; null unless it is blocked (docs/adr/0009 D2)
+	BlockedFrom nullable.Nullable[TicketState] `json:"blocked_from"`
+
+	// Depth 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
+	Depth int `json:"depth"`
+
+	// Key The canonical key; a ticket of another project names it
+	Key string `json:"key"`
+
+	// Progress The implementation stage as the ticket shows it (docs/adr/0017 D2, D3)
+	Progress int `json:"progress"`
+
+	// ProgressDerived The stages are derived from the ticket's children
+	ProgressDerived    bool `json:"progress_derived"`
+	ProgressRefinement int  `json:"progress_refinement"`
+	ProgressReview     int  `json:"progress_review"`
+
+	// Repeated The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it
+	Repeated bool `json:"repeated"`
+
+	// Settled Done or dropped (docs/adr/0012 D6)
+	Settled bool `json:"settled"`
+
+	// State docs/adr/0009 D1
+	State TicketState `json:"state"`
+	Title string      `json:"title"`
+}
+
+// PrerequisiteTree defines model for PrerequisiteTree.
+type PrerequisiteTree struct {
+	Items      []PrerequisiteNode        `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+
+	// Open The open tickets of the whole tree the caller can see, each counted once, on every page
+	Open int `json:"open"`
 }
 
 // Problem defines model for Problem.
@@ -3292,6 +3351,21 @@ type ListTicketLinksParams struct {
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListPrerequisitesParams defines parameters for ListPrerequisites.
+type ListPrerequisitesParams struct {
+	// Direction down for the prerequisites, the default; up for the dependents
+	Direction *ListPrerequisitesParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListPrerequisitesParamsDirection defines parameters for ListPrerequisites.
+type ListPrerequisitesParamsDirection string
 
 // ListQuestionsParams defines parameters for ListQuestions.
 type ListQuestionsParams struct {
@@ -4906,6 +4980,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	//
+	// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
+	// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
+	// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
+	// first, siblings in the order they were filed. The walk never passes a ticket the caller
+	// cannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065
+	// D5). A ticket that stands in the tree under two others is shown in full once, under the
+	// first of them nearest the ticket asked about, and under each other one as `repeated`,
+	// without what lies behind it. `open` counts the open tickets of the whole tree, each once,
+	// on every page; the done and dropped ones are `settled`.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+	ListPrerequisites(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListQuestions The ticket's questions by number
 	//
@@ -7561,6 +7650,31 @@ func (c *Client) LinkTickets(ctx context.Context, tenant TenantSlug, project Pro
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 func (c *Client) ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExportTicketRequest(c.Server, tenant, project, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+//
+// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
+// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
+// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
+// first, siblings in the order they were filed. The walk never passes a ticket the caller
+// cannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065
+// D5). A ticket that stands in the tree under two others is shown in full once, under the
+// first of them nearest the ticket asked about, and under each other one as `repeated`,
+// without what lies behind it. `open` counts the open tickets of the whole tree, each once,
+// on every page; the done and dropped ones are `settled`.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+func (c *Client) ListPrerequisites(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPrerequisitesRequest(c.Server, tenant, project, number, params)
 	if err != nil {
 		return nil, err
 	}
@@ -13219,6 +13333,105 @@ func NewExportTicketRequest(server string, tenant TenantSlug, project ProjectKey
 	return req, nil
 }
 
+// NewListPrerequisitesRequest constructs an http.Request for the ListPrerequisites method
+func NewListPrerequisitesRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/prerequisites", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListQuestionsRequest constructs an http.Request for the ListQuestions method
 func NewListQuestionsRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListQuestionsParams) (*http.Request, error) {
 	var err error
@@ -16707,6 +16920,23 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*ExportTicketResponse, error)
+
+	// ListPrerequisitesWithResponse The ticket's prerequisite tree, or read upward its dependents
+	//
+	// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
+	// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
+	// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
+	// first, siblings in the order they were filed. The walk never passes a ticket the caller
+	// cannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065
+	// D5). A ticket that stands in the tree under two others is shown in full once, under the
+	// first of them nearest the ticket asked about, and under each other one as `repeated`,
+	// without what lies behind it. `open` counts the open tickets of the whole tree, each once,
+	// on every page; the done and dropped ones are `settled`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+	ListPrerequisitesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*ListPrerequisitesResponse, error)
 
 	// ListQuestionsWithResponse The ticket's questions by number
 	//
@@ -21388,6 +21618,61 @@ func (r ExportTicketResponse) ContentType() string {
 	return ""
 }
 
+// ListPrerequisitesResponseDefaultHeaders the declared response headers of an HTTP default response for ListPrerequisites
+type ListPrerequisitesResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListPrerequisitesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PrerequisiteTree
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListPrerequisitesResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPrerequisitesResponse) GetJSON200() *PrerequisiteTree {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListPrerequisitesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPrerequisitesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPrerequisitesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPrerequisitesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPrerequisitesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListQuestionsResponseDefaultHeaders the declared response headers of an HTTP default response for ListQuestions
 type ListQuestionsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -24868,6 +25153,29 @@ func (c *ClientWithResponses) ExportTicketWithResponse(ctx context.Context, tena
 		return nil, err
 	}
 	return ParseExportTicketResponse(rsp)
+}
+
+// ListPrerequisitesWithResponse The ticket's prerequisite tree, or read upward its dependents
+//
+// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
+// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
+// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
+// first, siblings in the order they were filed. The walk never passes a ticket the caller
+// cannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065
+// D5). A ticket that stands in the tree under two others is shown in full once, under the
+// first of them nearest the ticket asked about, and under each other one as `repeated`,
+// without what lies behind it. `open` counts the open tickets of the whole tree, each once,
+// on every page; the done and dropped ones are `settled`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+func (c *ClientWithResponses) ListPrerequisitesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*ListPrerequisitesResponse, error) {
+	rsp, err := c.ListPrerequisites(ctx, tenant, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPrerequisitesResponse(rsp)
 }
 
 // ListQuestionsWithResponse The ticket's questions by number
@@ -29276,6 +29584,52 @@ func ParseExportTicketResponse(rsp *http.Response) (*ExportTicketResponse, error
 	return response, nil
 }
 
+// ParseListPrerequisitesResponse parses an HTTP response from a ListPrerequisitesWithResponse call
+func ParseListPrerequisitesResponse(rsp *http.Response) (*ListPrerequisitesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPrerequisitesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PrerequisiteTree
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListPrerequisitesResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListQuestionsResponse parses an HTTP response from a ListQuestionsWithResponse call
 func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -30951,6 +31305,9 @@ type ServerInterface interface {
 	// ExportTicket The canonical Markdown of the ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown)
 	ExportTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
+	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites)
+	ListPrerequisites(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListPrerequisitesParams)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions)
 	ListQuestions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListQuestionsParams)
@@ -35067,6 +35424,92 @@ func (siw *ServerInterfaceWrapper) ExportTicket(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListPrerequisites operation middleware
+func (siw *ServerInterfaceWrapper) ListPrerequisites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPrerequisitesParams
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "direction", r.URL.Query(), &params.Direction, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "direction"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "direction", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPrerequisites(w, r, tenant, project, number, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListQuestions operation middleware
 func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.Request) {
 
@@ -37153,6 +37596,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}", wrapper.UnlinkTickets)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}", wrapper.LinkTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown", wrapper.ExportTicket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites", wrapper.ListPrerequisites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions", wrapper.ListQuestions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions", wrapper.AskQuestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}", wrapper.GetQuestion)
@@ -40834,6 +41278,52 @@ func (response ExportTicketdefaultApplicationProblemPlusJSONResponse) VisitExpor
 	return err
 }
 
+type ListPrerequisitesRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ListPrerequisitesParams
+}
+
+type ListPrerequisitesResponseObject interface {
+	VisitListPrerequisitesResponse(w http.ResponseWriter) error
+}
+
+type ListPrerequisites200JSONResponse PrerequisiteTree
+
+func (response ListPrerequisites200JSONResponse) VisitListPrerequisitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPrerequisitesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListPrerequisitesdefaultApplicationProblemPlusJSONResponse) VisitListPrerequisitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListQuestionsRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -42508,6 +42998,9 @@ type StrictServerInterface interface {
 	// ExportTicket The canonical Markdown of the ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown)
 	ExportTicket(ctx context.Context, request ExportTicketRequestObject) (ExportTicketResponseObject, error)
+	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites)
+	ListPrerequisites(ctx context.Context, request ListPrerequisitesRequestObject) (ListPrerequisitesResponseObject, error)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions)
 	ListQuestions(ctx context.Context, request ListQuestionsRequestObject) (ListQuestionsResponseObject, error)
@@ -44816,6 +45309,35 @@ func (sh *strictHandler) ExportTicket(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ExportTicketResponseObject); ok {
 		if err := validResponse.VisitExportTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPrerequisites operation middleware
+func (sh *strictHandler) ListPrerequisites(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListPrerequisitesParams) {
+	var request ListPrerequisitesRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPrerequisites(ctx, request.(ListPrerequisitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPrerequisites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPrerequisitesResponseObject); ok {
+		if err := validResponse.VisitListPrerequisitesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -9,7 +9,9 @@ import type { MockInstance } from 'vitest';
 import { Member, Problem, Ticket, TicketCreate } from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { TicketActions } from '../../core/ticket-actions.service';
+import { TicketsService } from '../../core/tickets.service';
 import { NewTicketDialog } from './new-ticket-dialog';
+import { ParentPicker } from './parent-picker';
 
 const ada: Member = {
   role: 'admin',
@@ -59,6 +61,7 @@ describe('NewTicketDialog', () => {
         MessageService,
         { provide: TicketActions, useValue: { create } },
         { provide: MembersService, useValue: { list: people } },
+        { provide: TicketsService, useValue: { openTickets: vi.fn().mockResolvedValue([]) } },
       ],
     });
   });
@@ -288,6 +291,38 @@ describe('NewTicketDialog', () => {
         threat: 'Anyone can do it',
         body: '  indented\n',
       });
+    });
+
+    it('files the ticket under the parent chosen among the open tickets of its project (docs/adr/0008 D2)', async () => {
+      const fixture = await render();
+      typeInto(fixture, 'new-title', 'Part of the board');
+      const picker = fixture.debugElement.query(By.directive(ParentPicker))
+        .componentInstance as ParentPicker;
+      expect([picker.tenant(), picker.project(), picker.value()]).toEqual(['acme', 'COW', null]);
+
+      picker.picked.emit('acme/COW-3');
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create.mock.calls[0][2]).toStrictEqual({
+        ...plain('Part of the board'),
+        parent: 'acme/COW-3',
+      });
+    });
+
+    it('files no parent once the choice is cleared', async () => {
+      const fixture = await render();
+      const picker = fixture.debugElement.query(By.directive(ParentPicker))
+        .componentInstance as ParentPicker;
+      typeInto(fixture, 'new-title', 'Second');
+      picker.picked.emit('acme/COW-3');
+      picker.picked.emit(null);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create.mock.calls[0][2]).toStrictEqual(plain('Second'));
     });
 
     it('leaves out a description that is only spaces and an assignee that was cleared', async () => {

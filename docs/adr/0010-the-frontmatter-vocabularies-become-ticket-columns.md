@@ -47,7 +47,8 @@ override stand without a reason. The amendment of 2026-10-04 is built (2026-10-0
 that derives — no state, block or link writes the urgency any more; a filing names its horizon
 (`urgency` of `POST …/tickets`, `filingOf` in [`tickets.go`](../../backend/internal/api/tickets.go));
 [migration 29](../../backend/internal/store/migrations/000029_horizon_set_by_people_only.up.sql)
-keeps the horizon every ticket showed; the UI says *horizon*. Not built: the identifiers keep
+keeps the horizon every ticket showed; the UI says *horizon*, and its detail page sets it as the
+backlog and the board do, with the reason a person may add. Not built: the identifiers keep
 the name `urgency`.
 
 ## Context

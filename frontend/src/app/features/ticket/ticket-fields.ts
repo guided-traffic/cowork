@@ -1,23 +1,37 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
+  ElementRef,
   inject,
+  Injector,
   input,
   linkedSignal,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
+import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { SelectButton } from 'primeng/selectbutton';
 import { Slider } from 'primeng/slider';
 import { Textarea } from 'primeng/textarea';
 import { Tooltip } from 'primeng/tooltip';
-import { Effort, SecurityClass, Severity, Ticket, TicketPatch, TicketType } from '../../api/models';
+import {
+  Effort,
+  SecurityClass,
+  Severity,
+  Ticket,
+  TicketPatch,
+  TicketType,
+  Urgency,
+} from '../../api/models';
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
+import { SessionService } from '../../core/session.service';
+import { splitKey } from '../../core/tickets.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { StageBar } from '../../shared/stage-bar';
@@ -33,7 +47,9 @@ import {
 } from '../../shared/stages';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { meanings } from '../../shared/vocabulary';
+import { ConfidentialDialog } from './confidential-dialog';
 import { MoveDialog, MoveRequest, StagePatch } from './move-dialog';
+import { ParentPicker } from './parent-picker';
 
 /** A field's value as the merge prompt shows it. */
 export function shown(value: unknown): string {
@@ -43,6 +59,9 @@ export function shown(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
+/** The horizons in their order (docs/adr/0010 D3). */
+const horizons: Urgency[] = ['now', 'release', 'next', 'later', 'icebox'];
+
 /**
  * The editable frontmatter of the detail page (docs/adr/0018 D2): each change is one `PATCH`
  * with the cached `ETag` (docs/adr/0050 D3). A `412` asks the person: the server's value, theirs,
@@ -50,15 +69,23 @@ export function shown(value: unknown): string {
  * (docs/adr/0017 D2) each have a slider; a parent shows its stages, which its children make, as
  * bars. A slider move that would fill the last stage is the done act and asks for the verification
  * note first, and one that lowers a stage of a ticket done by its stages reopens it and asks for
- * the reason first (docs/adr/0009 D5), both in {@link MoveDialog}.
+ * the reason first (docs/adr/0009 D5), both in {@link MoveDialog}. The horizon is set here as on
+ * the backlog, with the reason a person may add afterwards (docs/adr/0010 D3); the parent is chosen
+ * from the project's open tickets (docs/adr/0008 D2); a tenant administrator sets and lifts the
+ * confidential flag (docs/adr/0065). Every editor here — the threat, the stage dialog, the
+ * horizon's reason, the confidential dialog — belongs to the ticket it was opened on and closes when
+ * the page turns to another, without writing.
  */
 @Component({
   selector: 'app-ticket-fields',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AgentMark,
+    ConfidentialDialog,
     FormsModule,
+    InputText,
     MoveDialog,
+    ParentPicker,
     Select,
     SelectButton,
     Slider,
@@ -76,8 +103,12 @@ export class TicketFields {
   private readonly problems = inject(ProblemService);
   private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
+  private readonly session = inject(SessionService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   protected readonly members = inject(MembersService);
   protected readonly meanings = meanings;
+  protected readonly horizons = horizons;
 
   protected readonly types: TicketType[] = ['task', 'bug', 'feature', 'decision', 'question'];
   protected readonly severities: Severity[] = ['critical', 'high', 'medium', 'low', 'cosmetic'];
@@ -89,14 +120,39 @@ export class TicketFields {
       .map((member) => ({ id: member.person.id, name: member.person.display_name })),
   );
 
-  /** The security class waiting for its threat before it is written. */
-  protected readonly pendingSecurity = signal<SecurityClass | null>(null);
+  private readonly key = computed(() => this.ticket().key);
+  /** The tenant and the project the ticket is in, for the parent's choice. */
+  protected readonly place = computed(() => {
+    const { tenant, key } = splitKey(this.key());
+    return { tenant, project: key.slice(0, key.lastIndexOf('-')) };
+  });
+  /** A tenant administrator sets and lifts the confidential flag (docs/adr/0065 D6). */
+  protected readonly administers = computed(() => this.session.membership()?.role === 'admin');
+
+  /** The security class waiting for its threat before it is written; another ticket drops it. */
+  protected readonly pendingSecurity = linkedSignal<string, SecurityClass | null>({
+    source: this.key,
+    computation: () => null,
+  });
   protected readonly savingSecurity = signal(false);
-  protected readonly threat = signal('');
+  protected readonly threat = linkedSignal({ source: this.key, computation: () => '' });
+
+  /** The horizon just set, waiting for the reason the person may add; another ticket drops it. */
+  protected readonly horizonAsked = linkedSignal<string, Urgency | null>({
+    source: this.key,
+    computation: () => null,
+  });
+  protected readonly horizonReason = linkedSignal({ source: this.key, computation: () => '' });
+  protected readonly sendingReason = signal(false);
+
+  /** The confidential dialog is open; another ticket closes it. */
+  protected readonly confidentialOpen = linkedSignal({
+    source: this.key,
+    computation: () => false,
+  });
 
   protected readonly stages = stages;
   protected readonly stageNames = stageNames;
-  private readonly key = computed(() => this.ticket().key);
   /**
    * The stages a slider moved and that are not written yet: they wait for the slider to rest, for
    * their write, or for the dialog that asks what the write needs. They belong to the ticket they
@@ -111,8 +167,11 @@ export class TicketFields {
     ...this.moved(),
   }));
   protected readonly current = computed(() => currentStage(this.ticket()));
-  /** The write of the stages that waits for the verification note or the reason. */
-  protected readonly stageRequest = signal<MoveRequest | null>(null);
+  /** The write of the stages that waits for the verification note or the reason; another ticket drops it. */
+  protected readonly stageRequest = linkedSignal<string, MoveRequest | null>({
+    source: this.key,
+    computation: () => null,
+  });
   private stageTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -151,6 +210,89 @@ export class TicketFields {
     void this.write({ security, threat: this.threat().trim() }, () =>
       this.pendingSecurity.set(null),
     ).finally(() => this.savingSecurity.set(false));
+  }
+
+  /**
+   * Sets the horizon (docs/adr/0010 D3): the API's override with the value, or its withdrawal
+   * where the value is the derived one, `later`; a set horizon then offers the reason, which the
+   * person may leave out. A horizon somebody else set meanwhile is asked about, as a field is.
+   */
+  protected async setHorizon(value: Urgency | null): Promise<void> {
+    const ticket = this.ticket();
+    if (!value || value === ticket.urgency) {
+      return;
+    }
+    this.horizonAsked.set(null);
+    const withdraw = value === ticket.urgency_derived && ticket.urgency_override !== null;
+    try {
+      if (withdraw) {
+        await this.actions.withdrawUrgency(ticket.key);
+      } else {
+        await this.actions.overrideUrgency(ticket.key, value);
+        if (this.key() === ticket.key) {
+          this.askReason(value);
+        }
+      }
+    } catch (error) {
+      if (error instanceof StaleWrite) {
+        this.confirm.confirm({
+          header: 'Changed meanwhile',
+          message: `Someone set the horizon of this ticket while you chose: now ${error.current.urgency}, yours ${value}. Set yours over it?`,
+          acceptLabel: 'Set mine',
+          rejectLabel: 'Keep theirs',
+          accept: () => void this.setHorizon(value),
+        });
+        return;
+      }
+      this.problems.report(error);
+    }
+  }
+
+  protected horizonMeaning(value: Urgency): string {
+    return meanings.urgency[value];
+  }
+
+  private askReason(value: Urgency): void {
+    this.horizonReason.set('');
+    this.horizonAsked.set(value);
+    afterNextRender(
+      () =>
+        this.host.nativeElement
+          .querySelector<HTMLInputElement>('[data-testid="field-horizon-reason"]')
+          ?.focus(),
+      { injector: this.injector },
+    );
+  }
+
+  /** The reason goes with the same horizon once more; an empty one leaves the horizon as set. */
+  protected async sendHorizonReason(): Promise<void> {
+    const value = this.horizonAsked();
+    const reason = this.horizonReason().trim();
+    if (!value || this.sendingReason()) {
+      return;
+    }
+    if (!reason) {
+      this.horizonAsked.set(null);
+      return;
+    }
+    const key = this.key();
+    this.sendingReason.set(true);
+    try {
+      await this.actions.overrideUrgency(key, value, reason);
+      if (this.key() === key) {
+        this.horizonAsked.set(null);
+      }
+    } catch (error) {
+      this.problems.report(error);
+    } finally {
+      this.sendingReason.set(false);
+    }
+  }
+
+  protected dismissHorizonReason(): void {
+    if (!this.sendingReason()) {
+      this.horizonAsked.set(null);
+    }
   }
 
   /**

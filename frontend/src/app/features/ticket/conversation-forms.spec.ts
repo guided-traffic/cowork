@@ -10,7 +10,14 @@ import { provideApiConfiguration } from '../../api/api-configuration';
 import { Comment, Member, Problem, Question } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
-import { AnswerQuestion, AskQuestion, CommentComposer, LinkAdder } from './conversation-forms';
+import { SessionService } from '../../core/session.service';
+import {
+  AnswerQuestion,
+  AskQuestion,
+  CommentComposer,
+  EditQuestion,
+  LinkAdder,
+} from './conversation-forms';
 
 const ada: Member = {
   role: 'admin',
@@ -77,6 +84,7 @@ describe('conversation forms', () => {
     answer: MockInstance<Conversation['answer']>;
     withdraw: MockInstance<Conversation['withdraw']>;
     link: MockInstance<Conversation['link']>;
+    editQuestion: MockInstance<Conversation['editQuestion']>;
   };
   let people: WritableSignal<Member[]>;
 
@@ -87,6 +95,7 @@ describe('conversation forms', () => {
       answer: vi.fn<Conversation['answer']>().mockResolvedValue({} as Question),
       withdraw: vi.fn<Conversation['withdraw']>().mockResolvedValue({} as Question),
       link: vi.fn<Conversation['link']>().mockResolvedValue(undefined),
+      editQuestion: vi.fn<Conversation['editQuestion']>().mockResolvedValue({} as Question),
     };
     people = signal<Member[]>([ada, sam]);
     TestBed.configureTestingModule({
@@ -94,6 +103,7 @@ describe('conversation forms', () => {
         MessageService,
         { provide: Conversation, useValue: conversation },
         { provide: MembersService, useValue: { list: people } },
+        { provide: SessionService, useValue: { person: signal({ id: 'p1' }) } },
       ],
     });
   });
@@ -695,6 +705,227 @@ describe('conversation forms', () => {
       await settle(fixture);
 
       expect(conversation.link).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('EditQuestion (docs/adr/0011 D2)', () => {
+    const editing = (current: Question = question()) =>
+      render(EditQuestion, { ticketKey: key, question: current });
+
+    async function open(fixture: ComponentFixture<EditQuestion>) {
+      button(fixture, byTestId('edit-question-2'))?.click();
+      await settle(fixture);
+    }
+
+    const save = async (fixture: ComponentFixture<EditQuestion>) => {
+      button(fixture, byTestId('edit-question-save-2'))?.click();
+      await settle(fixture);
+    };
+
+    it('is offered to the asker of an open question', async () => {
+      const fixture = await editing();
+
+      expect(button(fixture, byTestId('edit-question-2'))?.textContent?.trim()).toBe(
+        'Edit the question',
+      );
+    });
+
+    it.each([
+      ['somebody who did not ask it', question({ asked_by: sam.person })],
+      ['an answered question', question({ status: 'answered', answer: 'This one' })],
+      ['a withdrawn question', question({ status: 'withdrawn' })],
+    ])('is not offered for %s', async (_, current) => {
+      const fixture = await editing(current);
+
+      expect(button(fixture, byTestId('edit-question-2'))).toBeNull();
+    });
+
+    it('starts from the text of the question, its options and its recommendation', async () => {
+      const fixture = await editing(
+        question({ options: 'A or B', recommendation: 'A, it is cheaper' }),
+      );
+
+      await open(fixture);
+
+      expect((el(fixture, byTestId('edit-question-text-2')) as HTMLTextAreaElement).value).toBe(
+        'Which flicker is it?',
+      );
+      expect((el(fixture, byTestId('edit-question-options-2')) as HTMLTextAreaElement).value).toBe(
+        'A or B',
+      );
+      expect(
+        (el(fixture, byTestId('edit-question-recommendation-2')) as HTMLTextAreaElement).value,
+      ).toBe('A, it is cheaper');
+    });
+
+    it('writes what changed over the version the editing began with, and closes', async () => {
+      const fixture = await editing();
+      await open(fixture);
+      typeInto(
+        fixture,
+        byTestId('edit-question-text-2'),
+        '  Which flicker, the first or the second? ',
+      );
+      typeInto(fixture, byTestId('edit-question-options-2'), 'The first, the second');
+      fixture.componentRef.setInput('question', question({ version: 5 }));
+      await settle(fixture);
+
+      await save(fixture);
+
+      expect(conversation.editQuestion).toHaveBeenCalledExactlyOnceWith(key, question(), {
+        question: 'Which flicker, the first or the second?',
+        options: 'The first, the second',
+      });
+      expect(el(fixture, byTestId('edit-question-text-2'))).toBeNull();
+    });
+
+    it('closes without a write when nothing changed, and on Cancel', async () => {
+      const fixture = await editing();
+      await open(fixture);
+      await save(fixture);
+      expect(el(fixture, byTestId('edit-question-text-2'))).toBeNull();
+
+      await open(fixture);
+      typeInto(fixture, byTestId('edit-question-text-2'), 'Something else');
+      buttonLabelled(fixture, 'Cancel')?.click();
+      await settle(fixture);
+
+      expect(el(fixture, byTestId('edit-question-text-2'))).toBeNull();
+      expect(conversation.editQuestion).not.toHaveBeenCalled();
+    });
+
+    describe('that met a change made meanwhile', () => {
+      async function conflicted() {
+        conversation.editQuestion.mockRejectedValueOnce(
+          refusal(412, 'Precondition failed', 'The question changed.'),
+        );
+        const fixture = await editing();
+        await open(fixture);
+        typeInto(fixture, byTestId('edit-question-text-2'), 'Mine');
+        await save(fixture);
+        fixture.componentRef.setInput('question', question({ version: 5, question: 'Theirs' }));
+        await settle(fixture);
+        return fixture;
+      }
+
+      it('says so, keeps what was typed and saves nothing until the person decides', async () => {
+        const fixture = await conflicted();
+
+        expect(el(fixture, byTestId('conflict'))?.textContent).toContain(
+          'The question changed while you edited it.',
+        );
+        expect((el(fixture, byTestId('edit-question-text-2')) as HTMLTextAreaElement).value).toBe(
+          'Mine',
+        );
+        expect(button(fixture, byTestId('edit-question-save-2'))?.disabled).toBe(true);
+      });
+
+      it('writes the person own text over the question as it is now on request', async () => {
+        const fixture = await conflicted();
+
+        button(fixture, byTestId('conflict-overwrite'))?.click();
+        await settle(fixture);
+
+        expect(conversation.editQuestion).toHaveBeenLastCalledWith(
+          key,
+          question({ version: 5, question: 'Theirs' }),
+          { question: 'Mine' },
+        );
+      });
+
+      it('goes on from the question as it is now on request', async () => {
+        const fixture = await conflicted();
+
+        button(fixture, byTestId('conflict-take-theirs'))?.click();
+        await settle(fixture);
+
+        expect((el(fixture, byTestId('edit-question-text-2')) as HTMLTextAreaElement).value).toBe(
+          'Theirs',
+        );
+        expect(conversation.editQuestion).toHaveBeenCalledOnce();
+      });
+    });
+
+    it('toasts any other refusal and keeps the form', async () => {
+      conversation.editQuestion.mockRejectedValueOnce(
+        refusal(403, 'Forbidden', 'Only the asker edits a question.'),
+      );
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await editing();
+      await open(fixture);
+      typeInto(fixture, byTestId('edit-question-text-2'), 'Mine');
+
+      await save(fixture);
+
+      expect(add).toHaveBeenCalledOnce();
+      expect(el(fixture, byTestId('edit-question-text-2'))).not.toBeNull();
+    });
+  });
+
+  describe('a turn of the page to another ticket', () => {
+    const next = 'acme/COW-13';
+
+    it('drops the comment typed for the ticket before, which nothing is sent to', async () => {
+      const fixture = await render(CommentComposer, { ticketKey: key });
+      typeInto(fixture, byTestId('comment-text'), 'Meant for COW-12');
+
+      fixture.componentRef.setInput('ticketKey', next);
+      await settle(fixture);
+
+      expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe('');
+      expect(button(fixture, byTestId('comment-send'))?.disabled).toBe(true);
+      expect(conversation.comment).not.toHaveBeenCalled();
+    });
+
+    it('lands a comment on its way on the ticket it was written for, and keeps what is typed for the next', async () => {
+      const write = deferred<Comment>();
+      conversation.comment.mockReturnValue(write.promise);
+      const fixture = await render(CommentComposer, { ticketKey: key });
+      typeInto(fixture, byTestId('comment-text'), 'For COW-12');
+      submit(fixture);
+      await settle(fixture);
+
+      fixture.componentRef.setInput('ticketKey', next);
+      await settle(fixture);
+      typeInto(fixture, byTestId('comment-text'), 'For COW-13');
+      write.resolve({} as Comment);
+      await settle(fixture);
+
+      expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(key, 'For COW-12');
+      expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe(
+        'For COW-13',
+      );
+    });
+
+    it('closes the question form, empty, and asks nothing', async () => {
+      const fixture = await render(AskQuestion, { ticketKey: key });
+      button(fixture, byTestId('ask-open'))?.click();
+      await settle(fixture);
+      typeInto(fixture, byTestId('ask-question'), 'Meant for COW-12?');
+
+      fixture.componentRef.setInput('ticketKey', next);
+      await settle(fixture);
+
+      expect(host(fixture).querySelector('form')).toBeNull();
+      button(fixture, byTestId('ask-open'))?.click();
+      await settle(fixture);
+      expect((el(fixture, byTestId('ask-question')) as HTMLTextAreaElement).value).toBe('');
+      expect(conversation.ask).not.toHaveBeenCalled();
+    });
+
+    it('drops the other ticket typed for a link, and the type chosen', async () => {
+      const fixture = await render(LinkAdder, { ticketKey: key });
+      fixture.debugElement
+        .query(By.directive(Select))
+        .triggerEventHandler('ngModelChange', 'blocks');
+      typeInto(fixture, byTestId('link-other'), 'OPS-3');
+
+      fixture.componentRef.setInput('ticketKey', next);
+      await settle(fixture);
+
+      expect((el(fixture, byTestId('link-other')) as HTMLInputElement).value).toBe('');
+      expect(el(fixture, 'p-select .p-select-label')?.textContent?.trim()).toBe('relates-to');
+      expect(conversation.link).not.toHaveBeenCalled();
     });
   });
 });

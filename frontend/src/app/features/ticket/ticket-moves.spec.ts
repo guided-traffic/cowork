@@ -333,5 +333,30 @@ describe('TicketMoves', () => {
       expect(dialogTitle(fixture)).toBeUndefined();
       expect(dialog(fixture).request()).toBeNull();
     });
+
+    it('closes the dialog when the page turns to another ticket, which nothing is sent to', async () => {
+      const fixture = await render(ticket('filed'));
+      pick(fixture, 'Drop');
+      await settle(fixture);
+      expect(dialogTitle(fixture)).toBe('Drop');
+
+      fixture.componentRef.setInput('ticket', ticket('filed', { key: 'acme/COW-13', number: 13 }));
+      await settle(fixture);
+
+      expect(dialogTitle(fixture)).toBeUndefined();
+      expect(dialog(fixture).request()).toBeNull();
+      expect(transition).not.toHaveBeenCalled();
+    });
+
+    it('keeps the dialog open when the same ticket comes back in a newer version', async () => {
+      const fixture = await render(ticket('filed'));
+      pick(fixture, 'Drop');
+      await settle(fixture);
+
+      fixture.componentRef.setInput('ticket', ticket('filed', { open_prerequisites: 1 }));
+      await settle(fixture);
+
+      expect(dialogTitle(fixture)).toBe('Drop');
+    });
   });
 });

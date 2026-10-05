@@ -422,4 +422,19 @@ describe('InterestControl', () => {
       expect(remove?.disabled).toBe(false);
     });
   });
+
+  describe('a turn of the page to another ticket', () => {
+    it('drops the weight that waited for its reason, and the reason, and sets no stake', async () => {
+      const fixture = await render();
+      await choose(fixture, 'need');
+      typeNote(fixture, 'Meant for COW-12');
+
+      fixture.componentRef.setInput('ticketKey', 'acme/COW-13');
+      await settle(fixture);
+
+      expect(el(fixture, 'interest-note')).toBeNull();
+      expect(chosen(fixture)).toBeUndefined();
+      expect(setInterest).not.toHaveBeenCalled();
+    });
+  });
 });

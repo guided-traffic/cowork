@@ -15,7 +15,7 @@ frontend/src/app/
 ├── core/         # services: session, projects, tickets, event stream, inbox, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar with the bell, navigation), the assistant's panel, the tenant scope, the live indicator
 ├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), tenant, project, ticket, time
-├── shared/       # badges, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting
+├── shared/       # badges, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -69,7 +69,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 |---|---|
 | `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on `membership.changed`, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
 | `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event may have changed which projects the person sees (`changesVisibility`), on a `resync` and on a `poll` |
-| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view. It reacts to the events of the tenant the pages show only: the person-level stream also names tickets of the person's other tenants |
+| `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets`, and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it. It reacts to the events of the tenant the pages show only: the person-level stream also names tickets of the person's other tenants |
 | `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events, `membership.changed` and `inbox.changed` |
 | `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync` and `poll`; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
 | `ProblemService` | Problem details → toast, field errors, a `412`'s current values |
@@ -77,9 +77,9 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `MembersService` | The current tenant's members, every page of them, each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on `membership.changed`, a `resync` and a `poll` |
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
-| `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`) and time entries |
-| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal (a `412` is written over once while the horizon is unchanged); every answer goes into the cache |
-| `Conversation` | Comments, questions and answers, links, the person's stake |
+| `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
+| `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, and the confidential flag. A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
+| `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
 | `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
@@ -177,8 +177,9 @@ changes only in `:tenant` is reused, and a question answered after the switch wo
 tenant shown now — a grant of the same person id there, the project of the same key. The members
 and the group mappings close an open question when the tenant changes and drop the role it held on
 a select, the accounts close theirs, a project's settings close the archive's question when the
-tenant or the project changes, and a ticket's page closes its question when the ticket's canonical
-key does, which would otherwise write onto the next ticket. A project's access section goes with
+tenant or the project changes, and a ticket's page closes its question — and every editor of its
+parts ([the detail page](#an-editor-belongs-to-its-ticket)) — when the ticket's canonical key does,
+which would otherwise write onto the next ticket. A project's access section goes with
 the project while another tenant's projects load, its question with it.
 
 **A global administrator without a role** in the tenant the pages show ([ADR 0034] D2) sees its
@@ -210,6 +211,7 @@ another client's write ─► backend: NOTIFY at commit ─► SSE: event ticket
 EventStreamService.events ─► TicketsService: cached and older? GET the ticket ─► cache entry ─► every view showing it
                          └─► every open list reloads once per burst (150 ms) ─► new or moved tickets appear
 TicketRelations (detail page): comment/question/link of its key ─► that part and the activity reload
+                              link of its key, or ticket/link of a ticket its tree shows ─► the prerequisite tree reloads
 ```
 
 ```
@@ -309,8 +311,9 @@ agent sets it, and nothing derives it. The API keeps the names — `urgency`, `u
 `urgency_derived`, which is `later` for every ticket, `urgency_rule`, the capability
 `override-urgency` —, and so do the code's identifiers and test ids; what the page says to the
 person is *horizon*, never urgency, a derived value, a rule or an override. The detail page's field
-*Horizon* ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) has
-the meaning as its tooltip, followed by `— <reason>` where the horizon was set with one.
+*Horizon* ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) is a
+select of the five that sets it as the backlog does ([the detail page](#the-detail-page)), with the
+meaning as its tooltip, followed by `— <reason>` where the horizon was set with one.
 
 The page scrolls in the shell's `<main class="content">`, which is a `cdkScrollable`
 ([`shell.html`](../../frontend/src/app/layout/shell.html)): the CDK takes its drop lists' scroll
@@ -476,6 +479,72 @@ shows a refusal in the form, and says `true` on `closed` once the write went thr
 in the cache then. The detail page's moves
 ([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts)) and the board use it
 too.
+
+## The detail page
+
+The ticket's page ([`ticket-detail.ts`](../../frontend/src/app/features/ticket/ticket-detail.ts),
+[ADR 0018] D2) shows the title as its heading, the body, the prerequisite tree, the questions, the
+comments and the activity, and beside them the fields, the stake, the links, the files and the time.
+Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
+which the page provides; everything else reads the ticket through the cache. The body is shown as
+text; Markdown is not rendered.
+
+| Part | Writes | A change made meanwhile |
+|---|---|---|
+| [`TicketTitle`](../../frontend/src/app/features/ticket/ticket-title.ts) | The title edited in place, `PATCH` over the version the editing began with | The page's dialog names theirs and the person's, *Write mine* or *Keep theirs*, as the fields do |
+| [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
+| [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — the override, or its withdrawal where the choice is `later` and an override stands — and then a field for the reason a person may add (Enter sends the override again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
+| [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisites`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`) | — |
+| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
+| [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
+| [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
+
+**The parent** is chosen among the open tickets of the project, every page of them, read the first
+time the picker opens (`TicketsService.openTickets`) and filtered by short key and title as the
+person types; the ticket itself is not offered, and a parent that is not open stays shown by its
+key. The filing dialog ([`new-ticket-dialog.ts`](../../frontend/src/app/features/ticket/new-ticket-dialog.ts))
+offers the same picker. Whether a parent closes a cycle is the server's `409 parent_cycle`.
+
+**The tree** draws each node indented by its depth, with its key as a link, its title, its state,
+its assignee and the bar of the stage it works on — for a blocked node the stage of the state the
+block came from; a settled node (done or dropped) struck through with a mark, a repeated one dimmed
+and saying *also above*; the heading counts the open ones as the API counts them, over the whole
+tree. A tree longer than its 200 nodes says that it goes on. It loads again on a link of the
+ticket, on a `ticket.changed` or `link.changed` of a ticket it shows, and on `resync` and `poll`;
+a ticket that enters the tree through a change elsewhere shows at the next of those.
+
+**Files.** A raster attachment — PNG, JPEG, GIF, WebP, the types the backend delivers inline
+([ADR 0016] D5) — shows a preview, [`FilePreview`](../../frontend/src/app/features/ticket/file-preview.ts):
+an `<img>` of its own `content_url`, loaded lazily, which opens the image in a tab; an SVG is no
+raster image and is never shown. The shell's policy admits images of its own origin, and the image
+request carries the session cookie like any other. Every load of a preview is a download the backend
+records as `downloaded` — the API answers `Cache-Control: no-store`, so a page opened again loads it
+again. The card lists every file of the ticket, those of its comments marked *on a comment*; a
+comment lists its own.
+
+### An editor belongs to its ticket
+
+The page is reused when its path names another ticket, so whatever it holds open would write to
+the ticket shown then. Every editor and dialog of the page therefore keeps its state in a
+`linkedSignal` whose source is the ticket's key — the title and body editors, the threat editor,
+the stage dialog, the horizon's reason, the confidential dialog, the move dialog
+([`ticket-moves.ts`](../../frontend/src/app/features/ticket/ticket-moves.ts)), the correction of a
+time entry, the booking form, the forms to comment, to ask and to link
+([`conversation-forms.ts`](../../frontend/src/app/features/ticket/conversation-forms.ts) `draft`),
+and the stake that waits for its reason — and closes, unwritten, when the key changes; the page's
+confirmation closes as well. A write already sent lands on the ticket it was sent for, and its end
+does not touch what the next ticket's form holds. The source is a `computed` of the key, or the
+`ticketKey` input itself, **never an inline function that reads the ticket**: a `linkedSignal`
+runs its computation again whenever its source's dependencies change, and only a `computed` in
+between compares the value — an inline source would close the editor on every newer version of
+the same ticket, that is on every event. Comments and questions are components of their own per
+entry and go with the entry.
+
+An editor that stays open while events arrive writes over the version it **began with**, not the
+one the cache holds at the moment of the write, which may have come from an event: writing over the
+newer version would put the person's text over a change they never saw ([ADR 0050] D3). Where the
+`412` is about another field only — the body unchanged under a new title — the write goes over the
+new version at once (`writeOver`).
 
 ## The mark of an act
 
@@ -656,7 +725,9 @@ coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)).
 
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
+[ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
 [ADR 0012]: ../adr/0012-four-typed-directed-links-within-a-tenant.md
+[ADR 0016]: ../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md
 [ADR 0017]: ../adr/0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md

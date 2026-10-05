@@ -24,7 +24,9 @@ changes and body changes, and the activity list over the audit record. ~~D5's me
 the inbox.~~ *(2026-10-04: the inbox of [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
 is built, and a comment tells the ticket's watchers; the mention is not: D5 names `@person` without
 saying how a comment's text names a person — a username, which only a local account has, an e-mail
-address, which only administrators read, or an id the UI writes — and that is an open decision.)*
+address, which only administrators read, or an id the UI writes — and that is an open decision.)* *(2026-10-04.)* In the browser the author edits a comment over its
+version and reads its earlier texts, and the author or a tenant administrator withdraws it after a
+confirmation.
 
 ## Context
 

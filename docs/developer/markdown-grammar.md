@@ -128,7 +128,9 @@ charset=utf-8` without an `ETag`. In order:
 3. `## Links`: `- <name read from this ticket> <key> — <title> (<state>, <assignee>)`.
 4. `## Prerequisites`: `<open> of <all> open.`, then the tree of the tickets that block it, two
    spaces of indent per level, `- <key> — <title> (<state>, <assignee>, <implementation stage>%)`;
-   eight levels at most, stopping at a ticket the reader cannot see.
+   the tree of `…/prerequisites` ([domain.md](domain.md#the-prerequisite-tree)) — eight levels at
+   most, stopping at a ticket the reader cannot see — with each prerequisite once: under the first
+   ticket it blocks, not repeated under the others.
 5. `## Recent comments` — left out for `comments=0` —: the last ones, oldest of them first, each
    `**<author>** via <agent>, <time UTC>:` and its text as a block quote, or `[withdrawn]`.
 6. `## Attachments`: `- <name> — <type>, <size> — <URL>`.

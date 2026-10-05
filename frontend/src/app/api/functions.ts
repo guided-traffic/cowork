@@ -135,6 +135,8 @@ export type { UnlinkTickets$Params as UnlinkTickets$Params } from './fn/tickets/
 export { unlinkTickets as unlinkTickets } from './fn/tickets/unlink-tickets';
 export type { ExportTicket$Params as ExportTicket$Params } from './fn/tickets/export-ticket';
 export { exportTicket as exportTicket } from './fn/tickets/export-ticket';
+export type { ListPrerequisites$Params as ListPrerequisites$Params } from './fn/tickets/list-prerequisites';
+export { listPrerequisites as listPrerequisites } from './fn/tickets/list-prerequisites';
 export type { MoveTicketRank$Params as MoveTicketRank$Params } from './fn/tickets/move-ticket-rank';
 export { moveTicketRank as moveTicketRank } from './fn/tickets/move-ticket-rank';
 export type { TransitionTicket$Params as TransitionTicket$Params } from './fn/tickets/transition-ticket';

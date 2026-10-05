@@ -59,6 +59,7 @@ describe('TicketRelations', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
+    tree: `${base}/prerequisites?direction=down&limit=200`,
   };
   const empty = { items: [], next_cursor: null };
 
@@ -95,6 +96,7 @@ describe('TicketRelations', () => {
       interest: vi.spyOn(relations.interest, 'reload').mockReturnValue(true),
       attachments: vi.spyOn(relations.attachments, 'reload').mockReturnValue(true),
       time: vi.spyOn(relations.time, 'reload').mockReturnValue(true),
+      tree: vi.spyOn(relations.tree, 'reload').mockReturnValue(true),
     };
   }
 
@@ -112,7 +114,7 @@ describe('TicketRelations', () => {
       expect(relations.comments.status()).toBe('idle');
     });
 
-    it('loads the comments, the activity, the questions, the links, the interest, the files and the time of the ticket that is set', async () => {
+    it('loads the comments, the activity, the questions, the links, the interest, the files, the time and the prerequisite tree of the ticket that is set', async () => {
       relations.at.set(cow12);
       TestBed.tick();
 
@@ -124,6 +126,7 @@ describe('TicketRelations', () => {
         interest: { items: [], next_cursor: null },
         attachments: { items: [], next_cursor: null },
         time: { items: [], next_cursor: null, total_minutes: 0 },
+        tree: { items: [], next_cursor: null, open: 0 },
       };
       for (const [part, body] of Object.entries(bodies)) {
         http.expectOne(urls[part as keyof typeof urls]).flush(body);
@@ -152,7 +155,20 @@ describe('TicketRelations', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
+    });
+
+    it('reads the tree the other way, the dependents, when the page asks for them', () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      http.match(() => true);
+
+      relations.direction.set('up');
+      TestBed.tick();
+
+      http.expectOne(`${base}/prerequisites?direction=up&limit=200`);
+      http.verify();
     });
   });
 
@@ -164,7 +180,7 @@ describe('TicketRelations', () => {
     it.each([
       ['comment.changed', ['comments', 'activity']],
       ['question.changed', ['questions', 'activity']],
-      ['link.changed', ['links', 'activity']],
+      ['link.changed', ['links', 'tree', 'activity']],
       ['interest.changed', ['interest', 'activity']],
       ['ticket.changed', ['attachments', 'activity']],
     ] as const)('reload only the parts %s changes: %j', (name, parts) => {
@@ -219,7 +235,61 @@ describe('TicketRelations', () => {
         'links',
         'questions',
         'time',
+        'tree',
       ]);
+    });
+
+    describe('of a ticket of the prerequisite tree', () => {
+      const node = {
+        key: 'acme/COW-7',
+        title: 'Pick the format',
+        state: 'filed' as const,
+        blocked_from: null,
+        assignee: null,
+        progress: 0,
+        progress_refinement: 0,
+        progress_review: 0,
+        progress_derived: false,
+        depth: 1,
+        settled: false,
+        repeated: false,
+      };
+
+      async function loaded() {
+        TestBed.tick();
+        for (const request of http.match(() => true)) {
+          request.flush(
+            request.request.url.endsWith('/prerequisites')
+              ? { items: [node], next_cursor: null, open: 1 }
+              : empty,
+          );
+        }
+        await TestBed.inject(ApplicationRef).whenStable();
+      }
+
+      it.each(['ticket.changed', 'link.changed'] as const)(
+        'reload the tree alone on %s, because the tree shows that ticket',
+        async (name) => {
+          await loaded();
+          const spies = spyOnReloads();
+
+          events.next(ticketEvent(name, 'acme/COW-7'));
+
+          expect(reloaded(spies)).toEqual(['tree']);
+        },
+      );
+
+      it.each(['comment.changed', 'question.changed', 'interest.changed'] as const)(
+        'leave the tree alone on %s, which changes nothing it shows',
+        async (name) => {
+          await loaded();
+          const spies = spyOnReloads();
+
+          events.next(ticketEvent(name, 'acme/COW-7'));
+
+          expect(reloaded(spies)).toEqual([]);
+        },
+      );
     });
 
     it('follow the ticket that is shown when it changes', () => {
@@ -254,6 +324,10 @@ describe('TicketRelations', () => {
 
         http.expectOne(urls[part]).flush(changed);
         http.expectOne(urls.activity).flush(empty);
+        if (name === 'link.changed') {
+          // A link of the ticket changes its prerequisite tree as well.
+          http.expectOne(urls.tree).flush({ ...empty, open: 0 });
+        }
         http.verify();
         await TestBed.inject(ApplicationRef).whenStable();
         expect(relations[part].value()).toBe(changed);
@@ -374,6 +448,7 @@ describe('TicketRelations', () => {
       'interest',
       'attachments',
       'time',
+      'tree',
     ] as const;
 
     /** Lets the answers reach the resources and the effects they feed run. */

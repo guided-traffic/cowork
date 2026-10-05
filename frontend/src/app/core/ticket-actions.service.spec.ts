@@ -795,4 +795,163 @@ describe('TicketActions', () => {
       none(readUrl);
     });
   });
+
+  describe('update over the version an editor began with (docs/adr/0050 D3)', () => {
+    it('sends that version as If-Match, never the newer one the cache took meanwhile', async () => {
+      const since = ticket(key, 5);
+      tickets.cache.put(key, ticket(key, 6, { severity: 'high' }));
+      const done = actions.update(key, { title: 'Mine' }, since);
+
+      const sent = request(route);
+      expect(sent.request.headers.get('If-Match')).toBe('"5"');
+      expect(sent.request.body).toEqual({ title: 'Mine' });
+      sent.flush(ticket(key, 7, { title: 'Mine' }));
+
+      expect((await done).title).toBe('Mine');
+      expect(tickets.cache.value(key)?.title).toBe('Mine');
+    });
+
+    it('writes once more over the new version when only another field changed meanwhile', async () => {
+      const since = ticket(key, 5, { title: 'Theirs' });
+      const done = actions.update(key, { title: 'Mine', comment: 'Why' }, since);
+
+      request(route).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { title: 'Theirs', severity: 'high' }));
+      await settle();
+      const again = request(route);
+      expect(again.request.headers.get('If-Match')).toBe('"6"');
+      again.flush(ticket(key, 7, { title: 'Mine' }));
+
+      expect((await done).version).toBe(7);
+    });
+
+    it('rejects with a StaleWrite once somebody changed the field itself', async () => {
+      const since = ticket(key, 5, { title: 'Theirs' });
+      const outcome = rejection(actions.update(key, { title: 'Mine' }, since));
+
+      request(route).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { title: 'Somebody else' }));
+      const error = await outcome;
+      await settle();
+
+      expect(error).toBeInstanceOf(StaleWrite);
+      expect((error as StaleWrite).current.title).toBe('Somebody else');
+      none(route);
+    });
+
+    it('compares a parent by its key, and none as none', async () => {
+      const since = ticket(key, 5);
+      const done = actions.update(key, { parent: 'acme/VKO-3' }, since);
+
+      request(route).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { parent: null }));
+      await settle();
+      request(route).flush(ticket(key, 7, { parent: 'acme/VKO-3' }));
+
+      expect((await done).parent).toBe('acme/VKO-3');
+    });
+  });
+
+  describe('replaceBody (docs/adr/0011 D1)', () => {
+    const bodyUrl = `${route}/body`;
+
+    it('replaces the body as a whole over the version the editor began with, and shows the answer', async () => {
+      tickets.cache.put(key, ticket(key, 6));
+      const done = actions.replaceBody(key, '## Current state\n\nNew.', ticket(key, 5));
+
+      const sent = request(bodyUrl);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.headers.get('If-Match')).toBe('"5"');
+      expect(sent.request.body).toEqual({ body: '## Current state\n\nNew.' });
+      sent.flush(ticket(key, 7, { body: '## Current state\n\nNew.' }));
+
+      expect((await done).version).toBe(7);
+      expect(tickets.cache.value(key)?.body).toBe('## Current state\n\nNew.');
+    });
+
+    it('writes once more while the body is still the one the editor began with', async () => {
+      const done = actions.replaceBody(key, 'Mine', ticket(key, 5, { body: 'Old' }));
+
+      request(bodyUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { body: 'Old', state: 'analysed' }));
+      await settle();
+      const again = request(bodyUrl);
+      expect(again.request.headers.get('If-Match')).toBe('"6"');
+      again.flush(ticket(key, 7, { body: 'Mine' }));
+
+      expect((await done).body).toBe('Mine');
+    });
+
+    it('rejects with a StaleWrite that carries the body somebody else wrote', async () => {
+      const outcome = rejection(actions.replaceBody(key, 'Mine', ticket(key, 5, { body: 'Old' })));
+
+      request(bodyUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { body: 'Theirs' }));
+      const error = await outcome;
+      await settle();
+
+      expect(error).toBeInstanceOf(StaleWrite);
+      expect((error as StaleWrite).current.body).toBe('Theirs');
+      none(bodyUrl);
+    });
+  });
+
+  describe('setConfidential (docs/adr/0065)', () => {
+    const flagUrl = `${route}/confidential`;
+
+    it('sets the flag with the cached version as If-Match and without a reason not given', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = actions.setConfidential(key, true);
+
+      await settle();
+      const sent = request(flagUrl);
+      expect(sent.request.method).toBe('PUT');
+      expect(sent.request.headers.get('If-Match')).toBe('"5"');
+      expect(sent.request.body).toEqual({ confidential: true });
+      sent.flush(ticket(key, 6, { confidential: true }));
+
+      expect((await done).confidential).toBe(true);
+      expect(tickets.cache.value(key)?.confidential).toBe(true);
+    });
+
+    it('lifts it with the reason', async () => {
+      tickets.cache.put(key, ticket(key, 5, { confidential: true }));
+      const done = actions.setConfidential(key, false, 'Fixed and released');
+
+      await settle();
+      const sent = request(flagUrl);
+      expect(sent.request.body).toEqual({ confidential: false, reason: 'Fixed and released' });
+      sent.flush(ticket(key, 6));
+
+      expect((await done).confidential).toBe(false);
+    });
+
+    it('writes once more while the flag is as it was, and is a StaleWrite once somebody changed it', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const first = actions.setConfidential(key, true);
+      await settle();
+      request(flagUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 6, { title: 'Renamed' }));
+      await settle();
+      request(flagUrl).flush(ticket(key, 7, { confidential: true }));
+      expect((await first).version).toBe(7);
+
+      const second = rejection(actions.setConfidential(key, false, 'Why'));
+      await settle();
+      request(flagUrl).flush(stale, failed(412, 'Precondition Failed'));
+      await settle();
+      request(readUrl).flush(ticket(key, 8, { confidential: false }));
+      const error = await second;
+      await settle();
+
+      expect(error).toBeInstanceOf(StaleWrite);
+      none(flagUrl);
+    });
+  });
 });
