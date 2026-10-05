@@ -1,6 +1,6 @@
 ---
 id: T29
-title: the end-to-end tier lacks the phase path with two identities, and the ruleset does not require it
+title: the ruleset of main does not require the end-to-end tier
 state: in-progress
 severity: medium
 security: none
@@ -50,8 +50,10 @@ moves it to `analysed` and closes it by hand with a verification note; the admin
 the ticket — a second context, `browser.newContext` with the global setup's session — shows it done.
 The detail page's state badge carries `data-testid="ticket-state"` for it. It is type-checked
 (`make frontend-lint`, a `tsc` over `e2e/`) and listed by `playwright test --list` in the four
-projects; it has **not run**: `make e2e` builds the images, and this work built none. CI's `e2e` job
-runs it after the merge.
+projects, and passes in all four, on a runner (run 37285901009 of commit `65337eb`, 2026-10-05) and in three local runs
+with two workers. Its first run on a runner found a race in the product, not in the test: after a
+temporary password was changed, the next page could be sent back to change it again; fixed before
+the merge.
 
 CI: each `container-malware-scan` leg hands its scanned image to the job `e2e` (End-to-End Tests)
 as an artefact; `e2e` installs the browsers, runs `make e2e` with ten minutes' budget, uploads
@@ -70,9 +72,7 @@ is settled on the recommendation (ADR 0056 D1), the owner reviewing the result.
 
 ## Required changes
 
-1. Run `assigned.spec.ts` — the `e2e` job after the merge, or `make e2e` — and fix what the first
-   run shows; then [testing.md](../developer/testing.md#the-suite) and ADR 0056's Status say it ran.
-2. The `main` ruleset requires `End-to-End Tests` — the owner's change
+1. The `main` ruleset requires `End-to-End Tests` — the owner's change
    ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
    D6); then ADR 0073's Status and its index row say so.
 

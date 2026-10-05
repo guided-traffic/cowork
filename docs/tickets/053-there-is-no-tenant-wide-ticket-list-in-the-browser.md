@@ -51,17 +51,13 @@ another tenant's; taking out the step to the last page, the kept rows, the start
 or the service's tenant check makes them fail. The saved-filter bar's spec covers `leftOut`, the
 backlog's spec its note under the bar, and the routes' and the shell's specs the route and the link.
 
-**Not verified:** the end-to-end path. It is written,
-[`ticket-list.spec.ts`](../../frontend/e2e/ticket-list.spec.ts) — the list over two projects
-through the address, narrowed by it and the same after a reload, a ticket filed meanwhile at the
-top without a reload, a row opening its ticket, *Clear filters* — and has not run: the tier builds
-both images, and none was built for this change; CI's job `e2e` runs it. Neither has the page been
-looked at in a browser — `make dev` was not run —, so the bar's ten controls on a narrow window,
+The end-to-end path, [`ticket-list.spec.ts`](../../frontend/e2e/ticket-list.spec.ts) — the list
+over two projects through the address, narrowed by it and the same after a reload, a ticket filed
+meanwhile at the top without a reload, a row opening its ticket, *Clear filters* —, passes
+(run 37285901009 of commit `65337eb`). **Not verified:** the page has not been looked at in a browser — `make dev` was not run —, so the bar's ten controls on a narrow window,
 both schemes, and a select's open overlay while its choice goes through the address are unseen.
 
 ## Required changes
 
-1. CI's end-to-end job runs `ticket-list.spec.ts` in Chromium and WebKit and both schemes, and it
-   passes.
-2. The owner looks at the page in both schemes under `make dev` and reviews it: the link's place
+1. The owner looks at the page in both schemes under `make dev` and reviews it: the link's place
    after *Board*, the bar, the columns and the page size of fifty to begin with.

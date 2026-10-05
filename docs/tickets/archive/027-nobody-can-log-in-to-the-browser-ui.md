@@ -1,7 +1,7 @@
 ---
 id: T27
 title: a token names its project restriction by id, and the token form does not know the installation's longest lifetime
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
@@ -11,7 +11,7 @@ blocked-by:
 filed-from: T26, the owner's answer of 2026-10-03 (the local login moves from phase 4 into phase 3)
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-05
 ---
 
 ## Current state

@@ -44,10 +44,9 @@ swimlanes and their columns, the lazy loading, the filter, the drags inside a sw
 refused drag across swimlanes; taking out the refusal, the lazy load or the hold of the other
 swimlanes makes them fail. The project board's own spec runs unchanged against the shared parts.
 
-**Not verified:** the end-to-end path. It is written,
-[`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts) — "drags a card across columns
-and is refused across rows" — and has not run: the tier needs both images built, and none was
-built for this change. Neither has the board been looked at in a browser: the observer's root, the
+The end-to-end path, [`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts) — "drags a
+card across columns and is refused across rows" —, passes (run 37285901009 of commit `65337eb`). **Not verified:** the
+board has not been looked at in a browser: the observer's root, the
 shell's content area, and the pointer under a dragged card are covered by fakes in the unit tests
 only.
 

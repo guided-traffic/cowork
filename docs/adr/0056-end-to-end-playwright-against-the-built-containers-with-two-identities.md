@@ -30,12 +30,13 @@ fails and text turned dark on dark passes, measured; `data-testid` and data seed
 second identity's "assigned to me" and inbox within the stream's latency, its move and close with a
 verification note — which waits for those pages and stands as a pending test;~~ *(2026-10-05: the
 path with two identities is written — [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts),
-each identity in a browser context of its own, the pending mark gone — and has not run yet: the
-images were not built for it; the `e2e` job runs it after the merge.)* **Not built:** the init state and
-the first tenant, the tenant board — whose path, a transition by drag and the refusal across
-swimlanes, is written ([`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts),
-2026-10-05) and has not run yet —, a restricted project's third identity, the import and the MCP
-server's `session_start` of D3. The `e2e` job ran on a runner first on 2026-10-05 (run 37267795406
+each identity in a browser context of its own, the pending mark gone — and passes in Chromium and
+WebKit in both schemes, on a runner (run 37285901009 of commit `65337eb`) and in three local runs with two workers;
+so do the tenant board's path, a transition by drag and the refusal across swimlanes
+([`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts)), and the tenant's ticket list's
+([`ticket-list.spec.ts`](../../frontend/e2e/ticket-list.spec.ts)).)* **Not built:** the init state
+and the first tenant, a restricted project's third identity, the import and the MCP server's
+`session_start` of D3. The `e2e` job ran on a runner first on 2026-10-05 (run 37267795406
 of commit `dbe64f0`): passed in 3 min 9 s against its ten minutes, the stack's ports on `127.0.0.1`
 reachable, the browsers installed with `--with-deps`, the Linux pictures holding on amd64. **Not
 verified:** the `main` ruleset does not require the job yet

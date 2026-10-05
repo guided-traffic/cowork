@@ -27,12 +27,15 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
-- **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
-  verification goes, exist, and so does "next for me" as the start page, each following every
-  tenant of the person; what is left of them is their end-to-end paths (T35) and the mention (T36). The
-  end-to-end tier (T29) is built with the login's paths, filing and moving, the board and the
-  backlog; its path with two identities through "assigned to me" and the inbox, and its required
-  check, are left. And what is left of each child below.
+- **Merged on `main` (`9c6948b`, 2026-10-05), not yet released:** everything the children below
+  built — the horizon, the person-level pages with the inbox and "next for me" across every tenant,
+  the ticket page's editors, the prerequisite tree, rendered and sanitised Markdown, search, the
+  score with the rank's rebalancing, deletion with the bin, saved filters, the tenant board, the
+  dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
+  attachment quota, mentions, numbered administration pages with the audit page, and the
+  end-to-end tier. What is left is listed per child below: end-to-end paths, one feature (saved
+  filters on the tenant board), the owner's reviews of what was built on the recommendation, and
+  the owner's two changes outside the code.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -69,42 +72,40 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 ## Required changes
 
-1. **The children, in this order.** Each lands with its tests, the pages that describe what it
+1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — what is left of the horizon: its open question on an image rollback over the
-     capability's new name, and the contract of the names before, which waits for a release after
-     the one that ships the expand
-   - T27 — the login's remainder: a token's project by key and the token form's longest lifetime
-   - T28 — the foundation's remainder: `304` polls, one idempotency key per form content, a check
-     by hand, and its open question on the bundle budget
-   - T29 — the end-to-end tier's remainder: the path with two identities through "assigned to
-     me" and the inbox, the ruleset's required check, the job's first run on a runner
-   - T30 — the ticket page's editing on the end-to-end path of T29 (its editors are built)
-   - T31 — the conversation's writes and the prerequisite tree seen by a second browser on the
-     end-to-end path of T29 (the editors, the withdrawal and the tree are built)
-   - T32 — the attachment quota (the upload to a comment, the raster preview and the correction
-     of a time entry are built)
-   - T33 — the rendered Markdown's end-to-end check under the shell's content-security policy (the
-     renderer, the sanitiser and the rendered texts of the ticket page are built)
-   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look at
-     them (the score, the sort, the marker and the rebalancing are built)
-   - T35 — the end-to-end paths of the person-level pages and of the start page ("next for me", the
-     score's order and the person-level stream across every tenant are built)
-   - T36 — the mention in a comment, and the inbox's end-to-end path
-   - T37 — the search's end-to-end check, and where "that tenant first" puts the other tenants (the
-     search routes, the box and the results page are built)
-   - T38 — saved filters
-   - T39 — ticket deletion and the purge
-   - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
-   - T41 — done (the project board's end-to-end path); its move to the archive is left
-   - T42 — the tenant board's end-to-end run (the board is built, its path written)
-   - T43 — the fixed dashboard's end-to-end path and the owner's look at it (the route and the
-     front page are built)
-2. **The phase verification**, recorded here with what was run, against what, with what result:
-   the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned
-   to me" and in its inbox, moves it and closes it — through the UI, without touching the API —
-   and the Playwright suite of T29 covers that path with both identities in both schemes.
+   - T52 — the contract of the deprecated `urgency` names and of the capability's old name, in a
+     release after the one that ships them
+   - T28 — by hand, against a released image: the UI shows no PrimeUI license notice (the owner)
+   - T29 — the `main` ruleset requires `End-to-End Tests` (the owner)
+   - T30 — the end-to-end path of the ticket page's editing
+   - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
+     second browser
+   - T32 — the owner's review of the attachment quota
+   - T33 — the end-to-end check of the rendered Markdown under the shell's content-security policy
+   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look
+   - T35 — the end-to-end path through the start page
+   - T36 — the owner's review of the mention
+   - T37 — the end-to-end path of the search
+   - T38 — saved filters on the tenant board, and the end-to-end path of a shared filter
+   - T39 — the end-to-end path of deletion, restore and the bin, and the owner's word on its three
+     decisions
+   - T40 — the owner's review of the tenant's tokens page
+   - T42 — the owner's look at the tenant board
+   - T43 — the end-to-end path of the dashboard with two identities, and the owner's review
+   - T53 — the owner's look at the tenant's ticket list
+2. **The phase verification.** The Playwright path of T29,
+   [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), passes with both identities in both
+   schemes, Chromium and WebKit, on a runner (run 37285901009 of commit `65337eb`, 2026-10-05) and in
+   three local runs with two workers: the administrator files a ticket in the backlog's dialog,
+   assigned to a local account, which sees it in "assigned to me" and in its inbox without a reload,
+   moves it and closes it with a verification note, while the administrator's page shows it done.
+   Left: the owner walks the same path by hand through the UI, two identities, without touching the
+   API, and records the result here.
 3. **Phase close:** every child extracted and archived; the README reference covers every
    variable, value, route and problem code the phase added; the Status of every ADR the phase
    built says what is built; the phase-3 section is gone from
    [project-plan.md](../planning/project-plan.md).
+4. **A stale statement found while the phase was built:** ADR 0058 D2 runs the services locally
+   from a development `compose.yaml`, which does not exist — the development stack is the
+   Makefile's containers and `make dev`; the record is corrected in place.

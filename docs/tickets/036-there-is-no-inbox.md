@@ -64,14 +64,12 @@ The README reference, [domain.md](../developer/domain.md#comments-and-the-activi
 ticket, as `asked_of` does) carry it.
 
 The e2e path of the inbox — the second identity's bell counting the assignment and its `/me/inbox`
-showing it within the stream's latency — is part of T29's `assigned.spec.ts`, written on this branch
-and not run yet.
+showing it within the stream's latency — is part of T29's `assigned.spec.ts`, which passes (run 37285901009 of commit `65337eb`).
 
 ## Required changes
 
 1. The owner's review of the built result: the watcher reading above, and the picker in a browser
    (`make dev`).
-2. The first run of the e2e path (T29).
 
 ## Not verified
 

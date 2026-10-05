@@ -36,14 +36,13 @@ and a reload that finds a page unchanged is a `304` (D7). `TestNextForMeAcrossTe
 project and confidential tickets, `TestThePersonLevelStream` the stream across the tenants, and
 `TestThePolledListsAnswerNotModified` the `304`s.
 
-What is missing is the end-to-end tier: no path walks "assigned to me" with two identities —
-[`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) is T29's pending path —, and none walks
-the start page.
+What is missing is an end-to-end path through the start page; "assigned to me" is walked with two
+identities by [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), which passes (run 37285901009 of commit `65337eb`).
 
 ## Required changes
 
-1. The e2e path's "assigned to me" (T29), and a path through the start page: a person with one
-   tenant lands on "next for me" and reaches the tenant by its name in the top bar.
+1. A path through the start page: a person with one tenant lands on "next for me" and reaches the
+   tenant by its name in the top bar.
 
 ## Open questions
 
