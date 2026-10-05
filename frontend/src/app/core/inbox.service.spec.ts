@@ -99,6 +99,25 @@ describe('InboxService', () => {
     expect(service.count()).toBe(2);
   });
 
+  it("sends the count's weak ETag on a poll and keeps the count on a 304 (docs/adr/0054 D7)", async () => {
+    countRequest().flush(
+      { items: [], next_cursor: null, unread: 4 },
+      { headers: { ETag: 'W/"four"' } },
+    );
+    await settle();
+
+    stream.next({ name: 'poll' });
+    await settle();
+    http.expectOne('/api/v1/me').flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+    const again = countRequest();
+    expect(again.request.headers.get('If-None-Match')).toBe('W/"four"');
+    again.flush(null, { status: 304, statusText: 'Not Modified' });
+    await settle();
+
+    expect(service.unread.status()).toBe('resolved');
+    expect(service.count()).toBe(4);
+  });
+
   it('marks one notification read and takes the count of the answer', async () => {
     countRequest().flush({ items: [], next_cursor: null, unread: 4 });
     await settle();

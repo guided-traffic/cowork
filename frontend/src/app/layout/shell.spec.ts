@@ -886,6 +886,20 @@ describe('Shell', () => {
       expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-accounts');
     });
 
+    // docs/adr/0026 D6: the tenant's audit record is its administrators'.
+    it('offers the audit record to an administrator of the tenant only, after the group mappings', async () => {
+      const { page, fixture } = await render();
+      expect(page.querySelector('[data-testid="nav-audit"]')).toBeNull();
+
+      isAdmin.set(true);
+      await fixture.whenStable();
+
+      const link = page.querySelector('[data-testid="nav-audit"]');
+      expect(link?.getAttribute('href')).toBe('/t/acme/audit');
+      expect(link?.textContent).toBe('Audit record');
+      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-group-mappings');
+    });
+
     // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
     // administration — the members, the group mappings, the settings — and none of its work.
     it('offers a global administrator without a role the administration only', async () => {

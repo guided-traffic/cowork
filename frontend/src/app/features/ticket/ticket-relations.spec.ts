@@ -502,6 +502,36 @@ describe('TicketRelations', () => {
       },
     );
 
+    it("sends each part's weak ETag on a poll and keeps every part on a 304 (docs/adr/0054 D7)", async () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      for (const request of http.match(() => true)) {
+        request.flush(
+          { items: [], next_cursor: null, total_minutes: 0 },
+          { headers: { ETag: `W/"${request.request.url.split('/').pop()}"` } },
+        );
+      }
+      await settle();
+      const shown = Object.fromEntries(parts.map((part) => [part, relations[part].value()]));
+
+      events.next({ name: 'poll' });
+      TestBed.tick();
+      const requests = http.match(() => true);
+      expect(requests).toHaveLength(parts.length);
+      for (const request of requests) {
+        expect(request.request.headers.get('If-None-Match')).toBe(
+          `W/"${request.request.url.split('/').pop()}"`,
+        );
+        request.flush(null, { status: 304, statusText: 'Not Modified' });
+      }
+      await settle();
+
+      for (const part of parts) {
+        expect(relations[part].status(), part).toBe('resolved');
+        expect(relations[part].value(), part).toBe(shown[part]);
+      }
+    });
+
     it.each([401, 403, 404])(
       'shows no part when the poll answers %i: the ticket is gone for the person',
       async (status) => {

@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, model, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  linkedSignal,
+  model,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ButtonDirective } from 'primeng/button';
@@ -156,6 +164,20 @@ export class NewProjectDialog {
     () => projectKey.test(this.key()) && this.name().trim() !== '' && !this.saving(),
   );
 
+  /**
+   * The Idempotency-Key of the project this form is creating: one for each content it holds and
+   * each tenant it creates in, so a retry of a lost answer is answered again instead of being
+   * refused as a key that is taken; any change, and a project created, make a new one
+   * (docs/adr/0045 D3).
+   */
+  private readonly idempotencyKey = linkedSignal(() => {
+    this.session.tenant();
+    this.key();
+    this.name();
+    this.description();
+    return crypto.randomUUID();
+  });
+
   protected async save(): Promise<void> {
     if (!this.canSave()) {
       return;
@@ -163,11 +185,14 @@ export class NewProjectDialog {
     this.saving.set(true);
     this.errors.set({});
     try {
-      const project = await this.projects.create({
-        key: this.key(),
-        name: this.name().trim(),
-        ...(this.description().trim() ? { description: this.description().trim() } : {}),
-      });
+      const project = await this.projects.create(
+        {
+          key: this.key(),
+          name: this.name().trim(),
+          ...(this.description().trim() ? { description: this.description().trim() } : {}),
+        },
+        this.idempotencyKey(),
+      );
       this.visible.set(false);
       this.key.set('');
       this.name.set('');

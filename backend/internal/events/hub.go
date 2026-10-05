@@ -31,6 +31,24 @@ const streamBuffer = 256
 type Event struct {
 	store.Notification
 	At time.Time
+
+	// What the hub tells the stream it hands the event to, never sent on.
+	// Refilter is set on an act that changes what a stream may admit
+	// (ChangesAdmission): the stream computes its filter again — after at
+	// least this many such acts — before it handles the next event. Unjudged
+	// is an event the hub handed on while the stream's filter was out of date,
+	// which the stream judges with the filter it computed since; Withheld one
+	// the hub's filter refused, handed on for its Refilter alone.
+	Refilter           uint64
+	Unjudged, Withheld bool
+}
+
+// ChangesAdmission reports whether the act can change which events a stream
+// of its tenant may admit: a project created, and every membership act — a
+// grant, a derived membership, a mapping, a project's restriction, an entry
+// of its access list (docs/adr/0054 D3).
+func (e Event) ChangesAdmission() bool {
+	return e.Entity == store.EntityMembership || e.Entity == store.EntityProject
 }
 
 // Name is the event's type on the stream.
@@ -53,7 +71,8 @@ func (e Event) Name() string {
 }
 
 // Filter is what one stream may see: the projects visible to its person,
-// computed at connect and again at every heartbeat, already narrowed by a
+// computed at connect, again on every act that changes what the stream may
+// admit (Event.Refilter) and at every heartbeat, already narrowed by a
 // project-restricted token, and the confidential rule (docs/adr/0054 D3,
 // docs/adr/0065 D5).
 type Filter struct {
@@ -78,8 +97,13 @@ type Filter struct {
 // security review of 2026-10-04, m10): the token knows nothing of the tenant
 // beyond its project.
 func (f Filter) Admits(e Event) bool {
-	if e.Entity == store.EntityMembership {
+	switch e.Entity {
+	case store.EntityMembership:
 		return f.admitsMembership(e)
+	case store.EntityProject:
+		// A project's creation changes what the stream admits; it is no event
+		// a client is told of.
+		return false
 	}
 	if !f.Projects[e.Project] {
 		return false
@@ -114,8 +138,12 @@ type Stream struct {
 
 	tenant uuid.UUID
 	filter Filter
-	opened time.Time
-	once   sync.Once
+	// changes counts the acts that changed what the stream may admit since it
+	// opened, refiltered the ones its filter was computed after; while the
+	// filter is behind, the hub hands every event on unjudged.
+	changes, refiltered uint64
+	opened              time.Time
+	once                sync.Once
 }
 
 func (s *Stream) end(reason string) {
@@ -149,11 +177,16 @@ func New(window time.Duration, maxPerPerson int) *Hub {
 
 // Publish keeps a notification for the replay and hands it to every stream
 // of its tenant that admits it; a stream whose buffer is full is told to
-// resync and dropped, never waited for (docs/adr/0054 D4). A change of a
-// person's inbox goes to that person's person-level streams alone and is kept
-// for no replay — it says how things stand, and a stream that opens says it
-// anew; a question's act also goes to the person-level streams of the person
-// asked in their other tenants (Filter.Me).
+// resync and dropped, never waited for (docs/adr/0054 D4). An act that changes
+// what a stream may admit reaches every stream of the tenant, marked to
+// refilter, and until the stream has computed its filter after it the hub
+// hands on every later event of the tenant unjudged, so that none is dropped
+// by a filter that does not know the act yet (D3). A change of a person's
+// inbox goes to that person's person-level streams alone and is kept for no
+// replay — it says how things stand, and a stream that opens says it anew; a
+// question's act also goes to the person-level streams of the person asked in
+// their other tenants (Filter.Me), which judge it against that tenant
+// themselves.
 func (h *Hub) Publish(n store.Notification) {
 	e := Event{Notification: n, At: h.now()}
 	h.mu.Lock()
@@ -171,8 +204,19 @@ func (h *Hub) Publish(n store.Notification) {
 	}
 	h.rings[n.Tenant] = ring[cut:]
 	for _, s := range h.streams[n.Tenant] {
-		if s.filter.Admits(e) {
-			send(s, e)
+		out := e
+		switch {
+		case s.refiltered < s.changes:
+			out.Unjudged = true
+		case !s.filter.Admits(e):
+			out.Withheld = true
+		}
+		if e.ChangesAdmission() {
+			s.changes++
+			out.Refilter = s.changes
+		}
+		if !out.Withheld || out.Refilter > 0 {
+			send(s, out)
 		}
 	}
 	if n.AskedOf != nil {
@@ -255,13 +299,23 @@ func (h *Hub) limit(person uuid.UUID) {
 	}
 }
 
-// Refilter replaces what a stream admits: the heartbeat recomputes it, so a
-// project the person gains reaches the stream and one they lose stops
-// reaching it within one heartbeat (docs/adr/0054 D3, docs/adr/0035 D6).
-func (h *Hub) Refilter(s *Stream, f Filter) {
+// Changes is how many acts have changed what the stream may admit so far: a
+// filter computed after this call knows all of them.
+func (h *Hub) Changes(s *Stream) uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return s.changes
+}
+
+// Refilter replaces what a stream admits with a filter computed after
+// Changes answered seen. The stream recomputes it on every act that changes
+// it and at every heartbeat (docs/adr/0054 D3, docs/adr/0035 D6); once the
+// filter knows every such act, the hub judges the stream's events again.
+func (h *Hub) Refilter(s *Stream, f Filter, seen uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s.filter = f
+	s.refiltered = max(s.refiltered, seen)
 }
 
 // Unsubscribe removes a stream that ended.

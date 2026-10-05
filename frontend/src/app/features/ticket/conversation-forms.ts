@@ -101,12 +101,26 @@ export class CommentComposer {
   protected readonly text = draft(this.ticketKey, () => '');
   protected readonly busy = signal(false);
 
+  /**
+   * The Idempotency-Key of the comment this form is writing: one for each text and ticket, so a
+   * retry of a lost answer is answered again instead of commenting twice; any change, and a comment
+   * written, make a new one (docs/adr/0045 D3).
+   */
+  private readonly idempotencyKey = linkedSignal(() => {
+    this.ticketKey();
+    this.text();
+    return crypto.randomUUID();
+  });
+
   protected async send(): Promise<void> {
     const text = this.text().trim();
     const key = this.ticketKey();
+    const idempotencyKey = this.idempotencyKey();
     if (
       text &&
-      (await guarded(this.busy, this.problems, () => this.conversation.comment(key, text))) &&
+      (await guarded(this.busy, this.problems, () =>
+        this.conversation.comment(key, text, idempotencyKey),
+      )) &&
       this.ticketKey() === key
     ) {
       this.text.set('');
@@ -232,15 +246,34 @@ export class AskQuestion {
   protected readonly askedOf = draft<string | null>(this.ticketKey, () => null);
   protected readonly busy = signal(false);
 
+  /**
+   * The Idempotency-Key of the question this form is asking: one for each content and ticket, so a
+   * retry of a lost answer is answered again instead of asking twice; any change, and a question
+   * asked, make a new one (docs/adr/0045 D3).
+   */
+  private readonly idempotencyKey = linkedSignal(() => {
+    this.ticketKey();
+    this.question();
+    this.options();
+    this.recommendation();
+    this.askedOf();
+    return crypto.randomUUID();
+  });
+
   protected async send(): Promise<void> {
     const key = this.ticketKey();
+    const idempotencyKey = this.idempotencyKey();
     const ok = await guarded(this.busy, this.problems, () =>
-      this.conversation.ask(key, {
-        question: this.question().trim(),
-        ...(this.options().trim() ? { options: this.options().trim() } : {}),
-        ...(this.recommendation().trim() ? { recommendation: this.recommendation().trim() } : {}),
-        ...(this.askedOf() ? { asked_of: this.askedOf() as string } : {}),
-      }),
+      this.conversation.ask(
+        key,
+        {
+          question: this.question().trim(),
+          ...(this.options().trim() ? { options: this.options().trim() } : {}),
+          ...(this.recommendation().trim() ? { recommendation: this.recommendation().trim() } : {}),
+          ...(this.askedOf() ? { asked_of: this.askedOf() as string } : {}),
+        },
+        idempotencyKey,
+      ),
     );
     if (ok && this.ticketKey() === key) {
       this.question.set('');

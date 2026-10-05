@@ -19,6 +19,7 @@ import {
   resolveTicket,
 } from '../api/functions';
 import { Ticket, TicketList } from '../api/models';
+import { ConditionalPages, PageFetcher } from './conditional';
 import { EntityCache } from './entity-cache';
 import { changesVisibility, EventStreamService, StreamEvent } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
@@ -96,11 +97,12 @@ export class TicketsService {
     params: () => ListProjectTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
       loader: ({ params }) =>
         keepShown(tickets, () =>
-          this.api.invoke(listProjectTickets, params).then((list) => this.keep(list)),
+          pages.load((page) => page(listProjectTickets, params)).then((list) => this.keep(list)),
         ),
       injector,
     });
@@ -118,9 +120,11 @@ export class TicketsService {
     params: () => ProjectTicketPagesParams | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
-      loader: ({ params }) => keepShown(tickets, () => this.followPages(params)),
+      loader: ({ params }) =>
+        keepShown(tickets, () => pages.load((page) => this.followPages(params, page))),
       injector,
     });
     return this.track(tickets, injector);
@@ -131,11 +135,12 @@ export class TicketsService {
     params: () => ListTenantTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
+    const pages = new ConditionalPages(this.api);
     const tickets: ResourceRef<TicketPage | undefined> = resource({
       params,
       loader: ({ params }) =>
         keepShown(tickets, () =>
-          this.api.invoke(listTenantTickets, params).then((list) => this.keep(list)),
+          pages.load((page) => page(listTenantTickets, params)).then((list) => this.keep(list)),
         ),
       injector,
     });
@@ -202,13 +207,16 @@ export class TicketsService {
     return ticket;
   }
 
-  private async followPages({ pages, ...query }: ProjectTicketPagesParams): Promise<TicketPage> {
+  private async followPages(
+    { pages, ...query }: ProjectTicketPagesParams,
+    page: PageFetcher,
+  ): Promise<TicketPage> {
     // The version of each key; a ticket seen twice keeps the place and the version of the later
     // answer, so it is deleted first.
     const versions = new Map<string, number>();
     let cursor: string | undefined;
-    for (let page = 0; page < pages; page++) {
-      const list = await this.api.invoke(listProjectTickets, { ...query, cursor, limit: pageSize });
+    for (let held = 0; held < pages; held++) {
+      const list = await page(listProjectTickets, { ...query, cursor, limit: pageSize });
       this.keep(list);
       for (const ticket of list.items) {
         versions.delete(ticket.key);

@@ -158,7 +158,7 @@ TokenState:
   enum: [active, expired, revoked]
 Token:
   type: object
-  required: [id, name, scope, agent, capabilities, created_at, expires_at, state]
+  required: [id, name, scope, agent, capabilities, restricted_project, created_at, expires_at, state]
   properties:
     id: {type: string, format: uuid}
     name: {type: string}
@@ -174,10 +174,20 @@ Token:
     restricted_tenant:
       type: [string, 'null']
       description: The slug of the tenant the token is restricted to
+    restricted_project:
+      type: [string, 'null']
+      description: |
+        The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+        without a project restriction, and for one whose project the person no longer sees or
+        whose tenant they no longer belong to — such a token reaches nothing
     restricted_project_id:
       type: [string, 'null']
       format: uuid
-      description: The id of the project the token is restricted to
+      deprecated: true
+      description: |
+        The id of the project the token is restricted to. Replaced by `restricted_project`, which
+        names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+        read it, since taking a field away is a breaking change (docs/adr/0046 D7)
     created_at: {type: string, format: date-time}
     expires_at: {type: string, format: date-time}
     last_used_on:
@@ -250,16 +260,17 @@ TokenList:
         $ref: '#/Token'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
     - $ref: '#/Token'
     - type: object
-      required: [restricted_project, request]
+      required: [request]
       properties:
-        restricted_project:
-          type: [string, 'null']
-          description: The key of the project the token is restricted to
         request:
           $ref: '#/RequestMark'
 RequestMark:
@@ -354,6 +365,10 @@ MemberList:
         $ref: '#/Member'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 MemberAdd:
   type: object
   additionalProperties: false
@@ -491,6 +506,10 @@ AuditList:
         $ref: '#/AuditEvent'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 WipLimits:
   type: object
   additionalProperties: false
@@ -553,6 +572,10 @@ ProjectList:
         $ref: '#/Project'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 ProjectRestrictionSet:
   type: object
   additionalProperties: false
@@ -1504,7 +1527,7 @@ TicketList:
     per_page: {type: integer}
 AuthOptions:
   type: object
-  required: [local, oidc, oidc_name, password_min_length]
+  required: [local, oidc, oidc_name, password_min_length, token_max_lifetime_days]
   properties:
     local:
       type: boolean
@@ -1522,6 +1545,14 @@ AuthOptions:
       type: integer
       minimum: 1
       description: The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+    token_max_lifetime_days:
+      type: integer
+      minimum: 0
+      description: |
+        The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+        down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+        maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+        form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
 LocalLoginRequest:
   type: object
   additionalProperties: false

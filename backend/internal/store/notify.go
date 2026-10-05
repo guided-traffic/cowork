@@ -48,6 +48,11 @@ type Notification struct {
 // access list (docs/adr/0054 D2).
 const EntityMembership = "membership"
 
+// EntityProject is the entity of the notification of a project's creation,
+// which changes what the tenant's streams may admit and is sent to no client
+// (docs/adr/0054 D3).
+const EntityProject = "project"
+
 // The audiences of a membership act. Every member of the tenant hears of a
 // membership or a project's restriction — the member list is theirs to read
 // anyway, and a project that is restricted or opened was visible to them at
@@ -73,12 +78,15 @@ type MembershipChange struct {
 // (docs/adr/0026 D5, docs/adr/0034 D5).
 var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
 
-// publish notifies the listeners of a ticket's act or of a membership act of
-// a tenant. NOTIFY inside the transaction is delivered when it commits and
+// publish notifies the listeners of a ticket's act, a membership act or a
+// project's creation in a tenant. NOTIFY inside the transaction is delivered when it commits and
 // never when it rolls back (docs/adr/0054 D4).
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
 	if tenantID != uuid.Nil && e.Membership != nil {
 		return w.notify(ctx, membershipNotification(tenantID, id, e))
+	}
+	if tenantID != uuid.Nil && e.NewProject != uuid.Nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.NewProject, Entity: EntityProject, Action: e.Action})
 	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil

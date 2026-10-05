@@ -26,6 +26,11 @@ transaction: PostgreSQL delivers it at commit and never after a rollback (D4). T
 tenant, the project, the entity, the action, the ticket key, the ticket's version, and the
 confidential rule's inputs — the flag, the assignee, the reporter.
 
+**A project's creation** is published as a notification of the entity `project`, with the
+tenant and the project and nothing else (`Event.NewProject`, set by `insertProject` in
+[`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
+client is told of it — `Filter.Admits` refuses it, so it is neither sent nor replayed.
+
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
 a grant made, changed or removed, a membership the identity provider derived, a group mapping, a
@@ -114,9 +119,34 @@ that names another project, or no project and another person — a mapping, anot
 so it hears its project's restriction and access entries and its own person's memberships only
 (`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`;
 [tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)). The filter, the administrator flag included, is
-computed at connect and again at every heartbeat (`Hub.Refilter`): a project the person gains
-reaches the stream, and one they lose stops reaching it, within one heartbeat
-(`TestStreamFollowsAccess`).
+computed at connect, again on every act that changes what a stream may admit, and at every
+heartbeat:
+
+- **An admission change** (`Event.ChangesAdmission`) is a project's creation or any membership
+  act. `Hub.Publish` counts it per stream (`changes`) and hands it to every stream of the tenant
+  marked `Refilter` — judged by the stream's filter as any event, `Withheld` when the filter
+  refuses it, sent on for the mark alone. Until the stream's filter knows every change
+  (`refiltered < changes`), the hub hands it each later event `Unjudged`.
+- **The stream refilters** when an event's `Refilter` is beyond what its filter knows: it reads
+  `Hub.Changes`, runs the boundary again for the person's role — a person it no longer admits ends
+  the stream — computes the filter (`refilter` in
+  [`events.go`](../../backend/internal/api/events.go)) and hands it to `Hub.Refilter` with the
+  count it read, then judges the `Unjudged` events itself. A change that comes while it computes
+  keeps the hub's judgement off until the stream has refiltered for it as well, so no event is
+  judged by a filter that does not know a change committed before it. A burst of changes costs a
+  stream one or two recomputations, not one per act: the count read before the first covers the
+  ones already published.
+- **The heartbeat** recomputes the same way, which catches a change made in the database past the
+  API.
+- **A person-level stream** refilters as any stream of its tenant does; what the hub hands it of
+  the person's own (`Hub.toPerson`) — an inbox change, a question of another tenant — is never
+  marked, never withheld and never unjudged, because the filter does not judge it: the count is
+  read when it is written, and another tenant's event is judged against that tenant then
+  (`writeStreamed`). The pump takes one event at a time (`handOn`): the refilter its mark asks for
+  first, then the inbox's wait, the drop of what the filter refuses, or the write.
+
+A project the person gains reaches the stream from the next event on, and one they lose stops
+reaching it as soon (`TestTheStreamAdmitsWhatAnActOpensAtOnce`, `TestStreamFollowsAccess`).
 
 ## The handler
 
@@ -202,11 +232,15 @@ the stand-in is how a change here is verified
 ## Tests
 
 [`hub_test.go`](../../backend/internal/events/hub_test.go) covers the filter, the audiences of a
-membership event, the replay and the window, the dropped slow stream, the limit, and down, up and
-close. [`api_events_test.go`](../../backend/test/integration/api_events_test.go) reads real streams
+membership event, the replay and the window, the dropped slow stream, the limit, down, up and
+close, and the admission changes that hold the hub's judgement until the stream has refiltered. [`api_events_test.go`](../../backend/test/integration/api_events_test.go) reads real streams
 through the whole handler: a committed act arrives with key and version, a rolled-back one never,
 nothing crosses a tenant, a restriction or the confidential rule; the replay and `resync`; the
-heartbeat, the limit, a revoked token's stream closing and the shutdown.
+heartbeat, the limit, a revoked token's stream closing and the shutdown; and, with an hour's
+heartbeat, that a ticket filed in a project created, opened or let into after the stream opened
+arrives within a second and that the stream of a person whose grant is removed ends;
+`TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents` in `api_inbox_test.go` the same for a
+person-level stream, which goes on telling its count and another tenant's question.
 `TestMembershipEventsReachTheirAudience` in
 [`api_members_test.go`](../../backend/test/integration/api_members_test.go) opens an
 administrator's, a member's and a viewer's stream and checks who hears a grant, a mapping and an

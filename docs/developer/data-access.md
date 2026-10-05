@@ -207,6 +207,7 @@ an administrator of its tenant, a mapped membership only in a transaction named
 | `IdempotencyKey` | a key recorded, not stored ([ADR 0045] D7) |
 | `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
 | `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
+| `NewProject` | the project the act created, published so that the streams admit its events at once and sent to no client ([events.md](events.md#publication)); `uuid.Nil` for every other act |
 | `Notices` | whom the act tells in their inbox and why ([notifications](#notifications)); none for an act that tells nobody |
 | `InboxOf` | the person whose inbox the act changed without a notice — their own notifications marked read — whose person-level streams hear `inbox.changed` |
 
@@ -435,10 +436,11 @@ person's act `read`.
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
 written — by `Mutate` and by the identity provider's transactions alike — that belongs to a tenant
-and either carries an `Event.Membership` or names a ticket, except the actions `downloaded` and
-`exported` and the entity `time_entry`. A ticket's act reads the ticket's project, version and
-confidential facts (`TicketFacts`) — a question's act also whom the question is asked of
-(`QuestionAskedOf`); a membership act sends the keys of its `MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
+and carries an `Event.Membership`, carries an `Event.NewProject` or names a ticket, except the
+actions `downloaded` and `exported` and the entity `time_entry`. A ticket's act reads the ticket's
+project, version and confidential facts (`TicketFacts`) — a question's act also whom the question
+is asked of (`QuestionAskedOf`); a membership act sends the keys of its `MembershipChange` and its
+audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
 one connection outside the pool on the channel. The rest is [events.md](events.md).
 

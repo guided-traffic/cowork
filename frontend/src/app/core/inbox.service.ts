@@ -2,6 +2,7 @@ import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { listMyInbox, markMyInboxRead, markNotificationRead } from '../api/functions';
+import { ConditionalPages } from './conditional';
 import { EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
@@ -48,6 +49,7 @@ export class InboxService {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
+  private readonly pages = new ConditionalPages(this.api);
 
   /**
    * The person's id, a primitive: `me` loaded again with the same person leaves the count alone
@@ -55,12 +57,15 @@ export class InboxService {
    */
   private readonly person = computed(() => this.session.person()?.id);
 
-  /** The unread count; the answer of one entry of the inbox carries it. */
+  /**
+   * The unread count; the answer of one entry of the inbox carries it, and a poll that finds it
+   * unchanged is answered `304` (docs/adr/0054 D7).
+   */
   readonly unread: ResourceRef<number | undefined> = resource({
     params: () => this.person(),
     loader: () =>
       keepShown(this.unread, () =>
-        this.api.invoke(listMyInbox, { limit: 1 }).then((list) => list.unread),
+        this.pages.load((page) => page(listMyInbox, { limit: 1 })).then((list) => list.unread),
       ),
   });
 

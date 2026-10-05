@@ -137,8 +137,12 @@ audit:
     summary: The tenant's audit record (docs/adr/0026 D6)
     description: |
       For the tenant's administrators. Filters combine with AND; a repeated
-      `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-      cell that could start a formula prefixed with an apostrophe.
+      `action` with OR. Newest first, paged by cursor, or by number with a total
+      (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+      cell that could start a formula prefixed with an apostrophe. A CSV answer
+      carries no cursor: a client that reads more than one page as CSV asks for
+      numbered pages, with `to` held at the moment it began, so that a newer
+      row does not move the rows between two pages.
     parameters:
       - name: actor
         in: query
@@ -169,6 +173,8 @@ audit:
         schema: {type: string, format: date-time}
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
     responses:
       '200':
         description: A page of audit rows, newest first
@@ -188,19 +194,29 @@ projects:
     operationId: listProjects
     tags: [projects]
     summary: The projects the caller can see
+    description: |
+      By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
     parameters:
       - name: include_archived
         in: query
         schema: {type: boolean, default: false}
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of projects, by key
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ProjectList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:

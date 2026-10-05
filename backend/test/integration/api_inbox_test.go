@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
@@ -445,6 +446,42 @@ func TestThePersonLevelStream(t *testing.T) {
 		assert.NotEqual(t, "inbox.changed", m.Event, "a stream without me tells no count")
 		assert.NotEqual(t, "question.changed", m.Event, "nor another tenant's question")
 	}
+}
+
+// docs/adr/0054 D1, D3: a person-level stream recomputes what it admits of its
+// tenant on the act that changes it, as any stream does, and goes on telling
+// its person's own events: a ticket filed in a project created after it opened
+// arrives at once, with the count it changes, and a question asked of the
+// person in another tenant still arrives without an id; the heartbeat, an hour
+// here, plays no part.
+func TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents(t *testing.T) {
+	e := newTicketEnv(t)
+	srv := newAPI(t, func(o *api.Options) { o.Heartbeat = time.Hour })
+	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	me := e.openStreamAt(t, srv, both, "/api/v1/tenants/"+e.SlugA+"/events?me=true", "")
+	first, ok := me.next(t, 5*time.Second)
+	require.True(t, ok)
+	assert.Equal(t, 0, unreadOf(t, first))
+
+	res := srv.do(t, admin, http.MethodPost, "/api/v1/tenants/"+e.SlugA+"/projects", map[string]any{"key": "LATE", "name": "Late"})
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	start := time.Now()
+	late := e.fileIn(t, admin, e.SlugA, "LATE", task("late", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
+	_, m := me.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
+	assert.Equal(t, late.Key, eventKey(t, m), "the ticket of a project created after the stream opened")
+	assert.Less(t, time.Since(start), time.Second)
+	assert.NotEmpty(t, m.ID)
+	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
+	assert.Equal(t, 1, unreadOf(t, m))
+
+	b1 := e.fileIn(t, memberB, e.SlugB, "BETA", task("b1"))
+	b1Path := ticketPath(e.SlugB, "BETA", b1.Number)
+	e.send(t, memberB, http.StatusCreated, http.MethodPost, b1Path+"/questions", map[string]any{"question": "yes?", "asked_of": e.Both})
+	_, m = me.until(t, func(m sse) bool { return m.Event == "question.changed" })
+	assert.Equal(t, b1.Key, eventKey(t, m))
+	assert.Empty(t, m.ID, "another tenant's event moves no replay point")
+	_, m = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
+	assert.Equal(t, 2, unreadOf(t, m))
 }
 
 // docs/adr/0035 D3: a token restricted to a tenant hears nothing of another on

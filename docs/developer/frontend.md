@@ -81,8 +81,9 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (the API's urgency override) and its withdrawal, and the confidential flag. A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
-| `TokensService` | The person's own tokens, every page of them; `create` hands the plaintext to its caller once and keeps nothing; the keys of the projects tokens are restricted to, looked up per tenant |
+| `TokensService` | The person's own tokens, every page of them, each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
+| `AuditService` | A numbered page of the tenant's audit record, and its CSV: the JSON's first page gives the server's `Date`, which ends the period of the download, then numbered pages of a hundred rows as CSV, put together with the header once, at most the newest 10 000 rows (*The audit record*, below) |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
 | `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
 
@@ -90,8 +91,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 in a new request object, so an equal value does not stop it (`ResourceImpl`, `extRequest`). A
 `params` function therefore reads only signals whose value is the request, or one `computed`
 that yields a primitive: `AccountsService` reads `administered` (the tenant while the person is
-its administrator), so `me` loaded again with the same role leaves the list alone, and
-`TokensService` reads `restrictions` as one sorted string.
+its administrator), so `me` loaded again with the same role leaves the list alone.
 
 **A secret cowork shows once** — a new token's plaintext, a temporary password — lives in one
 signal of the page that asked for it and is shown by
@@ -123,10 +123,19 @@ way the person came — the identity provider's way back runs no code of the log
 has shown nobody yet stays, and where the browser has no `BroadcastChannel` the other tabs keep
 what they hold.
 
-**A creating form holds one `Idempotency-Key` per content** where a lost answer must not become a
-second creation: the first tenant and a new local account keep a key in a `linkedSignal` over
-their fields, reuse it on a retry and make a new one when a field changes (ADR 0045 D3). The other
-creating calls still send a fresh key per call.
+**A creating form holds one `Idempotency-Key` per content**, so that a lost answer does not
+become a second creation (ADR 0045 D3): the first tenant, a new local account, a member's grant, a
+group mapping, a ticket, a comment, a question, a project and a booking of time keep a key in a
+`linkedSignal` over their fields — and over the place they write to, the tenant, the project or the
+ticket — reuse it when the same content is sent again and make a new one when a field changes,
+which a reset after a success is. The services take the key from the form
+(`TicketActions.create`, `Conversation.comment` and `ask`, `ProjectsService.create`,
+`TicketRecords.attach` and `book`). The files card keeps the key of an upload whose answer did not
+come, by ticket, file name, size and modification time, so the same file picked again is sent
+with it and a successful upload forgets it; a comment's upload does the same by its comment
+([`UploadKey`](../../frontend/src/app/shared/upload-key.ts)). The new ticket's key covers its parent
+too. A new token takes a new key per act on purpose: a
+repeated answer carries no plaintext (ADR 0045 D6).
 
 **A form dialog stays open while its request runs**: no cross, no click beside it, Cancel disabled,
 and [`keepOpenWhile`](../../frontend/src/app/shared/keep-open.ts) stops Escape in the capture phase,
@@ -248,7 +257,17 @@ a question asked of the person in another tenant ─► question.changed {key} w
 **The fallback** (ADR 0054 D7): three `EventSource` errors in a row, a `CLOSED` source, or
 `event: unavailable` switch to polling — a `poll` every 15 s and a new stream every 60 s; the
 first `open` ends it. The live indicator in the top bar shows `Live`, `Connecting` or `Polling`.
-A poll reloads the lists in full; the `If-None-Match` of D7 is outstanding.
+
+**A load again asks whether anything changed** (D7). Every list that loads again on events, a
+`resync` or a `poll` — the ticket lists of `TicketsService`, the projects, the members, the group
+mappings, an access list, the parts of `TicketRelations` with the prerequisite tree, the unread
+count of `InboxService` and the person-level pages — runs its requests through its own
+[`ConditionalPages`](../../frontend/src/app/core/conditional.ts): a request sends the weak
+`ETag` of the same request's last answer in `If-None-Match`, and a `304` — which `HttpClient`
+hands on as an error — answers with the page held. A page is its request, so a list followed
+cursor by cursor sends each page's tag with that page's cursor; the pages a load no longer asks for
+are forgotten when it ends, and a load that fails keeps the ones held before it. A poll that finds
+nothing new therefore moves no list and costs the backend a hash per page, not a body.
 
 ## The person-level pages
 
@@ -616,6 +635,26 @@ page that holds the meaning, each meaning once.
 | [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role and its removal; for a global administrator without a role there, the list alone. A global administrator who administers the tenant (`global_admin` of `/api/v1/me` and the `admin` role, `mayMap`) gets the role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)), which sends the group as typed, without the spaces around it; any other administrator reads the role as text under one line that says only a global administrator creates and changes mappings ([ADR 0030] D7). A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
 | [`project-access.ts`](../../frontend/src/app/features/project/project-access.ts), in the project's settings | For administrators: the restriction switch (`PUT …/restriction` with the project's `If-Match`; a `412` says so and reloads the projects) and the access list of [`AccessList`](../../frontend/src/app/features/project/access-list.ts), which the section provides, so it lives as long as the page. A restriction asks first with its own [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), saying how many people are on the list — or, when nobody is, that only the tenant's administrators will see the project, and no number while the list is not loaded; opening asks as well, saying that the project and its tickets become visible to every member of the tenant, a confidential ticket excepted ([ADR 0065] D1). The list shows whether the project is restricted or not, because it may be filled before the restriction so that nobody on it loses the project in between: a tenant member is added with `member` or `viewer`, changed in the row, taken off. A row shows the person's e-mail address under the name, and the picker offers each member as *name (address)* where the member list has one, the label its options are named by and its filter searches. A row's select and its removal are disabled while the row's change or removal is out, and a removal takes the entry out of the list at once. The section starts again — its choice, an open question and its message gone — only for another project's key: the projects load again on events and hand in a new object for the same project |
 
+**The audit record** ([`audit.ts`](../../frontend/src/app/features/tenant/audit.ts),
+`/t/:tenant/audit`, [ADR 0026] D6) is its administrators' page, linked after *Group mappings*: every
+act newest first — the person, or the system actor in code type; the agent and the token through
+[`AgentMark`](../../frontend/src/app/shared/agent-mark.ts); the action; the entity, with a link to
+its ticket; the reason, the note and each changed field as `field: before → after` in JSON. The
+filters are the API's: the actor, a member picked by name; a token's id — typed, which asks
+nothing until it is an id, or taken from an act's filter button, *Show what this token did*; the
+actions, several; the entity, typed with the common types offered; and a period of two days of the
+browser's calendar, the last one whole (`period`). The record is a table with numbered pages
+([ADR 0048] D2, D4): 25, 50 or 100 a page through PrimeNG's `Paginator`, a change of a filter or of
+the size going back to the first page (a `linkedSignal`), and the total kept while the next page
+loads so that the pages do not move under the focus. *Download CSV* saves what the filters select
+up to the moment the download began: a CSV answer carries no cursor, and a newer act would move
+every later page by one row, so `AuditService.csv` ends the period at the server's clock of its
+first answer — an act of the same second waits for the next download — and an act whose
+transaction began before that moment and committed during the download can still show twice at a
+page's edge, which its `id` tells. Beyond 10 000 rows the page says the file holds the newest
+ones, and to narrow the period. A member who is no administrator reads that the record is the
+administrators'.
+
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
 version without touching them, so neither takes back what is being typed; a save sends the newest
@@ -735,6 +774,7 @@ attributes it finds things by are part of a page's contract, and `ng lint` cover
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
+[ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md

@@ -1,6 +1,10 @@
 ETag:
   description: The entity's version, the strong validator for `If-Match` (docs/adr/0050 D2)
   schema: {type: string}
+ListETag:
+  description: |
+    A weak validator of this page for this caller, `W/"…"`, for `If-None-Match` (docs/adr/0054 D7)
+  schema: {type: string}
 Location:
   description: The new entity's URL
   schema: {type: string}

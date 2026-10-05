@@ -7,6 +7,12 @@
           "type": "string"
         }
       },
+      "ListETag": {
+        "description": "A weak validator of this page for this caller, `W/\"…\"`, for `If-None-Match` (docs/adr/0054 D7)\n",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Location": {
         "description": "The new entity's URL",
         "schema": {
@@ -566,6 +572,14 @@
       }
     },
     "responses": {
+      "NotModified": {
+        "description": "The page is unchanged since the weak `ETag` in `If-None-Match`; the client keeps what it holds\n(docs/adr/0054 D7)\n",
+        "headers": {
+          "ETag": {
+            "$ref": "#/components/headers/ListETag"
+          }
+        }
+      },
       "Problem": {
         "content": {
           "application/problem+json": {
@@ -1143,10 +1157,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -1176,13 +1201,19 @@
             "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
             "minimum": 1,
             "type": "integer"
+          },
+          "token_max_lifetime_days": {
+            "description": "The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded\ndown (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the\nmaximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A\nform that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes\n",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "local",
           "oidc",
           "oidc_name",
-          "password_min_length"
+          "password_min_length",
+          "token_max_lifetime_days"
         ],
         "type": "object"
       },
@@ -1812,17 +1843,9 @@
             "properties": {
               "request": {
                 "$ref": "#/components/schemas/RequestMark"
-              },
-              "restricted_project": {
-                "description": "The key of the project the token is restricted to",
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             },
             "required": [
-              "restricted_project",
               "request"
             ],
             "type": "object"
@@ -2480,10 +2503,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -2983,10 +3017,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -4509,8 +4554,16 @@
           "name": {
             "type": "string"
           },
+          "restricted_project": {
+            "description": "The key of the project the token is restricted to (docs/adr/0035 D3); null for a token\nwithout a project restriction, and for one whose project the person no longer sees or\nwhose tenant they no longer belong to — such a token reaches nothing\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "restricted_project_id": {
-            "description": "The id of the project the token is restricted to",
+            "deprecated": true,
+            "description": "The id of the project the token is restricted to. Replaced by `restricted_project`, which\nnames the project by its key, as a person knows it; kept in `/api/v1` for the clients that\nread it, since taking a field away is a breaking change (docs/adr/0046 D7)\n",
             "format": "uuid",
             "type": [
               "string",
@@ -4544,6 +4597,7 @@
           "scope",
           "agent",
           "capabilities",
+          "restricted_project",
           "created_at",
           "expires_at",
           "state"
@@ -4624,10 +4678,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -4897,6 +4962,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -4908,7 +4976,15 @@
                 }
               }
             },
-            "description": "A page of the person's tickets"
+            "description": "A page of the person's tickets",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5012,6 +5088,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5023,7 +5102,15 @@
                 }
               }
             },
-            "description": "A page of the open decisions"
+            "description": "A page of the open decisions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5048,6 +5135,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5059,7 +5149,15 @@
                 }
               }
             },
-            "description": "A page of the inbox and the unread count"
+            "description": "A page of the inbox and the unread count",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5287,7 +5385,7 @@
     },
     "/api/v1/me/tokens": {
       "get": {
-        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with\na total (docs/adr/0048 D2).\n",
         "operationId": "listMyTokens",
         "parameters": [
           {
@@ -5295,6 +5393,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -5834,7 +5938,7 @@
     },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
-        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe.\n",
+        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
         "operationId": "listAudit",
         "parameters": [
           {
@@ -5899,6 +6003,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -6120,6 +6230,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6131,7 +6244,15 @@
                 }
               }
             },
-            "description": "A page of mappings"
+            "description": "A page of mappings",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6282,7 +6403,7 @@
     },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
-        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2).\n",
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2). Paged by cursor, or by number\nwith a total (docs/adr/0048 D2).\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -6290,6 +6411,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6301,7 +6431,15 @@
                 }
               }
             },
-            "description": "A page of members, by person id"
+            "description": "A page of members, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6450,6 +6588,7 @@
     },
     "/api/v1/tenants/{tenant}/projects": {
       "get": {
+        "description": "By key, paged by cursor, or by number with a total (docs/adr/0048 D2).\n",
         "operationId": "listProjects",
         "parameters": [
           {
@@ -6465,6 +6604,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6476,7 +6624,15 @@
                 }
               }
             },
-            "description": "A page of projects, by key"
+            "description": "A page of projects, by key",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6655,6 +6811,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6666,7 +6825,15 @@
                 }
               }
             },
-            "description": "A page of entries, by person id"
+            "description": "A page of entries, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7261,6 +7428,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7272,7 +7442,15 @@
                 }
               }
             },
-            "description": "A page of acts"
+            "description": "A page of acts",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7304,6 +7482,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7315,7 +7496,15 @@
                 }
               }
             },
-            "description": "A page of attachments"
+            "description": "A page of attachments",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7579,6 +7768,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7590,7 +7782,15 @@
                 }
               }
             },
-            "description": "A page of comments; a withdrawn one without its text"
+            "description": "A page of comments; a withdrawn one without its text",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7976,6 +8176,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7987,7 +8190,15 @@
                 }
               }
             },
-            "description": "A page of stakes"
+            "description": "A page of stakes",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8063,6 +8274,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8074,7 +8288,15 @@
                 }
               }
             },
-            "description": "A page of links"
+            "description": "A page of links",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8229,6 +8451,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8264,7 +8489,15 @@
                 }
               }
             },
-            "description": "A page of the tree, depth first"
+            "description": "A page of the tree, depth first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8296,6 +8529,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8307,7 +8543,15 @@
                 }
               }
             },
-            "description": "A page of questions"
+            "description": "A page of questions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8628,6 +8872,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8639,7 +8886,15 @@
                 }
               }
             },
-            "description": "A page of entries with the ticket's visible total"
+            "description": "A page of entries with the ticket's visible total",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -9567,7 +9822,7 @@
     },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3).\n",
+        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3), and the longest lifetime of a\nnew token the bound of the token form (docs/adr/0035 D4) — the policies\nof the installation, public like the rest of this answer.\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -9577,7 +9832,8 @@
                   "local": true,
                   "oidc": true,
                   "oidc_name": "Acme SSO",
-                  "password_min_length": 12
+                  "password_min_length": 12,
+                  "token_max_lifetime_days": 365
                 },
                 "schema": {
                   "$ref": "#/components/schemas/AuthOptions"

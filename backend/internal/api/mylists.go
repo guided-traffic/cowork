@@ -128,11 +128,15 @@ func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRe
 		return s.encodePosition(listPosition{slug: m.tenant.slug, project: m.row.ProjectKey,
 			rank: store.RankPosition(m.row.Rank, m.row.State, m.row.Number)}, false)
 	})
-	out := apigen.ListMyAssigned200JSONResponse{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.MyTicketList{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, m := range rows {
 		out.Items = append(out.Items, apigen.MyTicket{Tenant: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row)})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyAssigned304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyAssigned200JSONResponse{Body: out, Headers: apigen.ListMyAssigned200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // decision is an open question of a person-level list with its tenant.
@@ -191,11 +195,15 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		return s.encodePosition(listPosition{slug: d.tenant.slug, project: d.row.ProjectKey,
 			rank: store.RankPosition(d.row.TicketRank, d.row.TicketState, d.row.TicketNumber), question: d.row.Number}, true)
 	})
-	out := apigen.ListMyDecisions200JSONResponse{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.DecisionList{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, d := range rows {
 		out.Items = append(out.Items, decisionView(d))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyDecisions304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyDecisions200JSONResponse{Body: out, Headers: apigen.ListMyDecisions200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func decisionView(d decision) apigen.Decision {

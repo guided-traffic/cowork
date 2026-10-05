@@ -40,6 +40,11 @@ export interface ListPrerequisites$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listPrerequisites(http: HttpClient, rootUrl: string, params: ListPrerequisites$Params, context?: HttpContext): Observable<StrictHttpResponse<PrerequisiteTree>> {
@@ -51,6 +56,7 @@ export function listPrerequisites(http: HttpClient, rootUrl: string, params: Lis
     rb.query('direction', params.direction, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

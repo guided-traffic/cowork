@@ -39,7 +39,8 @@ const fail = (request: TestRequest, status: number) =>
         { status, statusText: `Status ${status}` },
       );
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 const listUrl = '/api/v1/tenants/acme/projects';
 
 const rejection = (promise: Promise<unknown>) =>
@@ -273,7 +274,7 @@ describe('ProjectsService', () => {
       };
 
       it('posts the project to the projects of the tenant and hands back the one that was made', async () => {
-        const done = service.create(body);
+        const done = service.create(body, formKey);
 
         const sent = write('POST', listUrl);
         expect(sent.request.body).toEqual(body);
@@ -285,28 +286,17 @@ describe('ProjectsService', () => {
         (await reload()).flush(pageOf(['VKO', 'COW'], null));
       });
 
-      it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-        const first = service.create(body);
-        const one = write('POST', listUrl);
-        one.flush(project('COW'));
-        await first;
+      it("sends the form's Idempotency-Key, one for each content it holds (docs/adr/0045 D3)", async () => {
+        const done = service.create(body, formKey);
+        const sent = write('POST', listUrl);
+        expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+        sent.flush(project('COW'));
+        await done;
         (await reload()).flush(pageOf(['VKO', 'COW'], null));
-        await settle();
-
-        const second = service.create({ ...body, key: 'OPS' });
-        const two = write('POST', listUrl);
-        two.flush(project('OPS'));
-        await second;
-        (await reload()).flush(pageOf(['VKO', 'COW', 'OPS'], null));
-
-        const keys = [one, two].map((sent) => sent.request.headers.get('Idempotency-Key'));
-        expect(keys[0]).toMatch(uuid);
-        expect(keys[1]).toMatch(uuid);
-        expect(keys[0]).not.toBe(keys[1]);
       });
 
       it('loads the list again, so that the new project shows in the navigation', async () => {
-        const done = service.create(body);
+        const done = service.create(body, formKey);
         write('POST', listUrl).flush(project('COW'));
         await done;
 
@@ -322,7 +312,7 @@ describe('ProjectsService', () => {
       });
 
       it('loads the list again only after the backend has answered', async () => {
-        const done = service.create(body);
+        const done = service.create(body, formKey);
         const sent = write('POST', listUrl);
         await settle();
 
@@ -338,7 +328,7 @@ describe('ProjectsService', () => {
         page('globex').flush(pageOf(['G'], null));
         await settle();
 
-        const done = service.create(body);
+        const done = service.create(body, formKey);
         write('POST', '/api/v1/tenants/globex/projects').flush(project('COW'));
         await done;
 
@@ -354,7 +344,7 @@ describe('ProjectsService', () => {
       ])(
         'rejects with the HTTP error of a %i and does not load the list again',
         async (status, code) => {
-          const outcome = rejection(service.create(body));
+          const outcome = rejection(service.create(body, formKey));
 
           write('POST', listUrl).flush(refusal(status, code).body, refusal(status, code).init);
           const error = await outcome;
@@ -665,7 +655,12 @@ describe('ProjectsService', () => {
     // first load — must show itself: the answer on its way was asked for before the write, so the
     // list loads once more when that load ends (core/refresh.ts).
     describe.each([
-      ['creating', 'POST', listUrl, (s: ProjectsService) => s.create({ key: 'COW', name: 'Cow' })],
+      [
+        'creating',
+        'POST',
+        listUrl,
+        (s: ProjectsService) => s.create({ key: 'COW', name: 'Cow' }, formKey),
+      ],
       [
         'updating',
         'PATCH',
@@ -803,6 +798,33 @@ describe('ProjectsService', () => {
       await settle();
 
       expect(keys()).toEqual(['VKO']);
+    });
+
+    it("sends each page's weak ETag on a poll and keeps the projects on a 304 (docs/adr/0054 D7)", async () => {
+      // The projects as they were loaded with their tags: two pages.
+      stream.next({ name: 'resync' });
+      await settle();
+      page('acme').flush(pageOf(['VKO'], 'c1'), { headers: { ETag: 'W/"one"' } });
+      answerMe();
+      (await nextPage('acme', 'c1')).flush(pageOf(['SEC'], null), {
+        headers: { ETag: 'W/"two"' },
+      });
+      await settle();
+      expect(keys()).toEqual(['VKO', 'SEC']);
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const first = page('acme');
+      expect(first.request.headers.get('If-None-Match')).toBe('W/"one"');
+      first.flush(null, { status: 304, statusText: 'Not Modified' });
+      answerMe();
+      const second = await nextPage('acme', 'c1');
+      expect(second.request.headers.get('If-None-Match')).toBe('W/"two"');
+      second.flush(null, { status: 304, statusText: 'Not Modified' });
+      await settle();
+
+      expect(service.projects.status()).toBe('resolved');
+      expect(keys()).toEqual(['VKO', 'SEC']);
     });
 
     it.each([401, 403, 404])(

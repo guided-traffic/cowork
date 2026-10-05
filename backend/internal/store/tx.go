@@ -72,6 +72,10 @@ type Event struct {
 	// Membership announces the act on the tenant's event stream as
 	// membership.changed (docs/adr/0054 D2); nil for every other act.
 	Membership *MembershipChange
+	// NewProject is the project the act created: published so that the
+	// tenant's streams admit its events before the next one is filtered, and
+	// sent to no client (docs/adr/0054 D3); uuid.Nil for every other act.
+	NewProject uuid.UUID
 	// Notices are whom the act tells in their inbox and why
 	// (docs/adr/0020 D2); none for an act that tells nobody.
 	Notices []Notice

@@ -49,7 +49,10 @@ token, is [chat.md](chat.md).
   answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
   request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
   longer request is shortened and the answer says what the token got
-  (`TestATokensLifetimeIsClampedToTheMaximum`). An agent token has at most `write` scope and
+  (`TestATokensLifetimeIsClampedToTheMaximum`); the token form knows the bound before it asks, from
+  `GET /auth/options`, which names it in whole days — public, like the password policy beside it:
+  it tells an anonymous reader how long a token of the installation can live at most, and nothing
+  of any token (`TestAuthOptions`). An agent token has at most `write` scope and
   every capability when the request leaves `capabilities` out; a list is the capabilities, and
   an empty one is none, the baseline only (ADR 0043 D4's nine switches all off); a restriction names a tenant the person belongs to
   and a project of it they see, and a tenant or project they cannot reach is "no such" in the
@@ -76,7 +79,12 @@ token, is [chat.md](chat.md).
   development database only.
 - **Listing.** `GET /api/v1/me/tokens` shows the person's tokens with their metadata — name,
   scope, agent flag, capabilities, restriction, dates, state — never the hash or the
-  plaintext; revoked and expired tokens stay listed (ADR 0035 D6).
+  plaintext; revoked and expired tokens stay listed (ADR 0035 D6). A restriction names its
+  project by key only while the person sees the project in a tenant they belong to — read in that
+  tenant's transaction under the project predicate — and `null` otherwise, so the list names no
+  project the person could not read (`projectKeys` in [`api/me.go`](../../backend/internal/api/me.go),
+  `TestATokenNamesItsProjectByKey`); the project's id, deprecated beside it, is the token's own
+  column.
 
 ## What a request with a token may do
 
@@ -290,7 +298,8 @@ the columns released before keep their places. The mark tells, it does not bind:
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
   filters the tenant's audit view (`GET …/audit`) by token, person, action, entity type and
-  period, as JSON or CSV. In CSV, a cell a spreadsheet would read as a formula — one starting
+  period, as JSON or CSV — in the browser on the tenant's audit page, where an act's token is one
+  click away from the acts it made ([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)). In CSV, a cell a spreadsheet would read as a formula — one starting
   with `=`, `+`, `-`, `@`, a tab or a carriage return — is prefixed with an apostrophe
   ([`api/tenants.go`](../../backend/internal/api/tenants.go) `neutralise`).
 
@@ -423,10 +432,14 @@ agent a `read` token, and an administrator finds them in the tenant's audit view
 
 Live today. A stream checks its token — or its session — and its person's membership at every
 heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
-stream whose token was revoked or expired, whose session ended, whose person left the tenant,
-or whose person lost a project still receives the events its filter admitted at the last
-heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
-makes with the dead token or session is refused at once; the window is the stream's alone.
+stream whose token was revoked or expired, whose session ended or whose person was deactivated
+still receives the events its filter admitted at the last heartbeat — the keys, versions and
+kinds of the acts, no content. A person who leaves the tenant or loses a project by an act — a
+grant removed, a membership derived away, a restriction, an access entry — loses it at the stream
+before its next event, because every such act makes the stream run the boundary and compute its
+filter again ([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read));
+only such a change made in the database past the API waits for the heartbeat. Every request the
+client makes with the dead token or session is refused at once; the window is the stream's alone.
 
 <a id="h-30"></a>
 ### H-30 — With the server key, an audit row's address hash gives the address back

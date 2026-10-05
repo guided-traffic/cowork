@@ -15,8 +15,8 @@ import (
 
 // GetMyToken answers the token the request presents and what it makes of the
 // request (docs/adr/0043 D6, docs/adr/0070 D2): the token as the list shows
-// it, the key of its project restriction, and the request's agent mark and
-// capabilities. A browser session presents no token.
+// it, its project restriction by key among it, and the request's agent mark
+// and capabilities. A browser session presents no token.
 func (s *Server) GetMyToken(ctx context.Context, _ apigen.GetMyTokenRequestObject) (apigen.GetMyTokenResponseObject, error) {
 	p := principal(ctx)
 	if p.TokenID == uuid.Nil {
@@ -40,34 +40,23 @@ func (s *Server) GetMyToken(ctx context.Context, _ apigen.GetMyTokenRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	listed := tokenView(tok, s.h.opts.Now())
+	keys, err := s.projectKeys(ctx, p.PersonID, []readq.ListTokensOfUserRow{tok})
+	if err != nil {
+		return nil, err
+	}
+	listed := tokenView(tok, s.h.opts.Now(), keys)
 	out := apigen.GetMyToken200JSONResponse{
 		Id: listed.Id, Name: listed.Name, Scope: listed.Scope, Agent: listed.Agent, Capabilities: listed.Capabilities,
-		RestrictedTenant: listed.RestrictedTenant, RestrictedProjectId: listed.RestrictedProjectId,
-		CreatedAt: listed.CreatedAt, ExpiresAt: listed.ExpiresAt, LastUsedOn: listed.LastUsedOn,
-		RevokedAt: listed.RevokedAt, State: listed.State, RestrictedProject: nullableString(nil),
+		RestrictedTenant: listed.RestrictedTenant, RestrictedProject: listed.RestrictedProject,
+		RestrictedProjectId: listed.RestrictedProjectId, //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
+		CreatedAt:           listed.CreatedAt, ExpiresAt: listed.ExpiresAt, LastUsedOn: listed.LastUsedOn,
+		RevokedAt: listed.RevokedAt, State: listed.State,
 		Request: apigen.RequestMark{Agent: p.IsAgent(), AgentMark: nullableString(nil), Capabilities: []apigen.Capability{}},
 	}
 	if p.IsAgent() {
 		out.Request.AgentMark = nullableOf(&p.Agent)
 		for _, c := range p.Capabilities {
 			out.Request.Capabilities = append(out.Request.Capabilities, apigen.Capability(c))
-		}
-	}
-	if p.RestrictedProjectID != uuid.Nil {
-		err := s.db.InTenant(ctx, p.RestrictedTenantID, func(r *store.Reader) error {
-			row, err := r.GetVisibleProjectByID(ctx, readq.GetVisibleProjectByIDParams{TenantID: p.RestrictedTenantID, ID: p.RestrictedProjectID})
-			if err == nil {
-				out.RestrictedProject = nullableOf(&row.Key)
-			}
-			if errors.Is(err, pgx.ErrNoRows) {
-				// The person no longer sees the project; the token reaches nothing.
-				return nil
-			}
-			return err
-		})
-		if err != nil {
-			return nil, err
 		}
 	}
 	return out, nil

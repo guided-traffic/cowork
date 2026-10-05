@@ -41,7 +41,10 @@ Since 2026-10-04 D2's notifications reference their act's row
 ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D3,
 [migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)), and marking
 one's notifications read is the act `read` (added to D1's list below), in the tenant of the
-notifications.
+notifications. Since the same day the tenant's view of D6 has numbered pages with a total and a
+page in the browser for the tenant's administrators — its filters, its pages and its CSV
+([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)); the per-token view
+and the global administrator's reading still arrive with their routes.
 
 ## Context
 

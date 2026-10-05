@@ -8,6 +8,7 @@ import {
   updateGroupMapping,
 } from '../api/functions';
 import { GroupMapping, Role } from '../api/models';
+import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { MembersService } from './members.service';
@@ -41,19 +42,23 @@ export class GroupMappingsService {
     return tenant !== null && reads ? tenant : undefined;
   });
 
+  private readonly pages = new ConditionalPages(this.api);
+
   readonly mappings: ResourceRef<GroupMapping[] | undefined> = resource({
     params: () => this.administered(),
     loader: ({ params: tenant }) =>
-      keepShown(this.mappings, async () => {
-        const mappings: GroupMapping[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listGroupMappings, { tenant, cursor, limit: 200 });
-          mappings.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return mappings;
-      }),
+      keepShown(this.mappings, () =>
+        this.pages.load(async (page) => {
+          const mappings: GroupMapping[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listGroupMappings, { tenant, cursor, limit: 200 });
+            mappings.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return mappings;
+        }),
+      ),
   });
 
   readonly list = computed<GroupMapping[]>(() =>

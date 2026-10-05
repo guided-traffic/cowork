@@ -312,7 +312,34 @@ describe('CommentItem', () => {
       picker.dispatchEvent(new Event('change'));
       await settle(fixture);
 
-      expect(attach).toHaveBeenCalledExactlyOnceWith('acme/COW-12', file, 'c-1');
+      expect(attach).toHaveBeenCalledExactlyOnceWith(
+        'acme/COW-12',
+        file,
+        expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+        'c-1',
+      );
+    });
+
+    it('sends the same file again with the same Idempotency-Key after a lost answer, and a new one once it went through (docs/adr/0045 D3)', async () => {
+      attach.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await render();
+      const picker = el(fixture, 'comment-attach-input-c-1') as HTMLInputElement;
+      const pick = async (file: File) => {
+        Object.defineProperty(picker, 'files', { value: [file], configurable: true });
+        picker.dispatchEvent(new Event('change'));
+        await settle(fixture);
+      };
+      const shot = new File(['png'], 'shot.png', { type: 'image/png', lastModified: 1 });
+
+      await pick(shot);
+      await pick(new File(['png'], 'shot.png', { type: 'image/png', lastModified: 1 }));
+      await pick(shot);
+      const keys = attach.mock.calls.map((call) => call[2]);
+
+      expect(keys[1]).toBe(keys[0]);
+      expect(keys[2]).not.toBe(keys[1]);
     });
 
     it('toasts a refused upload', async () => {

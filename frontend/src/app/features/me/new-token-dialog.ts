@@ -19,6 +19,7 @@ import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { Capability, Scope, TokenCreate, TokenCreated } from '../../api/models';
 import { CAPABILITY } from '../../api/models/capability-array';
+import { AuthService } from '../../core/auth.service';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { TokensService } from '../../core/tokens.service';
@@ -44,8 +45,9 @@ export const scopeMeanings: Record<Scope, string> = {
 };
 
 /**
- * The longest lifetime the form takes, in days: the bound of the API's schema. The installation
- * holds a token to its own maximum, shortens a longer one, and says what the token got.
+ * The longest lifetime the API's schema takes, in days. The form offers the installation's own
+ * maximum within it once `/auth/options` names it (docs/adr/0035 D4); until then this bound, and the
+ * installation shortens a longer lifetime and the token shows the expiry it got.
  */
 export const maxLifetimeDays = 3650;
 
@@ -57,7 +59,8 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
  * (docs/adr/0043), a restriction to a tenant and to a project of it, and a lifetime.
  * An agent token has at most `write` scope, and the form says so before the server has to; one
  * with no capability keeps the baseline and nothing more, which is a choice like any other. The
- * lifetime is left empty unless the person fills it, which is the installation's default. The
+ * lifetime is left empty unless the person fills it, which is the installation's default, and goes
+ * up to the installation's maximum that `/auth/options` names. The
  * answer carries the plaintext, which the dialog hands on in the event and keeps nowhere. While
  * the request is out nothing closes the dialog, so that a refusal always lands in the form that
  * was sent.
@@ -324,7 +327,8 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             (ngModelChange)="days.set($event)"
             name="lifetime"
             [min]="1"
-            [max]="maxDays"
+            [max]="maxDays()"
+            [disabled]="maxDays() < 1"
             [maxFractionDigits]="0"
             [useGrouping]="false"
             [showButtons]="false"
@@ -343,8 +347,15 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
             data-testid="token-lifetime"
           />
           <small class="muted" id="token-lifetime-hint" data-testid="token-lifetime-hint">
-            Empty is the installation's default. Up to {{ maxDays }} days; the installation may
-            shorten it, and the token shows its expiry once it exists.
+            @if (installationMax() === undefined) {
+              Empty is the installation's default. Up to {{ maxDays() }} days; the installation may
+              shorten it, and the token shows its expiry once it exists.
+            } @else if (maxDays() < 1) {
+              This installation gives a token less than a day: leave it empty for its default.
+            } @else {
+              Empty is the installation's default. Up to {{ maxDays() }} days, the longest this
+              installation gives a token.
+            }
           </small>
           @if (errors()['lifetime_days']; as error) {
             <small
@@ -441,11 +452,22 @@ export class NewTokenDialog {
   private readonly tokens = inject(TokensService);
   private readonly problems = inject(ProblemService);
   private readonly session = inject(SessionService);
+  private readonly auth = inject(AuthService);
 
   protected readonly scopeMeanings = scopeMeanings;
   protected readonly everything = [...CAPABILITY];
   protected readonly assistedSet = assisted;
-  protected readonly maxDays = maxLifetimeDays;
+  /**
+   * The installation's longest lifetime in whole days, `COWORK_TOKEN_MAX_LIFETIME` as
+   * `/auth/options` names it; undefined until it answers, or where it cannot be read.
+   */
+  protected readonly installationMax = computed(() =>
+    this.auth.options.hasValue() ? this.auth.options.value().token_max_lifetime_days : undefined,
+  );
+  /** The longest lifetime the form takes: the installation's, within the schema's bound. */
+  protected readonly maxDays = computed(() =>
+    Math.min(maxLifetimeDays, this.installationMax() ?? maxLifetimeDays),
+  );
   protected readonly describedBy = describedBy;
   protected readonly capabilityOptions = CAPABILITY.map((value) => ({
     value,
@@ -488,7 +510,7 @@ export class NewTokenDialog {
     const days = this.days();
     return (
       this.name().trim() !== '' &&
-      (days === null || (Number.isInteger(days) && days >= 1 && days <= maxLifetimeDays)) &&
+      (days === null || (Number.isInteger(days) && days >= 1 && days <= this.maxDays())) &&
       !this.saving()
     );
   });

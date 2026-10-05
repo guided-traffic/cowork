@@ -37,6 +37,27 @@ func (q *Queries) CountRecentRefusals(ctx context.Context, arg CountRecentRefusa
 	return count, err
 }
 
+const countTokensOfUser = `-- name: CountTokensOfUser :one
+SELECT count(*)::bigint AS tokens
+FROM tokens t
+WHERE t.user_id = $1
+  AND ($2::uuid IS NULL OR t.id = $2::uuid)
+`
+
+type CountTokensOfUserParams struct {
+	UserID uuid.UUID
+	OnlyID *uuid.UUID
+}
+
+// The person's tokens, for a numbered page's total; one for a restricted
+// token.
+func (q *Queries) CountTokensOfUser(ctx context.Context, arg CountTokensOfUserParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTokensOfUser, arg.UserID, arg.OnlyID)
+	var tokens int64
+	err := row.Scan(&tokens)
+	return tokens, err
+}
+
 const getTokenByHash = `-- name: GetTokenByHash :one
 SELECT id, user_id, name, scope, restricted_tenant_id, restricted_project_id, agent,
        capabilities, created_at, expires_at, last_used_on, revoked_at
@@ -105,22 +126,23 @@ func (q *Queries) GetTokenOfUser(ctx context.Context, arg GetTokenOfUserParams) 
 }
 
 const listTokensOfUser = `-- name: ListTokensOfUser :many
-SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_project_id, t.created_at,
-       t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
+SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_tenant_id, t.restricted_project_id,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
 FROM tokens t
 LEFT JOIN tenants rt ON rt.id = t.restricted_tenant_id
 WHERE t.user_id = $1
   AND ($2::uuid IS NULL OR t.id = $2::uuid)
   AND ($3::uuid IS NULL OR t.id < $3::uuid)
 ORDER BY t.id DESC
-LIMIT $4
+LIMIT $5 OFFSET $4
 `
 
 type ListTokensOfUserParams struct {
-	UserID   uuid.UUID
-	OnlyID   *uuid.UUID
-	Before   *uuid.UUID
-	PageSize int32
+	UserID     uuid.UUID
+	OnlyID     *uuid.UUID
+	Before     *uuid.UUID
+	PageOffset int32
+	PageSize   int32
 }
 
 type ListTokensOfUserRow struct {
@@ -129,6 +151,7 @@ type ListTokensOfUserRow struct {
 	Scope                domain.Scope
 	Agent                bool
 	Capabilities         []string
+	RestrictedTenantID   *uuid.UUID
 	RestrictedProjectID  *uuid.UUID
 	CreatedAt            time.Time
 	ExpiresAt            time.Time
@@ -138,12 +161,14 @@ type ListTokensOfUserRow struct {
 }
 
 // The person's tokens, newest first, revoked and expired ones included
-// (docs/adr/0035 D6); only one of them for a restricted token.
+// (docs/adr/0035 D6); only one of them for a restricted token. By id after a
+// cursor, or a numbered page by offset (docs/adr/0048 D1, D2).
 func (q *Queries) ListTokensOfUser(ctx context.Context, arg ListTokensOfUserParams) ([]ListTokensOfUserRow, error) {
 	rows, err := q.db.Query(ctx, listTokensOfUser,
 		arg.UserID,
 		arg.OnlyID,
 		arg.Before,
+		arg.PageOffset,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -159,6 +184,7 @@ func (q *Queries) ListTokensOfUser(ctx context.Context, arg ListTokensOfUserPara
 			&i.Scope,
 			&i.Agent,
 			&i.Capabilities,
+			&i.RestrictedTenantID,
 			&i.RestrictedProjectID,
 			&i.CreatedAt,
 			&i.ExpiresAt,

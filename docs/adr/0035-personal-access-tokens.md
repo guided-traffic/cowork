@@ -73,6 +73,12 @@ gate on the tokens of the identity provider's persons
 the administration acts that give access ([docs/security/tokens.md](../security/tokens.md#what-only-a-session-does)).
 Still not built: D5's administrator view and revocation of the members' tokens.
 
+**Built** (phase 3, 2026-10-04): the person's token list names D2's project restriction by key,
+`restricted_project`, as the token's own answer does — only while the person sees the project in a
+tenant they belong to — and keeps the project's id beside it, deprecated, for the clients of
+`/api/v1` ([`api/me.go`](../../backend/internal/api/me.go) `projectKeys`); D4's maximum reaches the
+token form before it asks: `GET /auth/options` names it in whole days, `token_max_lifetime_days`.
+
 ## Context
 
 An LLM operates cowork before any UI exists ([project plan](../planning/project-plan.md),

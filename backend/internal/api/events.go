@@ -87,7 +87,7 @@ func (h *handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 		writeInbox(w, unread)
 	}
 	flusher.Flush()
-	h.pump(ctx, w, flusher, stream, t, p, me)
+	h.pump(ctx, w, flusher, stream, t, p, me, filter)
 }
 
 // personUnread is the unread count a person-level stream tells: the person's
@@ -100,30 +100,39 @@ func (h *handler) personUnread(ctx context.Context) (int, error) {
 	return h.unread(ctx, tenants)
 }
 
+// pumpState is what a stream's pump holds between two events: the filter it
+// computed last, how many of the stream's admission changes that filter
+// knows, and the wait of a burst of inbox changes.
+type pumpState struct {
+	filter     events.Filter
+	refiltered uint64
+	inbox      debounce
+}
+
 // pump writes the stream's events until it ends: the client leaves, the hub
-// ends it, or the heartbeat finds the token or the membership gone. Each
-// heartbeat also recomputes what the stream admits. A person-level stream
-// tells the unread count once a burst of inbox changes is over.
-func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, t tenantScope, p auth.Principal, me bool) {
+// ends it, or the heartbeat finds the token or the membership gone. An act
+// that changes what the stream may admit makes it compute its filter again
+// before the next event, and so does every heartbeat (docs/adr/0054 D3). A
+// person-level stream tells the unread count once a burst of inbox changes is
+// over.
+func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, stream *events.Stream, t tenantScope, p auth.Principal, me bool, filter events.Filter) {
 	beat := h.opts.Heartbeat
 	if beat <= 0 {
 		beat = defaultHeartbeat
 	}
 	ticker := time.NewTicker(beat)
 	defer ticker.Stop()
-	var inbox debounce
+	st := pumpState{filter: filter}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case e := <-stream.C:
-			if e.Entity == store.EntityInbox {
-				inbox.start()
-			} else if !h.writeStreamed(ctx, w, e, t, p) {
+			if !h.handOn(ctx, w, stream, &st, e, t, p, me) {
 				return
 			}
-		case <-inbox.due:
-			inbox.due = nil
+		case <-st.inbox.due:
+			st.inbox.due = nil
 			unread, err := h.personUnread(ctx)
 			if err != nil {
 				h.streamFailed(ctx, err)
@@ -141,15 +150,60 @@ func (h *handler) pump(ctx context.Context, w http.ResponseWriter, flusher http.
 			if !ok {
 				return
 			}
-			filter, err := h.streamFilter(ctx, now, p, me)
+			seen := h.opts.Events.Changes(stream)
+			f, err := h.streamFilter(ctx, now, p, me)
 			if err != nil {
 				return
 			}
-			h.opts.Events.Refilter(stream, filter)
+			h.opts.Events.Refilter(stream, f, seen)
+			st.filter, st.refiltered = f, max(st.refiltered, seen)
 			_, _ = fmt.Fprint(w, ": heartbeat\n\n")
 		}
 		flusher.Flush()
 	}
+}
+
+// handOn handles one event the hub handed over: it computes the stream's
+// filter again first when the event changed what the stream may admit, starts
+// the wait of an inbox burst, drops what the hub withheld or what the filter
+// refuses of an event the hub could not judge, and writes the rest
+// (writeStreamed). It is false when the stream must end.
+func (h *handler) handOn(ctx context.Context, w http.ResponseWriter, stream *events.Stream, st *pumpState, e events.Event, t tenantScope, p auth.Principal, me bool) bool {
+	if e.Refilter > st.refiltered {
+		f, seen, ok := h.refilter(ctx, stream, t, p, me)
+		if !ok {
+			return false
+		}
+		st.filter, st.refiltered = f, seen
+	}
+	switch {
+	case e.Entity == store.EntityInbox:
+		st.inbox.start()
+		return true
+	case e.Withheld || (e.Unjudged && !st.filter.Admits(e)):
+		return true
+	}
+	return h.writeStreamed(ctx, w, e, t, p)
+}
+
+// refilter computes what the stream admits again after an act that changes
+// it: the person's role in the tenant as the boundary reads it now, and the
+// projects they see. A person the boundary no longer admits ends the stream,
+// as the heartbeat would. It answers the filter and how many admission
+// changes it knows.
+func (h *handler) refilter(ctx context.Context, stream *events.Stream, t tenantScope, p auth.Principal, me bool) (events.Filter, uint64, bool) {
+	seen := h.opts.Events.Changes(stream)
+	now, perr := h.boundary(ctx, t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
+	if perr != nil {
+		return events.Filter{}, 0, false
+	}
+	f, err := h.streamFilter(ctx, now, p, me)
+	if err != nil {
+		h.streamFailed(ctx, err)
+		return events.Filter{}, 0, false
+	}
+	h.opts.Events.Refilter(stream, f, seen)
+	return f, seen, true
 }
 
 // debounce is the wait after the first inbox change of a burst

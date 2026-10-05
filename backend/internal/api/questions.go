@@ -106,11 +106,15 @@ func (s *Server) ListQuestions(ctx context.Context, req apigen.ListQuestionsRequ
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(q readq.ListQuestionsRow) string { return strconv.Itoa(int(q.Number)) })
-	out := apigen.ListQuestions200JSONResponse{Items: make([]apigen.Question, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.QuestionList{Items: make([]apigen.Question, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, q := range rows {
 		out.Items = append(out.Items, questionView(question(q)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListQuestions304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListQuestions200JSONResponse{Body: out, Headers: apigen.ListQuestions200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetQuestion answers one question.

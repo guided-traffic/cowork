@@ -13,6 +13,7 @@ import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
 import { listMyAssigned } from '../../api/functions';
 import { MyTicket } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
 import { followPages, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
 import { keepShown } from '../../core/refresh';
@@ -97,6 +98,9 @@ export class Assigned {
   /** The person's id, a primitive, so that `me` loaded again leaves the list alone. */
   private readonly person = computed(() => this.session.person()?.id);
 
+  /** The weak `ETag`s of the pages the list holds, for a poll that finds them unchanged. */
+  private readonly conditional = new ConditionalPages(this.api);
+
   protected readonly list: ResourceRef<PersonPages<MyTicket> | undefined> = resource({
     params: () => {
       const person = this.person();
@@ -104,8 +108,10 @@ export class Assigned {
     },
     loader: ({ params }) =>
       keepShown(this.list, () =>
-        followPages(params.pages, (cursor) =>
-          this.api.invoke(listMyAssigned, { cursor, limit: personPageSize }),
+        this.conditional.load((page) =>
+          followPages(params.pages, (cursor) =>
+            page(listMyAssigned, { cursor, limit: personPageSize }),
+          ),
         ),
       ),
   });

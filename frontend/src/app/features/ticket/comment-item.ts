@@ -14,6 +14,7 @@ import { ConflictNote } from '../../shared/conflict-note';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { FilePreview } from './file-preview';
 import { fileIcon } from './records-cards';
+import { UploadKey } from '../../shared/upload-key';
 
 /**
  * One comment of the thread (docs/adr/0015): its author, the agent or the token it came through,
@@ -258,6 +259,8 @@ export class CommentItem {
   private readonly conversation = inject(Conversation);
   private readonly records = inject(TicketRecords);
   private readonly problems = inject(ProblemService);
+  /** The key of an upload whose answer did not come, for the same file picked again. */
+  private readonly uploadKey = new UploadKey();
   private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
 
@@ -358,20 +361,33 @@ export class CommentItem {
     });
   }
 
+  /**
+   * Uploads a file picked to the comment, with the key of an upload of the same file to the same
+   * comment whose answer did not come (`UploadKey`).
+   */
   protected async attach(picker: HTMLInputElement): Promise<void> {
     const file = picker.files?.[0];
     picker.value = '';
-    if (file) {
-      await this.guard(() => this.records.attach(this.ticketKey(), file, this.comment().id));
+    if (!file) {
+      return;
+    }
+    const ticket = this.ticketKey();
+    const comment = this.comment().id;
+    const key = this.uploadKey.for(`${ticket}\n${comment}`, file);
+    if (await this.guard(() => this.records.attach(ticket, file, key, comment))) {
+      this.uploadKey.answered();
     }
   }
 
-  private async guard(write: () => Promise<unknown>): Promise<void> {
+  /** Runs a write, reports its problem, and says whether it went through. */
+  private async guard(write: () => Promise<unknown>): Promise<boolean> {
     this.busy.set(true);
     try {
       await write();
+      return true;
     } catch (error) {
       this.problems.report(error);
+      return false;
     } finally {
       this.busy.set(false);
     }

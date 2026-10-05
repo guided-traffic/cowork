@@ -21,6 +21,7 @@ import { ConflictNote } from '../../shared/conflict-note';
 import { ago, Clock, duration, parseDuration, size, today } from '../../shared/time';
 import { FilePreview } from './file-preview';
 import { TicketRelations } from './ticket-relations';
+import { UploadKey } from '../../shared/upload-key';
 
 /** The icon of a file by its content type. */
 export function fileIcon(contentType: string): string {
@@ -149,15 +150,20 @@ export class AttachmentsCard {
     return ago(iso, this.clock.now());
   }
 
+  /** The key of an upload whose answer did not come, for the same file picked again. */
+  private readonly uploadKey = new UploadKey();
+
   protected async upload(picker: HTMLInputElement): Promise<void> {
     const file = picker.files?.[0];
     picker.value = '';
     if (!file) {
       return;
     }
+    const ticket = this.ticketKey();
     this.busy.set(true);
     try {
-      await this.records.attach(this.ticketKey(), file);
+      await this.records.attach(ticket, file, this.uploadKey.for(ticket, file));
+      this.uploadKey.answered();
     } catch (error) {
       this.problems.report(error);
     } finally {
@@ -507,14 +513,30 @@ export class TimeCard {
     return ago(iso, this.clock.now());
   }
 
+  /**
+   * The Idempotency-Key of the booking this form is making: one for each ticket, day, duration and
+   * note, so a retry of a lost answer is answered again instead of booking the time twice; any
+   * change, and a booking made, make a new one (docs/adr/0045 D3).
+   */
+  private readonly key = linkedSignal(() => {
+    this.ticketKey();
+    this.day();
+    this.minutes();
+    this.note();
+    return crypto.randomUUID();
+  });
+
   protected async book(): Promise<void> {
     const minutes = this.minutes();
     const key = this.ticketKey();
+    const idempotencyKey = this.key();
     if (minutes === null) {
       return;
     }
     if (
-      (await this.write(() => this.records.book(key, this.day(), minutes, this.note()))) &&
+      (await this.write(() =>
+        this.records.book(key, this.day(), minutes, this.note(), idempotencyKey),
+      )) &&
       this.ticketKey() === key
     ) {
       this.text.set('');

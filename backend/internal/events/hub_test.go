@@ -246,11 +246,71 @@ func TestRefilter(t *testing.T) {
 	f := newFixtures()
 	h := New(time.Minute, 0)
 	s, _, _ := h.Subscribe(f.tenant, f.filter(), nil)
-	h.Refilter(s, Filter{Person: f.person, Projects: map[uuid.UUID]bool{f.hidden: true}})
+	h.Refilter(s, Filter{Person: f.person, Projects: map[uuid.UUID]bool{f.hidden: true}}, h.Changes(s))
 	h.Publish(f.note(f.project))
 	gained := f.note(f.hidden)
 	h.Publish(gained)
 	got := <-s.C
 	assert.Equal(t, gained.ID, got.ID, "the project gained")
 	assert.Empty(t, s.C, "the project lost")
+}
+
+// docs/adr/0054 D3: an act that changes what a stream may admit — a project
+// created, a membership act — reaches every stream marked to refilter, and the
+// hub hands the stream every later event unjudged until the stream has
+// computed its filter after the act: no event is dropped by a filter that does
+// not know it yet.
+func TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters(t *testing.T) {
+	f := newFixtures()
+	h := New(time.Minute, 0)
+	s, _, _ := h.Subscribe(f.tenant, f.filter(), nil)
+	fresh := uuid.New()
+	first := f.note(f.project)
+	h.Publish(first)
+	<-s.C
+
+	created := store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Project: fresh,
+		Entity: store.EntityProject, Action: "created"}
+	h.Publish(created)
+	got := <-s.C
+	assert.Equal(t, uint64(1), got.Refilter, "the creation marks the stream to refilter")
+	assert.True(t, got.Withheld, "and is no event a client is told of")
+	assert.False(t, f.filter().Admits(Event{Notification: created}))
+
+	filed := f.note(fresh)
+	h.Publish(filed)
+	got = <-s.C
+	assert.Equal(t, filed.ID, got.ID, "an event of the new project waits for the stream's own judgement")
+	assert.True(t, got.Unjudged)
+	assert.Zero(t, got.Refilter)
+
+	// The stream reads how many changes there were before it computes its filter;
+	// a change after that leaves it unjudged still.
+	seen := h.Changes(s)
+	require.Equal(t, uint64(1), seen)
+	h.Publish(store.Notification{ID: uuid.Must(uuid.NewV7()), Tenant: f.tenant, Entity: store.EntityMembership,
+		Action: "created", Person: &f.other, Audience: store.AudienceMembers})
+	got = <-s.C
+	assert.Equal(t, uint64(2), got.Refilter)
+	assert.True(t, got.Unjudged, "a membership act while the filter is behind")
+	h.Refilter(s, Filter{Person: f.person, Projects: map[uuid.UUID]bool{f.project: true, fresh: true}}, seen)
+	h.Publish(f.note(f.hidden))
+	got = <-s.C
+	assert.True(t, got.Unjudged, "the filter knows one of two changes: still unjudged")
+
+	h.Refilter(s, Filter{Person: f.person, Projects: map[uuid.UUID]bool{f.project: true, fresh: true}}, h.Changes(s))
+	h.Publish(f.note(f.hidden))
+	assert.Empty(t, s.C, "a filter that knows every change judges again")
+	again := f.note(fresh)
+	h.Publish(again)
+	got = <-s.C
+	assert.Equal(t, again.ID, got.ID)
+	assert.False(t, got.Unjudged)
+
+	_, replay, _ := h.Subscribe(f.tenant, Filter{Person: f.person, Projects: map[uuid.UUID]bool{fresh: true}}, &first.ID)
+	require.NotEmpty(t, replay)
+	assert.Equal(t, filed.ID, replay[0].ID, "a replay holds no creation of a project")
+	for _, e := range replay {
+		assert.NotEqual(t, store.EntityProject, e.Entity)
+	}
 }

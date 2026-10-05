@@ -364,7 +364,8 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
   (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
-  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  come from the client: the browser's creating forms hold one per content
+  ([frontend.md](frontend.md#where-state-lives)), `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
@@ -391,8 +392,15 @@ and an access entry are addressed by their person and written without it, like a
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
 
-The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
-page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
+The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
+`listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
+`listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
+`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions` — answer a
+weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
+`304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
+`tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
+is the caller's: two callers who read the same list differently — an administrator the members'
+addresses, a member not — get two tags. An
 attachment's content answers its quoted hex SHA-256 and `304` likewise.
 
 ## Paging
@@ -414,10 +422,15 @@ list answers that `invalid_cursor`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
-- `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
-  `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
-  per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
-  `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
+- The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
+  `listMembers`, `listMyTokens` and `listProjects` — also take numbered pages: `page` with
+  `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
+  and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
+  beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
+  is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or `per_page` without `page`,
+  is `400 validation_failed` ([ADR 0048] D2). `tablePage` in [`cursor.go`](../../backend/internal/api/cursor.go)
+  reads both modes for every table but the two ticket lists, whose `paging` in
+  [`ticketlist.go`](../../backend/internal/api/ticketlist.go) also seals the rank's cursor.
 - The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
   them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
@@ -492,3 +505,4 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
+[ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md

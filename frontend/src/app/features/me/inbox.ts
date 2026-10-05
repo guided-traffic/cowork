@@ -14,6 +14,7 @@ import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
 import { listMyInbox } from '../../api/functions';
 import { InboxEntry, TenantRef, TicketRef } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
 import { followPages, InboxService, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
 import { keepShown, refresh } from '../../core/refresh';
@@ -110,6 +111,9 @@ export class Inbox {
   /** The person's id, a primitive, so that `me` loaded again leaves the list alone. */
   private readonly person = computed(() => this.session.person()?.id);
 
+  /** The weak `ETag`s of the pages the list holds, for a poll that finds them unchanged. */
+  private readonly conditional = new ConditionalPages(this.api);
+
   protected readonly list: ResourceRef<PersonPages<InboxEntry> | undefined> = resource({
     params: () => {
       const person = this.person();
@@ -117,8 +121,10 @@ export class Inbox {
     },
     loader: ({ params }) =>
       keepShown(this.list, () =>
-        followPages(params.pages, (cursor) =>
-          this.api.invoke(listMyInbox, { cursor, limit: personPageSize }),
+        this.conditional.load((page) =>
+          followPages(params.pages, (cursor) =>
+            page(listMyInbox, { cursor, limit: personPageSize }),
+          ),
         ),
       ),
   });

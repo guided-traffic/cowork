@@ -119,16 +119,6 @@ export class Tokens {
     return token.capabilities.length === 0 ? 'the baseline only' : token.capabilities.join(', ');
   }
 
-  /**
-   * The key of the project a token is restricted to. Until the key is found — the person left the
-   * tenant, or no longer sees the project — the end of its id stands in: the id is a UUIDv7, whose
-   * start is the time it was made and the same for projects made in the same minute, and whose end
-   * is random.
-   */
-  protected projectKey(id: string): string {
-    return this.tokens.keyOfProject(id) ?? id.slice(-8);
-  }
-
   protected created({ token: plaintext, ...token }: TokenCreated): void {
     this.issued.set(token);
     this.secret.set(plaintext ?? null);

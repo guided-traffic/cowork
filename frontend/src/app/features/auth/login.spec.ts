@@ -67,6 +67,7 @@ const offered = (
   oidc,
   oidc_name: name,
   password_min_length: 12,
+  token_max_lifetime_days: 365,
 });
 
 describe('Login', () => {
