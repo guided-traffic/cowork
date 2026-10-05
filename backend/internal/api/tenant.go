@@ -49,6 +49,7 @@ func tenantFrom(ctx context.Context) tenantScope {
 var tenantWideForProjectTokens = map[string]bool{
 	"listProjects":      true,
 	"listTenantTickets": true,
+	"searchTenant":      true,
 	"resolveTicket":     true,
 	opStreamEvents:      true,
 }

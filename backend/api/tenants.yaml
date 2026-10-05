@@ -575,6 +575,37 @@ ticketBody:
     - $ref: './components/parameters.yaml#/TenantSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicketBody
+    tags: [tickets]
+    summary: The ticket's body, as Markdown and rendered
+    description: |
+      The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+      own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+      is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+      as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+      installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+      image shows only when it names a raster attachment of this ticket, from that attachment's
+      own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+      Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+      replacement of the body names in `If-Match`; the HTML changes with the ticket's
+      attachments as well, which raise no version.
+    responses:
+      '200':
+        description: The body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketBody'
+            example:
+              body: "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7)."
+              body_html: "<h2>Current state</h2>\n<p>The gate fails on <code>readyReplicas</code> — see <a href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\">the run</a>.</p>"
+              version: 4
+      default:
+        $ref: './components/responses.yaml#/Problem'
   put:
     operationId: replaceTicketBody
     tags: [tickets]

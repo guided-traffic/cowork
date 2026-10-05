@@ -758,6 +758,33 @@ func (e Scope) Valid() bool {
 	}
 }
 
+// Defines values for SearchFoundIn.
+const (
+	SearchFoundInAttachment SearchFoundIn = "attachment"
+	SearchFoundInComment    SearchFoundIn = "comment"
+	SearchFoundInKey        SearchFoundIn = "key"
+	SearchFoundInQuestion   SearchFoundIn = "question"
+	SearchFoundInTicket     SearchFoundIn = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the SearchFoundIn enum.
+func (e SearchFoundIn) Valid() bool {
+	switch e {
+	case SearchFoundInAttachment:
+		return true
+	case SearchFoundInComment:
+		return true
+	case SearchFoundInKey:
+		return true
+	case SearchFoundInQuestion:
+		return true
+	case SearchFoundInTicket:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecurityClass.
 const (
 	SecurityClassBoundary  SecurityClass = "boundary"
@@ -1631,7 +1658,11 @@ type Comment struct {
 	Author Person                    `json:"author"`
 
 	// Body Markdown; null once withdrawn (docs/adr/0015 D3)
-	Body      nullable.Nullable[string] `json:"body"`
+	Body nullable.Nullable[string] `json:"body"`
+
+	// BodyHtml The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+	// the Markdown; null once withdrawn
+	BodyHtml  nullable.Nullable[string] `json:"body_html"`
 	CreatedAt time.Time                 `json:"created_at"`
 
 	// Edited The comment has an edit history
@@ -2218,7 +2249,10 @@ type ProposalTenant struct {
 // Question defines model for Question.
 type Question struct {
 	// Answer Markdown
-	Answer     nullable.Nullable[string]    `json:"answer"`
+	Answer nullable.Nullable[string] `json:"answer"`
+
+	// AnswerHtml The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
+	AnswerHtml nullable.Nullable[string]    `json:"answer_html"`
 	AnsweredAt nullable.Nullable[time.Time] `json:"answered_at"`
 
 	// AnsweredBy The person whose answer it is, also when an agent wrote it down
@@ -2244,7 +2278,10 @@ type Question struct {
 	Number int `json:"number"`
 
 	// Options Markdown: the context and the options
-	Options        string `json:"options"`
+	Options string `json:"options"`
+
+	// OptionsHtml The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
+	OptionsHtml    string `json:"options_html"`
 	Question       string `json:"question"`
 	Recommendation string `json:"recommendation"`
 
@@ -2388,11 +2425,59 @@ type Role string
 // Scope A token's scope (docs/adr/0035 D3)
 type Scope string
 
+// SearchFoundIn Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+// the body; one of its comments; one of its questions; an attachment's file name
+type SearchFoundIn string
+
+// SearchHit defines model for SearchHit.
+type SearchHit struct {
+	// Comment The comment the hit is in
+	Comment nullable.Nullable[openapi_types.UUID] `json:"comment"`
+
+	// FoundIn Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+	// the body; one of its comments; one of its questions; an attachment's file name
+	FoundIn SearchFoundIn `json:"found_in"`
+
+	// Key The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+	Key string `json:"key"`
+
+	// Question The number of the question the hit is in
+	Question nullable.Nullable[int] `json:"question"`
+
+	// Snippet The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):
+	// the body for a hit in the ticket's own text or its key, the comment, the question with its
+	// options, recommendation and answer, the file name. Text, never HTML; empty where that text is
+	Snippet []SnippetPart `json:"snippet"`
+
+	// State docs/adr/0009 D1
+	State  TicketState `json:"state"`
+	Tenant TenantRef   `json:"tenant"`
+	Title  string      `json:"title"`
+
+	// Type docs/adr/0008 D1
+	Type TicketType `json:"type"`
+}
+
+// SearchHitList defines model for SearchHitList.
+type SearchHitList struct {
+	Items      []SearchHit               `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
 // SecurityClass defines model for SecurityClass.
 type SecurityClass string
 
 // Severity defines model for Severity.
 type Severity string
+
+// SnippetPart defines model for SnippetPart.
+type SnippetPart struct {
+	// Match The piece is a word the query found
+	Match bool `json:"match"`
+
+	// Text A piece of the matched text, as text
+	Text string `json:"text"`
+}
 
 // Tenant defines model for Tenant.
 type Tenant struct {
@@ -2529,6 +2614,18 @@ type Ticket struct {
 	// UrgencyRule The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)
 	UrgencyRule string `json:"urgency_rule"`
 	Version     int    `json:"version"`
+}
+
+// TicketBody defines model for TicketBody.
+type TicketBody struct {
+	// Body Markdown, as written (docs/adr/0011 D1)
+	Body string `json:"body"`
+
+	// BodyHtml The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
+	BodyHtml string `json:"body_html"`
+
+	// Version The ticket's version the body belongs to
+	Version int `json:"version"`
 }
 
 // TicketBodyReplace defines model for TicketBodyReplace.
@@ -3036,6 +3133,9 @@ type QuestionNumber = int
 // RepositoryID defines model for RepositoryID.
 type RepositoryID = openapi_types.UUID
 
+// SearchQuery defines model for SearchQuery.
+type SearchQuery = string
+
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
 
@@ -3128,6 +3228,23 @@ type LookupRepositoryParams struct {
 
 	// Path The working directory relative to the repository root, for a monorepo's sub-directory bindings
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// SearchMyTenantsParams defines parameters for SearchMyTenants.
+type SearchMyTenantsParams struct {
+	// Q The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+	// is capped by the server, and a query of white space alone is `validation_failed`
+	Q SearchQuery `form:"q" json:"q"`
+
+	// Tenant Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
+	// none of them is `404 not_found`, whether or not the tenant exists
+	Tenant *MeTenant `form:"tenant,omitempty" json:"tenant,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListMyTokensParams defines parameters for ListMyTokens.
@@ -3372,7 +3489,10 @@ type ListProjectTicketsParams struct {
 	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
 	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
 
-	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
+	// Q A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+	// every word, in the list's own order, without a rank or a snippet — the ranked search over
+	// comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+	// the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
 
 	// IncludeTerminal Include done and dropped tickets; without it they show only when state names them
@@ -3662,6 +3782,19 @@ type OverrideUrgencyParams struct {
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
+// SearchTenantParams defines parameters for SearchTenant.
+type SearchTenantParams struct {
+	// Q The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+	// is capped by the server, and a query of white space alone is `validation_failed`
+	Q SearchQuery `form:"q" json:"q"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListTenantTicketsParams defines parameters for ListTenantTickets.
 type ListTenantTicketsParams struct {
 	// Project A project key, negatable with !
@@ -3693,7 +3826,10 @@ type ListTenantTicketsParams struct {
 	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
 	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
 
-	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
+	// Q A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+	// every word, in the list's own order, without a rank or a snippet — the ranked search over
+	// comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+	// the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
 
 	// IncludeTerminal Include done and dropped tickets; without it they show only when state names them
@@ -4147,6 +4283,17 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
 	LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchMyTenants Search the tickets of every tenant of the person
+	//
+	// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+	// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+	// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+	// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+	// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+	//
+	// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+	SearchMyTenants(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetMyToken The token this request presents, and what it makes of the request
 	//
@@ -5011,6 +5158,22 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	//
+	// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+	// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+	// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+	// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+	// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+	// image shows only when it names a raster attachment of this ticket, from that attachment's
+	// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+	// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+	// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+	// attachments as well, which raise no version.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+	GetTicketBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReplaceTicketBodyWithBody Replace the ticket's body
 	//
 	// The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
@@ -5483,6 +5646,34 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgency(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchTenant Search the tenant's tickets
+	//
+	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+	// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+	// the options, the recommendation and the answer) and its attachments' file names; a text
+	// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+	// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+	// similarity, so a word half typed or misspelt still finds it (D3).
+	//
+	// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+	// title above the body above comments, questions and file names, a title found by trigram
+	// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+	// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+	// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+	// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+	//
+	// Only what the caller can see is searched, snippets included: a restricted project they are
+	// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+	// nor the reporter, and a project-restricted token's other projects find nothing
+	// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+	// cursor belongs to its query.
+	//
+	// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+	// title and body hold every word, in the list's own order, with no rank and no snippet.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+	SearchTenant(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	//
@@ -5977,6 +6168,27 @@ func (c *Client) ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSON
 // Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
 func (c *Client) LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLookupRepositoryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SearchMyTenants Search the tickets of every tenant of the person
+//
+// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+//
+// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+func (c *Client) SearchMyTenants(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchMyTenantsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -7490,6 +7702,32 @@ func (c *Client) DownloadAttachment(ctx context.Context, tenant TenantSlug, proj
 	return c.Client.Do(req)
 }
 
+// GetTicketBody The ticket's body, as Markdown and rendered
+//
+// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+// image shows only when it names a raster attachment of this ticket, from that attachment's
+// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+// attachments as well, which raise no version.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+func (c *Client) GetTicketBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTicketBodyRequest(c.Server, tenant, project, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReplaceTicketBodyWithBody Replace the ticket's body
 //
 // The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
@@ -8423,6 +8661,44 @@ func (c *Client) OverrideUrgency(ctx context.Context, tenant TenantSlug, project
 	return c.Client.Do(req)
 }
 
+// SearchTenant Search the tenant's tickets
+//
+// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+// the options, the recommendation and the answer) and its attachments' file names; a text
+// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+// similarity, so a word half typed or misspelt still finds it (D3).
+//
+// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+// title above the body above comments, questions and file names, a title found by trigram
+// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+//
+// Only what the caller can see is searched, snippets included: a restricted project they are
+// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+// nor the reporter, and a project-restricted token's other projects find nothing
+// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+// cursor belongs to its query.
+//
+// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+// title and body hold every word, in the list's own order, with no rank and no snippet.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+func (c *Client) SearchTenant(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchTenantRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListTenantTickets The tenant's tickets across its projects, newest first
 //
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
@@ -9285,6 +9561,92 @@ func NewLookupRepositoryRequest(server string, params *LookupRepositoryParams) (
 		if params.Path != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSearchMyTenantsRequest constructs an http.Request for the SearchMyTenants method
+func NewSearchMyTenantsRequest(server string, params *SearchMyTenantsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/search")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Tenant != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tenant", *params.Tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -12640,6 +13002,54 @@ func NewDownloadAttachmentRequest(server string, tenant TenantSlug, project Proj
 	return req, nil
 }
 
+// NewGetTicketBodyRequest constructs an http.Request for the GetTicketBody method
+func NewGetTicketBodyRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/body", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReplaceTicketBodyRequest calls the generic ReplaceTicketBody builder with application/json body
 func NewReplaceTicketBodyRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -15150,6 +15560,87 @@ func NewOverrideUrgencyRequestWithBody(server string, tenant TenantSlug, project
 	return req, nil
 }
 
+// NewSearchTenantRequest constructs an http.Request for the SearchTenant method
+func NewSearchTenantRequest(server string, tenant TenantSlug, params *SearchTenantParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/search", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTenantTicketsRequest constructs an http.Request for the ListTenantTickets method
 func NewListTenantTicketsRequest(server string, tenant TenantSlug, params *ListTenantTicketsParams) (*http.Request, error) {
 	var err error
@@ -16345,6 +16836,19 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
 	LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error)
 
+	// SearchMyTenantsWithResponse Search the tickets of every tenant of the person
+	//
+	// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+	// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+	// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+	// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+	// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+	SearchMyTenantsWithResponse(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*SearchMyTenantsResponse, error)
+
 	// GetMyTokenWithResponse The token this request presents, and what it makes of the request
 	//
 	// The token's metadata as the list shows it, the key of the project it is
@@ -17270,6 +17774,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachmentWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*DownloadAttachmentResponse, error)
 
+	// GetTicketBodyWithResponse The ticket's body, as Markdown and rendered
+	//
+	// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+	// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+	// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+	// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+	// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+	// image shows only when it names a raster attachment of this ticket, from that attachment's
+	// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+	// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+	// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+	// attachments as well, which raise no version.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+	GetTicketBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*GetTicketBodyResponse, error)
+
 	// ReplaceTicketBodyWithBodyWithResponse Replace the ticket's body
 	//
 	// The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
@@ -17782,6 +18304,36 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
+
+	// SearchTenantWithResponse Search the tenant's tickets
+	//
+	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+	// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+	// the options, the recommendation and the answer) and its attachments' file names; a text
+	// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+	// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+	// similarity, so a word half typed or misspelt still finds it (D3).
+	//
+	// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+	// title above the body above comments, questions and file names, a title found by trigram
+	// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+	// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+	// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+	// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+	//
+	// Only what the caller can see is searched, snippets included: a restricted project they are
+	// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+	// nor the reporter, and a project-restricted token's other projects find nothing
+	// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+	// cursor belongs to its query.
+	//
+	// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+	// title and body hold every word, in the list's own order, with no rank and no snippet.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+	SearchTenantWithResponse(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*SearchTenantResponse, error)
 
 	// ListTenantTicketsWithResponse The tenant's tickets across its projects, newest first
 	//
@@ -18576,6 +19128,61 @@ func (r LookupRepositoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r LookupRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SearchMyTenantsResponseDefaultHeaders the declared response headers of an HTTP default response for SearchMyTenants
+type SearchMyTenantsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SearchMyTenantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SearchHitList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SearchMyTenantsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SearchMyTenantsResponse) GetJSON200() *SearchHitList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SearchMyTenantsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SearchMyTenantsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchMyTenantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchMyTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SearchMyTenantsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -21391,6 +21998,68 @@ func (r DownloadAttachmentResponse) ContentType() string {
 	return ""
 }
 
+// GetTicketBodyResponse200Headers the declared response headers of an HTTP 200 response for GetTicketBody
+type GetTicketBodyResponse200Headers struct {
+	ETag *string
+}
+
+// GetTicketBodyResponseDefaultHeaders the declared response headers of an HTTP default response for GetTicketBody
+type GetTicketBodyResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetTicketBodyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TicketBody
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetTicketBodyResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetTicketBodyResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTicketBodyResponse) GetJSON200() *TicketBody {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetTicketBodyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTicketBodyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTicketBodyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTicketBodyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTicketBodyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ReplaceTicketBodyResponse200Headers the declared response headers of an HTTP 200 response for ReplaceTicketBody
 type ReplaceTicketBodyResponse200Headers struct {
 	ETag *string
@@ -23419,6 +24088,61 @@ func (r OverrideUrgencyResponse) ContentType() string {
 	return ""
 }
 
+// SearchTenantResponseDefaultHeaders the declared response headers of an HTTP default response for SearchTenant
+type SearchTenantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SearchTenantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SearchHitList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SearchTenantResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SearchTenantResponse) GetJSON200() *SearchHitList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SearchTenantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SearchTenantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchTenantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchTenantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SearchTenantResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListTenantTicketsResponse200Headers the declared response headers of an HTTP 200 response for ListTenantTickets
 type ListTenantTicketsResponse200Headers struct {
 	ETag *string
@@ -24287,6 +25011,25 @@ func (c *ClientWithResponses) LookupRepositoryWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseLookupRepositoryResponse(rsp)
+}
+
+// SearchMyTenantsWithResponse Search the tickets of every tenant of the person
+//
+// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+func (c *ClientWithResponses) SearchMyTenantsWithResponse(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*SearchMyTenantsResponse, error) {
+	rsp, err := c.SearchMyTenants(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchMyTenantsResponse(rsp)
 }
 
 // GetMyTokenWithResponse The token this request presents, and what it makes of the request
@@ -25598,6 +26341,30 @@ func (c *ClientWithResponses) DownloadAttachmentWithResponse(ctx context.Context
 	return ParseDownloadAttachmentResponse(rsp)
 }
 
+// GetTicketBodyWithResponse The ticket's body, as Markdown and rendered
+//
+// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+// image shows only when it names a raster attachment of this ticket, from that attachment's
+// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+// attachments as well, which raise no version.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+func (c *ClientWithResponses) GetTicketBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*GetTicketBodyResponse, error) {
+	rsp, err := c.GetTicketBody(ctx, tenant, project, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTicketBodyResponse(rsp)
+}
+
 // ReplaceTicketBodyWithBodyWithResponse Replace the ticket's body
 //
 // The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
@@ -26385,6 +27152,42 @@ func (c *ClientWithResponses) OverrideUrgencyWithResponse(ctx context.Context, t
 		return nil, err
 	}
 	return ParseOverrideUrgencyResponse(rsp)
+}
+
+// SearchTenantWithResponse Search the tenant's tickets
+//
+// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+// the options, the recommendation and the answer) and its attachments' file names; a text
+// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+// similarity, so a word half typed or misspelt still finds it (D3).
+//
+// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+// title above the body above comments, questions and file names, a title found by trigram
+// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+//
+// Only what the caller can see is searched, snippets included: a restricted project they are
+// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+// nor the reporter, and a project-restricted token's other projects find nothing
+// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+// cursor belongs to its query.
+//
+// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+// title and body hold every word, in the list's own order, with no rank and no snippet.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+func (c *ClientWithResponses) SearchTenantWithResponse(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*SearchTenantResponse, error) {
+	rsp, err := c.SearchTenant(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchTenantResponse(rsp)
 }
 
 // ListTenantTicketsWithResponse The tenant's tickets across its projects, newest first
@@ -27178,6 +27981,52 @@ func ParseLookupRepositoryResponse(rsp *http.Response) (*LookupRepositoryRespons
 	switch {
 	case true:
 		var headers LookupRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSearchMyTenantsResponse parses an HTTP response from a SearchMyTenantsWithResponse call
+func ParseSearchMyTenantsResponse(rsp *http.Response) (*SearchMyTenantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchMyTenantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SearchHitList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SearchMyTenantsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -29769,6 +30618,62 @@ func ParseDownloadAttachmentResponse(rsp *http.Response) (*DownloadAttachmentRes
 	return response, nil
 }
 
+// ParseGetTicketBodyResponse parses an HTTP response from a GetTicketBodyWithResponse call
+func ParseGetTicketBodyResponse(rsp *http.Response) (*GetTicketBodyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTicketBodyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TicketBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetTicketBodyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers GetTicketBodyResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseReplaceTicketBodyResponse parses an HTTP response from a ReplaceTicketBodyWithResponse call
 func ParseReplaceTicketBodyResponse(rsp *http.Response) (*ReplaceTicketBodyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -31638,6 +32543,52 @@ func ParseOverrideUrgencyResponse(rsp *http.Response) (*OverrideUrgencyResponse,
 	return response, nil
 }
 
+// ParseSearchTenantResponse parses an HTTP response from a SearchTenantWithResponse call
+func ParseSearchTenantResponse(rsp *http.Response) (*SearchTenantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchTenantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SearchHitList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SearchTenantResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListTenantTicketsResponse parses an HTTP response from a ListTenantTicketsWithResponse call
 func ParseListTenantTicketsResponse(rsp *http.Response) (*ListTenantTicketsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -32241,6 +33192,9 @@ type ServerInterface interface {
 	// LookupRepository The project a repository is bound to, across the person's tenants
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams)
+	// SearchMyTenants Search the tickets of every tenant of the person
+	// (GET /api/v1/me/search)
+	SearchMyTenants(w http.ResponseWriter, r *http.Request, params SearchMyTenantsParams)
 	// GetMyToken The token this request presents, and what it makes of the request
 	// (GET /api/v1/me/token)
 	GetMyToken(w http.ResponseWriter, r *http.Request)
@@ -32385,6 +33339,9 @@ type ServerInterface interface {
 	// DownloadAttachment An attachment's bytes
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content)
 	DownloadAttachment(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params DownloadAttachmentParams)
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
+	GetTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ReplaceTicketBodyParams)
@@ -32484,6 +33441,9 @@ type ServerInterface interface {
 	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams)
+	// SearchTenant Search the tenant's tickets
+	// (GET /api/v1/tenants/{tenant}/search)
+	SearchTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params SearchTenantParams)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	// (GET /api/v1/tenants/{tenant}/tickets)
 	ListTenantTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantTicketsParams)
@@ -32917,6 +33877,78 @@ func (siw *ServerInterfaceWrapper) LookupRepository(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupRepository(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchMyTenants operation middleware
+func (siw *ServerInterfaceWrapper) SearchMyTenants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchMyTenantsParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchMyTenants(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -35815,6 +36847,50 @@ func (siw *ServerInterfaceWrapper) DownloadAttachment(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetTicketBody operation middleware
+func (siw *ServerInterfaceWrapper) GetTicketBody(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTicketBody(w, r, tenant, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReplaceTicketBody operation middleware
 func (siw *ServerInterfaceWrapper) ReplaceTicketBody(w http.ResponseWriter, r *http.Request) {
 
@@ -38112,6 +39188,74 @@ func (siw *ServerInterfaceWrapper) OverrideUrgency(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// SearchTenant operation middleware
+func (siw *ServerInterfaceWrapper) SearchTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchTenantParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchTenant(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTenantTickets operation middleware
 func (siw *ServerInterfaceWrapper) ListTenantTickets(w http.ResponseWriter, r *http.Request) {
 
@@ -39079,6 +40223,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/inbox/{notification}/read", wrapper.MarkNotificationRead)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/search", wrapper.SearchMyTenants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.ListMyTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.CreateMyToken)
@@ -39127,6 +40272,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments", wrapper.UploadAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}", wrapper.GetAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content", wrapper.DownloadAttachment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body", wrapper.GetTicketBody)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body", wrapper.ReplaceTicketBody)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", wrapper.ListComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", wrapper.AddComment)
@@ -39160,6 +40306,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions", wrapper.TransitionTicket)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.WithdrawUrgencyOverride)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.OverrideUrgency)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/search", wrapper.SearchTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tickets", wrapper.ListTenantTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-entries", wrapper.ListTenantTime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-report", wrapper.TimeReport)
@@ -39659,6 +40806,49 @@ type LookupRepositorydefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response LookupRepositorydefaultApplicationProblemPlusJSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMyTenantsRequestObject struct {
+	Params SearchMyTenantsParams
+}
+
+type SearchMyTenantsResponseObject interface {
+	VisitSearchMyTenantsResponse(w http.ResponseWriter) error
+}
+
+type SearchMyTenants200JSONResponse SearchHitList
+
+func (response SearchMyTenants200JSONResponse) VisitSearchMyTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMyTenantsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SearchMyTenantsdefaultApplicationProblemPlusJSONResponse) VisitSearchMyTenantsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -42170,6 +43360,61 @@ func (response DownloadAttachmentdefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetTicketBodyRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+}
+
+type GetTicketBodyResponseObject interface {
+	VisitGetTicketBodyResponse(w http.ResponseWriter) error
+}
+
+type GetTicketBody200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetTicketBody200JSONResponse struct {
+	Body    TicketBody
+	Headers GetTicketBody200ResponseHeaders
+}
+
+func (response GetTicketBody200JSONResponse) VisitGetTicketBodyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTicketBodydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetTicketBodydefaultApplicationProblemPlusJSONResponse) VisitGetTicketBodyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReplaceTicketBodyRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -44063,6 +45308,50 @@ func (response OverrideUrgencydefaultApplicationProblemPlusJSONResponse) VisitOv
 	return err
 }
 
+type SearchTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params SearchTenantParams
+}
+
+type SearchTenantResponseObject interface {
+	VisitSearchTenantResponse(w http.ResponseWriter) error
+}
+
+type SearchTenant200JSONResponse SearchHitList
+
+func (response SearchTenant200JSONResponse) VisitSearchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchTenantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SearchTenantdefaultApplicationProblemPlusJSONResponse) VisitSearchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTenantTicketsRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListTenantTicketsParams
@@ -44660,6 +45949,9 @@ type StrictServerInterface interface {
 	// LookupRepository The project a repository is bound to, across the person's tenants
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(ctx context.Context, request LookupRepositoryRequestObject) (LookupRepositoryResponseObject, error)
+	// SearchMyTenants Search the tickets of every tenant of the person
+	// (GET /api/v1/me/search)
+	SearchMyTenants(ctx context.Context, request SearchMyTenantsRequestObject) (SearchMyTenantsResponseObject, error)
 	// GetMyToken The token this request presents, and what it makes of the request
 	// (GET /api/v1/me/token)
 	GetMyToken(ctx context.Context, request GetMyTokenRequestObject) (GetMyTokenResponseObject, error)
@@ -44804,6 +46096,9 @@ type StrictServerInterface interface {
 	// DownloadAttachment An attachment's bytes
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content)
 	DownloadAttachment(ctx context.Context, request DownloadAttachmentRequestObject) (DownloadAttachmentResponseObject, error)
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
+	GetTicketBody(ctx context.Context, request GetTicketBodyRequestObject) (GetTicketBodyResponseObject, error)
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(ctx context.Context, request ReplaceTicketBodyRequestObject) (ReplaceTicketBodyResponseObject, error)
@@ -44903,6 +46198,9 @@ type StrictServerInterface interface {
 	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(ctx context.Context, request OverrideUrgencyRequestObject) (OverrideUrgencyResponseObject, error)
+	// SearchTenant Search the tenant's tickets
+	// (GET /api/v1/tenants/{tenant}/search)
+	SearchTenant(ctx context.Context, request SearchTenantRequestObject) (SearchTenantResponseObject, error)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	// (GET /api/v1/tenants/{tenant}/tickets)
 	ListTenantTickets(ctx context.Context, request ListTenantTicketsRequestObject) (ListTenantTicketsResponseObject, error)
@@ -45240,6 +46538,32 @@ func (sh *strictHandler) LookupRepository(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LookupRepositoryResponseObject); ok {
 		if err := validResponse.VisitLookupRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchMyTenants operation middleware
+func (sh *strictHandler) SearchMyTenants(w http.ResponseWriter, r *http.Request, params SearchMyTenantsParams) {
+	var request SearchMyTenantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchMyTenants(ctx, request.(SearchMyTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchMyTenants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchMyTenantsResponseObject); ok {
+		if err := validResponse.VisitSearchMyTenantsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -46670,6 +47994,34 @@ func (sh *strictHandler) DownloadAttachment(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetTicketBody operation middleware
+func (sh *strictHandler) GetTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
+	var request GetTicketBodyRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTicketBody(ctx, request.(GetTicketBodyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTicketBody")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTicketBodyResponseObject); ok {
+		if err := validResponse.VisitGetTicketBodyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ReplaceTicketBody operation middleware
 func (sh *strictHandler) ReplaceTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ReplaceTicketBodyParams) {
 	var request ReplaceTicketBodyRequestObject
@@ -47715,6 +49067,33 @@ func (sh *strictHandler) OverrideUrgency(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OverrideUrgencyResponseObject); ok {
 		if err := validResponse.VisitOverrideUrgencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchTenant operation middleware
+func (sh *strictHandler) SearchTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params SearchTenantParams) {
+	var request SearchTenantRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchTenant(ctx, request.(SearchTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchTenantResponseObject); ok {
+		if err := validResponse.VisitSearchTenantResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

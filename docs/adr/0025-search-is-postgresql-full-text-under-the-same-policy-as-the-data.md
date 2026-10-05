@@ -19,6 +19,29 @@ routes with ranking and headlines (D4, D5) and D3's key half arrive with the sea
 short key is never stored ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)
 D3), so it needs an expression of its own there.
 
+Amended 2026-10-05 (D3: the key is found by its beginning, computed in the query, without an index).
+The short key is never stored, and an index cannot join a project's key to a ticket's number; the
+first implementation computes `<PROJECT>-<number>` over the tenant's tickets and their projects and
+compares it as a prefix, which at the expected sizes costs milliseconds. Indexing it would take a
+stored copy of the key on every ticket.
+
+**Built** (2026-10-05): D3–D5 — `GET /api/v1/tenants/{tenant}/search` and `GET /api/v1/me/search`
+([`api/search.go`](../../backend/internal/api/search.go), `SearchTickets` in
+[`queries/read/search.sql`](../../backend/internal/store/queries/read/search.sql), the search box and
+its results in the UI). D3: a key by its beginning — `COW-1`, `acme/COW-12` — and a title by
+`pg_trgm`'s word similarity on the trigram index of migration 8. D4: one hit per ticket at its best
+match, ranked by `ts_rank` — the title (weight A, 1.0) above the body (B, 0.4) above comments,
+questions and file names (0.1 each); a key above everything, a title by trigram below; `ts_headline`
+of the page's rows, at most two fragments; the union across a person's tenants merged by rank. D5:
+the tenant (on every hit), the key, the title, the type, the state and the snippet — text in parts,
+never HTML —; a hit in a comment or a question names it and the UI links to it; a withdrawn comment
+is excluded by the query; an attachment's file name is searched by its words as well, which migration
+31 adds to its vector — the parser reads `shot.png` as one word. Every text is read through its
+ticket's visibility predicate ([docs/security/tenancy.md](../security/tenancy.md#search-finds-only-what-its-reader-sees)).
+Not built: D5's exclusion of soft-deleted tickets, which waits for the deletion of
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+— no ticket is deleted yet.
+
 ## Context
 
 [ADR 0018](0018-the-views-of-the-first-release.md) D7 asks for full-text search over titles,
@@ -42,8 +65,11 @@ front of it, created by the first migration that needs it)*, and a GIN index led
 options, recommendation, answer. The column is generated, so a body replacement updates it in
 the same statement.
 
-**D3 — Keys and titles are additionally indexed with `pg_trgm`,** led by `tenant_id`, so a
-partial key (`VKO-1`) and a misspelt title still find their ticket.
+**D3 — Keys and titles are additionally ~~indexed with `pg_trgm`, led by `tenant_id`,~~ found
+by trigram and by their beginning,** so a partial key (`VKO-1`) and a misspelt title still find
+their ticket. *(Amended 2026-10-05: titles by `pg_trgm`, on an index led by `tenant_id`; a key by its
+beginning, `<PROJECT>-<number>` computed in the query and compared as a prefix, without an index —
+Status.)*
 
 **D4 — Ranking is `ts_rank` with title weighted above body above comments;** the snippet is
 `ts_headline`. Across a person's tenants the union of per-tenant results is merged by rank

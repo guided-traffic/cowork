@@ -81,8 +81,14 @@ menu and dialogs, made from the same parts as the project board
 list only while it is in view or a screen's height from it; the project filter is the address's
 repeated `project`; a drag between swimlanes is refused visibly — the swimlane under the card says
 no, and a toast says that a ticket never changes project on a board — and holds every swimlane
-still while a card is dragged. Not built: the score's marker in the backlog, D3's "next for me",
-D5–D7.
+still while a card is dragged. *(2026-10-05:)* D7's search — a search box in the top bar that
+searches, inside a tenant, that tenant first and offers every tenant of the person, anywhere else
+every tenant, and a page of results with where each hit was found and its snippet, linked to the
+comment or question it is in ([`features/search/`](../../frontend/src/app/features/search/),
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)); and D2's
+body, comments, options and answers shown as the server rendered them
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6). Not built:
+the score's marker in the backlog, D3's "next for me", D5 and D6.
 
 ## Context
 

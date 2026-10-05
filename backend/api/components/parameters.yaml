@@ -176,7 +176,19 @@ DoneAfter:
 Query:
   name: q
   in: query
-  description: Full text over title and body (docs/adr/0025); its length is capped by the server
+  description: |
+    A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+    every word, in the list's own order, without a rank or a snippet — the ranked search over
+    comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+    the server
+  schema: {type: string, minLength: 1, maxLength: 4096}
+SearchQuery:
+  name: q
+  in: query
+  required: true
+  description: |
+    The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+    is capped by the server, and a query of white space alone is `validation_failed`
   schema: {type: string, minLength: 1, maxLength: 4096}
 IncludeTerminal:
   name: include_terminal

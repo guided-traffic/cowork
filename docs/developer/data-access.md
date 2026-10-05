@@ -34,6 +34,10 @@ the forced policy hides every row from it: `000017_ticket_rank` and `000019_prog
 lift the force on `tickets` for their backfills and restore it later in the file
 ([ADR 0021] D1). A new enum value cannot be used in the transaction that adds it, so
 `000018_ticket_state_review` adds `review` alone and `000019` uses it.
+`000031_attachment_names_searched_by_their_words` changes the expression of a stored generated
+column (`ALTER COLUMN … SET EXPRESSION`), which rewrites every row of `attachments` with the forced
+policy in place: row-level security governs queries, not the rewrite of a table, so no force is
+lifted (verified on PostgreSQL 18.6 on 2026-10-05).
 `TestLiftedForceIsRestoredInTheSameMigration` holds every lifted force to a restore in the same
 file; the integration tier reads the force back after the run.
 
@@ -242,6 +246,11 @@ the one on the ticket the query reads.
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
+
+The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
+ticket's text, a title by trigram, the key, a comment, a question, a file name, the page's hits — and
+calls the predicate in each; `ListTicketImages`, the raster attachments a rendered text may show
+([rendered-markdown.md](rendered-markdown.md)), joins its tickets with the predicate as well.
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
 (the implementation stage, kept for the release before the stages), `ticket_derived_stage` and

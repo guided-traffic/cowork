@@ -315,7 +315,7 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
-| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
+| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` — of a ticket list or of a search — is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10`, per replica | the next stream closes the person's oldest with `event: unavailable` | no limit |
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` | a reconnect beyond the window starts with `event: resync` | no replay: a reconnect that missed anything starts with `resync` |
 | `COWORK_CHAT_TURN_TIMEOUT` | `5m` | a turn of the chat ends with the `error` event `timeout` | no limit |

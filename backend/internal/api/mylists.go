@@ -9,6 +9,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
@@ -139,10 +140,12 @@ func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRe
 	return apigen.ListMyAssigned200JSONResponse{Body: out, Headers: apigen.ListMyAssigned200ResponseHeaders{ETag: &tag}}, nil
 }
 
-// decision is an open question of a person-level list with its tenant.
+// decision is an open question of a person-level list with its tenant and
+// the images its ticket's texts may show.
 type decision struct {
 	tenant personTenant
 	row    readq.ListOpenDecisionsRow
+	images richtext.Images
 }
 
 // ListMyDecisions answers the open decisions of the person across their
@@ -182,8 +185,16 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		}
 		err := s.db.InTenant(ctx, t.id, func(r *store.Reader) error {
 			list, err := r.ListOpenDecisions(ctx, params)
+			if err != nil {
+				return err
+			}
+			tickets := map[uuid.UUID]ticketAt{}
 			for _, row := range list {
-				rows = append(rows, decision{tenant: t, row: row})
+				tickets[row.TicketID] = ticketAt{project: row.ProjectKey, number: row.TicketNumber}
+			}
+			images, err := imagesOf(ctx, r, t.scope(), tickets)
+			for _, row := range list {
+				rows = append(rows, decision{tenant: t, row: row, images: images[row.TicketID]})
 			}
 			return err
 		})
@@ -221,6 +232,6 @@ func decisionView(d decision) apigen.Decision {
 			AnsweredByName: q.AnsweredByName, AnsweredAt: q.AnsweredAt, RecordedByAgent: q.RecordedByAgent,
 			AnsweredByTokenID: q.AnsweredByTokenID, AnsweredByTokenName: q.AnsweredByTokenName,
 			WithdrawnAt: q.WithdrawnAt, Version: q.Version, CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
-		}),
+		}, d.images),
 	}
 }

@@ -975,6 +975,16 @@ TicketPatch:
       minLength: 1
       maxLength: 100000
       description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+TicketBody:
+  type: object
+  required: [body, body_html, version]
+  properties:
+    body: {type: string, description: 'Markdown, as written (docs/adr/0011 D1)'}
+    body_html:
+      type: string
+      description: |
+        The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
+    version: {type: integer, description: The ticket's version the body belongs to}
 TicketBodyReplace:
   type: object
   additionalProperties: false
@@ -1060,7 +1070,8 @@ BlockSet:
     external_ref: {type: string, minLength: 1, maxLength: 500}
 Comment:
   type: object
-  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  required: [id, author, agent, token, body, body_html, withdrawn, withdrawn_at, edited, explains, version, created_at,
+    updated_at]
   properties:
     id: {type: string, format: uuid}
     author:
@@ -1072,6 +1083,11 @@ Comment:
         - $ref: '#/TokenMark'
         - type: 'null'
     body: {type: [string, 'null'], description: 'Markdown; null once withdrawn (docs/adr/0015 D3)'}
+    body_html:
+      type: [string, 'null']
+      description: |
+        The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+        the Markdown; null once withdrawn
     withdrawn: {type: boolean}
     withdrawn_at: {type: [string, 'null'], format: date-time}
     edited: {type: boolean, description: The comment has an edit history}
@@ -1343,16 +1359,22 @@ QuestionStatus:
   description: docs/adr/0011 D2
 Question:
   type: object
-  required: [id, number, question, options, recommendation, answer, status, asked_by, asked_by_agent,
-    asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token, withdrawn_at, version,
-    created_at, updated_at]
+  required: [id, number, question, options, options_html, recommendation, answer, answer_html, status, asked_by,
+    asked_by_agent, asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token,
+    withdrawn_at, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     number: {type: integer, description: 'Stable within the ticket: Q<n> (docs/adr/0011 D4)'}
     question: {type: string}
     options: {type: string, description: 'Markdown: the context and the options'}
+    options_html:
+      type: string
+      description: The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
     recommendation: {type: string}
     answer: {type: [string, 'null'], description: Markdown}
+    answer_html:
+      type: [string, 'null']
+      description: The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
     status:
       $ref: '#/QuestionStatus'
     asked_by:
@@ -1980,5 +2002,51 @@ DecisionList:
       type: array
       items:
         $ref: '#/Decision'
+    next_cursor:
+      type: [string, 'null']
+SearchFoundIn:
+  type: string
+  enum: [key, ticket, comment, question, attachment]
+  description: |
+    Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+    the body; one of its comments; one of its questions; an attachment's file name
+SnippetPart:
+  type: object
+  required: [text, match]
+  properties:
+    text: {type: string, description: 'A piece of the matched text, as text'}
+    match: {type: boolean, description: The piece is a word the query found}
+SearchHit:
+  type: object
+  required: [tenant, key, title, type, state, found_in, comment, question, snippet]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)'}
+    title: {type: string}
+    type:
+      $ref: '#/TicketType'
+    state:
+      $ref: '#/TicketState'
+    found_in:
+      $ref: '#/SearchFoundIn'
+    comment: {type: [string, 'null'], format: uuid, description: The comment the hit is in}
+    question: {type: [integer, 'null'], description: The number of the question the hit is in}
+    snippet:
+      type: array
+      description: |
+        The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):
+        the body for a hit in the ticket's own text or its key, the comment, the question with its
+        options, recommendation and answer, the file name. Text, never HTML; empty where that text is
+      items:
+        $ref: '#/SnippetPart'
+SearchHitList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SearchHit'
     next_cursor:
       type: [string, 'null']

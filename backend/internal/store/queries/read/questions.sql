@@ -56,7 +56,7 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.rank AS ticket_rank
+       t.rank AS ticket_rank, q.ticket_id
 FROM questions q
 JOIN tickets t ON t.tenant_id = q.tenant_id AND t.id = q.ticket_id
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
