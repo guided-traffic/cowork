@@ -242,6 +242,46 @@ func TestTheMCPServerKnowsAnAssistedToken(t *testing.T) {
 	assert.Contains(t, finished, "this agent lacks close, so done is the person's")
 }
 
+// docs/adr/0024 D7, docs/adr/0043 D3: an agent never deletes — not through the
+// escape hatch with an administrator's admin token either —, and a deleted
+// ticket answers the tools like a missing one.
+func TestTheToolsNeverDeleteAndMissADeletedTicket(t *testing.T) {
+	e := newMCPEnv(t)
+	cs := e.serve(t, e.tk.AdminA)
+	created, err := e.s.client(t, caller{Token: e.tk.MemberA}).CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA",
+		&apigen.CreateTicketParams{}, task("Pasted into the wrong tenant"))
+	require.NoError(t, err)
+	n := created.JSON201.Number
+	key := fmt.Sprintf("%s/ALPHA-%d", e.SlugA, n)
+	path := fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/tickets/%d", e.SlugA, n)
+
+	refused, isError := callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": path})
+	assert.True(t, isError)
+	assert.Contains(t, refused, "403")
+	assert.Contains(t, refused, "hard-off: deleting, restoring or purging")
+	assert.Contains(t, mustCall(t, cs, "get_ticket", map[string]any{"key": key}), "Pasted into the wrong tenant", "nothing was deleted")
+
+	res, err := e.s.client(t, caller{Token: e.tk.AdminA}).DeleteTicketWithResponse(e.ctx, e.SlugA, "ALPHA", n)
+	require.NoError(t, err)
+	require.Equal(t, 204, res.StatusCode(), string(res.Body))
+	var missing string
+	missing, isError = callTool(t, cs, "get_ticket", map[string]any{"key": key})
+	assert.True(t, isError)
+	assert.Contains(t, missing, "404")
+	assert.NotContains(t, missing, "Pasted into the wrong tenant")
+	assert.NotContains(t, mustCall(t, cs, "search", map[string]any{"query": "wrong tenant"}), key)
+	for _, route := range []string{"/restore", ""} {
+		method := "PUT"
+		if route == "" {
+			method = "DELETE"
+		}
+		answer, isError := callTool(t, cs, "api", map[string]any{"method": method,
+			"path": fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/ALPHA-%d%s", e.SlugA, n, route)})
+		assert.True(t, isError)
+		assert.Contains(t, answer, "hard-off: deleting, restoring or purging", "an agent neither restores nor purges")
+	}
+}
+
 // docs/adr/0067, docs/adr/0070 D6: the hook modes and the subcommands run
 // against the fixture environment by their command line.
 func TestTheSubcommands(t *testing.T) {

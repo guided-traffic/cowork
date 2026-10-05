@@ -72,7 +72,9 @@ func (w *Writer) lock(ctx context.Context, namespace int32, key uuid.UUID, name 
 // would survive on an idle pooled connection. The job acts as the system
 // actor system:<name>, and the transaction names it in app.job, which the
 // policies of the job's tables admit. ran is false when another replica holds
-// the lock. A job that records no act commits nothing and is no error.
+// the lock. A job that records no act commits nothing and is no error. A job
+// that works in the tenants one by one writes each tenant's acts there
+// (Writer.inTenant); the rest are installation-level acts.
 func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w *Writer) error) (ran bool, err error) {
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
@@ -90,14 +92,14 @@ func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w 
 	if err := setContext(ctx, tx, uuid.Nil, caller, name); err != nil {
 		return false, err
 	}
-	w := &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx)}
+	w := &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx), caller: caller}
 	if err := fn(w); err != nil {
 		if errors.Is(err, ErrNoChange) {
 			return true, nil
 		}
 		return true, err
 	}
-	if len(w.events) == 0 {
+	if len(w.events) == 0 && !w.flushed {
 		return true, nil
 	}
 	if err := w.writeEvents(ctx, uuid.Nil, caller, Idempotency{}, false); err != nil {

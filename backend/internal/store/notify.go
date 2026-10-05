@@ -83,14 +83,20 @@ func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) e
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil
 	}
-	facts, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
-	if err != nil {
-		return fmt.Errorf("read the published ticket: %w", err)
+	facts := e.Published
+	if facts == nil {
+		row, err := w.TicketFacts(ctx, writeq.TicketFactsParams{TenantID: tenantID, ID: e.TicketID})
+		if err != nil {
+			return fmt.Errorf("read the published ticket: %w", err)
+		}
+		facts = &TicketFacts{Project: row.ProjectID, Version: row.Version, Confidential: row.Confidential,
+			Assignee: row.AssigneeID, Reporter: row.ReporterID}
 	}
-	n := Notification{ID: id, Tenant: tenantID, Project: facts.ProjectID, Entity: e.EntityType,
+	n := Notification{ID: id, Tenant: tenantID, Project: facts.Project, Entity: e.EntityType,
 		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
-		Assignee: facts.AssigneeID, Reporter: facts.ReporterID}
+		Assignee: facts.Assignee, Reporter: facts.Reporter}
 	if e.EntityType == entityQuestion && e.EntityID != uuid.Nil {
+		var err error
 		if n.AskedOf, err = w.QuestionAskedOf(ctx, writeq.QuestionAskedOfParams{TenantID: tenantID, ID: e.EntityID}); err != nil {
 			return fmt.Errorf("read whom the published question is asked of: %w", err)
 		}

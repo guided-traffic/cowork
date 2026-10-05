@@ -47,7 +47,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2 AND q.number = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetQuestionParams struct {
@@ -139,7 +139,7 @@ LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.status = 'open'
   AND (q.asked_of = $2::uuid OR q.asked_of IS NULL)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT $3::boolean
        OR p.key > $4::text
        OR (p.key = $4::text
@@ -284,7 +284,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::integer IS NULL OR q.number > $3::integer)
 ORDER BY q.number
 LIMIT $4

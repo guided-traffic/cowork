@@ -17,6 +17,6 @@ JOIN projects op ON op.tenant_id = o.tenant_id AND op.id = o.project_id
 LEFT JOIN users au ON au.id = o.assignee_id
 WHERE l.tenant_id = sqlc.arg(tenant_id)
   AND (l.source_id = sqlc.arg(ticket_id)::uuid OR l.target_id = sqlc.arg(ticket_id)::uuid)
-  AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
+  AND o.deleted_at IS NULL AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)
 ORDER BY l.type, outgoing DESC, op.key, o.number
 LIMIT sqlc.arg(page_size);

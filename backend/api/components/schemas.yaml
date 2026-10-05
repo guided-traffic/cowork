@@ -1502,6 +1502,39 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+DeletedTicket:
+  type: object
+  description: |
+    A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+    purge it.
+  required: [key, project, number, type, title, state, confidential, deleted_at, deleted_by, purge_at]
+  properties:
+    key: {type: string, description: '<tenant>/<PROJECT>-<number>'}
+    project: {type: string}
+    number: {type: integer}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    confidential: {type: boolean}
+    deleted_at: {type: string, format: date-time}
+    deleted_by:
+      $ref: '#/Person'
+    purge_at:
+      type: string
+      format: date-time
+      description: When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)
+DeletedTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/DeletedTicket'
+    next_cursor:
+      type: [string, 'null']
 AuthOptions:
   type: object
   required: [local, oidc, oidc_name, password_min_length]

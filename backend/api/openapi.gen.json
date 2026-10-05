@@ -481,6 +481,16 @@
           "type": "string"
         }
       },
+      "TicketKeyPath": {
+        "description": "The ticket's short key, \u003cPROJECT\u003e-\u003cnumber\u003e, in one path segment (docs/adr/0007 D3)",
+        "in": "path",
+        "name": "key",
+        "required": true,
+        "schema": {
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$",
+          "type": "string"
+        }
+      },
       "TicketNumber": {
         "description": "The ticket's number in its project",
         "in": "path",
@@ -1854,6 +1864,79 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/Decision"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "DeletedTicket": {
+        "description": "A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or\npurge it.\n",
+        "properties": {
+          "confidential": {
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deleted_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "key": {
+            "description": "\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e",
+            "type": "string"
+          },
+          "number": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "purge_at": {
+            "description": "When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "key",
+          "project",
+          "number",
+          "type",
+          "title",
+          "state",
+          "confidential",
+          "deleted_at",
+          "deleted_by",
+          "purge_at"
+        ],
+        "type": "object"
+      },
+      "DeletedTicketList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedTicket"
             },
             "type": "array"
           },
@@ -6060,6 +6143,108 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/deleted-tickets": {
+      "get": {
+        "description": "The tenant administrators' view of the deleted tickets they can see, the last deleted first,\neach with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one\nlist in which a deleted ticket exists. An administrator's, with `read` scope; a token\nrestricted to a project is refused like an unknown tenant.\n",
+        "operationId": "listDeletedTickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedTicketList"
+                }
+              }
+            },
+            "description": "A page of the bin"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The tenant's bin of deleted tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}": {
+      "delete": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,\ndocs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its\ncomments, questions, links, stakes, time entries, notifications and attachments are removed,\nand the attachments' objects after them; its children become roots, and a block that waited\non it waits on its key as an external reference. Its audit rows stay with their content\nemptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.\nIrreversible: the browser asks a second time. Recorded as `purged` and published.\n",
+        "operationId": "purgeTicket",
+        "responses": {
+          "204": {
+            "description": "Purged"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Purge a deleted ticket for good",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/TicketKeyPath"
+        }
+      ],
+      "put": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,\ndocs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back\nas it was, its links, comments and place in the rank with it; the version rises. Recorded as\n`restored` and published.\n",
+        "operationId": "restoreTicket",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "The restored ticket",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Restore a deleted ticket from the bin",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
         "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream also carries\nthe person's own events across every tenant they belong to (docs/adr/0054 D1):\n`inbox.changed` with `data: {\"unread\": n}`, the person's unread notifications in every tenant\nthe request reaches (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and\nwhenever the inbox changes — a notification for them, or theirs marked read —; and\n`question.changed` of a question asked of them in another tenant, which arrives only while\nthey are a member of that tenant and see its ticket, as the tenant's own stream would judge\nit. Neither carries an `id:` or is replayed: the count says how things stand, and the client\nreloads its person-level lists when the stream opens. A token restricted to a tenant hears\nnothing of another (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
@@ -7166,6 +7351,22 @@
       }
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}": {
+      "delete": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,\ndocs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers\nlike a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of\nit and under it is 404, and it leaves every list, the prerequisite trees, the person-level\nlists, the inbox and the context; links to it are hidden, not removed, and its key stays taken\n(docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and\npublished. A restoration brings everything back; thirty days after the deletion the purge job\nremoves it for good (D2). Deleting a ticket that others depend on is not refused — the browser\nshows the dependents and asks first (D7).\n",
+        "operationId": "deleteTicket",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a ticket into the tenant's bin",
+        "tags": [
+          "tickets"
+        ]
+      },
       "get": {
         "operationId": "getTicket",
         "responses": {

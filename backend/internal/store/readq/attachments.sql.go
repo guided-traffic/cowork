@@ -39,7 +39,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2 AND a.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetAttachmentParams struct {
@@ -94,7 +94,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR a.id > $3::uuid)
 ORDER BY a.id
 LIMIT $4

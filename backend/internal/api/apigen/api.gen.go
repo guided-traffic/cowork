@@ -1631,6 +1631,35 @@ type DecisionList struct {
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
 }
 
+// DeletedTicket A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+// purge it.
+type DeletedTicket struct {
+	Confidential bool      `json:"confidential"`
+	DeletedAt    time.Time `json:"deleted_at"`
+	DeletedBy    Person    `json:"deleted_by"`
+
+	// Key <tenant>/<PROJECT>-<number>
+	Key     string `json:"key"`
+	Number  int    `json:"number"`
+	Project string `json:"project"`
+
+	// PurgeAt When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)
+	PurgeAt time.Time `json:"purge_at"`
+
+	// State docs/adr/0009 D1
+	State TicketState `json:"state"`
+	Title string      `json:"title"`
+
+	// Type docs/adr/0008 D1
+	Type TicketType `json:"type"`
+}
+
+// DeletedTicketList defines model for DeletedTicketList.
+type DeletedTicketList struct {
+	Items      []DeletedTicket           `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
 // Effort defines model for Effort.
 type Effort string
 
@@ -2900,6 +2929,9 @@ type RepositoryID = openapi_types.UUID
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
 
+// TicketKeyPath defines model for TicketKeyPath.
+type TicketKeyPath = string
+
 // TicketNumber defines model for TicketNumber.
 type TicketNumber = int
 
@@ -3053,6 +3085,15 @@ type ListAuditParams struct {
 	// To Exclusive upper bound of the time
 	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
 
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListDeletedTicketsParams defines parameters for ListDeletedTickets.
+type ListDeletedTicketsParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -4260,6 +4301,39 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	//
+	// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+	// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+	// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+	// restricted to a project is refused like an unknown tenant.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+	ListDeletedTickets(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PurgeTicket Purge a deleted ticket for good
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+	// and the attachments' objects after them; its children become roots, and a block that waited
+	// on it waits on its key as an external reference. Its audit rows stay with their content
+	// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+	// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+	PurgeTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestoreTicket Restore a deleted ticket from the bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+	// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+	// `restored` and published.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+	RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListGroupMappings The tenant's group mappings, by group
 	//
 	// Each mapping gives its role to every person whose groups include its
@@ -4692,6 +4766,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets (the `CreateTicket` operationId).
 	CreateTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, params *CreateTicketParams, body CreateTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteTicket Delete a ticket into the tenant's bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+	// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+	// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+	// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+	// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+	// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+	// published. A restoration brings everything back; thirty days after the deletion the purge job
+	// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+	// shows the dependents and asks first (D7).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+	DeleteTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTicket One ticket
 	//
@@ -6329,6 +6418,69 @@ func (c *Client) StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditor
 	return c.Client.Do(req)
 }
 
+// ListDeletedTickets The tenant's bin of deleted tickets
+//
+// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+// restricted to a project is refused like an unknown tenant.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+func (c *Client) ListDeletedTickets(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDeletedTicketsRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PurgeTicket Purge a deleted ticket for good
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+// and the attachments' objects after them; its children become roots, and a block that waited
+// on it waits on its key as an external reference. Its audit rows stay with their content
+// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+func (c *Client) PurgeTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPurgeTicketRequest(c.Server, tenant, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RestoreTicket Restore a deleted ticket from the bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+// `restored` and published.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreTicketRequest(c.Server, tenant, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListGroupMappings The tenant's group mappings, by group
 //
 // Each mapping gives its role to every person whose groups include its
@@ -7072,6 +7224,31 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets (the `CreateTicket` operationId).
 func (c *Client) CreateTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, params *CreateTicketParams, body CreateTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTicketRequest(c.Server, tenant, project, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteTicket Delete a ticket into the tenant's bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+// published. A restoration brings everything back; thirty days after the deletion the purge job
+// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+// shows the dependents and asks first (D7).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+func (c *Client) DeleteTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTicketRequest(c.Server, tenant, project, number)
 	if err != nil {
 		return nil, err
 	}
@@ -10009,6 +10186,161 @@ func NewStopChatTurnsRequest(server string, tenant TenantSlug) (*http.Request, e
 	return req, nil
 }
 
+// NewListDeletedTicketsRequest constructs an http.Request for the ListDeletedTickets method
+func NewListDeletedTicketsRequest(server string, tenant TenantSlug, params *ListDeletedTicketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPurgeTicketRequest constructs an http.Request for the PurgeTicket method
+func NewPurgeTicketRequest(server string, tenant TenantSlug, key TicketKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRestoreTicketRequest constructs an http.Request for the RestoreTicket method
+func NewRestoreTicketRequest(server string, tenant TenantSlug, key TicketKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/%s/restore", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListGroupMappingsRequest constructs an http.Request for the ListGroupMappings method
 func NewListGroupMappingsRequest(server string, tenant TenantSlug, params *ListGroupMappingsParams) (*http.Request, error) {
 	var err error
@@ -11672,6 +12004,54 @@ func NewCreateTicketRequestWithBody(server string, tenant TenantSlug, project Pr
 			req.Header.Set("Idempotency-Key", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewDeleteTicketRequest constructs an http.Request for the DeleteTicket method
+func NewDeleteTicketRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -16144,6 +16524,45 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error)
 
+	// ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
+	//
+	// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+	// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+	// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+	// restricted to a project is refused like an unknown tenant.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+	ListDeletedTicketsWithResponse(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*ListDeletedTicketsResponse, error)
+
+	// PurgeTicketWithResponse Purge a deleted ticket for good
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+	// and the attachments' objects after them; its children become roots, and a block that waited
+	// on it waits on its key as an external reference. Its audit rows stay with their content
+	// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+	// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+	PurgeTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*PurgeTicketResponse, error)
+
+	// RestoreTicketWithResponse Restore a deleted ticket from the bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+	// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+	// `restored` and published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+	RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error)
+
 	// ListGroupMappingsWithResponse The tenant's group mappings, by group
 	//
 	// Each mapping gives its role to every person whose groups include its
@@ -16600,6 +17019,23 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets (the `CreateTicket` operationId).
 	CreateTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *CreateTicketParams, body CreateTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTicketResponse, error)
+
+	// DeleteTicketWithResponse Delete a ticket into the tenant's bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+	// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+	// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+	// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+	// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+	// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+	// published. A restoration brings everything back; thirty days after the deletion the purge job
+	// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+	// shows the dependents and asks first (D7).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+	DeleteTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*DeleteTicketResponse, error)
 
 	// GetTicketWithResponse One ticket
 	//
@@ -19002,6 +19438,171 @@ func (r StopChatTurnsResponse) ContentType() string {
 	return ""
 }
 
+// ListDeletedTicketsResponseDefaultHeaders the declared response headers of an HTTP default response for ListDeletedTickets
+type ListDeletedTicketsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListDeletedTicketsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeletedTicketList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListDeletedTicketsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDeletedTicketsResponse) GetJSON200() *DeletedTicketList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListDeletedTicketsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDeletedTicketsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDeletedTicketsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDeletedTicketsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDeletedTicketsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PurgeTicketResponseDefaultHeaders the declared response headers of an HTTP default response for PurgeTicket
+type PurgeTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type PurgeTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *PurgeTicketResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PurgeTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PurgeTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PurgeTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PurgeTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PurgeTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RestoreTicketResponse200Headers the declared response headers of an HTTP 200 response for RestoreTicket
+type RestoreTicketResponse200Headers struct {
+	ETag *string
+}
+
+// RestoreTicketResponseDefaultHeaders the declared response headers of an HTTP default response for RestoreTicket
+type RestoreTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RestoreTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Ticket
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *RestoreTicketResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RestoreTicketResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RestoreTicketResponse) GetJSON200() *Ticket {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RestoreTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RestoreTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RestoreTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListGroupMappingsResponseDefaultHeaders the declared response headers of an HTTP default response for ListGroupMappings
 type ListGroupMappingsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20280,6 +20881,54 @@ func (r CreateTicketResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteTicketResponseDefaultHeaders the declared response headers of an HTTP default response for DeleteTicket
+type DeleteTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeleteTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeleteTicketResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteTicketResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -24012,6 +24661,63 @@ func (c *ClientWithResponses) StopChatTurnsWithResponse(ctx context.Context, ten
 	return ParseStopChatTurnsResponse(rsp)
 }
 
+// ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
+//
+// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+// restricted to a project is refused like an unknown tenant.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+func (c *ClientWithResponses) ListDeletedTicketsWithResponse(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*ListDeletedTicketsResponse, error) {
+	rsp, err := c.ListDeletedTickets(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDeletedTicketsResponse(rsp)
+}
+
+// PurgeTicketWithResponse Purge a deleted ticket for good
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D2, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket, its
+// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+// and the attachments' objects after them; its children become roots, and a block that waited
+// on it waits on its key as an external reference. Its audit rows stay with their content
+// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+func (c *ClientWithResponses) PurgeTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*PurgeTicketResponse, error) {
+	rsp, err := c.PurgeTicket(ctx, tenant, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePurgeTicketResponse(rsp)
+}
+
+// RestoreTicketWithResponse Restore a deleted ticket from the bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+// `restored` and published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error) {
+	rsp, err := c.RestoreTicket(ctx, tenant, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreTicketResponse(rsp)
+}
+
 // ListGroupMappingsWithResponse The tenant's group mappings, by group
 //
 // Each mapping gives its role to every person whose groups include its
@@ -24659,6 +25365,29 @@ func (c *ClientWithResponses) CreateTicketWithResponse(ctx context.Context, tena
 		return nil, err
 	}
 	return ParseCreateTicketResponse(rsp)
+}
+
+// DeleteTicketWithResponse Delete a ticket into the tenant's bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+// published. A restoration brings everything back; thirty days after the deletion the purge job
+// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+// shows the dependents and asks first (D7).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+func (c *ClientWithResponses) DeleteTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*DeleteTicketResponse, error) {
+	rsp, err := c.DeleteTicket(ctx, tenant, project, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTicketResponse(rsp)
 }
 
 // GetTicketWithResponse One ticket
@@ -27229,6 +27958,150 @@ func ParseStopChatTurnsResponse(rsp *http.Response) (*StopChatTurnsResponse, err
 	return response, nil
 }
 
+// ParseListDeletedTicketsResponse parses an HTTP response from a ListDeletedTicketsWithResponse call
+func ParseListDeletedTicketsResponse(rsp *http.Response) (*ListDeletedTicketsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDeletedTicketsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeletedTicketList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ListDeletedTicketsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePurgeTicketResponse parses an HTTP response from a PurgeTicketWithResponse call
+func ParsePurgeTicketResponse(rsp *http.Response) (*PurgeTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PurgeTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers PurgeTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRestoreTicketResponse parses an HTTP response from a RestoreTicketWithResponse call
+func ParseRestoreTicketResponse(rsp *http.Response) (*RestoreTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers RestoreTicketResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers RestoreTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListGroupMappingsResponse parses an HTTP response from a ListGroupMappingsWithResponse call
 func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -28377,6 +29250,48 @@ func ParseCreateTicketResponse(rsp *http.Response) (*CreateTicketResponse, error
 		response.Headers201 = &headers
 	case true:
 		var headers CreateTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteTicketResponse parses an HTTP response from a DeleteTicketWithResponse call
+func ParseDeleteTicketResponse(rsp *http.Response) (*DeleteTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeleteTicketResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -31170,6 +32085,15 @@ type ServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
+	ListDeletedTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListDeletedTicketsParams)
+	// PurgeTicket Purge a deleted ticket for good
+	// (DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key})
+	PurgeTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
+	// RestoreTicket Restore a deleted ticket from the bin
+	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
+	RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
@@ -31236,6 +32160,9 @@ type ServerInterface interface {
 	// CreateTicket File a ticket
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	CreateTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params CreateTicketParams)
+	// DeleteTicket Delete a ticket into the tenant's bin
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
+	DeleteTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
 	// GetTicket One ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
 	GetTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
@@ -32474,6 +33401,131 @@ func (siw *ServerInterfaceWrapper) StopChatTurns(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StopChatTurns(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDeletedTickets operation middleware
+func (siw *ServerInterfaceWrapper) ListDeletedTickets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDeletedTicketsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeletedTickets(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PurgeTicket operation middleware
+func (siw *ServerInterfaceWrapper) PurgeTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key TicketKeyPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PurgeTicket(w, r, tenant, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreTicket operation middleware
+func (siw *ServerInterfaceWrapper) RestoreTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key TicketKeyPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreTicket(w, r, tenant, key)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -33916,6 +34968,50 @@ func (siw *ServerInterfaceWrapper) CreateTicket(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateTicket(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTicket operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTicket(w, r, tenant, project, number)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -37551,6 +38647,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets", wrapper.ListDeletedTickets)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}", wrapper.PurgeTicket)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore", wrapper.RestoreTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
@@ -37573,6 +38672,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/restriction", wrapper.SetProjectRestriction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.ListProjectTickets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.CreateTicket)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.DeleteTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.GetTicket)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.UpdateTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity", wrapper.ListActivity)
@@ -38904,6 +40004,142 @@ func (response StopChatTurnsdefaultApplicationProblemPlusJSONResponse) VisitStop
 	return err
 }
 
+type ListDeletedTicketsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListDeletedTicketsParams
+}
+
+type ListDeletedTicketsResponseObject interface {
+	VisitListDeletedTicketsResponse(w http.ResponseWriter) error
+}
+
+type ListDeletedTickets200JSONResponse DeletedTicketList
+
+func (response ListDeletedTickets200JSONResponse) VisitListDeletedTicketsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeletedTicketsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListDeletedTicketsdefaultApplicationProblemPlusJSONResponse) VisitListDeletedTicketsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeTicketRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Key    TicketKeyPath `json:"key"`
+}
+
+type PurgeTicketResponseObject interface {
+	VisitPurgeTicketResponse(w http.ResponseWriter) error
+}
+
+type PurgeTicket204Response struct {
+}
+
+func (response PurgeTicket204Response) VisitPurgeTicketResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PurgeTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response PurgeTicketdefaultApplicationProblemPlusJSONResponse) VisitPurgeTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreTicketRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Key    TicketKeyPath `json:"key"`
+}
+
+type RestoreTicketResponseObject interface {
+	VisitRestoreTicketResponse(w http.ResponseWriter) error
+}
+
+type RestoreTicket200ResponseHeaders struct {
+	ETag *string
+}
+
+type RestoreTicket200JSONResponse struct {
+	Body    Ticket
+	Headers RestoreTicket200ResponseHeaders
+}
+
+func (response RestoreTicket200JSONResponse) VisitRestoreTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RestoreTicketdefaultApplicationProblemPlusJSONResponse) VisitRestoreTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListGroupMappingsRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListGroupMappingsParams
@@ -40025,6 +41261,45 @@ type CreateTicketdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response CreateTicketdefaultApplicationProblemPlusJSONResponse) VisitCreateTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTicketRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+}
+
+type DeleteTicketResponseObject interface {
+	VisitDeleteTicketResponse(w http.ResponseWriter) error
+}
+
+type DeleteTicket204Response struct {
+}
+
+func (response DeleteTicket204Response) VisitDeleteTicketResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteTicketdefaultApplicationProblemPlusJSONResponse) VisitDeleteTicketResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -42863,6 +44138,15 @@ type StrictServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(ctx context.Context, request StopChatTurnsRequestObject) (StopChatTurnsResponseObject, error)
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
+	ListDeletedTickets(ctx context.Context, request ListDeletedTicketsRequestObject) (ListDeletedTicketsResponseObject, error)
+	// PurgeTicket Purge a deleted ticket for good
+	// (DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key})
+	PurgeTicket(ctx context.Context, request PurgeTicketRequestObject) (PurgeTicketResponseObject, error)
+	// RestoreTicket Restore a deleted ticket from the bin
+	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
+	RestoreTicket(ctx context.Context, request RestoreTicketRequestObject) (RestoreTicketResponseObject, error)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
@@ -42929,6 +44213,9 @@ type StrictServerInterface interface {
 	// CreateTicket File a ticket
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	CreateTicket(ctx context.Context, request CreateTicketRequestObject) (CreateTicketResponseObject, error)
+	// DeleteTicket Delete a ticket into the tenant's bin
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
+	DeleteTicket(ctx context.Context, request DeleteTicketRequestObject) (DeleteTicketResponseObject, error)
 	// GetTicket One ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
 	GetTicket(ctx context.Context, request GetTicketRequestObject) (GetTicketResponseObject, error)
@@ -43924,6 +45211,87 @@ func (sh *strictHandler) StopChatTurns(w http.ResponseWriter, r *http.Request, t
 	}
 }
 
+// ListDeletedTickets operation middleware
+func (sh *strictHandler) ListDeletedTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListDeletedTicketsParams) {
+	var request ListDeletedTicketsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeletedTickets(ctx, request.(ListDeletedTicketsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeletedTickets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeletedTicketsResponseObject); ok {
+		if err := validResponse.VisitListDeletedTicketsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PurgeTicket operation middleware
+func (sh *strictHandler) PurgeTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath) {
+	var request PurgeTicketRequestObject
+
+	request.Tenant = tenant
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PurgeTicket(ctx, request.(PurgeTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PurgeTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PurgeTicketResponseObject); ok {
+		if err := validResponse.VisitPurgeTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreTicket operation middleware
+func (sh *strictHandler) RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath) {
+	var request RestoreTicketRequestObject
+
+	request.Tenant = tenant
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreTicket(ctx, request.(RestoreTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreTicketResponseObject); ok {
+		if err := validResponse.VisitRestoreTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListGroupMappings operation middleware
 func (sh *strictHandler) ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams) {
 	var request ListGroupMappingsRequestObject
@@ -44592,6 +45960,34 @@ func (sh *strictHandler) CreateTicket(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateTicketResponseObject); ok {
 		if err := validResponse.VisitCreateTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTicket operation middleware
+func (sh *strictHandler) DeleteTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
+	var request DeleteTicketRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTicket(ctx, request.(DeleteTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTicketResponseObject); ok {
+		if err := validResponse.VisitDeleteTicketResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

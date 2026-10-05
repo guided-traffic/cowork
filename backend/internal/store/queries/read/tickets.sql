@@ -20,19 +20,19 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
 WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id) AND t.number = sqlc.arg(number)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);
 
 -- name: ParentChainContains :one
 -- Whether ticket_id is the candidate parent or one of its ancestors: the
