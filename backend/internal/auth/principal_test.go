@@ -79,6 +79,19 @@ func TestCanonical(t *testing.T) {
 	assert.Nil(t, Authorize(p, domain.RoleMember, Need{Role: domain.RoleMember, Scope: domain.ScopeWrite, Capability: CapSetHorizon}))
 }
 
+// docs/adr/0043 D4 as amended 2026-10-05: a set this release stores carries
+// override-urgency beside set-horizon, which the release before knows, and
+// reads back as the set it was.
+func TestStored(t *testing.T) {
+	assert.Equal(t, []string{CapRank, CapSetHorizon, CapOverrideUrgency}, Stored([]string{CapRank, CapSetHorizon}))
+	assert.Equal(t, []string{CapRank}, Stored([]string{CapRank}), "nothing to add without set-horizon")
+	assert.Equal(t, []string{CapSetHorizon, CapOverrideUrgency}, Stored([]string{CapSetHorizon, CapOverrideUrgency}), "each name once")
+	assert.Equal(t, []string{}, Stored([]string{}))
+	for _, set := range [][]string{AllCapabilities, DefaultChatCapabilities, {CapRank, CapSetHorizon}} {
+		assert.Equal(t, set, Canonical(Stored(set)), "a stored set reads back as the set it was")
+	}
+}
+
 func TestAuthorize(t *testing.T) {
 	person := Principal{Scope: domain.ScopeWrite}
 	agent := Principal{Scope: domain.ScopeWrite, Agent: "a/b/c", Capabilities: []string{CapClose}}

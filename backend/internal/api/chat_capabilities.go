@@ -52,11 +52,11 @@ func (s *Server) SetMyChat(ctx context.Context, req apigen.SetMyChatRequestObjec
 			// (docs/adr/0043 D4 as amended 2026-10-05).
 			return store.ErrNoChange
 		}
-		if err := w.SetChatCapabilities(ctx, writeq.SetChatCapabilitiesParams{UserID: p.PersonID, Capabilities: want}); err != nil {
+		if err := w.SetChatCapabilities(ctx, writeq.SetChatCapabilitiesParams{UserID: p.PersonID, Capabilities: auth.Stored(want)}); err != nil {
 			return err
 		}
 		w.Record(store.Event{EntityType: entityUser, EntityID: p.PersonID, Action: actionUpdated,
-			Before: map[string]any{fieldChatCapabilities: before}, After: map[string]any{fieldChatCapabilities: want}})
+			Before: map[string]any{fieldChatCapabilities: auth.Canonical(before)}, After: map[string]any{fieldChatCapabilities: want}})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {

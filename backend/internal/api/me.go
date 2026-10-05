@@ -259,7 +259,7 @@ func (s *Server) CreateMyToken(ctx context.Context, req apigen.CreateMyTokenRequ
 		row, err := w.InsertToken(ctx, writeq.InsertTokenParams{
 			UserID: p.PersonID, Name: spec.name, TokenHash: hash[:], Scope: spec.scope,
 			RestrictedTenantID: spec.tenantID, RestrictedProjectID: spec.projectID,
-			Agent: spec.agent, Capabilities: spec.capabilities, ExpiresAt: spec.expiresAt,
+			Agent: spec.agent, Capabilities: auth.Stored(spec.capabilities), ExpiresAt: spec.expiresAt,
 		})
 		if err != nil {
 			return err

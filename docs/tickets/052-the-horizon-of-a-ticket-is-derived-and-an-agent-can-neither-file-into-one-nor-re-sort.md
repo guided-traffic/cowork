@@ -77,33 +77,10 @@ D3):
    D1; ADR 0044 D3 keeps the importer reading `urgency`, which the ticket files of a repository
    carry.
 
-## Open questions
-
-### Q1: Does a capability set this release writes carry `override-urgency` beside `set-horizon`?
-
-A token made, or a chat set chosen, under this release stores `set-horizon` alone. The release
-before knows only `override-urgency`: after an image rollback, the only rollback
-([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4),
-such an agent is refused the horizon (`403 agent_forbidden`, `missing capability:
-override-urgency`) until a person makes a new token or chooses again; the sets stored before keep
-the old name and hold on either release.
-
-- (a) **Keep it as built:** `set-horizon` alone. The stored sets read as the brief named them; the
-  rollback fails closed for the sets written after the upgrade.
-- (b) **Write both names into a new set** until the contract — `set-horizon` and
-  `override-urgency` — in the token's creation and the chat's choice. The reads are unchanged:
-  `auth.Canonical` takes both as one, every answer names `set-horizon`. The rollback stays whole;
-  the cost is the redundant name in the stored sets, which the contract's rewrite removes anyway,
-  and a few lines with their tests.
-
-Recommended: **(b)** — the expand exists so that the release before keeps working on what this
-release writes, and (b) gives the capability that at little cost; (a) leaves the one hole in it.
-
-**Answer:** _open_
-
 ## Not verified
 
 - The end-to-end tier with its seeds and reads renamed did not run: it needs both images built.
   Its TypeScript was checked against the generated client without Node's types.
-- An image rollback to 0.4.x over migration 37 was not run; what the release before does with
-  `set-horizon` is read from its code (`Principal.Can` compares names), not observed.
+- An image rollback to 0.4.x over migration 37 was not run; that the release before grants the act
+  through the `override-urgency` every new set also stores is read from its code (`Principal.Can`
+  compares names), not observed.

@@ -60,7 +60,9 @@ capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as
 `set-horizon` wherever a set comes in — a token's, the chat's, a token being made, a chat set being
 chosen — so a request holds `set-horizon` whichever name its set was stored with, a new set is
-stored as `set-horizon`, and every answer names `set-horizon`
+stored as `set-horizon` followed by `override-urgency` until the contract, so that the release
+before still grants it after a rollback (`auth.Stored`; built on the recommendation, 2026-10-05, the
+owner reviewing the result), and every answer names `set-horizon`
 ([`principal.go`](../../backend/internal/auth/principal.go), `capabilitiesView` in
 [`token.go`](../../backend/internal/api/token.go)); `GET /api/v1/me/token` answers
 `override-urgency` after `set-horizon` in the request's set, which a `cowork-mcp` of the release
@@ -193,14 +195,11 @@ scope alone.
 
 - A "full" token does close tickets on its own verification note; the audit shows it as the
   agent's act, and the owner accepted that the second pair of eyes is optional.
-- *(Added 2026-10-05.)* A set this release writes names `set-horizon`, which the release before does
-  not know: after an image rollback ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)
-  D4), an agent whose token was made, or a chat whose set was chosen, under this release is refused
-  the horizon with `403 agent_forbidden`, `missing capability: override-urgency`, until a person
-  makes a new token or chooses again. It fails closed, and only for the sets written after the
-  upgrade; the ones written before keep `override-urgency` and hold on either release. Writing both
-  names into a new set would keep a rollback whole at the price of the alias in every set stored
-  until the contract; this release writes `set-horizon` alone.
+- *(Added 2026-10-05.)* Until the contract, every capability set stored since the rename carries
+  `override-urgency` beside `set-horizon`, which the release before reads, so that an image rollback
+  ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4) keeps
+  the act for an agent made after the upgrade; the cost is the redundant name in those rows, which
+  the contract's rewrite removes.
 - Capabilities multiply the test matrix: each switch has an allowed and a refused test in the
   integration tier, with the fixture identities.
 

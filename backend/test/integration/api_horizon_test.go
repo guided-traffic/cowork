@@ -320,17 +320,18 @@ func TestTheCapabilityIsSetHorizonUnderEitherName(t *testing.T) {
 	require.Equal(t, http.StatusCreated, created.StatusCode)
 	made := decode[apigen.TokenCreated](t, created)
 	assert.Equal(t, []apigen.Capability{"set-horizon", "rank"}, made.Capabilities, "one capability, under its name")
-	stored, err := f.QueryCount(ctx, `SELECT count(*) FROM tokens WHERE id = $1 AND capabilities = ARRAY['set-horizon', 'rank']::text[]`, made.Id)
+	stored, err := f.QueryCount(ctx, `SELECT count(*) FROM tokens WHERE id = $1
+		AND capabilities = ARRAY['set-horizon', 'rank', 'override-urgency']::text[]`, made.Id)
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, stored, "a new token stores set-horizon")
+	assert.EqualValues(t, 1, stored, "a new token stores set-horizon, and the name the release before knows")
 
 	chat := b.request(http.MethodPut, "/api/v1/me/chat", map[string]any{"capabilities": []string{"override-urgency", "rank"}})
 	require.Equal(t, http.StatusOK, chat.StatusCode)
 	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, decode[apigen.ChatCapabilities](t, chat).Capabilities)
 	stored, err = f.QueryCount(ctx, `SELECT count(*) FROM chat_capabilities WHERE user_id = $1
-		AND capabilities = ARRAY['rank', 'set-horizon']::text[]`, w.MemberA)
+		AND capabilities = ARRAY['rank', 'set-horizon', 'override-urgency']::text[]`, w.MemberA)
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, stored, "the chat stores set-horizon")
+	assert.EqualValues(t, 1, stored, "the chat stores set-horizon, and the name the release before knows")
 
 	require.NoError(t, f.Exec(ctx, `UPDATE chat_capabilities SET capabilities = ARRAY['override-urgency'] WHERE user_id = $1`, w.MemberA))
 	assert.Equal(t, []apigen.Capability{"set-horizon"},

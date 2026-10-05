@@ -66,6 +66,19 @@ func Canonical(capabilities []string) []string {
 	return out
 }
 
+// Stored is a capability set as this release writes it until a later release
+// rewrites the stored sets (docs/adr/0043 D4 as amended 2026-10-05):
+// set-horizon is followed by override-urgency, its name before, so that the
+// release before, which knows only that name, still grants the act after a
+// rollback. Reads take it back to this release's names (Canonical).
+func Stored(capabilities []string) []string {
+	out := slices.Clone(capabilities)
+	if slices.Contains(out, CapSetHorizon) && !slices.Contains(out, CapOverrideUrgency) {
+		out = append(out, CapOverrideUrgency)
+	}
+	return out
+}
+
 // Principal is who a request acts for, after authentication: a person through
 // a personal access token or through a browser session, resolved by one
 // authentication step (docs/adr/0031 D6).
