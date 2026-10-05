@@ -319,18 +319,20 @@ func (s *Server) applyFilterPatch(me uuid.UUID, row readq.GetSavedFilterRow, p a
 	ch := filterChange{name: row.Name, params: row.Parameters, shared: row.Shared,
 		before: map[string]any{}, after: map[string]any{}, current: map[string]any{}}
 	if p.Name != nil || p.Parameters != nil {
-		name, params := row.Name, apigen.SavedFilterParameters{}
+		name := row.Name
 		if p.Name != nil {
 			name = *p.Name
 		}
+		// Parameters left out are left as they are: a value that no longer holds
+		// stays a warning (docs/adr/0049 D7) and does not refuse a rename.
+		checkedName, raw := strings.TrimSpace(name), row.Parameters
 		if p.Parameters != nil {
-			params = *p.Parameters
-		} else if err := json.Unmarshal(row.Parameters, &params); err != nil {
-			return ch, fmt.Errorf("read the saved parameters: %w", err)
-		}
-		checkedName, raw, perr := s.checkFilter(me, name, params)
-		if perr != nil {
-			return ch, perr
+			var perr *problem.Error
+			if checkedName, raw, perr = s.checkFilter(me, name, *p.Parameters); perr != nil {
+				return ch, perr
+			}
+		} else if checkedName == "" {
+			return ch, problem.Field("/name", "a saved filter needs a name")
 		}
 		if checkedName != row.Name {
 			ch.before[fieldName], ch.after[fieldName], ch.current[fieldName] = row.Name, checkedName, row.Name

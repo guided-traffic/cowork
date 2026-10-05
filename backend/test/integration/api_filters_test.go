@@ -169,6 +169,10 @@ func TestSavedFilterParametersAreTheListsParameters(t *testing.T) {
 	require.Len(t, warned.Warnings, 1)
 	assert.Equal(t, "state", warned.Warnings[0].Parameter)
 	assert.Contains(t, warned.Warnings[0].Message, "triaged")
+	renamed := e.s.do(t, member, http.MethodPatch, filtersPath(e.SlugA, kept.Id), apigen.SavedFilterPatch{Name: ptr("kept, renamed")},
+		"If-Match", strconv.Quote(strconv.Itoa(warned.Version)))
+	require.Equal(t, http.StatusOK, renamed.StatusCode, "a rename leaves the parameters as they are, an old value included")
+	assert.Len(t, decode[apigen.SavedFilter](t, renamed).Warnings, 1)
 
 	// A restricted project, a confidential ticket and a deleted one: the
 	// owner reads the filter whole, the others without its parameters.
